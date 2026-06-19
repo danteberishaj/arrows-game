@@ -1,4 +1,7 @@
 ﻿<Solution>
+  <Project Path="Arrows.Runtime.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="Arrows.Tests.csproj" />
+  <Project Path="Arrows.Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
 </Solution>

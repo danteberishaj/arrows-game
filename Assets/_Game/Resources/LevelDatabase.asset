@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b3f9cbb385f11f47a836b18118dfc07, type: 3}
+  m_Name: LevelDatabase
+  m_EditorClassIdentifier: Arrows.Runtime::Arrows.LevelDatabase
+  levels:
+  - {fileID: 11400000, guid: 6281238eab24e724495e41a684fd4a50, type: 2}
+  - {fileID: 11400000, guid: 8bbab4393522e31479f6a91ec5a00b0e, type: 2}
+  - {fileID: 11400000, guid: 1799f7191d32b784aa12f43bd673f2ef, type: 2}
+  - {fileID: 11400000, guid: cd044ef3d7b1a3f4a83123313da52b59, type: 2}
+  - {fileID: 11400000, guid: 1a713761c891ae843846856e8da9a3f5, type: 2}
+  - {fileID: 11400000, guid: 937a1bd8ccf7fdf49a0fae0fed99f5b5, type: 2}
+  - {fileID: 11400000, guid: 1a11ff6115bcf774abbdef181e473fee, type: 2}
+  - {fileID: 11400000, guid: a75b24cd3c5918f478cd248a68ff2d77, type: 2}
+  - {fileID: 11400000, guid: ff3fb8b95705ed34c9398d98f55cc833, type: 2}
+  - {fileID: 11400000, guid: fc326ade27bdd454fb1c73f77b101d3e, type: 2}
+  - {fileID: 11400000, guid: 4479395be791fbb42b095885ffe66f3c, type: 2}
+  - {fileID: 11400000, guid: f6b75c125fce58b46a3a529224eea39e, type: 2}

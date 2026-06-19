@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90f1cef00c1d77749a1ca6a135a26f7d, type: 3}
+  m_Name: Level_09
+  m_EditorClassIdentifier: Arrows.Runtime::Arrows.LevelData
+  hearts: 3
+  rows: 9
+  cols: 9
+  arrows:
+  - 3,2,R:UU
+  - 6,0,U:DD
+  - 6,1,U:DRRR
+  - 4,4,R:UUUU
+  - 4,5,R:UUUU
+  - 1,6,D:RUR
+  - 4,7,R:UULD
+  - 1,1,L:URRD
+  - 4,2,L:RU
+  - 8,6,D:UU
+  - 1,0,U:DDD
+  - 4,8,R:DL
+  - 8,7,D:UUR
+  - 5,5,D:LLL
+  - '0,6,U:'
