@@ -110,37 +110,62 @@ namespace Arrows
                     if (headDirs.Count == 0) continue;
                     var headDir = headDirs[rng.Next(headDirs.Count)];
 
-                    // Place the head, then grow a bent body backward into empty cells.
+                    // Place the head, then grow the body BACKWARD into empty cells. To keep
+                    // arrows reading cleanly (not goofy/over-bent) we: (a) start with a straight
+                    // "neck" directly behind the head, so the arrowhead never sprouts off a
+                    // corner; (b) require at least one straight step between turns, so no zig-zag
+                    // staircases; and (c) cap the bends, so arrows stay simple — mostly a single
+                    // gentle bend. This only changes body SHAPE (still empty cells), so the
+                    // reverse-placement solvability invariant is untouched.
                     occ[hr, hc] = true;
                     var headFirst = new List<(int r, int c)> { (hr, hc) };
                     int targetLen = rng.Next(minLen, maxLen + 1);
                     var cur = (r: hr, c: hc);
-                    Direction? lastStep = null;
+
+                    Direction travel = headDir.Opposite(); // body heads straight back from the head
+                    int bends = 0;
+                    int maxBends = rng.NextDouble() < 0.22 ? 2 : 1;
+                    int straightRun = 0;                    // steps since the last turn
+
+                    bool CanGo(Direction d, out (int r, int c) next)
+                    {
+                        var (dr, dc) = d.ToDelta();
+                        next = (cur.r + dr, cur.c + dc);
+                        return next.r >= 0 && next.r < rows && next.c >= 0 && next.c < cols && !occ[next.r, next.c];
+                    }
 
                     while (headFirst.Count < targetLen)
                     {
-                        var opts = new List<Direction>();
-                        foreach (var sd in dirs)
+                        bool canStraight = CanGo(travel, out var straightCell);
+
+                        // A turn is only allowed after a straight step and below the bend cap;
+                        // turns are perpendicular to the current travel direction.
+                        var turns = new List<Direction>(2);
+                        if (bends < maxBends && straightRun >= 1)
+                            foreach (var sd in dirs)
+                                if (sd != travel && sd != travel.Opposite() && CanGo(sd, out _))
+                                    turns.Add(sd);
+
+                        bool doBend = turns.Count > 0 && (!canStraight || rng.NextDouble() < bendChance);
+
+                        (int r, int c) nextCell;
+                        if (doBend)
                         {
-                            if (sd == headDir) continue; // never grow ahead of the head
-                            var (dr, dc) = sd.ToDelta();
-                            int nr = cur.r + dr, nc = cur.c + dc;
-                            if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-                            if (occ[nr, nc]) continue;
-                            opts.Add(sd);
+                            travel = turns[rng.Next(turns.Count)];
+                            CanGo(travel, out nextCell);
+                            bends++;
+                            straightRun = 0;
                         }
-                        if (opts.Count == 0) break;
+                        else if (canStraight)
+                        {
+                            nextCell = straightCell;
+                            straightRun++;
+                        }
+                        else break; // boxed in
 
-                        Direction step =
-                            (lastStep != null && opts.Contains(lastStep.Value) && rng.NextDouble() > bendChance)
-                                ? lastStep.Value
-                                : opts[rng.Next(opts.Count)];
-
-                        var (sdr, sdc) = step.ToDelta();
-                        cur = (cur.r + sdr, cur.c + sdc);
-                        occ[cur.r, cur.c] = true;
-                        headFirst.Add((cur.r, cur.c));
-                        lastStep = step;
+                        occ[nextCell.r, nextCell.c] = true;
+                        headFirst.Add(nextCell);
+                        cur = nextCell;
                     }
 
                     var tailToHead = new List<(int, int)>(headFirst);

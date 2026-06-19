@@ -129,6 +129,24 @@ namespace Arrows
             go.AddComponent<SlitherExit>().Play(pts, (arrow.Length - 1) * _cellSize, _cellSize, GameManager.Palette.Ink);
         }
 
+        /// <summary>
+        /// Finds a safe next move and draws attention to it: centres the board on the arrow
+        /// (so it's on-screen even when zoomed) and pulses it in the accent colour. The arrow
+        /// stays tappable — the player still makes the move themselves.
+        /// </summary>
+        public void ShowHint()
+        {
+            if (_inputLocked || _logic == null) return;
+            var arrow = _logic.FindHint();
+            if (arrow == null) return;
+            if (!_tiles.TryGetValue(arrow, out var tile) || tile == null) return;
+
+            float centerRow = (arrow.MinRow + arrow.MaxRow) / 2f;
+            float centerCol = (arrow.MinCol + arrow.MaxCol) / 2f;
+            if (_panZoom != null) _panZoom.FocusOn(CellToLocal(centerRow, centerCol));
+            tile.Highlight();
+        }
+
         public void LockInput() => _inputLocked = true;
 
         public void ClearTiles()

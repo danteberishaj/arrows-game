@@ -26,6 +26,7 @@ namespace Arrows
             var ui = new UIRoot();
             ui.mainMenu = BuildMainMenu(canvas.transform, ui);
             ui.gameScreen = BuildGameScreen(canvas.transform, ui);
+            ui.gameScreen.SetActive(false); // shown (and faded in) only when a level starts
             BuildOverlay(canvas.transform, ui);
 
             var audio = gameObject.AddComponent<AudioManager>();
@@ -74,6 +75,7 @@ namespace Arrows
         private GameObject BuildMainMenu(Transform parent, UIRoot ui)
         {
             var screen = NewScreen("MainMenu", parent);
+            ui.menuGroup = screen.AddComponent<CanvasGroup>();
 
             BuildLogo(screen.transform, 0.62f, 150);
 
@@ -88,6 +90,8 @@ namespace Arrows
                 GameManager.Palette.Accent, GameManager.Palette.InkOnAccent, 620, 168, 54);
             Anchor(play.GetComponent<RectTransform>(), new Vector2(0.5f, 0.30f), new Vector2(620, 168));
             play.onClick.AddListener(() => GetComponent<GameManager>().PlayResume());
+            ui.playButtonRect = play.GetComponent<RectTransform>();
+            ui.playIdle = play.gameObject.AddComponent<IdlePulse>(); // gentle "tap me" breathing
 
             return screen;
         }
@@ -133,6 +137,7 @@ namespace Arrows
         private GameObject BuildGameScreen(Transform parent, UIRoot ui)
         {
             var screen = NewScreen("GameScreen", parent);
+            ui.gameGroup = screen.AddComponent<CanvasGroup>();
 
             // Masked viewport that clips the (possibly huge) board; pan/zoom lives here and
             // a transparent Image makes it a raycast target so empty areas can be dragged.
@@ -204,6 +209,12 @@ namespace Arrows
             TopLeft(restart.GetComponent<RectTransform>(), new Vector2(196f, -80f));
             restart.onClick.AddListener(() => GetComponent<GameManager>().RetryCurrent());
 
+            // Top-right hint button (lightbulb) — highlights a safe next move, like the reference.
+            var hint = UIFactory.CreateRoundButton("HintBtn", screen.transform, UIFactory.HintSprite,
+                GameManager.Palette.Surface, GameManager.Palette.Accent, 96f, 0.50f, 0f);
+            TopRight(hint.GetComponent<RectTransform>(), new Vector2(-78f, -80f));
+            hint.onClick.AddListener(() => GetComponent<GameManager>().UseHint());
+
             return screen;
         }
 
@@ -212,6 +223,7 @@ namespace Arrows
         private void BuildOverlay(Transform parent, UIRoot ui)
         {
             var screen = NewScreen("Overlay", parent);
+            ui.overlayGroup = screen.AddComponent<CanvasGroup>();
 
             var dim = screen.AddComponent<Image>();
             dim.color = new Color(0, 0, 0, 0f);
@@ -260,6 +272,14 @@ namespace Arrows
         private static void TopLeft(RectTransform rt, Vector2 pos)
         {
             rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+        }
+
+        // Anchor to the top-right corner; pos.x is typically negative (inset from the edge).
+        private static void TopRight(RectTransform rt, Vector2 pos)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
             rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos;
         }

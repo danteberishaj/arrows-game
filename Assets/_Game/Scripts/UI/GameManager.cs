@@ -38,6 +38,7 @@ namespace Arrows
         private int _hearts;
         private int _maxHearts;
         private readonly List<Image> _heartDots = new();
+        private Coroutine _transition; // active screen-fade, so a new one can cancel it
 
         public void Init(BoardManager board, AudioManager audio, UIRoot ui)
         {
@@ -52,34 +53,85 @@ namespace Arrows
 
         // ---- Screens --------------------------------------------------------
 
-        public void ShowMainMenu()
-        {
-            HideOverlay();
-            _ui.mainMenu.SetActive(true);
-            _ui.gameScreen.SetActive(false);
-            if (_ui.resumeLabel != null)
-                _ui.resumeLabel.text = "Level " + (ResumeIndex + 1);
-        }
+        public void ShowMainMenu() => RunTransition(ShowMainMenuRoutine());
 
         public void PlayResume() => StartLevel(ResumeIndex);
 
-        public void StartLevel(int index)
-        {
-            HideOverlay();
-            _levelIndex = index;
-            var level = LevelGenerator.Generate(index); // deterministic per index
+        // Highlights a safe next move on the current board (the hint button).
+        public void UseHint() => _board?.ShowHint();
 
-            _maxHearts = Mathf.Max(1, level.Hearts);
-            _hearts = _maxHearts;
-            BuildHearts();
-            _ui.levelLabel.text = $"Level {index + 1}";
-
-            _ui.mainMenu.SetActive(false);
-            _ui.gameScreen.SetActive(true);
-            _board.LoadBoard(level.Board);
-        }
+        public void StartLevel(int index) => RunTransition(StartLevelRoutine(index));
 
         public void RetryCurrent() => StartLevel(_levelIndex);
+
+        // Starts a screen transition, cancelling any in-flight one so they never overlap.
+        private void RunTransition(IEnumerator routine)
+        {
+            if (_transition != null) StopCoroutine(_transition);
+            _transition = StartCoroutine(routine);
+        }
+
+        private IEnumerator ShowMainMenuRoutine()
+        {
+            yield return FadeOutOverlay();
+            if (_ui.resumeLabel != null)
+                _ui.resumeLabel.text = "Level " + (ResumeIndex + 1);
+
+            // Bring the menu up hidden so revealing the game below it doesn't flash it at full alpha.
+            _ui.mainMenu.SetActive(true);
+            SetGroup(_ui.menuGroup, 0f, false);
+            if (_ui.playButtonRect != null) _ui.playButtonRect.localScale = Vector3.one * 0.9f;
+
+            if (_ui.gameScreen.activeSelf && _ui.gameGroup != null && _ui.gameGroup.alpha > 0.01f)
+                yield return UITween.Fade(_ui.gameGroup, 0f, 0.16f);
+            _ui.gameScreen.SetActive(false);
+
+            // Entrance: fade the menu in, then a gentle spring on the Play button.
+            yield return UITween.Fade(_ui.menuGroup, 1f, 0.22f, UITween.EaseOutCubic);
+            if (_ui.playButtonRect != null)
+                yield return UITween.Scale(_ui.playButtonRect, Vector3.one * 0.9f, Vector3.one, 0.26f, UITween.EaseOutBack);
+            SetGroup(_ui.menuGroup, 1f, true);
+            if (_ui.playIdle != null) _ui.playIdle.Resume(); // start the gentle breathing once settled
+            _transition = null;
+        }
+
+        private IEnumerator StartLevelRoutine(int index)
+        {
+            yield return FadeOutOverlay();
+            _levelIndex = index;
+            var level = LevelGenerator.Generate(index); // deterministic per index
+            _maxHearts = Mathf.Max(1, level.Hearts);
+            _hearts = _maxHearts;
+            _ui.levelLabel.text = $"Level {index + 1}";
+
+            // Fade out whatever is showing (the menu, or the previous/cleared board).
+            if (_ui.mainMenu.activeSelf)
+            {
+                yield return UITween.Fade(_ui.menuGroup, 0f, 0.16f);
+                _ui.mainMenu.SetActive(false);
+            }
+            else if (_ui.gameScreen.activeSelf && _ui.gameGroup != null && _ui.gameGroup.alpha > 0.01f)
+            {
+                yield return UITween.Fade(_ui.gameGroup, 0f, 0.16f);
+            }
+
+            // Rebuild hearts while hidden so the header doesn't visibly reflow, then load and fade in.
+            BuildHearts();
+            _ui.gameScreen.SetActive(true);
+            SetGroup(_ui.gameGroup, 0f, false);
+            _board.LoadBoard(level.Board);
+            yield return UITween.Fade(_ui.gameGroup, 1f, 0.20f, UITween.EaseOutCubic);
+            SetGroup(_ui.gameGroup, 1f, true);
+            _transition = null;
+        }
+
+        private static void SetGroup(CanvasGroup cg, float alpha, bool interactable)
+        {
+            if (cg == null) return;
+            cg.alpha = alpha;
+            cg.interactable = interactable;
+            cg.blocksRaycasts = interactable;
+        }
 
         private void BuildHearts()
         {
@@ -101,13 +153,28 @@ namespace Arrows
         {
             _hearts = Mathf.Max(0, _hearts - 1);
             if (_hearts < _heartDots.Count && _heartDots[_hearts] != null)
-                _heartDots[_hearts].color = Palette.HeartLost;
+                StartCoroutine(SpendHeart(_heartDots[_hearts]));
 
             if (_hearts <= 0)
             {
                 _board.LockInput();
                 ShowLose();
             }
+        }
+
+        // The spent pip pops and fades from coral to muted, so losing a heart reads clearly.
+        private IEnumerator SpendHeart(Image pip)
+        {
+            StartCoroutine(UITween.Pop(pip.rectTransform, 1.35f, 0.28f));
+            const float dur = 0.28f;
+            float t = 0f;
+            while (t < dur)
+            {
+                t += Time.unscaledDeltaTime;
+                pip.color = Color.Lerp(Palette.Heart, Palette.HeartLost, UITween.EaseOutQuad(Mathf.Clamp01(t / dur)));
+                yield return null;
+            }
+            pip.color = Palette.HeartLost;
         }
 
         public void OnLevelCleared()
@@ -120,14 +187,20 @@ namespace Arrows
 
         private IEnumerator WinThenAdvance()
         {
-            ShowWinToast();
-            yield return new WaitForSeconds(1.15f);
-            StartLevel(_levelIndex + 1); // endless
+            yield return ShowWinToast();              // pop the "Solved!" toast in
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return FadeOutOverlay();            // ease the toast out
+            StartLevel(_levelIndex + 1);             // endless; the new board fades in
         }
 
         // ---- Overlay --------------------------------------------------------
 
-        private void HideOverlay() => _ui.overlay.SetActive(false);
+        private IEnumerator FadeOutOverlay()
+        {
+            if (_ui.overlay.activeSelf && _ui.overlayGroup != null)
+                yield return UITween.Fade(_ui.overlayGroup, 0f, 0.18f);
+            _ui.overlay.SetActive(false);
+        }
 
         private void ClearOverlayButtons()
         {
@@ -143,7 +216,7 @@ namespace Arrows
             return btn;
         }
 
-        private void ShowWinToast()
+        private IEnumerator ShowWinToast()
         {
             _ui.overlay.SetActive(true);
             _ui.overlayDim.color = new Color(0, 0, 0, 0f);
@@ -152,6 +225,10 @@ namespace Arrows
             _ui.overlayTitle.color = Palette.Accent;
             _ui.overlaySub.text = string.Empty;
             ClearOverlayButtons();
+
+            SetGroup(_ui.overlayGroup, 0f, false); // a transient toast; never blocks input
+            StartCoroutine(UITween.Pop(_ui.overlayTitle.rectTransform, 1.16f, 0.40f));
+            yield return UITween.Fade(_ui.overlayGroup, 1f, 0.16f, UITween.EaseOutCubic);
         }
 
         private void ShowLose()
@@ -165,6 +242,10 @@ namespace Arrows
             ClearOverlayButtons();
             AddOverlayButton("Retry", Palette.Accent, Palette.InkOnAccent).onClick.AddListener(RetryCurrent);
             AddOverlayButton("Menu", Palette.Surface, Palette.Ink).onClick.AddListener(ShowMainMenu);
+
+            SetGroup(_ui.overlayGroup, 0f, true);
+            StartCoroutine(UITween.Fade(_ui.overlayGroup, 1f, 0.22f, UITween.EaseOutCubic));
+            StartCoroutine(UITween.Pop(_ui.overlayTitle.rectTransform, 1.12f, 0.42f));
         }
 
     }

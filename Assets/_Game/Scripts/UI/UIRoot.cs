@@ -12,6 +12,13 @@ namespace Arrows
         public GameObject mainMenu;
         public GameObject gameScreen;
 
+        // Per-screen CanvasGroups drive the fade transitions between screens.
+        public CanvasGroup menuGroup;
+        public CanvasGroup gameGroup;
+        public CanvasGroup overlayGroup;
+        public RectTransform playButtonRect;  // animated on the menu entrance
+        public IdlePulse playIdle;            // gentle breathing on the Play button
+
         public RectTransform boardViewport;   // masked, fixed-size; clips the board
         public RectTransform boardRoot;       // zoomable Content the tiles live in
         public BoardPanZoom boardPanZoom;

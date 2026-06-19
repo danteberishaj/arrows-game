@@ -6,12 +6,12 @@ using UnityEngine.UI;
 namespace Arrows
 {
     /// <summary>
-    /// Plays an arrow's "slither" exit: a flowing neon trail that runs head-first along
-    /// the arrow's own (possibly bent) centerline and continues straight off the board.
-    /// The trail is a chain of soft glow beads sampled along the path at a fixed spacing;
-    /// as the head advances, every bead follows the same trail, so the body retraces the
-    /// bends and the shape visibly changes (rather than sliding rigidly). Self-destroys
-    /// when the whole body has left the board.
+    /// Plays an arrow's "slither" exit: a flowing line-art trail that runs head-first along
+    /// the arrow's own (possibly bent) centerline and continues straight off the board. The
+    /// trail is a tight chain of solid dots sampled along the path at a fixed spacing that
+    /// overlap into a continuous black tube; as the head advances, every dot follows the same
+    /// trail, so the body retraces the bends and the shape visibly changes (rather than
+    /// sliding rigidly). Self-destroys when the whole body has left the board.
     /// </summary>
     public class SlitherExit : MonoBehaviour
     {

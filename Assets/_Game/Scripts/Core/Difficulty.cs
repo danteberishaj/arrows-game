@@ -46,10 +46,12 @@ namespace Arrows
         public static DifficultyConfig Config(Difficulty d) => d switch
         {
             // count(min,max), len(min,max), bend, hearts, fill(for sizing)
-            Difficulty.Normal    => new DifficultyConfig(25, 50, 2, 5, 0.40f, 5, 0.62f),
-            Difficulty.Hard      => new DifficultyConfig(60, 80, 2, 4, 0.45f, 7, 0.62f),
-            Difficulty.SuperHard => new DifficultyConfig(90, 150, 1, 3, 0.50f, 9, 0.62f),
-            _                    => new DifficultyConfig(25, 50, 2, 5, 0.40f, 5, 0.62f),
+            // bend = chance the single capped bend lands at each eligible step (lower = cleaner,
+            // straighter arrows with the bend further from the head).
+            Difficulty.Normal    => new DifficultyConfig(25, 50, 2, 5, 0.32f, 5, 0.62f),
+            Difficulty.Hard      => new DifficultyConfig(60, 80, 2, 4, 0.36f, 7, 0.62f),
+            Difficulty.SuperHard => new DifficultyConfig(90, 150, 1, 3, 0.40f, 9, 0.62f),
+            _                    => new DifficultyConfig(25, 50, 2, 5, 0.32f, 5, 0.62f),
         };
 
         public static string DisplayName(Difficulty d) => d switch

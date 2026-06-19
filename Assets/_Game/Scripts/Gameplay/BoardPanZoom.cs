@@ -55,6 +55,14 @@ namespace Arrows
             ClampPosition();
         }
 
+        /// <summary>Pan so the given content-local point sits at the viewport centre (clamped).</summary>
+        public void FocusOn(Vector2 contentLocalPoint)
+        {
+            if (content == null) return;
+            content.anchoredPosition = -contentLocalPoint * _scale;
+            ClampPosition();
+        }
+
         public void OnBeginDrag(PointerEventData e) { if (!_pinching) _dragging = true; }
         public void OnEndDrag(PointerEventData e) => _dragging = false;
 

@@ -45,16 +45,27 @@ face). Plan: bundle **Fredoka** (SIL OFL, free to ship) as a TMP/font asset; Sem
 ## Components
 
 - **Arrow**: black, rounded-cap line-art (stroke ≈ **0.14 × cell**), a multi-cell path
-  whose 90° bends are **smoothly rounded** (Chaikin corner-cutting on the centerline), ending
+  whose 90° bends are **rounded with a small fixed-radius corner fillet** (~0.12 cell — tight,
+  crisp turns, not wide sweeps; the legs stay straight up to the corner), ending
   in a **solid filled triangular** arrowhead. Baked as white coverage and **mipmapped /
   trilinear** so strokes stay even and consistent when the board is scaled to fit (no
   minification aliasing). No glow, no tile, no per-arrow color. Selected/blocked → recolor
   the whole arrow `heart`/red `#FC4A5C`. Sized so neighbors nearly connect into a maze.
+  **Generated shapes are kept clean**: a straight "neck" runs directly behind the head (the
+  arrowhead never sits on a corner), turns need a straight step between them (no zig-zag
+  staircases), and bends are capped (mostly one gentle bend) — so arrows read as simple
+  straight runs and L-shapes, not squiggles.
 - **Board**: **no frame, no grid, no tile backgrounds.** Arrows float on white, centered
   and scaled to fit (fit-to-view default; pinch-zoom + drag still available on big boards).
 - **Header (gameplay)**: centered "Level N" (`accent-light`) with the heart row beneath it;
   a thin `surface` divider under the header. **Top-left: two circular `surface` buttons**
-  — back (◀) and restart (↻) — with `accent-deep` glyphs. (No bottom button bar.)
+  — back (◀) and restart (↻) — with `accent-deep` glyphs. **Top-right: a circular `surface`
+  Hint button** (lightbulb glyph, `accent` periwinkle) that highlights a safe next move.
+  (No bottom button bar.)
+- **Hint**: tapping it finds an arrow that can currently exit (always a safe move — removing
+  an arrow only frees cells, never blocks others), centres the board on it, and pulses it in
+  `accent`. The arrow stays tappable; the player still makes the move. Unlimited for now (no
+  coin/ad gating yet).
 - **Hearts**: 5 classic heart shapes; full = `#FC4A5C`, spent = `muted #CED4F7`.
 - **Button (primary)**: `accent` rounded pill, white bold label, **no glow**; pressed →
   slightly darker accent.
@@ -63,12 +74,30 @@ face). Plan: bundle **Fredoka** (SIL OFL, free to ship) as a TMP/font asset; Sem
 
 ## Motion
 
-Minimal and functional — **no ambient neon, no drifting arrows, no glow pulse.** 150–250 ms,
-ease-out.
-- Arrow exit: slide/rotate the arrow off the board along its own path + fade (the
-  reference's "smooth rotations").
-- Blocked: short shake + flash the arrow red `#FC4A5C`.
-- Solved: gentle fade to the next level (brief "Solved!" toast).
+Calm canvas, quick juice. **No ambient neon, no drifting arrows, no glow pulse** — the board
+itself stays still and serene (the reference "avoids flashy transitions"). Motion is reserved
+for *feedback and flow*: every effect is short (≈60–280 ms) and eases out, so taps feel
+satisfying without breaking the minimalist mood. All tweens are coroutine-based in
+`UITween.cs` (easings + `Fade`/`Scale`/`Pop`); no external tween library.
+
+- **Screen transitions** (`GameManager` + per-screen `CanvasGroup`): menu ↔ game and
+  level → level **cross-fade** (~160–220 ms) instead of hard cuts. The board is laid out and
+  fit-to-view while still at alpha 0, then faded in, so there's no layout pop.
+- **Menu entrance**: the menu fades in and the Play pill springs from 0.9 → 1 (`EaseOutBack`),
+  then settles into a gentle **idle "breathing" pulse** (`IdlePulse`, ±3% over ~1.8 s) as a
+  soft "tap me" affordance — the one deliberate bit of ambient motion, on the Play button only.
+- **Hint**: the suggested arrow pulses `accent` with a small decaying swell (~1.1 s) after the
+  board recentres on it.
+- **Button press-feel** (`ButtonPress`, on every button): scale to 0.94 on press, spring back
+  on release, on top of the existing colour tint — a small tactile "click."
+- **Heart loss**: the spent pip **pops** (scale ~1.35) and fades coral `#FC4A5C` → muted
+  `#CED4F7`, so losing a life is unmistakable.
+- **Arrow exit** (`SlitherExit`): the arrow flows head-first off the board along its own
+  (bent) path as a solid black tube, accelerating out + fading at the end.
+- **Blocked** (`ArrowTile.PlayShake`): short horizontal shake + brief scale swell + flash the
+  arrow red `#FC4A5C`, settling back to black.
+- **Solved**: "Solved!" toast **pops in** (accent), holds briefly, fades out, then the next
+  level fades in. **Out of hearts**: light white scrim fades in and the title pops.
 
 ## Layout
 

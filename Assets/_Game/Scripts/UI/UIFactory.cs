@@ -23,6 +23,7 @@ namespace Arrows
         private static Sprite _heartSprite;
         private static Sprite _triangleSprite;
         private static Sprite _restartSprite;
+        private static Sprite _hintSprite;
 
         // Generated bent-arrow sprites, keyed by shape, so repeated arrow shapes on a
         // dense board bake only once. The cache owns the textures; ClearArrowPathCache
@@ -71,6 +72,12 @@ namespace Arrows
         public static Sprite RestartSprite
         {
             get { if (_restartSprite == null) _restartSprite = Rasterize(96, 3, RestartInside); return _restartSprite; }
+        }
+
+        /// <summary>Lightbulb "hint" glyph (white). Tint via color.</summary>
+        public static Sprite HintSprite
+        {
+            get { if (_hintSprite == null) _hintSprite = Rasterize(96, 3, HintInside); return _hintSprite; }
         }
 
         // ---- Layout helpers -------------------------------------------------
@@ -151,6 +158,7 @@ namespace Arrows
             var text = CreateText("Label", go.transform, label, fontSize, fg, TextAnchor.MiddleCenter,
                 bold ? FontStyle.Bold : FontStyle.Normal);
             FullStretch(text.GetComponent<RectTransform>());
+            go.AddComponent<ButtonPress>(); // tactile press-feel
             return btn;
         }
 
@@ -195,6 +203,7 @@ namespace Arrows
             var text = CreateText("Label", go.transform, label, fontSize, fg, TextAnchor.MiddleCenter,
                 bold ? FontStyle.Bold : FontStyle.Normal);
             FullStretch(text.GetComponent<RectTransform>());
+            go.AddComponent<ButtonPress>(); // tactile press-feel
             return btn;
         }
 
@@ -226,6 +235,7 @@ namespace Arrows
             grt.anchorMin = grt.anchorMax = new Vector2(0.5f, 0.5f);
             grt.sizeDelta = new Vector2(size * iconScale, size * iconScale);
             grt.localRotation = Quaternion.Euler(0, 0, iconRotation);
+            go.AddComponent<ButtonPress>(); // tactile press-feel
             return btn;
         }
 
@@ -239,23 +249,36 @@ namespace Arrows
             return (p - (a + ab * t)).magnitude;
         }
 
-        // Chaikin corner-cutting: rounds the interior bends of an open polyline while keeping
-        // the two endpoints fixed (so the tail and arrowhead stay aligned). Each pass replaces
-        // every corner with two points at 1/4 and 3/4 of its edges, smoothing the 90° turns.
-        private static List<Vector2> RoundCorners(List<Vector2> pts, int iterations)
+        // Rounds each interior 90° bend of an open polyline with a SMALL fixed-radius fillet,
+        // leaving the straight runs straight and the tail/head endpoints fixed. Each genuine
+        // corner is replaced by a short quadratic-Bézier arc that reaches only `radius` pixels
+        // back along each leg, so bends read as tight, crisp turns rather than wide sweeps.
+        private static List<Vector2> RoundCorners(List<Vector2> pts, float radius)
         {
-            for (int it = 0; it < iterations && pts.Count >= 3; it++)
+            if (pts.Count < 3) return pts;
+            var outPts = new List<Vector2>(pts.Count + 8) { pts[0] };
+            for (int i = 1; i < pts.Count - 1; i++)
             {
-                var outPts = new List<Vector2>(pts.Count * 2) { pts[0] };
-                for (int i = 0; i < pts.Count - 1; i++)
+                Vector2 a = pts[i - 1], v = pts[i], b = pts[i + 1];
+                Vector2 din = v - a, dout = b - v;
+                float lin = din.magnitude, lout = dout.magnitude;
+                if (lin < 1e-3f || lout < 1e-3f) { outPts.Add(v); continue; }
+                din /= lin; dout /= lout;
+                if (Vector2.Dot(din, dout) > 0.999f) { outPts.Add(v); continue; } // straight: no fillet
+
+                float r = Mathf.Min(radius, lin * 0.5f, lout * 0.5f);
+                Vector2 p1 = v - din * r;  // keep the leg straight up to here
+                Vector2 p2 = v + dout * r;
+                const int seg = 6;
+                for (int s = 0; s <= seg; s++)
                 {
-                    outPts.Add(Vector2.Lerp(pts[i], pts[i + 1], 0.25f));
-                    outPts.Add(Vector2.Lerp(pts[i], pts[i + 1], 0.75f));
+                    float t = s / (float)seg;
+                    Vector2 q = Vector2.Lerp(Vector2.Lerp(p1, v, t), Vector2.Lerp(v, p2, t), t); // quad Bézier
+                    outPts.Add(q);
                 }
-                outPts.Add(pts[pts.Count - 1]);
-                pts = outPts;
             }
-            return pts;
+            outPts.Add(pts[pts.Count - 1]);
+            return outPts;
         }
 
         /// <summary>A generated bent-arrow sprite plus its footprint in grid-cell units.</summary>
@@ -269,6 +292,8 @@ namespace Arrows
         // on every side so rounded caps / the arrowhead aren't clipped at the texture edge.
         private const int ArrowCellPx = 100;
         public const float ArrowPadCells = 0.4f;
+        // Corner fillet radius (fraction of a cell). Small = tight, crisp bends, not wide sweeps.
+        private const float BendRadiusCells = 0.12f;
 
         /// <summary>
         /// Generates a flat black-style line-art sprite for a multi-cell bent arrow: a
@@ -338,7 +363,7 @@ namespace Arrows
                 for (int i = 0; i < n; i++) pts.Add(Center(cells[i].r, cells[i].c));
                 pts.Add(baseBack);                            // straight shaft into the head base
             }
-            pts = RoundCorners(pts, 2);
+            pts = RoundCorners(pts, BendRadiusCells * ArrowCellPx);
 
             var segs = new List<(Vector2 a, Vector2 b)>(pts.Count);
             for (int i = 0; i < pts.Count - 1; i++)
@@ -512,6 +537,16 @@ namespace Arrows
             float s1 = Cross(p, apex, b1), s2 = Cross(p, b1, b2), s3 = Cross(p, b2, apex);
             bool headTri = (s1 <= 0 && s2 <= 0 && s3 <= 0) || (s1 >= 0 && s2 >= 0 && s3 >= 0);
             return ring || headTri;
+        }
+
+        // Lightbulb: a round bulb up top over a short stacked "screw" base — reads as "hint".
+        private static bool HintInside(float nx, float ny)
+        {
+            float bx = nx, by = ny - 0.22f;
+            bool bulb = (bx * bx + by * by) <= 0.56f * 0.56f && ny > -0.18f;
+            bool baseBars = Mathf.Abs(nx) <= 0.28f && ny <= -0.18f && ny >= -0.40f;
+            bool tip = Mathf.Abs(nx) <= 0.16f && ny < -0.40f && ny >= -0.56f;
+            return bulb || baseBars || tip;
         }
 
         private static Sprite GenerateRoundedRect(int size, int radius)

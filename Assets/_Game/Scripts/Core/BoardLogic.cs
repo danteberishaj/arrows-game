@@ -72,6 +72,19 @@ namespace Arrows
         }
 
         /// <summary>
+        /// Returns an arrow that can currently slither out (a safe next move to suggest as a
+        /// hint), or null if the board is empty. ANY clearable arrow is a valid hint:
+        /// removing an arrow only ever frees cells, so it can never block another arrow —
+        /// taking any currently-removable arrow preserves the board's solvability.
+        /// </summary>
+        public ArrowPath FindHint()
+        {
+            foreach (var arrow in _arrows)
+                if (CanExit(arrow)) return arrow;
+            return null;
+        }
+
+        /// <summary>
         /// Removes the arrow off the board if it can exit. Returns true and clears its
         /// cells on success; false (no state change) if blocked or not present.
         /// </summary>
