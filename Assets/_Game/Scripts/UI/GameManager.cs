@@ -76,6 +76,7 @@ namespace Arrows
             yield return FadeOutOverlay();
             if (_ui.resumeLabel != null)
                 _ui.resumeLabel.text = "Level " + (ResumeIndex + 1);
+            SetDifficultyLabel(_ui.menuDifficultyLabel, Difficulties.ForLevel(ResumeIndex));
 
             // Bring the menu up hidden so revealing the game below it doesn't flash it at full alpha.
             _ui.mainMenu.SetActive(true);
@@ -103,6 +104,7 @@ namespace Arrows
             _maxHearts = Mathf.Max(1, level.Hearts);
             _hearts = _maxHearts;
             _ui.levelLabel.text = $"Level {index + 1}";
+            SetDifficultyLabel(_ui.levelDifficultyLabel, level.Difficulty);
 
             // Fade out whatever is showing (the menu, or the previous/cleared board).
             if (_ui.mainMenu.activeSelf)
@@ -132,6 +134,21 @@ namespace Arrows
             cg.interactable = interactable;
             cg.blocksRaycasts = interactable;
         }
+
+        // Shows a difficulty tier on a label, colour-coded so it reads at a glance.
+        private static void SetDifficultyLabel(Text label, Difficulty d)
+        {
+            if (label == null) return;
+            label.text = Difficulties.DisplayName(d);
+            label.color = DifficultyColor(d);
+        }
+
+        private static Color DifficultyColor(Difficulty d) => d switch
+        {
+            Difficulty.SuperHard => Palette.Heart,  // coral-red — hardest
+            Difficulty.Hard => Palette.AccentCore,  // deep navy — stronger
+            _ => Palette.InkDim,                    // muted grey — normal
+        };
 
         private void BuildHearts()
         {

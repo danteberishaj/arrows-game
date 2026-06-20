@@ -23,8 +23,10 @@ namespace Arrows
         public RectTransform boardRoot;       // zoomable Content the tiles live in
         public BoardPanZoom boardPanZoom;
         public Text levelLabel;
+        public Text levelDifficultyLabel;     // difficulty under the gameplay header
         public RectTransform heartsContainer;
         public Text resumeLabel;
+        public Text menuDifficultyLabel;       // difficulty under the menu "Level N"
 
         // Overlay: reused for the brief win toast, the lose panel, and all-clear.
         public GameObject overlay;

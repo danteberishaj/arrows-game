@@ -76,6 +76,7 @@ namespace Arrows
         {
             var screen = NewScreen("MainMenu", parent);
             ui.menuGroup = screen.AddComponent<CanvasGroup>();
+            screen.AddComponent<SafeArea>(); // keep content clear of notches / status bar
 
             BuildLogo(screen.transform, 0.62f, 150);
 
@@ -84,6 +85,12 @@ namespace Arrows
                 GameManager.Palette.AccentLight, TextAnchor.MiddleCenter, FontStyle.Bold);
             Anchor(resume.rectTransform, new Vector2(0.5f, 0.515f), new Vector2(820, 72));
             ui.resumeLabel = resume;
+
+            // Difficulty of the level Play will resume, just below the level label.
+            var menuDiff = UIFactory.CreateText("MenuDifficulty", screen.transform, "Normal", 32,
+                GameManager.Palette.InkDim, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Anchor(menuDiff.rectTransform, new Vector2(0.5f, 0.470f), new Vector2(820, 52));
+            ui.menuDifficultyLabel = menuDiff;
 
             // Big periwinkle Play pill, lower third.
             var play = UIFactory.CreatePillButton("PlayButton", screen.transform, "Play",
@@ -138,6 +145,7 @@ namespace Arrows
         {
             var screen = NewScreen("GameScreen", parent);
             ui.gameGroup = screen.AddComponent<CanvasGroup>();
+            screen.AddComponent<SafeArea>(); // header/controls stay within the safe area
 
             // Masked viewport that clips the (possibly huge) board; pan/zoom lives here and
             // a transparent Image makes it a raycast target so empty areas can be dragged.
@@ -145,11 +153,13 @@ namespace Arrows
             var viewportRT = viewportGO.GetComponent<RectTransform>();
             // Stretch to fill the screen between the header and the bottom (with margins) so
             // the viewport is always fully on-screen regardless of device aspect ratio.
+            // Top edge anchored just BELOW the header/divider (a fraction, not a fixed pixel
+            // gap) so the board never bleeds into the hearts row on any aspect ratio / safe area.
             viewportRT.anchorMin = new Vector2(0f, 0f);
-            viewportRT.anchorMax = new Vector2(1f, 1f);
+            viewportRT.anchorMax = new Vector2(1f, 0.855f);
             viewportRT.pivot = new Vector2(0.5f, 0.5f);
-            viewportRT.offsetMin = new Vector2(20f, 40f);    // left, bottom
-            viewportRT.offsetMax = new Vector2(-20f, -215f); // right, top (room for the header)
+            viewportRT.offsetMin = new Vector2(20f, 40f);    // left, bottom margins
+            viewportRT.offsetMax = new Vector2(-20f, 0f);    // right margin; top set by the anchor
             var viewportImg = viewportGO.AddComponent<Image>();
             viewportImg.color = new Color(0, 0, 0, 0f);
             viewportImg.raycastTarget = true; // empty-area drags pan the board
@@ -172,12 +182,18 @@ namespace Arrows
             // Header: centered "Level N" with the heart row beneath it.
             var label = UIFactory.CreateText("LevelLabel", screen.transform, "Level 1", 50,
                 GameManager.Palette.AccentLight, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Anchor(label.rectTransform, new Vector2(0.5f, 0.952f), new Vector2(640, 76));
+            Anchor(label.rectTransform, new Vector2(0.5f, 0.955f), new Vector2(640, 70));
             ui.levelLabel = label;
+
+            // Difficulty just below the level name.
+            var levelDiff = UIFactory.CreateText("LevelDifficulty", screen.transform, "Normal", 28,
+                GameManager.Palette.InkDim, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Anchor(levelDiff.rectTransform, new Vector2(0.5f, 0.924f), new Vector2(640, 40));
+            ui.levelDifficultyLabel = levelDiff;
 
             var heartsGO = UIFactory.NewUIObject("Hearts", screen.transform);
             var heartsRT = heartsGO.GetComponent<RectTransform>();
-            heartsRT.anchorMin = heartsRT.anchorMax = new Vector2(0.5f, 0.908f);
+            heartsRT.anchorMin = heartsRT.anchorMax = new Vector2(0.5f, 0.898f);
             heartsRT.pivot = new Vector2(0.5f, 0.5f);
             heartsRT.anchoredPosition = Vector2.zero;
             heartsRT.sizeDelta = new Vector2(760, 60);
@@ -193,8 +209,8 @@ namespace Arrows
             divImg.color = GameManager.Palette.Border;
             divImg.raycastTarget = false;
             var divRT = divGO.GetComponent<RectTransform>();
-            divRT.anchorMin = new Vector2(0.06f, 0.888f);
-            divRT.anchorMax = new Vector2(0.94f, 0.888f);
+            divRT.anchorMin = new Vector2(0.06f, 0.876f);
+            divRT.anchorMax = new Vector2(0.94f, 0.876f);
             divRT.offsetMin = new Vector2(0f, -1.5f);
             divRT.offsetMax = new Vector2(0f, 1.5f);
 

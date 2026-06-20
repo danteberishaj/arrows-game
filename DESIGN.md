@@ -57,7 +57,9 @@ face). Plan: bundle **Fredoka** (SIL OFL, free to ship) as a TMP/font asset; Sem
   straight runs and L-shapes, not squiggles.
 - **Board**: **no frame, no grid, no tile backgrounds.** Arrows float on white, centered
   and scaled to fit (fit-to-view default; pinch-zoom + drag still available on big boards).
-- **Header (gameplay)**: centered "Level N" (`accent-light`) with the heart row beneath it;
+- **Header (gameplay)**: centered "Level N" (`accent-light`) with the **difficulty tier just
+  below it** (colour-coded: `ink-dim` Normal, `accent-deep` Hard, `heart` Super Hard) and the
+  heart row beneath that;
   a thin `surface` divider under the header. **Top-left: two circular `surface` buttons**
   — back (◀) and restart (↻) — with `accent-deep` glyphs. **Top-right: a circular `surface`
   Hint button** (lightbulb glyph, `accent` periwinkle) that highlights a safe next move.
@@ -69,8 +71,9 @@ face). Plan: bundle **Fredoka** (SIL OFL, free to ship) as a TMP/font asset; Sem
 - **Hearts**: 5 classic heart shapes; full = `#FC4A5C`, spent = `muted #CED4F7`.
 - **Button (primary)**: `accent` rounded pill, white bold label, **no glow**; pressed →
   slightly darker accent.
-- **Menu**: white; logo in the upper-middle, "Level N" beneath it (`accent-light`), big
-  periwinkle Play pill in the lower third. Generous whitespace.
+- **Menu**: white; logo in the upper-middle, "Level N" beneath it (`accent-light`) with the
+  resume level's **difficulty** under that (same colour-coding as the header), big periwinkle
+  Play pill in the lower third. Generous whitespace.
 
 ## Motion
 
