@@ -1,5 +1,11 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+} from 'react-native-reanimated';
 import {
   ArrowPath,
   Difficulties,
@@ -160,6 +166,9 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
             <Text style={[styles.panelTitle, { color: phase === 'won' ? p.accent : p.heart }]}>
               {phase === 'won' ? 'Cleared!' : 'Out of hearts'}
             </Text>
+            {phase === 'won' && (
+              <Stars earned={Math.max(1, hearts)} total={level.hearts} palette={p} />
+            )}
             <Text style={[styles.panelSub, { color: p.inkDim }]}>
               {phase === 'won'
                 ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
@@ -201,6 +210,62 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
         </View>
       )}
     </View>
+  );
+}
+
+/**
+ * Star rating on the win panel: one star per heart still beating. Stars pop
+ * in left to right with a springy stagger; unearned slots settle in dim so
+ * the player sees exactly what a cleaner run would have paid.
+ */
+function Stars({ earned, total, palette }: { earned: number; total: number; palette: Palette }) {
+  return (
+    <View style={styles.starsRow}>
+      {Array.from({ length: total }, (_, i) => (
+        <Star
+          key={i}
+          filled={i < earned}
+          big={i === Math.floor(total / 2)}
+          delay={250 + i * 170}
+          palette={palette}
+        />
+      ))}
+    </View>
+  );
+}
+
+function Star({
+  filled,
+  big,
+  delay,
+  palette,
+}: {
+  filled: boolean;
+  big: boolean;
+  delay: number;
+  palette: Palette;
+}) {
+  const k = useSharedValue(0);
+  useEffect(() => {
+    k.value = withDelay(delay, withSpring(1, { damping: 11, stiffness: 260 }));
+  }, []);
+  const style = useAnimatedStyle(() => ({
+    opacity: k.value,
+    transform: [{ scale: k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
+  }));
+  return (
+    <Animated.View style={style}>
+      <Text
+        style={{
+          fontSize: big ? 44 : 34,
+          lineHeight: big ? 50 : 40,
+          color: filled ? palette.accent : palette.heartLost,
+          marginHorizontal: 6,
+        }}
+      >
+        ★
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -267,6 +332,13 @@ const styles = StyleSheet.create({
   panelTitle: {
     fontSize: 24,
     fontWeight: '800',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginTop: 10,
+    marginBottom: 2,
+    minHeight: 52,
   },
   panelSub: {
     fontSize: 14,
