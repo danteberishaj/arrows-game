@@ -1,217 +1,164 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
-  ArrowPath,
   Difficulties,
-  Direction,
+  Difficulty,
   GeneratedLevel,
   LevelGenerator,
+  SaveSystem,
 } from './src/core';
-
-/**
- * Minimal playable prototype of the Arrows game (Ink Night) on the ported
- * core engine: tap an arrow whose head lane is clear and it leaves the board;
- * tap a blocked one and it flashes red and costs a heart. This screen exists
- * to prove the engine on web/iOS/Android — the real board rendering (Skia
- * line-art, pan/zoom, slither animation) comes later.
- */
-
-// Daylight theme (the game's default): ink shapes on paper. Distinct muted
-// inks per arrow so adjacent pieces read as separate without line-art yet.
-const PAPER = '#f6f2e9';
-const INK = '#1c1a2e';
-const PALETTE = [
-  '#1c1a2e', '#3d2c8d', '#5b4bb7', '#2d4059', '#6b3fa0',
-  '#264653', '#4a3f6b', '#553d67', '#3a5a80', '#7048a8',
-];
-const BLOCKED = '#d64545';
-
-const HEAD_GLYPH: Record<Direction, string> = {
-  [Direction.Up]: '▲',
-  [Direction.Down]: '▼',
-  [Direction.Left]: '◀',
-  [Direction.Right]: '▶',
-};
+import { Sfx } from './src/ui/audio';
+import { BoardView } from './src/ui/BoardView';
+import { initSaveSystem } from './src/ui/storage';
+import { Palette, paletteFor } from './src/ui/theme';
 
 type Phase = 'playing' | 'won' | 'lost';
 
 export default function App() {
-  const { width, height } = useWindowDimensions();
-
-  const [levelIndex, setLevelIndex] = useState(0);
-  const [level, setLevel] = useState<GeneratedLevel>(() => LevelGenerator.generate(0));
-  const [hearts, setHearts] = useState<number>(() => level.hearts);
-  const [phase, setPhase] = useState<Phase>('playing');
-  const [, setTick] = useState(0); // board mutates in place; bump to re-render
-  const [flashArrow, setFlashArrow] = useState<ArrowPath | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const board = level.board;
-
-  // Stable color per arrow, assigned once per level in generation order.
-  const colorOf = useMemo(() => {
-    const map = new Map<ArrowPath, string>();
-    board.arrows().forEach((a, i) => map.set(a, PALETTE[i % PALETTE.length]));
-    return map;
-  }, [level]);
-
-  const loadLevel = useCallback((index: number) => {
-    const next = LevelGenerator.generate(index);
-    setLevelIndex(index);
-    setLevel(next);
-    setHearts(next.hearts);
-    setPhase('playing');
-    setFlashArrow(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    initSaveSystem().then(() => setReady(true));
   }, []);
 
-  const onCellPress = useCallback(
-    (r: number, c: number) => {
-      if (phase !== 'playing') return;
-      const owner = board.ownerAt(r, c);
-      if (!owner) return;
+  if (!ready) return <View style={{ flex: 1 }} />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Game />
+    </GestureHandlerRootView>
+  );
+}
 
-      if (board.tryRemove(owner)) {
-        setTick((t) => t + 1);
-        if (board.isCleared()) setPhase('won');
-      } else {
-        // Blocked: flash the arrow red and spend a heart.
-        if (flashTimer.current) clearTimeout(flashTimer.current);
-        setFlashArrow(owner);
-        flashTimer.current = setTimeout(() => setFlashArrow(null), 350);
-        setHearts((h) => {
-          const left = h - 1;
-          if (left <= 0) setPhase('lost');
-          return left;
-        });
-      }
+function Game() {
+  const [dark, setDark] = useState(() => SaveSystem.darkMode);
+  const [soundOn, setSoundOn] = useState(() => SaveSystem.soundOn);
+  const p = paletteFor(dark);
+
+  const [levelIndex, setLevelIndex] = useState(() => SaveSystem.currentLevel);
+  const [attempt, setAttempt] = useState(0); // bump to regenerate the same index (Retry)
+  const level: GeneratedLevel = useMemo(
+    () => LevelGenerator.generate(levelIndex),
+    [levelIndex, attempt],
+  );
+  const [hearts, setHearts] = useState(() => level.hearts);
+  const [phase, setPhase] = useState<Phase>('playing');
+
+  const loadLevel = useCallback((index: number) => {
+    setLevelIndex(index);
+    setAttempt((a) => a + 1);
+    const next = LevelGenerator.generate(index);
+    setHearts(next.hearts);
+    setPhase('playing');
+  }, []);
+
+  const onRemoved = useCallback(
+    (cleared: boolean) => {
+      Sfx.playSuccess();
+      if (!cleared) return;
+      SaveSystem.registerSolve(hearts === level.hearts); // perfect = no heart lost
+      SaveSystem.setCurrentLevel(levelIndex + 1);
+      Sfx.playWin();
+      setTimeout(() => setPhase('won'), 450); // let the last slither finish
     },
-    [board, phase],
+    [hearts, level, levelIndex],
   );
 
-  // Fit the whole board to the viewport (the Unity build pans/zooms instead).
-  const headerH = 64;
-  const cell = Math.max(
-    8,
-    Math.min((width - 16) / board.cols, (height - headerH - 32) / board.rows, 30),
-  );
-  const boardW = cell * board.cols;
-  const boardH = cell * board.rows;
+  const onBlocked = useCallback(() => {
+    Sfx.playFail();
+    setHearts((h) => {
+      const left = h - 1;
+      if (left <= 0) setTimeout(() => setPhase('lost'), 350); // let the shake finish
+      return left;
+    });
+  }, []);
 
-  const arrows = board.arrows();
+  const toggleSound = useCallback(() => {
+    setSoundOn((on) => {
+      SaveSystem.soundOn = !on;
+      return !on;
+    });
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setDark((d) => {
+      SaveSystem.darkMode = !d;
+      return !d;
+    });
+  }, []);
+
+  const diffColor =
+    level.difficulty === Difficulty.SuperHard ? p.heart
+    : level.difficulty === Difficulty.Hard ? p.accent
+    : p.inkDim;
 
   return (
-    <View style={styles.root}>
-      <StatusBar style="dark" />
+    <View style={[styles.root, { backgroundColor: p.bg }]}>
+      <StatusBar style={dark ? 'light' : 'dark'} />
 
-      {/* Header: level, difficulty, hearts */}
-      <View style={[styles.header, { height: headerH }]}>
-        <Text style={styles.title}>
-          LEVEL {levelIndex + 1}
-          <Text style={styles.subtitle}>
-            {'  '}{Difficulties.displayName(level.difficulty)} · {level.shapeName} · {level.arrowCount} arrows
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={[styles.levelLabel, { color: p.accentLight }]}>LEVEL {levelIndex + 1}</Text>
+          <Text style={[styles.diffLabel, { color: diffColor }]}>
+            {Difficulties.displayName(level.difficulty)} · {level.shapeName}
           </Text>
-        </Text>
-        <Text style={styles.hearts}>
-          {'♥'.repeat(Math.max(0, hearts))}
-          <Text style={styles.heartsLost}>{'♥'.repeat(Math.max(0, level.hearts - hearts))}</Text>
-        </Text>
-      </View>
-
-      {/* Board */}
-      <View style={styles.boardWrap}>
-        <View style={{ width: boardW, height: boardH }}>
-          {arrows.map((arrow) => {
-            const color = flashArrow === arrow ? BLOCKED : colorOf.get(arrow) ?? INK;
-            const inset = Math.max(1, cell * 0.08);
-            const radius = cell * 0.28;
-            const head = arrow.head;
-            return (
-              <View key={arrow.toLine()} pointerEvents="none">
-                {/* connectors first so cells' rounded corners sit on top */}
-                {arrow.cells.slice(1).map((b, i) => {
-                  const a = arrow.cells[i];
-                  const left = Math.min(a.c, b.c) * cell + inset;
-                  const top = Math.min(a.r, b.r) * cell + inset;
-                  const w = (Math.abs(a.c - b.c) + 1) * cell - inset * 2;
-                  const h = (Math.abs(a.r - b.r) + 1) * cell - inset * 2;
-                  return (
-                    <View
-                      key={i}
-                      style={{ position: 'absolute', left, top, width: w, height: h, backgroundColor: color, borderRadius: radius }}
-                    />
-                  );
-                })}
-                {arrow.cells.map((p, i) => (
-                  <View
-                    key={`c${i}`}
-                    style={{
-                      position: 'absolute',
-                      left: p.c * cell + inset,
-                      top: p.r * cell + inset,
-                      width: cell - inset * 2,
-                      height: cell - inset * 2,
-                      backgroundColor: color,
-                      borderRadius: radius,
-                    }}
-                  />
-                ))}
-                <Text
-                  style={{
-                    position: 'absolute',
-                    left: head.c * cell,
-                    top: head.r * cell,
-                    width: cell,
-                    height: cell,
-                    color: PAPER,
-                    fontSize: cell * 0.5,
-                    lineHeight: cell,
-                    textAlign: 'center',
-                  }}
-                >
-                  {HEAD_GLYPH[arrow.headDir]}
-                </Text>
-              </View>
-            );
-          })}
-
-          {/* One tap target per cell, above the drawing. */}
-          {Array.from({ length: board.rows }, (_, r) =>
-            Array.from({ length: board.cols }, (_, c) => (
-              <Pressable
-                key={`${r}-${c}`}
-                onPress={() => onCellPress(r, c)}
-                style={{
-                  position: 'absolute',
-                  left: c * cell,
-                  top: r * cell,
-                  width: cell,
-                  height: cell,
-                }}
-              />
-            )),
-          )}
+        </View>
+        <View style={styles.headerRight}>
+          <Text style={[styles.hearts, { color: p.heart }]}>
+            {'♥'.repeat(Math.max(0, hearts))}
+            <Text style={{ color: p.heartLost }}>
+              {'♥'.repeat(Math.max(0, level.hearts - hearts))}
+            </Text>
+          </Text>
+          <HeaderButton label="♪" active={soundOn} palette={p} onPress={toggleSound} />
+          <HeaderButton label={dark ? '☀' : '☾'} active palette={p} onPress={toggleTheme} />
         </View>
       </View>
 
-      {/* Win / lose panels */}
+      {/* Board (remounts per level/attempt so pan/zoom refits) */}
+      <BoardView
+        key={`${levelIndex}:${attempt}`}
+        board={level.board}
+        palette={p}
+        onRemoved={onRemoved}
+        onBlocked={onBlocked}
+        locked={phase !== 'playing'}
+      />
+
+      {/* Win / lose overlays */}
       {phase !== 'playing' && (
-        <View style={styles.overlay}>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>
+        <View
+          style={[
+            styles.overlay,
+            { backgroundColor: phase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)' },
+          ]}
+        >
+          <View style={[styles.panel, { backgroundColor: p.surface, borderColor: p.border }]}>
+            <Text style={[styles.panelTitle, { color: phase === 'won' ? p.accent : p.heart }]}>
               {phase === 'won' ? 'Cleared!' : 'Out of hearts'}
             </Text>
-            <Text style={styles.panelSub}>
+            <Text style={[styles.panelSub, { color: p.inkDim }]}>
               {phase === 'won'
-                ? `Level ${levelIndex + 1} · ${level.shapeName}`
+                ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
                 : 'The shape got the better of you.'}
             </Text>
             <Pressable
-              style={styles.button}
+              style={({ pressed }) => [
+                styles.button,
+                { backgroundColor: pressed ? p.accentDeep : p.accent },
+              ]}
               onPress={() => loadLevel(phase === 'won' ? levelIndex + 1 : levelIndex)}
             >
-              <Text style={styles.buttonText}>{phase === 'won' ? 'Next level' : 'Retry'}</Text>
+              <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>
+                {phase === 'won' ? 'Next level' : 'Retry'}
+              </Text>
             </Pressable>
+            {phase === 'won' && SaveSystem.perfectStreak > 1 && (
+              <Text style={[styles.streak, { color: p.accentLight }]}>
+                ✦ {SaveSystem.perfectStreak} perfect in a row
+              </Text>
+            )}
           </View>
         </View>
       )}
@@ -219,78 +166,120 @@ export default function App() {
   );
 }
 
+function HeaderButton({
+  label,
+  active,
+  palette,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  palette: Palette;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.iconButton,
+        {
+          backgroundColor: pressed ? palette.border : palette.surface,
+          borderColor: palette.border,
+        },
+      ]}
+    >
+      <Text style={{ color: active ? palette.accentCore : palette.heartLost, fontSize: 16 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** #RRGGBB + alpha -> rgba() string (the lose overlay's bg-tinted night scrim). */
+function hexA(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: PAPER,
-  },
+  root: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  title: {
-    color: INK,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  levelLabel: {
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: 1,
   },
-  subtitle: {
-    color: '#8b8578',
+  diffLabel: {
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
+    marginTop: 2,
   },
   hearts: {
-    color: '#d64545',
     fontSize: 20,
     letterSpacing: 2,
+    marginRight: 4,
   },
-  heartsLost: {
-    color: '#d8d2c4',
-  },
-  boardWrap: {
-    flex: 1,
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(28,26,46,0.45)',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   panel: {
-    backgroundColor: PAPER,
     borderRadius: 20,
+    borderWidth: 1,
     paddingHorizontal: 32,
     paddingVertical: 28,
     alignItems: 'center',
-    minWidth: 260,
+    minWidth: 280,
   },
   panelTitle: {
-    color: INK,
     fontSize: 24,
     fontWeight: '800',
   },
   panelSub: {
-    color: '#8b8578',
     fontSize: 14,
     marginTop: 6,
     marginBottom: 20,
   },
   button: {
-    backgroundColor: '#5b4bb7',
     borderRadius: 14,
     paddingHorizontal: 28,
     paddingVertical: 12,
   },
   buttonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  streak: {
+    fontSize: 13,
+    marginTop: 14,
+    fontWeight: '600',
   },
 });
