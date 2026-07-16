@@ -1,11 +1,21 @@
 {
   "expo": {
-    "name": "ink-night-rn",
+    "name": "Arrows",
     "slug": "ink-night-rn",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/mark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF",
+      "dark": {
+        "image": "./assets/images/mark.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#13111C"
+      }
+    },
     "ios": {
       "supportsTablet": true
     },
