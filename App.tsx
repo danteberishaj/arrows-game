@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SaveSystem } from './src/core';
+import { AdHost, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
@@ -23,6 +24,7 @@ export default function App() {
       setSoundOn(SaveSystem.soundOn);
       setReady(true);
     });
+    initAds(); // no-op in Expo Go / web (simulated ads take over)
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -58,6 +60,7 @@ export default function App() {
         />
       )}
       {screen === 'game' && <GameScreen palette={p} onHome={() => setScreen('menu')} />}
+      <AdHost palette={p} />
     </GestureHandlerRootView>
   );
 }

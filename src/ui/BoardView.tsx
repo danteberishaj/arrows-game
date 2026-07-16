@@ -35,6 +35,9 @@ export interface BoardViewProps {
   onBlocked: () => void;
   /** Ignore taps (win/lose overlay up). */
   locked: boolean;
+  /** Arrow to pulse as a hint (ArrowTile.Highlight), keyed to retrigger. */
+  hint: { arrow: ArrowPath; id: number } | null;
+  clearHint: () => void;
 }
 
 interface ExitingTrail {
@@ -48,7 +51,7 @@ interface ExitingTrail {
  * (SlitherExit / ArrowTile), inside a fit-to-view pinch/pan/wheel viewport
  * (BoardPanZoom).
  */
-export function BoardView({ board, palette, onRemoved, onBlocked, locked }: BoardViewProps) {
+export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, clearHint }: BoardViewProps) {
   const boardW = board.cols * CELL;
   const boardH = board.rows * CELL;
 
@@ -202,6 +205,8 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked }: Boar
           exiting={exiting}
           shaking={shaking}
           clearShake={() => setShaking(null)}
+          hint={hint}
+          clearHint={clearHint}
         />
       </View>
     </GestureDetector>
@@ -221,8 +226,10 @@ function BoardContent(props: {
   exiting: ExitingTrail[];
   shaking: { arrow: ArrowPath; id: number } | null;
   clearShake: () => void;
+  hint: { arrow: ArrowPath; id: number } | null;
+  clearHint: () => void;
 }) {
-  const { contentStyle, scale, tx, ty, boardW, boardH, board, palette, exiting, shaking, clearShake } = props;
+  const { contentStyle, scale, tx, ty, boardW, boardH, board, palette, exiting, shaking, clearShake, hint, clearHint } = props;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
@@ -239,6 +246,16 @@ function BoardContent(props: {
                 arrow={arrow}
                 palette={palette}
                 onDone={clearShake}
+              />
+            );
+          }
+          if (hint && hint.arrow === arrow) {
+            return (
+              <HintArrow
+                key={`h${hint.id}`}
+                arrow={arrow}
+                palette={palette}
+                onDone={clearHint}
               />
             );
           }
@@ -311,6 +328,53 @@ function ShakingArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: P
       />
       <AnimatedPath d={art.headD} animatedProps={headProps} />
     </AnimatedG>
+  );
+}
+
+/**
+ * Hint feedback (ArrowTile.Highlight): the suggested arrow pulses in the
+ * accent colour with a gentle swell (~1.5 decaying pulses over 1.1 s),
+ * settling back to ink. The arrow stays tappable throughout — the pulse is
+ * drawing only.
+ */
+function HintArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Palette; onDone: () => void }) {
+  const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
+  const k = useSharedValue(0);
+
+  React.useEffect(() => {
+    k.value = 0;
+    k.value = withTiming(1, { duration: 1100, easing: Easing.linear }, (finished) => {
+      if (finished) runOnJS(onDone)();
+    });
+  }, [arrow]);
+
+  const pulseAt = (kv: number) => {
+    'worklet';
+    return Math.abs(Math.sin(kv * Math.PI * 3)) * (1 - kv); // ~1.5 decaying pulses
+  };
+
+  const shaftProps = useAnimatedProps(() => {
+    const pulse = pulseAt(k.value);
+    return {
+      stroke: interpolateColor(pulse, [0, 1], [palette.ink, palette.accent]),
+      strokeWidth: STROKE * CELL * (1 + 0.3 * pulse), // the swell
+    };
+  });
+  const headProps = useAnimatedProps(() => ({
+    fill: interpolateColor(pulseAt(k.value), [0, 1], [palette.ink, palette.accent]),
+  }));
+
+  return (
+    <G>
+      <AnimatedPath
+        d={art.shaftD}
+        animatedProps={shaftProps}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <AnimatedPath d={art.headD} animatedProps={headProps} />
+    </G>
   );
 }
 

@@ -1,12 +1,14 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  ArrowPath,
   Difficulties,
   Difficulty,
   GeneratedLevel,
   LevelGenerator,
   SaveSystem,
 } from '../core';
+import { Ads } from './ads';
 import { Sfx } from './audio';
 import { BoardView } from './BoardView';
 import { HeaderButton } from './HeaderButton';
@@ -30,6 +32,9 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
   );
   const [hearts, setHearts] = useState(() => level.hearts);
   const [phase, setPhase] = useState<Phase>('playing');
+  const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
+  const [adBusy, setAdBusy] = useState(false);
+  const hintId = useRef(1);
 
   const loadLevel = useCallback((index: number) => {
     setLevelIndex(index);
@@ -37,6 +42,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     const next = LevelGenerator.generate(index);
     setHearts(next.hearts);
     setPhase('playing');
+    setHint(null);
   }, []);
 
   const onRemoved = useCallback(
@@ -45,6 +51,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
       if (!cleared) return;
       SaveSystem.registerSolve(hearts === level.hearts); // perfect = no heart lost
       SaveSystem.setCurrentLevel(levelIndex + 1);
+      Ads.registerGameFinished(); // counts toward the every-2-games interstitial
       Sfx.playWin();
       setTimeout(() => setPhase('won'), 450); // let the last slither finish
     },
@@ -55,10 +62,48 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     Sfx.playFail();
     setHearts((h) => {
       const left = h - 1;
-      if (left <= 0) setTimeout(() => setPhase('lost'), 350); // let the shake finish
+      if (left <= 0) {
+        Ads.registerGameFinished(); // a loss counts toward the pacing too
+        setTimeout(() => setPhase('lost'), 350); // let the shake finish
+      }
       return left;
     });
   }, []);
+
+  /** "Next level" after a clear: the paced interstitial slots in between. */
+  const onNextLevel = useCallback(async () => {
+    setAdBusy(true);
+    try {
+      await Ads.showInterstitialIfDue();
+    } finally {
+      setAdBusy(false);
+    }
+    loadLevel(levelIndex + 1);
+  }, [levelIndex, loadLevel]);
+
+  /** Rewarded "+1 heart continue" from the lose panel. */
+  const onContinueWithAd = useCallback(async () => {
+    setAdBusy(true);
+    const earned = await Ads.showRewarded();
+    setAdBusy(false);
+    if (!earned) return; // stay on the lose panel; Retry still works
+    setHearts(1);
+    setPhase('playing');
+  }, []);
+
+  /** Rewarded hint: pulse an arrow that can slither out right now. */
+  const onHint = useCallback(async () => {
+    if (phase !== 'playing' || adBusy) return;
+    const arrow = level.board.findHint();
+    if (!arrow) return;
+    setAdBusy(true);
+    const earned = await Ads.showRewarded();
+    setAdBusy(false);
+    if (!earned) return;
+    // Re-find: the board may have changed while the ad played.
+    const fresh = level.board.findHint();
+    if (fresh) setHint({ arrow: fresh, id: hintId.current++ });
+  }, [phase, adBusy, level]);
 
   const diffColor =
     level.difficulty === Difficulty.SuperHard ? p.heart
@@ -80,12 +125,15 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
             </Text>
           </View>
         </View>
-        <Text style={[styles.hearts, { color: p.heart }]}>
-          {'♥'.repeat(Math.max(0, hearts))}
-          <Text style={{ color: p.heartLost }}>
-            {'♥'.repeat(Math.max(0, level.hearts - hearts))}
+        <View style={styles.headerRight}>
+          <Text style={[styles.hearts, { color: p.heart }]}>
+            {'♥'.repeat(Math.max(0, hearts))}
+            <Text style={{ color: p.heartLost }}>
+              {'♥'.repeat(Math.max(0, level.hearts - hearts))}
+            </Text>
           </Text>
-        </Text>
+          <HeaderButton label="💡" palette={p} onPress={onHint} active={!adBusy} />
+        </View>
       </View>
 
       {/* Board (remounts per level/attempt so pan/zoom refits) */}
@@ -95,7 +143,9 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
         palette={p}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
-        locked={phase !== 'playing'}
+        locked={phase !== 'playing' || adBusy}
+        hint={hint}
+        clearHint={() => setHint(null)}
       />
 
       {/* Win / lose overlays */}
@@ -115,14 +165,30 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
                 ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
                 : 'The shape got the better of you.'}
             </Text>
+            {phase === 'lost' && (
+              <Pressable
+                disabled={adBusy}
+                style={({ pressed }) => [
+                  styles.button,
+                  { backgroundColor: pressed ? p.accentDeep : p.accent, marginBottom: 12 },
+                ]}
+                onPress={onContinueWithAd}
+              >
+                <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>
+                  Continue +♥ (ad)
+                </Text>
+              </Pressable>
+            )}
             <Pressable
+              disabled={adBusy}
               style={({ pressed }) => [
                 styles.button,
-                { backgroundColor: pressed ? p.accentDeep : p.accent },
+                phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
+                phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
               ]}
-              onPress={() => loadLevel(phase === 'won' ? levelIndex + 1 : levelIndex)}
+              onPress={() => (phase === 'won' ? onNextLevel() : loadLevel(levelIndex))}
             >
-              <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>
+              <Text style={[styles.buttonText, { color: phase === 'won' ? p.inkOnAccent : p.inkDim }]}>
                 {phase === 'won' ? 'Next level' : 'Retry'}
               </Text>
             </Pressable>
@@ -157,6 +223,11 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
