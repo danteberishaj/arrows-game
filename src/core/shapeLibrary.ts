@@ -198,16 +198,92 @@ export const ShapeLibrary = (() => {
     return Math.abs(x) <= 0.14 + (0.66 * ay) / 0.88;
   });
 
+  const Pentagon = new ShapeDef('Pentagon', false, 1, false,
+    polygon(...regularPolygon(5, 0.95, 90)));
+
+  const Octagon = new ShapeDef('Octagon', false, 1, false,
+    polygon(...regularPolygon(8, 0.95, 22.5)));
+
+  // Ring: a thick annulus — the hole is fine, the peel rule fills any mask.
+  const Ring = new ShapeDef('Ring', false, 1, false, (x, y) => {
+    const r2 = x * x + y * y;
+    return r2 <= 0.95 * 0.95 && r2 >= 0.5 * 0.5;
+  });
+
+  // X: two diagonal bars.
+  const XMark = new ShapeDef('X', false, 1, false, (x, y) => {
+    if (Math.abs(x) > 0.92 || Math.abs(y) > 0.92) return false;
+    return Math.abs(x - y) <= 0.3 || Math.abs(x + y) <= 0.3;
+  });
+
+  // Butterfly: two wing discs per side + a body bar.
+  const Butterfly = new ShapeDef('Butterfly', false, 1.1, false, (x, y) => {
+    const disc = (cx: number, cy: number, r: number) =>
+      (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+    return (
+      (Math.abs(x) <= 0.12 && Math.abs(y) <= 0.7) ||
+      disc(0.5, 0.34, 0.42) || disc(-0.5, 0.34, 0.42) ||
+      disc(0.42, -0.4, 0.34) || disc(-0.42, -0.4, 0.34)
+    );
+  });
+
+  // Rocket with side fins. Tall.
+  const Rocket = new ShapeDef('Rocket', false, 0.75, false,
+    polygon(
+      [0, 0.95], [0.42, 0.3], [0.42, -0.5], [0.8, -0.82], [0.8, -0.95],
+      [0.3, -0.82], [-0.3, -0.82], [-0.8, -0.95], [-0.8, -0.82],
+      [-0.42, -0.5], [-0.42, 0.3]));
+
+  // Pine tree: two stacked canopy triangles over a trunk.
+  const Pine = new ShapeDef('Pine', false, 0.9, false, (x, y) => {
+    const inTri = (ax: number, ay: number, bx: number, by: number, cx2: number, cy2: number) =>
+      pointInPolygon(x, y, [[ax, ay], [bx, by], [cx2, cy2]]);
+    return (
+      inTri(0, 0.95, 0.55, 0.25, -0.55, 0.25) ||
+      inTri(0, 0.5, 0.8, -0.45, -0.8, -0.45) ||
+      (Math.abs(x) <= 0.14 && y >= -0.95 && y <= -0.45)
+    );
+  });
+
+  // Cat head: a round face with two triangular ears (and a dip between them).
+  const Cat = new ShapeDef('Cat', false, 1, false, (x, y) => {
+    if (x * x + (y + 0.18) * (y + 0.18) <= 0.66 * 0.66) return true;
+    const ax = Math.abs(x);
+    return pointInPolygon(ax, y, [[0.66, 0.1], [0.5, 0.95], [0.16, 0.42]]);
+  });
+
+  // Mushroom: a dome cap over a stout stem.
+  const Mushroom = new ShapeDef('Mushroom', false, 0.95, false, (x, y) => {
+    const inCap = x * x + (y - 0.02) * (y - 0.02) <= 0.9 * 0.9 && y >= 0.08;
+    const inStem = Math.abs(x) <= 0.3 && y >= -0.82 && y <= 0.16;
+    return inCap || inStem;
+  });
+
+  // Fish: an ellipse body with a triangular tail. Wide.
+  const Fish = new ShapeDef('Fish', false, 1.2, false, (x, y) => {
+    const bx = (x + 0.24) / 0.7, by = y / 0.62;
+    if (bx * bx + by * by <= 1) return true;
+    return pointInPolygon(x, y, [[0.3, 0], [0.94, 0.66], [0.94, -0.66]]);
+  });
+
   // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
   // SuperHard draws the picture-book silhouettes.
   const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
-  const MediumPool: readonly ShapeDef[] = [Circle, Diamond, Triangle, Plus, Hexagon, Hourglass];
-  const ComplexPool: readonly ShapeDef[] = [Heart, Star, Trophy, Crescent, Flower, Bolt, ArrowMark, Crown];
+  const MediumPool: readonly ShapeDef[] = [
+    Circle, Diamond, Triangle, Plus, Hexagon, Hourglass,
+    Pentagon, Octagon, Ring, XMark,
+  ];
+  const ComplexPool: readonly ShapeDef[] = [
+    Heart, Star, Trophy, Crescent, Flower, Bolt, ArrowMark, Crown,
+    Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
+  ];
 
   return {
     Square, Rectangle, Circle,
     Diamond, Triangle, Plus, Hexagon, Star, Heart, Trophy,
     Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
+    Pentagon, Octagon, Ring, XMark,
+    Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
     SimplePool, MediumPool, ComplexPool,
 
     /** Picks a shape for the tier: each difficulty draws from its own pool. */

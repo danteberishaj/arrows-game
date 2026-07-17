@@ -103,8 +103,9 @@ Empty dark surrounds the shape (for square/rectangle the shape *is* the whole gr
 
 - **Shape by tier** (): each tier has its own pool. **Normal** draws plain
   fills — square, rectangle, circle, diamond. **Hard** draws geometric figures — circle,
-  diamond, triangle, plus, hexagon, hourglass. **Super Hard** draws picture-book
-  silhouettes — heart, star, trophy, crescent moon, flower, lightning bolt, arrow, crown.
+  diamond, triangle, plus, hexagon, hourglass, pentagon, octagon, ring, X. **Super Hard**
+  draws picture-book silhouettes — heart, star, trophy, crescent moon, flower, lightning
+  bolt, arrow, crown, butterfly, rocket, pine tree, cat, mushroom, fish.
   Shapes are defined as point-in-polygon / implicit-inequality tests in a normalized −1..1
   space, so they rasterize cleanly to *any* board size (no bitmaps; sampled 3×3 per cell so
   thin features like the crescent's horns stay clean).
