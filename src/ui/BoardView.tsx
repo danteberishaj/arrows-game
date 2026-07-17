@@ -406,14 +406,21 @@ function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
     return { strokeDashoffset: -travelled, opacity: fadeAt(kk) };
   });
 
+  // The head's motion is a pure translation along the exit ray, but web SVG
+  // paths have no x/y transform props — so rebuild the 3-point path each
+  // frame. No fade on the head: the board edge clips it as it slides off,
+  // which is exactly how leaving should look.
   const headProps = useAnimatedProps(() => {
-    const kk = k.value;
-    const travelled = kk * kk * path.totalLen;
+    const travelled = k.value * k.value * path.totalLen;
+    const dx = path.dir.x * travelled;
+    const dy = path.dir.y * travelled;
+    const t = path.headTip, l = path.headBaseL, r = path.headBaseR;
     return {
-      x: path.dir.x * travelled,
-      y: path.dir.y * travelled,
-      opacity: fadeAt(kk),
-    } as any;
+      d:
+        `M${t.x + dx} ${t.y + dy} ` +
+        `L${l.x + dx} ${l.y + dy} ` +
+        `L${r.x + dx} ${r.y + dy} Z`,
+    };
   });
 
   return (
@@ -428,7 +435,7 @@ function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
         fill="none"
         strokeDasharray={`${path.bodyLen} ${path.totalLen + path.bodyLen}`}
       />
-      <AnimatedPath d={path.headD} animatedProps={headProps} fill={ink} />
+      <AnimatedPath animatedProps={headProps} fill={ink} />
     </G>
   );
 }

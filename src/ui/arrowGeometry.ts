@@ -94,8 +94,14 @@ export interface SlitherPath {
   bodyLen: number;
   /** Total arc length including the off-board exit ray. */
   totalLen: number;
-  /** The arrowhead triangle at its starting position (it leads the trail out). */
-  headD: string;
+  /**
+   * The arrowhead triangle's corners at the start (it leads the trail out;
+   * the renderer rebuilds the path per frame from these plus the travel
+   * offset, because `x`/`y` transform props don't exist on web SVG paths).
+   */
+  headTip: Pt;
+  headBaseL: Pt;
+  headBaseR: Pt;
   /** Unit exit direction — the head translates along this. */
   dir: Pt;
 }
@@ -139,13 +145,17 @@ export function slitherPath(arrow: ArrowPath, cell: number, rows: number, cols: 
   const perp = { x: -d.y, y: d.x };
   const tip = { x: headCenter.x + d.x * TIP_EXT * cell, y: headCenter.y + d.y * TIP_EXT * cell };
   const baseBack = { x: tip.x - d.x * HEAD_LEN * cell, y: tip.y - d.y * HEAD_LEN * cell };
-  const headD =
-    `M${round(tip.x)} ${round(tip.y)} ` +
-    `L${round(baseBack.x + perp.x * HEAD_HALF * cell)} ${round(baseBack.y + perp.y * HEAD_HALF * cell)} ` +
-    `L${round(baseBack.x - perp.x * HEAD_HALF * cell)} ${round(baseBack.y - perp.y * HEAD_HALF * cell)} Z`;
 
   const dStr = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${round(p.x)} ${round(p.y)}`).join(' ');
-  return { d: dStr, bodyLen, totalLen, headD, dir: d };
+  return {
+    d: dStr,
+    bodyLen,
+    totalLen,
+    headTip: tip,
+    headBaseL: { x: baseBack.x + perp.x * HEAD_HALF * cell, y: baseBack.y + perp.y * HEAD_HALF * cell },
+    headBaseR: { x: baseBack.x - perp.x * HEAD_HALF * cell, y: baseBack.y - perp.y * HEAD_HALF * cell },
+    dir: d,
+  };
 }
 
 const round = (v: number) => Math.round(v * 100) / 100;
