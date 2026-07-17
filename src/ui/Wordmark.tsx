@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Text, View } from 'react-native';
-import { Palette } from './theme';
+import { Fonts, Palette } from './theme';
 
 /**
  * The "Arrows" wordmark with the capital A drawn as the brand mark — the
@@ -31,7 +31,7 @@ export function Wordmark({ size, palette }: { size: number; palette: Palette }) 
       <Text
         style={{
           fontSize: size,
-          fontWeight: '800',
+          fontFamily: Fonts.bold,
           color: palette.ink,
           marginLeft: size * 0.04,
           letterSpacing: size * 0.01,

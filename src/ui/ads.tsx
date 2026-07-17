@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Palette } from './theme';
+import { Fonts, Palette } from './theme';
 
 /**
  * Ads, ported from the Unity AdManager (LevelPlay): one preloaded
@@ -284,17 +284,17 @@ const styles = StyleSheet.create({
   },
   tag: {
     fontSize: 11,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     letterSpacing: 2,
   },
   title: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     marginTop: 8,
   },
   count: {
     fontSize: 44,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     marginVertical: 10,
   },
   sub: {

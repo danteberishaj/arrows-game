@@ -75,55 +75,91 @@ const smoothStep = (a, b, t) => {
 };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Low buzzy thud: 160 Hz square, exponential decay. (AudioManager.MakeBlip)
+// Soft low thud with a falling pitch (170 -> 100 Hz sine + a whisper of 2nd
+// harmonic). Calmer than the old square-wave buzz — a bump, not an alarm.
 function makeFail() {
-  const samples = Math.ceil(RATE * 0.18);
+  const duration = 0.2;
+  const samples = Math.ceil(RATE * duration);
   const data = new Float64Array(samples);
+  let phase = 0;
   for (let i = 0; i < samples; i++) {
     const t = i / RATE;
-    const env = Math.exp(-t * 12);
-    const wave = Math.sign(Math.sin(2 * Math.PI * 160 * t));
-    data[i] = wave * env * 0.5;
+    const f = lerp(170, 100, Math.min(1, t / duration));
+    phase += (2 * Math.PI * f) / RATE;
+    const env = Math.exp(-t * 14) * smoothStep(0, 1, Math.min(1, t / 0.008));
+    data[i] = (Math.sin(phase) + 0.25 * Math.sin(2 * phase)) * env * 0.5;
   }
   return data;
 }
 
-// Band-passed noise whose filter sweeps up and back while the envelope decays
-// — a quick air "whoosh", not a tone. (AudioManager.MakeSwoosh)
+// Band-passed noise whose filter sweeps up and back while the envelope decays.
+// Smoother than v1: longer, deeper band (180 -> 650 Hz), softer attack and a
+// lower final low-pass — a brush of air, not a hiss.
 function makeWhoosh() {
-  const duration = 0.3;
+  const duration = 0.42;
   const samples = Math.ceil(RATE * duration);
   const data = new Float64Array(samples);
   const rng = dotnetRandom(1234); // fixed seed => same clip every run
-  let lp1 = 0, lp2 = 0, smooth = 0;
-  const aSmooth = 1 - Math.exp((-2 * Math.PI * 900) / RATE);
+  let lp1 = 0, lp2 = 0, smooth = 0, smooth2 = 0;
+  const aSmooth = 1 - Math.exp((-2 * Math.PI * 700) / RATE);
   for (let i = 0; i < samples; i++) {
     const t = i / samples; // 0..1 through the clip
     const noise = rng() * 2 - 1;
     const sweep = Math.sin(t * Math.PI);
-    const f = lerp(250, 1100, sweep);
+    const f = lerp(180, 650, sweep);
     const a1 = 1 - Math.exp((-2 * Math.PI * f) / RATE);
-    const a2 = 1 - Math.exp((-2 * Math.PI * (f * 0.4)) / RATE);
+    const a2 = 1 - Math.exp((-2 * Math.PI * (f * 0.45)) / RATE);
     lp1 += a1 * (noise - lp1);
     lp2 += a2 * (noise - lp2);
+    // Two smoothing poles in series: rounds the top end right off.
     smooth += aSmooth * (lp1 - lp2 - smooth);
-    const env = smoothStep(0, 1, Math.min(1, t / 0.22)) * Math.exp(-2.6 * t);
-    data[i] = smooth * env * 1.3;
+    smooth2 += aSmooth * (smooth - smooth2);
+    const env = smoothStep(0, 1, Math.min(1, t / 0.3)) * Math.exp(-2.2 * t);
+    data[i] = smooth2 * env * 1.6;
   }
   return data;
 }
 
-// C-E-G-C sine arpeggio, each note decaying. (AudioManager.MakeArpeggio)
+// A kalimba pluck: fundamental + soft 2nd/3rd partials, fast decay, the tiniest
+// attack ramp so it never clicks.
+function pluck(data, startSample, freq, gain, decay = 7) {
+  const len = Math.min(data.length - startSample, Math.ceil(RATE * 0.5));
+  for (let i = 0; i < len; i++) {
+    const t = i / RATE;
+    const env = Math.exp(-t * decay) * smoothStep(0, 1, Math.min(1, t / 0.006));
+    const w =
+      Math.sin(2 * Math.PI * freq * t) +
+      0.35 * Math.sin(2 * Math.PI * freq * 2 * t) * Math.exp(-t * 12) +
+      0.12 * Math.sin(2 * Math.PI * freq * 3 * t) * Math.exp(-t * 16);
+    data[startSample + i] += w * env * gain;
+  }
+}
+
+// Cute clear chime: three quick kalimba plucks skipping up the major triad
+// (E5 -> G5 -> C6) with a gentle swing, the last note ringing a touch longer
+// with a soft octave shimmer. Bright, small, and over in ~0.8 s.
 function makeWin() {
-  const freqs = [523, 659, 784, 1046];
-  const perNote = Math.ceil(RATE * 0.1);
-  const data = new Float64Array(perNote * freqs.length);
-  for (let n = 0; n < freqs.length; n++) {
-    for (let i = 0; i < perNote; i++) {
-      const t = i / RATE;
-      const env = Math.exp(-t * 6);
-      data[n * perNote + i] = Math.sin(2 * Math.PI * freqs[n] * t) * env * 0.45;
-    }
+  const samples = Math.ceil(RATE * 0.85);
+  const data = new Float64Array(samples);
+  pluck(data, 0, 659.26, 0.3); // E5
+  pluck(data, Math.floor(RATE * 0.095), 783.99, 0.34); // G5
+  pluck(data, Math.floor(RATE * 0.21), 1046.5, 0.38, 5); // C6, rings longer
+  pluck(data, Math.floor(RATE * 0.21), 2093.0, 0.08, 6); // octave shimmer
+  return data;
+}
+
+// Tiny rising pop for each star on the win panel: a fast 660 -> 990 Hz chirp.
+function makeStar() {
+  const duration = 0.12;
+  const samples = Math.ceil(RATE * duration);
+  const data = new Float64Array(samples);
+  let phase = 0;
+  for (let i = 0; i < samples; i++) {
+    const t = i / RATE;
+    const f = lerp(660, 990, smoothStep(0, 1, t / duration));
+    phase += (2 * Math.PI * f) / RATE;
+    const env = Math.exp(-t * 24) * smoothStep(0, 1, Math.min(1, t / 0.005));
+    data[i] = (Math.sin(phase) + 0.2 * Math.sin(2 * phase)) * env * 0.42;
   }
   return data;
 }
@@ -133,3 +169,4 @@ fs.mkdirSync(outDir, { recursive: true });
 writeWav(path.join(outDir, 'whoosh.wav'), makeWhoosh());
 writeWav(path.join(outDir, 'fail.wav'), makeFail());
 writeWav(path.join(outDir, 'win.wav'), makeWin());
+writeWav(path.join(outDir, 'star.wav'), makeStar());

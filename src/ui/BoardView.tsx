@@ -381,8 +381,10 @@ function HintArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Pale
 /**
  * Slither exit (SlitherExit.cs): a dash the length of the arrow body flows
  * head-first along the arrow's own centerline and continues straight off the
- * board, accelerating out and fading past 55%. The SVG is clipped to the
- * board, so the trail vanishes exactly at the edge.
+ * board, accelerating out and fading past 55%. The arrowhead stays on,
+ * leading the trail — everything past the head is a straight ray, so the head
+ * is a pure translation along the exit direction. The SVG is clipped to the
+ * board, so head and trail vanish exactly at the edge.
  */
 function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
   const k = useSharedValue(0);
@@ -391,28 +393,43 @@ function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
     k.value = withTiming(1, { duration: 340, easing: Easing.linear });
   }, []);
 
-  const aProps = useAnimatedProps(() => {
+  const fadeAt = (kk: number) => {
+    'worklet';
+    if (kk < 0.55) return 1;
+    const f = (kk - 0.55) / 0.45;
+    return 1 - f * f * (3 - 2 * f); // smoothstep fade
+  };
+
+  const trailProps = useAnimatedProps(() => {
     const kk = k.value;
     const travelled = kk * kk * path.totalLen; // accelerate out
-    let opacity = 1;
-    if (kk >= 0.55) {
-      const f = (kk - 0.55) / 0.45;
-      opacity = 1 - f * f * (3 - 2 * f); // smoothstep fade
-    }
-    return { strokeDashoffset: -travelled, opacity };
+    return { strokeDashoffset: -travelled, opacity: fadeAt(kk) };
+  });
+
+  const headProps = useAnimatedProps(() => {
+    const kk = k.value;
+    const travelled = kk * kk * path.totalLen;
+    return {
+      x: path.dir.x * travelled,
+      y: path.dir.y * travelled,
+      opacity: fadeAt(kk),
+    } as any;
   });
 
   return (
-    <AnimatedPath
-      d={path.d}
-      animatedProps={aProps}
-      stroke={ink}
-      strokeWidth={0.26 * CELL} // the bead tube's diameter
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-      strokeDasharray={`${path.bodyLen} ${path.totalLen + path.bodyLen}`}
-    />
+    <G>
+      <AnimatedPath
+        d={path.d}
+        animatedProps={trailProps}
+        stroke={ink}
+        strokeWidth={0.26 * CELL} // the bead tube's diameter
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        strokeDasharray={`${path.bodyLen} ${path.totalLen + path.bodyLen}`}
+      />
+      <AnimatedPath d={path.headD} animatedProps={headProps} fill={ink} />
+    </G>
   );
 }
 

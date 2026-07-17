@@ -17,8 +17,9 @@ import {
 import { Ads } from './ads';
 import { Sfx } from './audio';
 import { BoardView } from './BoardView';
+import { Haptic } from './haptics';
 import { HeaderButton } from './HeaderButton';
-import { Palette } from './theme';
+import { Fonts, Palette } from './theme';
 
 type Phase = 'playing' | 'won' | 'lost';
 
@@ -37,6 +38,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     [levelIndex, attempt],
   );
   const [hearts, setHearts] = useState(() => level.hearts);
+  const [remaining, setRemaining] = useState(() => level.arrowCount);
   const [phase, setPhase] = useState<Phase>('playing');
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
   const [adBusy, setAdBusy] = useState(false);
@@ -47,6 +49,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     setAttempt((a) => a + 1);
     const next = LevelGenerator.generate(index);
     setHearts(next.hearts);
+    setRemaining(next.arrowCount);
     setPhase('playing');
     setHint(null);
   }, []);
@@ -54,11 +57,14 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
   const onRemoved = useCallback(
     (cleared: boolean) => {
       Sfx.playSuccess();
+      Haptic.exit();
+      setRemaining(level.board.count());
       if (!cleared) return;
       SaveSystem.registerSolve(hearts === level.hearts); // perfect = no heart lost
       SaveSystem.setCurrentLevel(levelIndex + 1);
       Ads.registerGameFinished(); // counts toward the every-2-games interstitial
       Sfx.playWin();
+      Haptic.cleared();
       setTimeout(() => setPhase('won'), 450); // let the last slither finish
     },
     [hearts, level, levelIndex],
@@ -66,6 +72,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
 
   const onBlocked = useCallback(() => {
     Sfx.playFail();
+    Haptic.blocked();
     setHearts((h) => {
       const left = h - 1;
       if (left <= 0) {
@@ -127,17 +134,12 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
               LEVEL {levelIndex + 1}
             </Text>
             <Text style={[styles.diffLabel, { color: diffColor }]}>
-              {Difficulties.displayName(level.difficulty)} · {level.shapeName}
+              {Difficulties.displayName(level.difficulty)} · {level.shapeName} · {remaining} left
             </Text>
           </View>
         </View>
         <View style={styles.headerRight}>
-          <Text style={[styles.hearts, { color: p.heart }]}>
-            {'♥'.repeat(Math.max(0, hearts))}
-            <Text style={{ color: p.heartLost }}>
-              {'♥'.repeat(Math.max(0, level.hearts - hearts))}
-            </Text>
-          </Text>
+          <HeartPips left={hearts} max={level.hearts} palette={p} />
           <HeaderButton label="💡" palette={p} onPress={onHint} active={!adBusy} />
         </View>
       </View>
@@ -179,7 +181,11 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
                 disabled={adBusy}
                 style={({ pressed }) => [
                   styles.button,
-                  { backgroundColor: pressed ? p.accentDeep : p.accent, marginBottom: 12 },
+                  {
+                    backgroundColor: pressed ? p.accentDeep : p.accent,
+                    marginBottom: 12,
+                    transform: [{ scale: pressed ? 0.94 : 1 }],
+                  },
                 ]}
                 onPress={onContinueWithAd}
               >
@@ -192,6 +198,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
               disabled={adBusy}
               style={({ pressed }) => [
                 styles.button,
+                { transform: [{ scale: pressed ? 0.94 : 1 }] },
                 phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
                 phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
               ]}
@@ -210,6 +217,41 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
         </View>
       )}
     </View>
+  );
+}
+
+/**
+ * The heart row, one pip per heart. A pip that just went out pops (scale
+ * ~1.35 springing back) as it dims — losing a life is unmistakable
+ * (GameManager.SpendHeart).
+ */
+function HeartPips({ left, max, palette }: { left: number; max: number; palette: Palette }) {
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      {Array.from({ length: max }, (_, i) => (
+        <HeartPip key={i} filled={i < left} palette={palette} />
+      ))}
+    </View>
+  );
+}
+
+function HeartPip({ filled, palette }: { filled: boolean; palette: Palette }) {
+  const k = useSharedValue(1);
+  const prev = useRef(filled);
+  useEffect(() => {
+    if (prev.current && !filled) {
+      k.value = 1.35;
+      k.value = withSpring(1, { damping: 9, stiffness: 240 });
+    }
+    prev.current = filled;
+  }, [filled]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
+  return (
+    <Animated.View style={style}>
+      <Text style={{ fontSize: 20, letterSpacing: 2, color: filled ? palette.heart : palette.heartLost }}>
+        ♥
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -248,6 +290,11 @@ function Star({
   const k = useSharedValue(0);
   useEffect(() => {
     k.value = withDelay(delay, withSpring(1, { damping: 11, stiffness: 260 }));
+    // Each earned star pops with a tiny rising chirp, timed to its entrance.
+    if (filled) {
+      const t = setTimeout(() => Sfx.playStar(), delay);
+      return () => clearTimeout(t);
+    }
   }, []);
   const style = useAnimatedStyle(() => ({
     opacity: k.value,
@@ -299,18 +346,14 @@ const styles = StyleSheet.create({
   },
   levelLabel: {
     fontSize: 18,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
   diffLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Fonts.semi,
     letterSpacing: 0.5,
     marginTop: 2,
-  },
-  hearts: {
-    fontSize: 20,
-    letterSpacing: 2,
   },
   overlay: {
     position: 'absolute',
@@ -331,7 +374,7 @@ const styles = StyleSheet.create({
   },
   panelTitle: {
     fontSize: 24,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
   },
   starsRow: {
     flexDirection: 'row',
@@ -342,6 +385,7 @@ const styles = StyleSheet.create({
   },
   panelSub: {
     fontSize: 14,
+    fontFamily: Fonts.semi,
     marginTop: 6,
     marginBottom: 20,
   },
@@ -352,11 +396,11 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
   },
   streak: {
     fontSize: 13,
     marginTop: 14,
-    fontWeight: '600',
+    fontFamily: Fonts.semi,
   },
 });

@@ -50,3 +50,13 @@ export const InkNight: Palette = {
 };
 
 export const paletteFor = (dark: boolean): Palette => (dark ? InkNight : Daylight);
+
+/**
+ * The brand type: Fredoka, the rounded bold geometric sans the Unity build
+ * bundles (DESIGN.md "Typography"). Custom fonts on native ignore fontWeight,
+ * so weights are separate families.
+ */
+export const Fonts = {
+  semi: 'Fredoka_600SemiBold',
+  bold: 'Fredoka_700Bold',
+} as const;

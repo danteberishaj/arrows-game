@@ -69,18 +69,49 @@ test('generate fills the shape completely and stays solvable', () => {
 
 test('generate picks the right shape family per tier', () => {
   const simple = new Set(ShapeLibrary.SimplePool.map((s) => s.name));
+  const medium = new Set(ShapeLibrary.MediumPool.map((s) => s.name));
   const complex = new Set(ShapeLibrary.ComplexPool.map((s) => s.name));
 
   // Cover several cycles so every tier draws a few different shapes.
   for (let i = 0; i < 30; i++) {
     const lvl = LevelGenerator.generate(i);
-    if (lvl.difficulty === Difficulty.SuperHard) {
-      if (!complex.has(lvl.shapeName)) {
-        throw new Error(`level ${i}: SuperHard drew non-complex shape '${lvl.shapeName}'`);
-      }
-    } else if (!simple.has(lvl.shapeName)) {
-      throw new Error(`level ${i}: ${lvl.difficulty} drew non-simple shape '${lvl.shapeName}'`);
+    const pool =
+      lvl.difficulty === Difficulty.SuperHard ? complex
+      : lvl.difficulty === Difficulty.Hard ? medium
+      : simple;
+    if (!pool.has(lvl.shapeName)) {
+      throw new Error(`level ${i}: ${lvl.difficulty} drew out-of-pool shape '${lvl.shapeName}'`);
     }
+  }
+});
+
+test('every shape in every pool generates a fillable, solvable board', () => {
+  // Rasterize each shape at a mid-size board and pack it via the peel rule:
+  // the fill must cover the mask exactly and solve greedily. This exercises
+  // thin features (crescent horns, bolt tips, crown valleys) directly.
+  const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
+  const { DotNetRandom } = require('../dotnetRandom');
+  const { LevelGenerator: LG } = require('../levelGenerator');
+  const { Difficulties: D, Difficulty: Df } = require('../difficulty');
+  const { BoardLogic: BL } = require('../boardLogic');
+
+  for (const shape of all) {
+    const rows = 24;
+    const cols = Math.max(4, Math.min(46, Math.round(rows * shape.aspect)));
+    const mask = shape.rasterize(rows, cols);
+    const cfg = D.config(Df.Normal);
+    const arrows = LG.fillMask(mask, rows, cols, cfg, new DotNetRandom(1234));
+
+    const board = new BL(rows, cols);
+    for (const a of arrows) board.add(a);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!board.isEmpty(r, c) !== mask[r][c]) {
+          throw new Error(`${shape.name}: fill != mask at ${r},${c}`);
+        }
+      }
+    }
+    if (!solveGreedy(board)) throw new Error(`${shape.name}: not solvable`);
   }
 });
 

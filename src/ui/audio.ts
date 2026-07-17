@@ -11,6 +11,7 @@ const sources = {
   success: require('../../assets/audio/whoosh.wav'),
   fail: require('../../assets/audio/fail.wav'),
   win: require('../../assets/audio/win.wav'),
+  star: require('../../assets/audio/star.wav'),
 } as const;
 
 const players = new Map<keyof typeof sources, AudioPlayer>();
@@ -34,4 +35,5 @@ export const Sfx = {
   playSuccess: () => play('success'),
   playFail: () => play('fail'),
   playWin: () => play('win'),
+  playStar: () => play('star'),
 };

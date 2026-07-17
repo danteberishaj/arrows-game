@@ -29,6 +29,7 @@ export function HeaderButton({
         justifyContent: 'center',
         backgroundColor: pressed ? palette.border : palette.surface,
         borderColor: palette.border,
+        transform: [{ scale: pressed ? 0.94 : 1 }], // ButtonPress.cs press-feel
       })}
     >
       <Text style={{ color: active ? palette.accentCore : palette.heartLost, fontSize: size * 0.44 }}>

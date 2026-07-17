@@ -37,25 +37,26 @@ export class ShapeDef {
   }
 
   /**
-   * Samples the shape into a rows x cols mask. Each cell is tested at a 2x2
+   * Samples the shape into a rows x cols mask. Each cell is tested at a 3x3
    * set of sub-points and kept if at least half are inside, which smooths the
-   * silhouette edge so small boards still read as the intended shape.
+   * silhouette edge so boards read as the intended shape (finer than the
+   * original 2x2 — thin features like a crescent's horns stay clean).
    */
   rasterize(rows: number, cols: number): boolean[][] {
     const mask: boolean[][] = Array.from({ length: rows }, () => new Array<boolean>(cols).fill(false));
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         let hit = 0;
-        for (let sy = 0; sy < 2; sy++) {
-          for (let sx = 0; sx < 2; sx++) {
-            const fx = (c + (sx + 0.5) / 2) / cols; // 0..1 across
-            const fy = (r + (sy + 0.5) / 2) / rows; // 0..1 down
+        for (let sy = 0; sy < 3; sy++) {
+          for (let sx = 0; sx < 3; sx++) {
+            const fx = (c + (sx + 0.5) / 3) / cols; // 0..1 across
+            const fy = (r + (sy + 0.5) / 3) / rows; // 0..1 down
             const nx = fx * 2 - 1;
             const ny = 1 - fy * 2; // +y points up
             if (this._inside(nx, ny)) hit++;
           }
         }
-        mask[r][c] = hit >= 2;
+        mask[r][c] = hit >= 5;
       }
     }
     return mask;
@@ -151,17 +152,70 @@ export const ShapeLibrary = (() => {
       [-0.16, -0.34], [-0.16, 0.04],  // up the stem
       [-0.34, 0.16], [-0.50, 0.50])); // bowl back to the rim
 
-  const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle];
-  const ComplexPool: readonly ShapeDef[] = [Heart, Star, Diamond, Triangle, Plus, Hexagon, Trophy];
+  // Crescent moon (very Ink Night): a full disc with a second disc bitten out
+  // of its upper right. The bite is kept shallow so the horns stay thick
+  // enough to pack cleanly with arrows.
+  const Crescent = new ShapeDef('Crescent', false, 1, false, (x, y) => {
+    const inDisc = x * x + y * y <= 0.92 * 0.92;
+    const bx = x - 0.42, by = y - 0.2;
+    const inBite = bx * bx + by * by <= 0.72 * 0.72;
+    return inDisc && !inBite;
+  });
+
+  // Four-petal flower: the union of four petal discs and a core disc.
+  const Flower = new ShapeDef('Flower', false, 1, false, (x, y) => {
+    const disc = (cx: number, cy: number, r: number) =>
+      (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+    return (
+      disc(0, 0, 0.34) ||
+      disc(0.47, 0, 0.4) || disc(-0.47, 0, 0.4) ||
+      disc(0, 0.47, 0.4) || disc(0, -0.47, 0.4)
+    );
+  });
+
+  // Lightning bolt, the classic zig-zag hexagon. Taller than wide.
+  const Bolt = new ShapeDef('Bolt', false, 0.8, false,
+    polygon(
+      [0.3, 0.95], [-0.42, 0.05], [-0.06, 0.05],
+      [-0.3, -0.95], [0.42, -0.02], [0.06, -0.02]));
+
+  // An upward arrow drawn out of arrows. Of course.
+  const ArrowMark = new ShapeDef('Arrow', false, 0.9, false,
+    polygon(
+      [0, 0.95], [0.66, 0.24], [0.26, 0.24],
+      [0.26, -0.9], [-0.26, -0.9], [-0.26, 0.24], [-0.66, 0.24]));
+
+  // Three-peak crown over a band.
+  const Crown = new ShapeDef('Crown', false, 1.15, false,
+    polygon(
+      [-0.78, -0.8], [0.78, -0.8], [0.78, 0.58],
+      [0.39, -0.05], [0, 0.72], [-0.39, -0.05], [-0.78, 0.58]));
+
+  // Hourglass: two triangles meeting at a narrow waist.
+  const Hourglass = new ShapeDef('Hourglass', false, 0.8, false, (x, y) => {
+    const ay = Math.abs(y);
+    if (ay > 0.88) return false;
+    return Math.abs(x) <= 0.14 + (0.66 * ay) / 0.88;
+  });
+
+  // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
+  // SuperHard draws the picture-book silhouettes.
+  const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
+  const MediumPool: readonly ShapeDef[] = [Circle, Diamond, Triangle, Plus, Hexagon, Hourglass];
+  const ComplexPool: readonly ShapeDef[] = [Heart, Star, Trophy, Crescent, Flower, Bolt, ArrowMark, Crown];
 
   return {
     Square, Rectangle, Circle,
     Diamond, Triangle, Plus, Hexagon, Star, Heart, Trophy,
-    SimplePool, ComplexPool,
+    Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
+    SimplePool, MediumPool, ComplexPool,
 
-    /** Picks a shape for the tier: SuperHard draws a complex silhouette, the rest a simple one. */
+    /** Picks a shape for the tier: each difficulty draws from its own pool. */
     pick(difficulty: Difficulty, rng: DotNetRandom): ShapeDef {
-      const pool = difficulty === Difficulty.SuperHard ? ComplexPool : SimplePool;
+      const pool =
+        difficulty === Difficulty.SuperHard ? ComplexPool
+        : difficulty === Difficulty.Hard ? MediumPool
+        : SimplePool;
       return pool[rng.next(pool.length)];
     },
   };

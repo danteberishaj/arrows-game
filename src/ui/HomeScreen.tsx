@@ -9,7 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Difficulties, Difficulty, SaveSystem } from '../core';
 import { HeaderButton } from './HeaderButton';
-import { Palette } from './theme';
+import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
 /**
@@ -78,7 +78,10 @@ export function HomeScreen({
           onPress={onPlay}
           style={({ pressed }) => [
             styles.play,
-            { backgroundColor: pressed ? p.accentDeep : p.accent },
+            {
+              backgroundColor: pressed ? p.accentDeep : p.accent,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            },
           ]}
         >
           <Text style={[styles.playText, { color: p.inkOnAccent }]}>Play</Text>
@@ -122,13 +125,13 @@ const styles = StyleSheet.create({
   },
   levelLabel: {
     fontSize: 24,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     marginTop: 30,
     letterSpacing: 0.5,
   },
   diffLabel: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: Fonts.semi,
     marginTop: 6,
     letterSpacing: 0.5,
   },
@@ -141,13 +144,13 @@ const styles = StyleSheet.create({
   },
   playText: {
     fontSize: 22,
-    fontWeight: '800',
+    fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
   stats: {
     position: 'absolute',
     bottom: 40,
     fontSize: 13,
-    fontWeight: '600',
+    fontFamily: Fonts.semi,
   },
 });

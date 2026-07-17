@@ -1,7 +1,9 @@
+import { Fredoka_600SemiBold, Fredoka_700Bold, useFonts } from '@expo-google-fonts/fredoka';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { SaveSystem } from './src/core';
 import { AdHost, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
@@ -14,6 +16,7 @@ type Screen = 'splash' | 'menu' | 'game';
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [fontsReady] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
   const [screen, setScreen] = useState<Screen>('splash');
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
@@ -43,23 +46,30 @@ export default function App() {
 
   const p = paletteFor(dark);
 
-  if (!ready) return <View style={{ flex: 1, backgroundColor: p.bg }} />;
+  if (!ready || !fontsReady) return <View style={{ flex: 1, backgroundColor: p.bg }} />;
 
+  // Screens cross-fade (~180 ms) instead of hard-cutting (DESIGN.md "Motion").
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === 'splash' && <SplashScreen palette={p} onDone={() => setScreen('menu')} />}
       {screen === 'menu' && (
-        <HomeScreen
-          palette={p}
-          dark={dark}
-          soundOn={soundOn}
-          onPlay={() => setScreen('game')}
-          onToggleSound={toggleSound}
-          onToggleTheme={toggleTheme}
-        />
+        <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
+          <HomeScreen
+            palette={p}
+            dark={dark}
+            soundOn={soundOn}
+            onPlay={() => setScreen('game')}
+            onToggleSound={toggleSound}
+            onToggleTheme={toggleTheme}
+          />
+        </Animated.View>
       )}
-      {screen === 'game' && <GameScreen palette={p} onHome={() => setScreen('menu')} />}
+      {screen === 'game' && (
+        <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
+          <GameScreen palette={p} onHome={() => setScreen('menu')} />
+        </Animated.View>
+      )}
       <AdHost palette={p} />
     </GestureHandlerRootView>
   );
