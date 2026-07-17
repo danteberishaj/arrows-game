@@ -20,8 +20,11 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.danteb.arrows",
+      "versionCode": 1,
+      "permissions": ["com.google.android.gms.permission.AD_ID"],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#13111C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
