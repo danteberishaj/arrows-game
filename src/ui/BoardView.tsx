@@ -105,6 +105,25 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
     ty.value = (vh - boardH * fit) / 2;
   }, [boardW, boardH]);
 
+  // Centre the viewport on the hint arrow (BoardPanZoom.FocusOn) — on a
+  // zoomed-in board the pulse would otherwise happen off-screen.
+  React.useEffect(() => {
+    if (!hint) return;
+    const a = hint.arrow;
+    const cx = ((a.minCol + a.maxCol + 1) / 2) * CELL;
+    const cy = ((a.minRow + a.maxRow + 1) / 2) * CELL;
+    const s = scale.value;
+    const { w: vw, h: vh } = viewport.value;
+    if (vw < 1 || vh < 1) return;
+    const sw = boardW * s, sh = boardH * s;
+    let txT = vw / 2 - cx * s;
+    let tyT = vh / 2 - cy * s;
+    txT = sw <= vw ? (vw - sw) / 2 : Math.min(0, Math.max(vw - sw, txT));
+    tyT = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, tyT));
+    tx.value = withTiming(txT, { duration: 280, easing: Easing.out(Easing.cubic) });
+    ty.value = withTiming(tyT, { duration: 280, easing: Easing.out(Easing.cubic) });
+  }, [hint, boardW, boardH]);
+
   // ---- tap -> game move --------------------------------------------------
 
   const handleTap = useCallback((bx: number, by: number) => {
@@ -304,7 +323,8 @@ function ShakingArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: P
   const gProps = useAnimatedProps(() => {
     const t = k.value * 0.3; // seconds, matching Unity's Time.time-based sin
     const dx = Math.sin(t * 70) * 0.4 * CELL * (1 - k.value); // decaying side-to-side
-    return { x: dx } as any;
+    // transform string, not x/y props: <g> has no x attribute on web SVG.
+    return { transform: `translate(${dx}, 0)` } as any;
   });
 
   const colorAt = (kv: number) => {
@@ -332,10 +352,11 @@ function ShakingArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: P
 }
 
 /**
- * Hint feedback (ArrowTile.Highlight): the suggested arrow pulses in the
- * accent colour with a gentle swell (~1.5 decaying pulses over 1.1 s),
- * settling back to ink. The arrow stays tappable throughout — the pulse is
- * drawing only.
+ * Hint feedback (ArrowTile.Highlight): the suggested arrow turns solid
+ * accent for the duration with a breathing stroke swell, then settles back
+ * to ink. The accent tint is a STATIC prop on purpose — even if animated
+ * attribute updates fail on some renderer, the hint still visibly lights up.
+ * The arrow stays tappable throughout — the highlight is drawing only.
  */
 function HintArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Palette; onDone: () => void }) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
@@ -343,37 +364,27 @@ function HintArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Pale
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: 1100, easing: Easing.linear }, (finished) => {
+    k.value = withTiming(1, { duration: 1600, easing: Easing.linear }, (finished) => {
       if (finished) runOnJS(onDone)();
     });
   }, [arrow]);
 
-  const pulseAt = (kv: number) => {
-    'worklet';
-    return Math.abs(Math.sin(kv * Math.PI * 3)) * (1 - kv); // ~1.5 decaying pulses
-  };
-
   const shaftProps = useAnimatedProps(() => {
-    const pulse = pulseAt(k.value);
-    return {
-      stroke: interpolateColor(pulse, [0, 1], [palette.ink, palette.accent]),
-      strokeWidth: STROKE * CELL * (1 + 0.3 * pulse), // the swell
-    };
+    const pulse = Math.abs(Math.sin(k.value * Math.PI * 4)) * (1 - k.value * 0.6);
+    return { strokeWidth: STROKE * CELL * (1 + 0.45 * pulse) }; // the swell
   });
-  const headProps = useAnimatedProps(() => ({
-    fill: interpolateColor(pulseAt(k.value), [0, 1], [palette.ink, palette.accent]),
-  }));
 
   return (
     <G>
       <AnimatedPath
         d={art.shaftD}
         animatedProps={shaftProps}
+        stroke={palette.accent}
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
       />
-      <AnimatedPath d={art.headD} animatedProps={headProps} />
+      <Path d={art.headD} fill={palette.accent} />
     </G>
   );
 }
