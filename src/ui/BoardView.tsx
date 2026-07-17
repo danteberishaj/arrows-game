@@ -134,6 +134,7 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
     if (!owner) return;
 
     if (board.tryRemove(owner)) {
+      if (hint && hint.arrow === owner) clearHint(); // the paid-for suggestion was taken
       const id = nextId.current++;
       const path = slitherPath(owner, CELL, board.rows, board.cols);
       setExiting((xs) => [...xs, { id, path }]);
@@ -144,7 +145,7 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
       setShaking({ arrow: owner, id: nextId.current++ });
       onBlocked();
     }
-  }, [board, onRemoved, onBlocked]);
+  }, [board, onRemoved, onBlocked, hint, clearHint]);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -269,14 +270,7 @@ function BoardContent(props: {
             );
           }
           if (hint && hint.arrow === arrow) {
-            return (
-              <HintArrow
-                key={`h${hint.id}`}
-                arrow={arrow}
-                palette={palette}
-                onDone={clearHint}
-              />
-            );
+            return <HintArrow key={`h${hint.id}`} arrow={arrow} palette={palette} />;
           }
           return <StaticArrow key={arrow.toLine()} arrow={arrow} ink={palette.ink} />;
         })}
@@ -353,20 +347,19 @@ function ShakingArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: P
 
 /**
  * Hint feedback (ArrowTile.Highlight): the suggested arrow turns solid
- * accent for the duration with a breathing stroke swell, then settles back
- * to ink. The accent tint is a STATIC prop on purpose — even if animated
- * attribute updates fail on some renderer, the hint still visibly lights up.
- * The arrow stays tappable throughout — the highlight is drawing only.
+ * accent with a breathing stroke swell that settles after a moment — but the
+ * accent tint STAYS until the arrow is fired, so the player never loses
+ * track of the paid-for suggestion. The tint is a static prop on purpose —
+ * even if animated attribute updates fail on some renderer, the hint still
+ * visibly lights up. The arrow stays tappable throughout.
  */
-function HintArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Palette; onDone: () => void }) {
+function HintArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
   const k = useSharedValue(0);
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: 1600, easing: Easing.linear }, (finished) => {
-      if (finished) runOnJS(onDone)();
-    });
+    k.value = withTiming(1, { duration: 1600, easing: Easing.linear });
   }, [arrow]);
 
   const shaftProps = useAnimatedProps(() => {
