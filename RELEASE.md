@@ -62,9 +62,11 @@ install via the opt-in link, and play a few levels.
 - App icon: `store/playstore-icon-512.png`
 - Feature graphic: `store/feature-graphic.png` (Higgsfield brand art; a simpler
   script-composed fallback lives in `store/fallback/`)
-- Promo art in `store/marketing/`: heart-of-arrows and crescent-moon portrait
-  pieces + a cozy couch lifestyle photo — usable as extra listing imagery or
-  social/ads. Alternate logo and banner takes are there too.
+- Promo art in `store/marketing/`: board-heart / board-crescent / board-flower
+  are REAL generated levels rendered with the game's exact line-art (regenerate
+  with `npx tsx scripts/generate-promo-art.ts`) — safe as listing imagery because
+  they show true gameplay boards. Alternate logo and wordmark-banner takes are
+  there too (brand art, fine for the feature graphic).
 - Screenshots: take at least 2 phone screenshots (portrait) from the internal-test
   build — the menu and a mid-level board make a good pair; a SuperHard silhouette
   (heart/crescent) makes a great third. Play policy expects screenshots to show
@@ -102,3 +104,4 @@ service account for CLI uploads (eas.json is preconfigured to the internal track
 
 - Icons / store art (from `assets/images/mark.png`): `node scripts/generate-store-assets.js`
 - Sound effects: `node scripts/generate-sfx.js`
+- Real-level promo boards: `npx tsx scripts/generate-promo-art.ts`
