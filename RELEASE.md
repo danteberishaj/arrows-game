@@ -60,10 +60,15 @@ install via the opt-in link, and play a few levels.
 
 **Store listing** (assets are in `store/`):
 - App icon: `store/playstore-icon-512.png`
-- Feature graphic: `store/feature-graphic.png`
+- Feature graphic: `store/feature-graphic.png` (Higgsfield brand art; a simpler
+  script-composed fallback lives in `store/fallback/`)
+- Promo art in `store/marketing/`: heart-of-arrows and crescent-moon portrait
+  pieces + a cozy couch lifestyle photo — usable as extra listing imagery or
+  social/ads. Alternate logo and banner takes are there too.
 - Screenshots: take at least 2 phone screenshots (portrait) from the internal-test
   build — the menu and a mid-level board make a good pair; a SuperHard silhouette
-  (heart/crescent) makes a great third.
+  (heart/crescent) makes a great third. Play policy expects screenshots to show
+  REAL gameplay — use the promo art around them, not instead of them.
 - Short description (≤80 chars), e.g.:
   "Calm arrow puzzles. Find the order, clear the shape, keep your streak."
 - Privacy policy URL: from step 2.

@@ -11,8 +11,13 @@
  *   assets/android-icon-background.png 1024  adaptive background (solid ink)
  *   assets/android-icon-monochrome.png 1024  Android 13 themed icon (white mark)
  *   assets/favicon.png                   64  web favicon
- *   store/playstore-icon-512.png        512  Play listing icon
- *   store/feature-graphic.png      1024x500  Play listing feature graphic
+ *   store/fallback/playstore-icon-512.png   512  Play listing icon (fallback)
+ *   store/fallback/feature-graphic.png 1024x500  Play feature graphic (fallback)
+ *
+ * The CANONICAL Play listing icon + feature graphic live directly in store/
+ * (Higgsfield-generated brand art, curated by hand — see store/marketing/).
+ * This script deliberately writes its simpler composed versions to
+ * store/fallback/ so a re-run never clobbers the curated art.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,7 +45,7 @@ async function iconOn(bg, canvas, markSize) {
 }
 
 async function main() {
-  fs.mkdirSync(out('store'), { recursive: true });
+  fs.mkdirSync(out('store', 'fallback'), { recursive: true });
 
   // App icon: visible mark ≈ 60% of the tile (mark art is ~64% of its frame).
   fs.writeFileSync(out('assets', 'icon.png'), await iconOn(INK_NIGHT_BG, 1024, 940));
@@ -87,7 +92,7 @@ async function main() {
 
   // Play listing icon (512, no alpha allowed).
   fs.writeFileSync(
-    out('store', 'playstore-icon-512.png'),
+    out('store', 'fallback', 'playstore-icon-512.png'),
     await sharp(await iconOn(INK_NIGHT_BG, 1024, 940)).resize(512, 512).flatten({ background: INK_NIGHT_BG }).png().toBuffer(),
   );
 
@@ -99,7 +104,7 @@ async function main() {
             font-size="150" font-weight="bold" fill="#EFEDF9">rrows</text>
     </svg>`);
   fs.writeFileSync(
-    out('store', 'feature-graphic.png'),
+    out('store', 'fallback', 'feature-graphic.png'),
     await sharp({ create: { width: 1024, height: 500, channels: 3, background: INK_NIGHT_BG } })
       .composite([
         { input: femblem, left: 120, top: 35 },
@@ -112,7 +117,7 @@ async function main() {
   for (const f of [
     'assets/icon.png', 'assets/android-icon-foreground.png', 'assets/android-icon-background.png',
     'assets/android-icon-monochrome.png', 'assets/favicon.png',
-    'store/playstore-icon-512.png', 'store/feature-graphic.png',
+    'store/fallback/playstore-icon-512.png', 'store/fallback/feature-graphic.png',
   ]) {
     console.log(`${f}  ${(fs.statSync(out(...f.split('/'))).size / 1024).toFixed(0)} KB`);
   }
