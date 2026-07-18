@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -30,6 +31,7 @@ type Phase = 'playing' | 'won' | 'lost';
  */
 export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () => void }) {
   const p = palette;
+  const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
 
   const [levelIndex, setLevelIndex] = useState(() => SaveSystem.currentLevel);
   const [attempt, setAttempt] = useState(0); // bump to regenerate the same index (Retry)
@@ -126,7 +128,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
   return (
     <View style={[styles.root, { backgroundColor: p.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerLeft}>
           <HeaderButton label="‹" palette={p} onPress={onHome} />
           <View>
@@ -331,7 +333,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 14,
     paddingBottom: 6,
   },
   headerLeft: {

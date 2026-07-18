@@ -127,8 +127,8 @@ Empty dark surrounds the shape (for square/rectangle the shape *is* the whole gr
   Net result: **most arrows bend (~60–70%, the majority on every board), zero corner-heads, zero
   long straight stripes**, every shape cell filled.
 - **Difficulty** (`Difficulty.cs`): big boards + lots of pieces at every tier, so even Normal is
-  meaty and Super Hard is brutal. Normal ~19–23 cells across, Hard ~25–29, Super Hard ~32–38
-  (≈70–200 arrows/level on Normal, up to ~260 on the big Hard rectangles, ~130–300 on the huge
+  meaty and Super Hard is brutal. Normal ~19–23 cells across, Hard ~25–29, Super Hard ~27–31
+  (≈70–200 arrows/level on Normal, up to ~260 on the big Hard rectangles, ~100–160 on the
   Super Hard silhouettes). The board fits-to-view and the player pinch-zooms, so grids are free
   to be large. **Always 3 lives**, regardless of tier. Raise difficulty with **board size /
   shape complexity / piece count**, never with bendier-or-longer arrows.

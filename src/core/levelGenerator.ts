@@ -48,13 +48,22 @@ export const LevelGenerator = {
 
     const shape = ShapeLibrary.pick(difficulty, rng);
 
-    let rows = rng.next(cfg.minN, cfg.maxN + 1);
-    let cols = roundHalfToEven(rows * shape.aspect); // C# Math.Round = banker's rounding
-    // Upper clamp is generous so wide shapes (e.g. Hard rectangle, aspect 1.5 → up to
-    // ~44 cols) and the big SuperHard boards keep their true proportions; the board is
-    // fit-to-view + pinch-zoomable, so large grids are fine.
-    rows = clamp(rows, 4, 46);
-    cols = clamp(cols, 4, 46);
+    // Size the board so the SHAPE holds ~targetCells cells: probe the
+    // silhouette's fill density at a reference size, then solve for the rows
+    // that hit the target. A thin bolt gets a big grid, a solid square a
+    // small one — every level lands in its tier's piece-count band.
+    const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
+    const probeRows = 24;
+    const probeCols = clamp(roundHalfToEven(probeRows * shape.aspect), 4, 46);
+    const probeFill = Math.max(
+      0.05,
+      countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols),
+    );
+    let rows = Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect)));
+    // Upper clamp keeps even the thinnest silhouettes' grids sane; the board
+    // is fit-to-view + pinch-zoomable, so large grids are fine.
+    rows = clamp(rows, 8, 46);
+    let cols = clamp(roundHalfToEven(rows * shape.aspect), 4, 46);
 
     const mask = shape.rasterize(rows, cols);
     if (countTrue(mask) === 0) {

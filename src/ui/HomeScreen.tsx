@@ -7,6 +7,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty, SaveSystem } from '../core';
 import { HeaderButton } from './HeaderButton';
 import { Fonts, Palette } from './theme';
@@ -33,6 +34,7 @@ export function HomeScreen({
   onToggleTheme: () => void;
 }) {
   const p = palette;
+  const insets = useSafeAreaInsets(); // keep the corners clear of notches (SafeArea.cs)
   const resumeIndex = SaveSystem.currentLevel;
   const difficulty = Difficulties.forLevel(resumeIndex);
 
@@ -57,7 +59,7 @@ export function HomeScreen({
   return (
     <View style={[styles.root, { backgroundColor: p.bg }]}>
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
-      <View style={styles.topRight}>
+      <View style={[styles.topRight, { top: insets.top + 14 }]}>
         <HeaderButton label={dark ? '☀' : '☾'} palette={p} onPress={onToggleTheme} size={44} />
         <HeaderButton label="♪" active={soundOn} palette={p} onPress={onToggleSound} size={44} />
       </View>
@@ -88,7 +90,9 @@ export function HomeScreen({
         </Pressable>
       </Animated.View>
 
-      <Text style={[styles.stats, { color: p.inkDim }]}>{buildStatsLine()}</Text>
+      <Text style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + 32 }]}>
+        {buildStatsLine()}
+      </Text>
     </View>
   );
 }
@@ -114,7 +118,6 @@ const styles = StyleSheet.create({
   },
   topRight: {
     position: 'absolute',
-    top: 18,
     right: 18,
     flexDirection: 'row-reverse',
     gap: 12,
@@ -149,7 +152,6 @@ const styles = StyleSheet.create({
   },
   stats: {
     position: 'absolute',
-    bottom: 40,
     fontSize: 13,
     fontFamily: Fonts.semi,
   },

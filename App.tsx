@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SaveSystem } from './src/core';
 import { AdHost, initAds } from './src/ui/ads';
@@ -50,6 +51,7 @@ export default function App() {
 
   // Screens cross-fade (~180 ms) instead of hard-cutting (DESIGN.md "Motion").
   return (
+    <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === 'splash' && <SplashScreen palette={p} onDone={() => setScreen('menu')} />}
@@ -72,5 +74,6 @@ export default function App() {
       )}
       <AdHost palette={p} />
     </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

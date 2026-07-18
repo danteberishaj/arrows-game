@@ -9,9 +9,14 @@ export enum Difficulty {
 
 /** Tunable knobs for one difficulty tier. */
 export interface DifficultyConfig {
-  /** Board dimension (rows) range; cols follow the shape's aspect. */
-  readonly minN: number;
-  readonly maxN: number;
+  /**
+   * Target shape-cell range. The generator sizes the board so the SHAPE
+   * holds about this many cells (probing each silhouette's fill density),
+   * which keeps piece counts — and the on-screen path count — consistent
+   * across dense squares and thin bolts alike. Arrows ≈ cells / 4.5.
+   */
+  readonly minCells: number;
+  readonly maxCells: number;
   /**
    * Arrow length range (cells). maxLen is kept SMALL on purpose: long arrows
    * are limited so the shape is drawn with many short, bendy pieces, not a
@@ -44,20 +49,20 @@ export const Difficulties = {
   },
 
   config(d: Difficulty): DifficultyConfig {
-    // N(min,max) board size, len(min,max) SHORT (long arrows limited), bendArrow (most
-    // arrows bend), bend (chance to take the bend), hearts. Bigger boards + short bendy
-    // arrows = more pieces and a harder puzzle at every tier. Boards are LARGE (and
-    // arrows stay short, cap 6) so each level packs MANY pieces; the board auto-fits to
-    // view and the player pinch-zooms, so size is free to grow.
-    // Normal/Hard draw SIMPLE shapes (square/rect/circle); SuperHard draws COMPLEX silhouettes.
+    // cells(min,max) shape size, len(min,max) SHORT (long arrows limited), bendArrow
+    // (most arrows bend), bend (chance to take the bend), hearts. Difficulty scales by
+    // PIECE COUNT (cells / ~4.5 ≈ arrows), tier by tier: even Normal is meaty,
+    // SuperHard is brutal — but capped so mid-range phones never draw 300 paths.
+    // Normal draws plain fills, Hard geometric figures, SuperHard picture-book
+    // silhouettes (see ShapeLibrary pools).
     switch (d) {
       case Difficulty.Hard:
-        return { minN: 25, maxN: 29, minLen: 4, maxLen: 6, bendArrowChance: 0.95, bendChance: 0.96, hearts: 3 };
+        return { minCells: 420, maxCells: 580, minLen: 4, maxLen: 6, bendArrowChance: 0.95, bendChance: 0.96, hearts: 3 };
       case Difficulty.SuperHard:
-        return { minN: 32, maxN: 38, minLen: 4, maxLen: 6, bendArrowChance: 0.97, bendChance: 0.97, hearts: 3 };
+        return { minCells: 560, maxCells: 720, minLen: 4, maxLen: 6, bendArrowChance: 0.97, bendChance: 0.97, hearts: 3 };
       case Difficulty.Normal:
       default:
-        return { minN: 19, maxN: 23, minLen: 4, maxLen: 6, bendArrowChance: 0.93, bendChance: 0.95, hearts: 3 };
+        return { minCells: 260, maxCells: 400, minLen: 4, maxLen: 6, bendArrowChance: 0.93, bendChance: 0.95, hearts: 3 };
     }
   },
 
