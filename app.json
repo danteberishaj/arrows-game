@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.danteb.arrows",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "com.google.android.gms.permission.AD_ID"
       ],
