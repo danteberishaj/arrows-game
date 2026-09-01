@@ -6,14 +6,29 @@ import Animated, {
   interpolateColor,
   runOnJS,
   useAnimatedProps,
-  useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { G, Path } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
-import { arrowArt, slitherPath, SlitherPath, STROKE } from './arrowGeometry';
+import { PERF_MODE } from '../perfMode';
+import {
+  arrowArt,
+  BoardArrowArtCache,
+  slitherPath,
+  SlitherPath,
+  STROKE,
+} from './arrowGeometry';
+import {
+  EXIT_TRAIL_CLEANUP_MS,
+  EXIT_TRAIL_DURATION_MS,
+  MAX_CONCURRENT_EXIT_TRAILS,
+  exitAnimationKind,
+} from './exitAnimationConfig';
+import { StaticBoardSurface } from './StaticBoardSurface';
+import type { NativeExitAnimation } from './StaticBoardSurface.types';
 import { Palette } from './theme';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -25,6 +40,8 @@ export const CELL = 40;
 // Pan/zoom feel, ported from BoardPanZoom.cs.
 const MAX_ZOOM_FACTOR = 3.5; // max zoom in, relative to fit-to-view
 const FIT_MARGIN = 0.94; // small border when fully zoomed out
+const PERF_NO_EXIT_TRAILS =
+  PERF_MODE && process.env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1';
 
 export interface BoardViewProps {
   board: BoardLogic;
@@ -38,11 +55,19 @@ export interface BoardViewProps {
   /** Arrow to pulse as a hint (ArrowTile.Highlight), keyed to retrigger. */
   hint: { arrow: ArrowPath; id: number } | null;
   clearHint: () => void;
+  /** Stable native identifier used only by the release benchmark driver. */
+  testID?: string;
 }
 
 interface ExitingTrail {
   id: number;
   path: SlitherPath;
+  reducedMotion: boolean;
+}
+
+interface ShakingArrowState {
+  arrow: ArrowPath;
+  id: number;
 }
 
 /**
@@ -51,16 +76,49 @@ interface ExitingTrail {
  * (SlitherExit / ArrowTile), inside a fit-to-view pinch/pan/wheel viewport
  * (BoardPanZoom).
  */
-export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, clearHint }: BoardViewProps) {
+export function BoardView({
+  board,
+  palette,
+  onRemoved,
+  onBlocked,
+  locked,
+  hint,
+  clearHint,
+  testID,
+}: BoardViewProps) {
   const boardW = board.cols * CELL;
   const boardH = board.rows * CELL;
 
-  const [, setTick] = useState(0);
-  const [exiting, setExiting] = useState<ExitingTrail[]>([]);
-  const [shaking, setShaking] = useState<{ arrow: ArrowPath; id: number } | null>(null);
+  const [exiting, setExiting] = useState<(ExitingTrail | null)[]>(() =>
+    Array.from({ length: MAX_CONCURRENT_EXIT_TRAILS }, () => null),
+  );
+  const [nativeExitAnimation, setNativeExitAnimation] =
+    useState<NativeExitAnimation | null>(null);
+  const [shaking, setShaking] = useState<ShakingArrowState | null>(null);
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   const nextId = useRef(1);
+  const nextExitSlot = useRef(0);
+  const exitCleanupTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>(
+    Array.from({ length: MAX_CONCURRENT_EXIT_TRAILS }, () => null),
+  ).current;
+  const shakeCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shakingRef = useRef<ShakingArrowState | null>(null);
+  const boardRef = useRef(board);
   const lockedRef = useRef(locked);
+  const arrowArtCache = useMemo(
+    () => new BoardArrowArtCache(board.arrows(), CELL),
+    [board],
+  );
+  const reducedMotion = useReducedMotion();
+  boardRef.current = board;
   lockedRef.current = locked;
+
+  React.useEffect(() => () => {
+    for (const timer of exitCleanupTimers) {
+      if (timer !== null) clearTimeout(timer);
+    }
+    if (shakeCleanupTimer.current !== null) clearTimeout(shakeCleanupTimer.current);
+  }, []);
 
   // ---- pan / zoom ------------------------------------------------------
 
@@ -92,18 +150,48 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
     clampPos();
   }, [clampPos]);
 
-  const onLayout = useCallback((e: { nativeEvent: { layout: { width: number; height: number } } }) => {
-    const { width: vw, height: vh } = e.nativeEvent.layout;
+  const fitToViewport = useCallback((vw: number, vh: number) => {
     if (vw < 1 || vh < 1) return;
     viewport.value = { w: vw, h: vh };
     // Fully zoomed out shows the whole board / shape; the player pinches in.
     const fit = Math.min(vw / boardW, vh / boardH) * FIT_MARGIN;
     minScale.value = fit;
     maxScale.value = fit * MAX_ZOOM_FACTOR;
+    pinchStart.value = fit;
     scale.value = fit;
     tx.value = (vw - boardW * fit) / 2;
     ty.value = (vh - boardH * fit) / 2;
   }, [boardW, boardH]);
+
+  React.useLayoutEffect(() => {
+    for (let slot = 0; slot < exitCleanupTimers.length; slot += 1) {
+      const timer = exitCleanupTimers[slot];
+      if (timer !== null) clearTimeout(timer);
+      exitCleanupTimers[slot] = null;
+    }
+    if (shakeCleanupTimer.current !== null) {
+      clearTimeout(shakeCleanupTimer.current);
+      shakeCleanupTimer.current = null;
+    }
+    shakingRef.current = null;
+    nextExitSlot.current = 0;
+    setExiting((current) => current.some((trail) => trail !== null)
+      ? current.map(() => null)
+      : current);
+    setNativeExitAnimation(null);
+    setShaking(null);
+    const measuredViewport = viewport.value;
+    fitToViewport(measuredViewport.w, measuredViewport.h);
+  }, [board, fitToViewport]);
+
+  const onLayout = useCallback((e: { nativeEvent: { layout: { width: number; height: number } } }) => {
+    const { width: vw, height: vh } = e.nativeEvent.layout;
+    if (vw < 1 || vh < 1) return;
+    setViewportSize((current) =>
+      current.w === vw && current.h === vh ? current : { w: vw, h: vh },
+    );
+    fitToViewport(vw, vh);
+  }, [fitToViewport]);
 
   // Centre the viewport on the hint arrow (BoardPanZoom.FocusOn) — on a
   // zoomed-in board the pulse would otherwise happen off-screen.
@@ -127,25 +215,93 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
   // ---- tap -> game move --------------------------------------------------
 
   const handleTap = useCallback((bx: number, by: number) => {
-    if (lockedRef.current) return;
+    // Drop a UI-thread tap that reached JS after Next/Retry replaced the
+    // mission; its closure still points at the previous mutable board.
+    if (lockedRef.current || boardRef.current !== board) return;
     const c = Math.floor(bx / CELL);
     const r = Math.floor(by / CELL);
     const owner = board.ownerAt(r, c);
     if (!owner) return;
 
     if (board.tryRemove(owner)) {
-      if (hint && hint.arrow === owner) clearHint(); // the paid-for suggestion was taken
+      if (hint && hint.arrow === owner) clearHint();
+      if (shakingRef.current?.arrow === owner) {
+        if (shakeCleanupTimer.current !== null) {
+          clearTimeout(shakeCleanupTimer.current);
+          shakeCleanupTimer.current = null;
+        }
+        shakingRef.current = null;
+        setShaking(null);
+      }
       const id = nextId.current++;
-      const path = slitherPath(owner, CELL, board.rows, board.cols);
-      setExiting((xs) => [...xs, { id, path }]);
-      setTick((t) => t + 1);
-      setTimeout(() => setExiting((xs) => xs.filter((x) => x.id !== id)), 420);
+      const animationKind = exitAnimationKind(
+        PERF_NO_EXIT_TRAILS,
+        board.count(),
+        Platform.OS !== 'web',
+      );
+      if (animationKind === 'native-launch') {
+        const arrowIndex = arrowArtCache.indexFor(owner);
+        if (arrowIndex !== null) {
+          setNativeExitAnimation({
+            id,
+            arrowIndex,
+            durationMs: EXIT_TRAIL_DURATION_MS,
+            reducedMotion,
+          });
+        }
+      } else if (animationKind === 'slither') {
+        const path = slitherPath(owner, CELL, board.rows, board.cols);
+        const slot = nextExitSlot.current;
+        nextExitSlot.current = (slot + 1) % MAX_CONCURRENT_EXIT_TRAILS;
+        const previousTimer = exitCleanupTimers[slot];
+        if (previousTimer !== null) clearTimeout(previousTimer);
+        setExiting((current) => {
+          const next = [...current];
+          next[slot] = { id, path, reducedMotion };
+          return next;
+        });
+        const timer = setTimeout(() => {
+          if (exitCleanupTimers[slot] === timer) {
+            exitCleanupTimers[slot] = null;
+          }
+          setExiting((current) => {
+            if (current[slot]?.id !== id) return current;
+            const next = [...current];
+            next[slot] = null;
+            return next;
+          });
+        }, EXIT_TRAIL_CLEANUP_MS);
+        exitCleanupTimers[slot] = timer;
+      }
       onRemoved(board.isCleared());
     } else {
-      setShaking({ arrow: owner, id: nextId.current++ });
+      const id = nextId.current++;
+      const nextShaking = { arrow: owner, id };
+      shakingRef.current = nextShaking;
+      setShaking(nextShaking);
+      if (shakeCleanupTimer.current !== null) {
+        clearTimeout(shakeCleanupTimer.current);
+      }
+      const timer = setTimeout(() => {
+        if (shakeCleanupTimer.current === timer) shakeCleanupTimer.current = null;
+        setShaking((current) => {
+          if (current?.id !== id) return current;
+          shakingRef.current = null;
+          return null;
+        });
+      }, 340);
+      shakeCleanupTimer.current = timer;
       onBlocked();
     }
-  }, [board, onRemoved, onBlocked, hint, clearHint]);
+  }, [
+    arrowArtCache,
+    board,
+    clearHint,
+    hint,
+    onBlocked,
+    onRemoved,
+    reducedMotion,
+  ]);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -170,8 +326,9 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
 
     const tap = Gesture.Tap()
       .maxDuration(400)
-      .onEnd((e) => {
+      .onEnd((e, success) => {
         'worklet';
+        if (!success) return;
         const bx = (e.x - tx.value) / scale.value;
         const by = (e.y - ty.value) / scale.value;
         runOnJS(handleTap)(bx, by);
@@ -194,108 +351,210 @@ export function BoardView({ board, palette, onRemoved, onBlocked, locked, hint, 
     e.preventDefault?.();
   }, [zoomAround]);
 
-  const contentStyle = useMemo(
-    () => ({
-      position: 'absolute' as const,
-      left: 0,
-      top: 0,
-      width: boardW,
-      height: boardH,
-      transformOrigin: '0 0 0',
-    }),
-    [boardW, boardH],
-  );
-
   return (
     <GestureDetector gesture={gesture}>
       <View
+        testID={testID}
+        accessible={testID ? true : undefined}
+        accessibilityLabel={testID}
+        collapsable={testID ? false : undefined}
         style={styles.viewport}
         onLayout={onLayout}
         {...(Platform.OS === 'web' ? ({ onWheel } as any) : null)}
       >
         <BoardContent
-          contentStyle={contentStyle}
           scale={scale}
           tx={tx}
           ty={ty}
+          viewportW={viewportSize.w}
+          viewportH={viewportSize.h}
           boardW={boardW}
           boardH={boardH}
           board={board}
+          arrowArtCache={arrowArtCache}
           palette={palette}
           exiting={exiting}
+          nativeExitAnimation={nativeExitAnimation}
           shaking={shaking}
-          clearShake={() => setShaking(null)}
           hint={hint}
-          clearHint={clearHint}
         />
       </View>
     </GestureDetector>
   );
 }
 
-/** The transformed SVG board (split out so the animated style hook reads cleanly). */
+/** GPU-backed board plus a web-only SVG layer for active feedback. */
 function BoardContent(props: {
-  contentStyle: object;
   scale: SharedValue<number>;
   tx: SharedValue<number>;
   ty: SharedValue<number>;
+  viewportW: number;
+  viewportH: number;
   boardW: number;
   boardH: number;
   board: BoardLogic;
+  arrowArtCache: BoardArrowArtCache;
   palette: Palette;
-  exiting: ExitingTrail[];
-  shaking: { arrow: ArrowPath; id: number } | null;
-  clearShake: () => void;
+  exiting: (ExitingTrail | null)[];
+  nativeExitAnimation: NativeExitAnimation | null;
+  shaking: ShakingArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
-  clearHint: () => void;
 }) {
-  const { contentStyle, scale, tx, ty, boardW, boardH, board, palette, exiting, shaking, clearShake, hint, clearHint } = props;
+  const {
+    scale,
+    tx,
+    ty,
+    viewportW,
+    viewportH,
+    boardW,
+    boardH,
+    board,
+    arrowArtCache,
+    palette,
+    exiting,
+    nativeExitAnimation,
+    shaking,
+    hint,
+  } = props;
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
-  }));
+  const arrowCount = board.count();
+  const excludedArrows = useMemo(() => {
+    const excluded = new Set<ArrowPath>();
+    if (shaking) excluded.add(shaking.arrow);
+    if (hint) excluded.add(hint.arrow);
+    return excluded;
+  }, [shaking?.arrow, hint?.arrow]);
+  const arrows = board.arrows();
+  const staticArt = useMemo(
+    () => Platform.OS === 'web'
+      ? arrowArtCache.batch(arrows, excludedArrows)
+      : { shaftD: '', headD: '' },
+    [arrows, arrowArtCache, arrowCount, excludedArrows],
+  );
+  const nativeGeometry = useMemo(
+    () => arrowArtCache.geometryForNativeView(),
+    [arrowArtCache],
+  );
+  const nativeVisibilityMask = useMemo(
+    () => arrowArtCache.visibilityMask(arrows, excludedArrows),
+    [arrows, arrowArtCache, arrowCount, excludedArrows],
+  );
+  const hasDynamicLayer =
+    shaking !== null || hint !== null || exiting.some((trail) => trail !== null);
+  const shakingArt = shaking ? { id: shaking.id, ...arrowArtCache.artFor(shaking.arrow) } : null;
+  const hintArt = hint ? { id: hint.id, ...arrowArtCache.artFor(hint.arrow) } : null;
 
   return (
-    <Animated.View style={[contentStyle, animatedStyle]}>
-      <Svg width={boardW} height={boardH} viewBox={`0 0 ${boardW} ${boardH}`}>
-        {board.arrows().map((arrow) => {
-          if (shaking && shaking.arrow === arrow) {
-            return (
-              <ShakingArrow
-                key={`s${shaking.id}`}
-                arrow={arrow}
-                palette={palette}
-                onDone={clearShake}
-              />
-            );
-          }
-          if (hint && hint.arrow === arrow) {
-            return <HintArrow key={`h${hint.id}`} arrow={arrow} palette={palette} />;
-          }
-          return <StaticArrow key={arrow.toLine()} arrow={arrow} ink={palette.ink} />;
-        })}
-        {exiting.map((x) => (
-          <ExitTrail key={x.id} path={x.path} ink={palette.ink} />
-        ))}
-      </Svg>
-    </Animated.View>
+    <>
+      <StaticBoardSurface
+        scale={scale}
+        tx={tx}
+        ty={ty}
+        viewportW={viewportW}
+        viewportH={viewportH}
+        boardW={boardW}
+        boardH={boardH}
+        shaftD={staticArt.shaftD}
+        headD={staticArt.headD}
+        nativeGeometry={nativeGeometry}
+        nativeVisibilityMask={nativeVisibilityMask}
+        background={palette.bg}
+        ink={palette.ink}
+        accent={palette.accent}
+        heart={palette.heart}
+        cellSize={CELL}
+        strokeWidth={STROKE * CELL}
+        shaking={shakingArt}
+        hint={hintArt}
+        exiting={exiting}
+        nativeExitAnimation={nativeExitAnimation}
+      />
+      {Platform.OS === 'web' && hasDynamicLayer && (
+        <WebDynamicBoardLayer
+          scale={scale}
+          tx={tx}
+          ty={ty}
+          viewportW={viewportW}
+          viewportH={viewportH}
+          boardW={boardW}
+          boardH={boardH}
+          palette={palette}
+          exiting={exiting}
+          shaking={shaking}
+          hint={hint}
+        />
+      )}
+    </>
   );
 }
 
-function StaticArrow({ arrow, ink }: { arrow: ArrowPath; ink: string }) {
-  const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
+/** Web-only feedback layer. Keeping its animated SVG mapper inside this child
+ * prevents native pan/zoom from evaluating an unused transform string. */
+function WebDynamicBoardLayer({
+  scale,
+  tx,
+  ty,
+  viewportW,
+  viewportH,
+  boardW,
+  boardH,
+  palette,
+  exiting,
+  shaking,
+  hint,
+}: {
+  scale: SharedValue<number>;
+  tx: SharedValue<number>;
+  ty: SharedValue<number>;
+  viewportW: number;
+  viewportH: number;
+  boardW: number;
+  boardH: number;
+  palette: Palette;
+  exiting: (ExitingTrail | null)[];
+  shaking: ShakingArrowState | null;
+  hint: { arrow: ArrowPath; id: number } | null;
+}) {
+  const boardProps = useAnimatedProps(() => ({
+    transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
+  }) as any);
+
   return (
-    <G>
-      <Path
-        d={art.shaftD}
-        stroke={ink}
-        strokeWidth={STROKE * CELL}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <Path d={art.headD} fill={ink} />
-    </G>
+    <Svg
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+      width="100%"
+      height="100%"
+      viewBox={`0 0 ${Math.max(1, viewportW)} ${Math.max(1, viewportH)}`}
+      preserveAspectRatio="none"
+    >
+      <Defs>
+        <ClipPath id="dynamic-board-clip">
+          <Rect x={0} y={0} width={boardW} height={boardH} />
+        </ClipPath>
+      </Defs>
+      <AnimatedG animatedProps={boardProps}>
+        <G clipPath="url(#dynamic-board-clip)">
+          {shaking && (
+            <ShakingArrow
+              key={`s${shaking.id}`}
+              arrow={shaking.arrow}
+              id={shaking.id}
+              palette={palette}
+            />
+          )}
+          {hint && <HintArrow key={`h${hint.id}`} arrow={hint.arrow} palette={palette} />}
+          {exiting.filter((trail): trail is ExitingTrail => trail !== null).map((trail) => (
+            <ExitTrail
+              key={trail.id}
+              path={trail.path}
+              ink={palette.ink}
+              reducedMotion={trail.reducedMotion}
+            />
+          ))}
+        </G>
+      </AnimatedG>
+    </Svg>
   );
 }
 
@@ -303,16 +562,22 @@ function StaticArrow({ arrow, ink }: { arrow: ArrowPath; ink: string }) {
  * Blocked feedback (ArrowTile.PlayShake): decaying horizontal shake, red
  * flash settling back to ink, ~0.3 s.
  */
-function ShakingArrow({ arrow, palette, onDone }: { arrow: ArrowPath; palette: Palette; onDone: () => void }) {
+function ShakingArrow({
+  arrow,
+  id,
+  palette,
+}: {
+  arrow: ArrowPath;
+  id: number;
+  palette: Palette;
+}) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
   const k = useSharedValue(0);
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: 300, easing: Easing.linear }, (finished) => {
-      if (finished) runOnJS(onDone)();
-    });
-  }, [arrow]);
+    k.value = withTiming(1, { duration: 300, easing: Easing.linear });
+  }, [id]);
 
   const gProps = useAnimatedProps(() => {
     const t = k.value * 0.3; // seconds, matching Unity's Time.time-based sin
@@ -390,11 +655,20 @@ function HintArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
  * is a pure translation along the exit direction. The SVG is clipped to the
  * board, so head and trail vanish exactly at the edge.
  */
-function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
+function ExitTrail({
+  path,
+  ink,
+  reducedMotion,
+}: {
+  path: SlitherPath;
+  ink: string;
+  reducedMotion: boolean;
+}) {
   const k = useSharedValue(0);
 
   React.useEffect(() => {
-    k.value = withTiming(1, { duration: 340, easing: Easing.linear });
+    k.value = 0;
+    k.value = withTiming(1, { duration: EXIT_TRAIL_DURATION_MS, easing: Easing.linear });
   }, []);
 
   const fadeAt = (kk: number) => {
@@ -406,26 +680,23 @@ function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
 
   const trailProps = useAnimatedProps(() => {
     const kk = k.value;
-    const travelled = kk * kk * path.totalLen; // accelerate out
-    return { strokeDashoffset: -travelled, opacity: fadeAt(kk) };
-  });
-
-  // The head's motion is a pure translation along the exit ray, but web SVG
-  // paths have no x/y transform props — so rebuild the 3-point path each
-  // frame. No fade on the head: the board edge clips it as it slides off,
-  // which is exactly how leaving should look.
-  const headProps = useAnimatedProps(() => {
-    const travelled = k.value * k.value * path.totalLen;
-    const dx = path.dir.x * travelled;
-    const dy = path.dir.y * travelled;
-    const t = path.headTip, l = path.headBaseL, r = path.headBaseR;
+    const travelled = reducedMotion ? 0 : kk * kk * path.totalLen;
     return {
-      d:
-        `M${t.x + dx} ${t.y + dy} ` +
-        `L${l.x + dx} ${l.y + dy} ` +
-        `L${r.x + dx} ${r.y + dy} Z`,
+      strokeDashoffset: -travelled,
+      opacity: reducedMotion ? 1 - kk : fadeAt(kk),
     };
   });
+
+  const headTransformProps = useAnimatedProps(() => {
+    const travelled = reducedMotion ? 0 : k.value * k.value * path.totalLen;
+    const dx = path.dir.x * travelled;
+    const dy = path.dir.y * travelled;
+    return { transform: `translate(${dx}, ${dy})` } as any;
+  });
+  const headD = useMemo(() => {
+    const t = path.headTip, l = path.headBaseL, r = path.headBaseR;
+    return `M${t.x} ${t.y} L${l.x} ${l.y} L${r.x} ${r.y} Z`;
+  }, [path]);
 
   return (
     <G>
@@ -439,7 +710,9 @@ function ExitTrail({ path, ink }: { path: SlitherPath; ink: string }) {
         fill="none"
         strokeDasharray={`${path.bodyLen} ${path.totalLen + path.bodyLen}`}
       />
-      <AnimatedPath animatedProps={headProps} fill={ink} />
+      <AnimatedG animatedProps={headTransformProps}>
+        <Path d={headD} fill={ink} />
+      </AnimatedG>
     </G>
   );
 }

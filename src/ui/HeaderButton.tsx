@@ -3,7 +3,7 @@ import { Pressable, Text } from 'react-native';
 import { Palette } from './theme';
 
 /** Small round surface button with a glyph (sound / theme / home). */
-export function HeaderButton({
+export const HeaderButton = React.memo(function HeaderButton({
   label,
   active = true,
   palette,
@@ -37,4 +37,4 @@ export function HeaderButton({
       </Text>
     </Pressable>
   );
-}
+});

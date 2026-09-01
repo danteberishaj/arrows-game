@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ArrowsBoardModule"]
+  },
+  "android": {
+    "modules": ["com.danteb.arrows.board.ArrowsBoardModule"]
+  }
+}

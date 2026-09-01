@@ -42,28 +42,157 @@ const center = (r: number, c: number, cell: number): Pt => ({
 
 export interface ArrowArt {
   /** SVG path data for the shaft polyline (tail end -> head base). */
-  shaftD: string;
+  readonly shaftD: string;
   /** SVG path data for the solid triangular arrowhead. */
-  headD: string;
+  readonly headD: string;
+}
+
+interface ArrowShape {
+  readonly shaft: readonly Pt[];
+  readonly tip: Pt;
+  readonly baseL: Pt;
+  readonly baseR: Pt;
 }
 
 /** Builds the shaft + arrowhead SVG paths for one arrow. */
 export function arrowArt(arrow: ArrowPath, cell: number): ArrowArt {
+  const shape = arrowShape(arrow, cell);
+  const shaftD = shape.shaft
+    .map((point, index) =>
+      `${index === 0 ? 'M' : 'L'}${round(point.x)} ${round(point.y)}`,
+    )
+    .join(' ');
+  const headD =
+    `M${round(shape.tip.x)} ${round(shape.tip.y)} ` +
+    `L${round(shape.baseL.x)} ${round(shape.baseL.y)} ` +
+    `L${round(shape.baseR.x)} ${round(shape.baseR.y)} Z`;
+
+  return { shaftD, headD };
+}
+
+function arrowShape(arrow: ArrowPath, cell: number): ArrowShape {
   const d = dirVec(arrow.headDir);
   const perp = { x: -d.y, y: d.x };
 
-  const n = arrow.cells.length;
   const headCenter = center(arrow.head.r, arrow.head.c, cell);
   const tip = { x: headCenter.x + d.x * TIP_EXT * cell, y: headCenter.y + d.y * TIP_EXT * cell };
   const baseBack = { x: tip.x - d.x * HEAD_LEN * cell, y: tip.y - d.y * HEAD_LEN * cell };
   const baseL = { x: baseBack.x + perp.x * HEAD_HALF * cell, y: baseBack.y + perp.y * HEAD_HALF * cell };
   const baseR = { x: baseBack.x - perp.x * HEAD_HALF * cell, y: baseBack.y - perp.y * HEAD_HALF * cell };
+  return { shaft: shaftPoints(arrow, cell, baseBack), tip, baseL, baseR };
+}
 
-  const pts = shaftPoints(arrow, cell, baseBack);
-  const shaftD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${round(p.x)} ${round(p.y)}`).join(' ');
-  const headD = `M${round(tip.x)} ${round(tip.y)} L${round(baseL.x)} ${round(baseL.y)} L${round(baseR.x)} ${round(baseR.y)} Z`;
+/**
+ * Compact, immutable per-board geometry consumed by the native board view.
+ * Each semicolon-delimited arrow starts with its shaft point count, followed
+ * by shaft x/y pairs and the three arrowhead x/y pairs.
+ */
+export function serializeNativeBoardGeometry(
+  arrows: readonly ArrowPath[],
+  cell: number,
+): string {
+  return arrows.map((arrow) => {
+    const shape = arrowShape(arrow, cell);
+    const values: number[] = [shape.shaft.length];
+    for (const point of shape.shaft) values.push(round(point.x), round(point.y));
+    values.push(
+      round(shape.tip.x),
+      round(shape.tip.y),
+      round(shape.baseL.x),
+      round(shape.baseL.y),
+      round(shape.baseR.x),
+      round(shape.baseR.y),
+    );
+    return values.join(',');
+  }).join(';');
+}
 
-  return { shaftD, headD };
+/**
+ * Combines idle arrows into two compound paths. Every shaft starts with `M`
+ * and every head is closed with `Z`, so joining preserves independent stroke
+ * caps and filled triangles while reducing hundreds of native SVG nodes to 2.
+ */
+export function batchedArrowArt(
+  arrows: readonly ArrowPath[],
+  cell: number,
+  excluded?: ReadonlySet<ArrowPath>,
+): ArrowArt {
+  return combineArrowArt(arrows, excluded, (arrow) => arrowArt(arrow, cell));
+}
+
+/**
+ * Geometry retained for exactly one board. BoardView owns one instance per
+ * BoardLogic reference, so cached arrow path strings are released with that
+ * board instead of accumulating in a process-wide cache.
+ */
+export class BoardArrowArtCache {
+  private readonly cell: number;
+  private readonly orderedArrows: readonly ArrowPath[];
+  private readonly artByArrow: ReadonlyMap<ArrowPath, ArrowArt>;
+  private readonly indexByArrow: ReadonlyMap<ArrowPath, number>;
+  private readonly nativeGeometry: string;
+
+  constructor(arrows: readonly ArrowPath[], cell: number) {
+    this.cell = cell;
+    this.orderedArrows = [...arrows];
+    const artByArrow = new Map<ArrowPath, ArrowArt>();
+    const indexByArrow = new Map<ArrowPath, number>();
+    for (const [index, arrow] of this.orderedArrows.entries()) {
+      artByArrow.set(arrow, arrowArt(arrow, cell));
+      indexByArrow.set(arrow, index);
+    }
+    this.artByArrow = artByArrow;
+    this.indexByArrow = indexByArrow;
+    this.nativeGeometry = serializeNativeBoardGeometry(this.orderedArrows, cell);
+  }
+
+  artFor(arrow: ArrowPath): ArrowArt {
+    // A stale hint from another board must still render safely, but is not
+    // retained: the cache remains bounded by its board's initial arrow set.
+    return this.artByArrow.get(arrow) ?? arrowArt(arrow, this.cell);
+  }
+
+  indexFor(arrow: ArrowPath): number | null {
+    return this.indexByArrow.get(arrow) ?? null;
+  }
+
+  batch(
+    arrows: readonly ArrowPath[],
+    excluded?: ReadonlySet<ArrowPath>,
+  ): ArrowArt {
+    return combineArrowArt(arrows, excluded, (arrow) => this.artFor(arrow));
+  }
+
+  geometryForNativeView(): string {
+    return this.nativeGeometry;
+  }
+
+  visibilityMask(
+    visibleArrows: readonly ArrowPath[],
+    excluded?: ReadonlySet<ArrowPath>,
+  ): string {
+    const visible = new Set(visibleArrows);
+    return this.orderedArrows
+      .map((arrow) => visible.has(arrow) && !excluded?.has(arrow) ? '1' : '0')
+      .join('');
+  }
+
+}
+
+function combineArrowArt(
+  arrows: readonly ArrowPath[],
+  excluded: ReadonlySet<ArrowPath> | undefined,
+  artFor: (arrow: ArrowPath) => ArrowArt,
+): ArrowArt {
+  const shafts: string[] = [];
+  const heads: string[] = [];
+  for (const arrow of arrows) {
+    if (excluded?.has(arrow)) continue;
+    const art = artFor(arrow);
+    shafts.push(art.shaftD);
+    heads.push(art.headD);
+  }
+  return { shaftD: shafts.join(' '), headD: heads.join(' ') };
 }
 
 /** Centerline points, tail end (with the rounded tail extension) -> head base. */

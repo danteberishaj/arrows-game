@@ -1,0 +1,2878 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ink" data-detail="deep">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="A benchmark-backed field guide to optimizing dense interactive React Native scenes with selective native modules.">
+  <title>Arrows Performance Field Guide</title>
+  <style>
+    :root {
+      --bg: #0b0a10;
+      --surface: #121118;
+      --surface-2: #181620;
+      --surface-3: #211e2b;
+      --text: #f4f0ff;
+      --muted: #b8b1c5;
+      --faint: #817a8e;
+      --line: #312d3b;
+      --line-strong: #494255;
+      --accent: #8b71ff;
+      --accent-soft: #261f46;
+      --accent-text: #cfc3ff;
+      --magenta: #ed5f9a;
+      --good: #69d7a2;
+      --good-soft: #132c23;
+      --warn: #f4bf63;
+      --warn-soft: #312716;
+      --bad: #ff7f89;
+      --bad-soft: #321a20;
+      --info: #77b8ff;
+      --info-soft: #16283c;
+      --code: #0f0e14;
+      --topbar: rgba(11, 10, 16, 0.94);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --max: 1120px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html[data-theme="day"] {
+      --bg: #f6f4fa;
+      --surface: #ffffff;
+      --surface-2: #f0edf6;
+      --surface-3: #e7e2ef;
+      --text: #17131f;
+      --muted: #595164;
+      --faint: #7b7288;
+      --line: #ddd6e6;
+      --line-strong: #bdb3c9;
+      --accent: #6245df;
+      --accent-soft: #ece7ff;
+      --accent-text: #4f34c0;
+      --magenta: #c93f78;
+      --good: #15784a;
+      --good-soft: #e4f6ed;
+      --warn: #93600c;
+      --warn-soft: #fff4d9;
+      --bad: #bd3342;
+      --bad-soft: #ffe9eb;
+      --info: #246eb7;
+      --info-soft: #e7f2ff;
+      --code: #f3eff7;
+      --topbar: rgba(246, 244, 250, 0.94);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 88px;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.62;
+      text-rendering: optimizeLegibility;
+      overflow-x: hidden;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    a {
+      color: var(--accent-text);
+      text-underline-offset: 3px;
+    }
+
+    a:hover {
+      color: var(--text);
+    }
+
+    code,
+    kbd,
+    .mono {
+      font-family: var(--mono);
+      font-size: 0.91em;
+    }
+
+    code {
+      color: var(--accent-text);
+    }
+
+    ::selection {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .skip-link {
+      position: fixed;
+      left: 12px;
+      top: -60px;
+      z-index: 100;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      top: 12px;
+    }
+
+    .progress {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 80;
+      height: 3px;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .progress > span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: 70px;
+      border-bottom: 1px solid var(--line);
+      background: var(--topbar);
+      backdrop-filter: blur(14px);
+    }
+
+    .topbar-inner {
+      width: min(100% - 32px, 1500px);
+      min-height: 70px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: auto minmax(220px, 560px) auto;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 225px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      width: 29px;
+      height: 29px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: var(--accent-text);
+      background: var(--surface-2);
+      font-family: var(--mono);
+      font-size: 16px;
+    }
+
+    .brand small {
+      display: block;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 620;
+      letter-spacing: 0.08em;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+
+    .search {
+      position: relative;
+      min-width: 0;
+    }
+
+    .search input {
+      width: 100%;
+      min-width: 0;
+      min-height: 42px;
+      padding: 9px 76px 9px 40px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      outline: 0;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .search input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 13px;
+      top: 10px;
+      color: var(--faint);
+      pointer-events: none;
+    }
+
+    .search-hint {
+      position: absolute;
+      right: 10px;
+      top: 9px;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--faint);
+      background: var(--surface-2);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .top-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .icon-button,
+    .segmented button,
+    .filter,
+    .copy-button,
+    .menu-button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .icon-button,
+    .menu-button {
+      min-width: 40px;
+      padding: 7px 10px;
+    }
+
+    .icon-button:hover,
+    .menu-button:hover,
+    .segmented button:hover,
+    .filter:hover,
+    .copy-button:hover {
+      border-color: var(--line-strong);
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .menu-button {
+      display: none;
+    }
+
+    .layout {
+      width: min(100% - 32px, 1500px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 230px minmax(0, var(--max));
+      justify-content: center;
+      gap: 42px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 92px;
+      align-self: start;
+      height: calc(100vh - 112px);
+      padding: 4px 4px 30px 0;
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+
+    .sidebar-label {
+      margin: 0 0 9px 12px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .sidebar ol {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .sidebar a {
+      display: grid;
+      grid-template-columns: 25px 1fr;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+
+    .sidebar a span {
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+    }
+
+    .sidebar a:hover,
+    .sidebar a.active {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .sidebar a.active span {
+      color: var(--accent-text);
+    }
+
+    .sidebar-note {
+      margin: 24px 0 0;
+      padding: 13px 12px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    main {
+      min-width: 0;
+      padding: 56px 0 110px;
+    }
+
+    section {
+      margin-top: 92px;
+    }
+
+    section:first-child {
+      margin-top: 0;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 17px;
+      color: var(--accent-text);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 18px;
+      height: 1px;
+      background: var(--accent);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.12;
+      text-wrap: balance;
+    }
+
+    h1 {
+      max-width: 880px;
+      font-size: clamp(42px, 7vw, 82px);
+      font-weight: 780;
+      letter-spacing: -0.062em;
+    }
+
+    h1 em {
+      color: var(--accent-text);
+      font-style: normal;
+    }
+
+    h2 {
+      font-size: clamp(29px, 4vw, 46px);
+      font-weight: 760;
+      letter-spacing: -0.045em;
+    }
+
+    h3 {
+      font-size: 21px;
+      letter-spacing: -0.025em;
+    }
+
+    h4 {
+      font-size: 15px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .lede {
+      max-width: 800px;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: clamp(18px, 2vw, 23px);
+      line-height: 1.5;
+      letter-spacing: -0.015em;
+    }
+
+    .hero-meta {
+      margin-top: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip,
+    .status,
+    .confidence {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .chip strong {
+      color: var(--text);
+    }
+
+    .verdict {
+      margin-top: 44px;
+      padding: 23px 24px;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 17px;
+      align-items: start;
+    }
+
+    .verdict-mark {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--accent-text);
+      font-family: var(--mono);
+      font-size: 19px;
+    }
+
+    .verdict strong {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 18px;
+    }
+
+    .verdict p {
+      color: var(--muted);
+    }
+
+    .runtime-map {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .runtime-step {
+      position: relative;
+      min-height: 128px;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+    }
+
+    .runtime-step:last-child {
+      border-right: 0;
+    }
+
+    .runtime-step::after {
+      content: "→";
+      position: absolute;
+      right: -8px;
+      top: 47px;
+      z-index: 1;
+      color: var(--accent-text);
+      background: var(--surface);
+      font-family: var(--mono);
+    }
+
+    .runtime-step:last-child::after {
+      content: none;
+    }
+
+    .runtime-step small {
+      display: block;
+      margin-bottom: 9px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .runtime-step strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .runtime-step p {
+      color: var(--faint);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .section-head {
+      margin-bottom: 32px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 440px);
+      gap: 36px;
+      align-items: end;
+    }
+
+    .section-head > p {
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .callout {
+      margin: 24px 0;
+      padding: 17px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .callout strong {
+      color: var(--text);
+    }
+
+    .callout.good {
+      border-color: color-mix(in srgb, var(--good) 50%, var(--line));
+      background: var(--good-soft);
+    }
+
+    .callout.warn {
+      border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+      background: var(--warn-soft);
+    }
+
+    .callout.bad {
+      border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+      background: var(--bad-soft);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .metric {
+      min-height: 156px;
+      padding: 21px;
+      border-right: 1px solid var(--line);
+    }
+
+    .metric:last-child {
+      border-right: 0;
+    }
+
+    .metric-label {
+      display: block;
+      min-height: 38px;
+      color: var(--faint);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      display: block;
+      margin: 7px 0 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: clamp(26px, 3.6vw, 39px);
+      font-weight: 750;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .metric-delta {
+      color: var(--good);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .metric-note {
+      margin-top: 8px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .comparison {
+      margin-top: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .comparison-head,
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 1.5fr) minmax(220px, 3fr) 108px;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .comparison-head {
+      padding: 11px 17px;
+      border-bottom: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .bar-row {
+      padding: 14px 17px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .bar-row:last-child {
+      border-bottom: 0;
+    }
+
+    .bar-label strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .bar-label small {
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .track {
+      height: 9px;
+      border-radius: 99px;
+      background: var(--surface-3);
+      overflow: hidden;
+    }
+
+    .track > span {
+      display: block;
+      width: var(--w);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .bar-row.rejected .track > span {
+      background: var(--bad);
+    }
+
+    .bar-row.diagnostic .track > span {
+      background: var(--info);
+    }
+
+    .bar-value {
+      text-align: right;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .fine-print {
+      margin-top: 13px;
+      color: var(--faint);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .mt-12 {
+      margin-top: 12px;
+    }
+
+    .mt-16 {
+      margin-top: 16px;
+    }
+
+    .mt-20 {
+      margin-top: 20px;
+    }
+
+    .flush {
+      margin: 0;
+    }
+
+    .section-subhead {
+      margin: 34px 0 14px;
+    }
+
+    .recipe-heading {
+      margin: 38px 0 14px;
+    }
+
+    .bar-full {
+      --w: 100%;
+    }
+
+    .bar-native {
+      --w: 61%;
+    }
+
+    .bar-floor {
+      --w: 52%;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+    }
+
+    .panel > p,
+    .panel li {
+      color: var(--muted);
+    }
+
+    .panel h3,
+    .panel h4 {
+      margin-bottom: 10px;
+    }
+
+    .panel ul,
+    .panel ol {
+      margin: 12px 0 0;
+      padding-left: 20px;
+    }
+
+    .panel li + li {
+      margin-top: 7px;
+    }
+
+    .panel.accent {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .diagram {
+      padding: 21px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      overflow: auto;
+    }
+
+    .diagram-flow {
+      min-width: 780px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .diagram-node {
+      position: relative;
+      padding: 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+
+    .diagram-node + .diagram-node::before {
+      content: "→";
+      position: absolute;
+      left: -15px;
+      top: 41%;
+      color: var(--accent-text);
+      font-family: var(--mono);
+    }
+
+    .diagram-node small {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .diagram-node strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .diagram-node p {
+      margin-top: 6px;
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .table-wrap {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: auto;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      min-width: 820px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      color: var(--faint);
+      background: var(--surface-2);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    tbody tr:hover td {
+      background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+    }
+
+    td strong {
+      color: var(--text);
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    .status {
+      padding: 3px 7px;
+      white-space: nowrap;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .status.keep {
+      color: var(--good);
+      border-color: color-mix(in srgb, var(--good) 50%, var(--line));
+      background: var(--good-soft);
+    }
+
+    .status.reject {
+      color: var(--bad);
+      border-color: color-mix(in srgb, var(--bad) 50%, var(--line));
+      background: var(--bad-soft);
+    }
+
+    .status.learn {
+      color: var(--info);
+      border-color: color-mix(in srgb, var(--info) 50%, var(--line));
+      background: var(--info-soft);
+    }
+
+    .status.limit {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 50%, var(--line));
+      background: var(--warn-soft);
+    }
+
+    .toolbar {
+      margin: 0 0 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .filters,
+    .segmented {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+
+    .filter,
+    .segmented button,
+    .copy-button {
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+
+    .filter[aria-pressed="true"],
+    .segmented button[aria-pressed="true"] {
+      border-color: var(--accent);
+      color: var(--accent-text);
+      background: var(--accent-soft);
+    }
+
+    .timeline {
+      position: relative;
+      margin-left: 11px;
+      border-left: 1px solid var(--line-strong);
+    }
+
+    .timeline-item {
+      position: relative;
+      padding: 0 0 31px 32px;
+    }
+
+    .timeline-item:last-child {
+      padding-bottom: 0;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -6px;
+      top: 4px;
+      width: 11px;
+      height: 11px;
+      border: 2px solid var(--bg);
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .timeline-kicker {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--accent-text);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .timeline-item p {
+      max-width: 760px;
+      margin-top: 7px;
+      color: var(--muted);
+    }
+
+    .timeline-result {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .assumption-list {
+      counter-reset: assumption;
+      display: grid;
+      gap: 12px;
+    }
+
+    .assumption {
+      counter-increment: assumption;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 13px;
+    }
+
+    .assumption::before {
+      content: counter(assumption, decimal-leading-zero);
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding-top: 2px;
+    }
+
+    .assumption-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 13px;
+      align-items: start;
+    }
+
+    .assumption-row > span {
+      color: var(--accent-text);
+      font-family: var(--mono);
+    }
+
+    .assumption h4 {
+      margin-bottom: 5px;
+    }
+
+    .assumption p {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .recipe {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .recipe + .recipe {
+      margin-top: 13px;
+    }
+
+    .recipe summary {
+      padding: 15px 17px;
+      cursor: pointer;
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .recipe summary::marker {
+      color: var(--accent);
+    }
+
+    .recipe-body {
+      padding: 0 17px 17px;
+      color: var(--muted);
+    }
+
+    pre {
+      margin: 13px 0 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: auto;
+      background: var(--code);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      tab-size: 2;
+    }
+
+    .playbook {
+      counter-reset: playbook;
+      border-top: 1px solid var(--line);
+    }
+
+    .playbook-step {
+      counter-increment: playbook;
+      display: grid;
+      grid-template-columns: 52px 230px minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .playbook-step::before {
+      content: counter(playbook, decimal-leading-zero);
+      color: var(--accent-text);
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .playbook-step h3 {
+      font-size: 16px;
+    }
+
+    .playbook-step p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .deep-only {
+      display: revert;
+    }
+
+    html[data-detail="compact"] .deep-only {
+      display: none !important;
+    }
+
+    .searchable.search-hidden {
+      display: none !important;
+    }
+
+    .no-results {
+      display: none;
+      margin: 24px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      background: var(--surface);
+    }
+
+    .no-results.visible {
+      display: block;
+    }
+
+    .footer {
+      margin-top: 100px;
+      padding-top: 25px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1050px) {
+      .layout {
+        grid-template-columns: 190px minmax(0, 1fr);
+        gap: 26px;
+      }
+
+      .runtime-map {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .runtime-step:nth-child(3) {
+        border-right: 0;
+      }
+
+      .runtime-step:nth-child(n+4) {
+        border-top: 1px solid var(--line);
+      }
+
+      .runtime-step:nth-child(3)::after {
+        content: none;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .metric:nth-child(2) {
+        border-right: 0;
+      }
+
+      .metric:nth-child(n+3) {
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 800px) {
+      .topbar-inner {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 9px;
+      }
+
+      .brand {
+        min-width: 0;
+      }
+
+      .brand > span:last-child,
+      .search-hint,
+      .top-actions .print-button {
+        display: none;
+      }
+
+      .search input {
+        padding-right: 12px;
+      }
+
+      .menu-button {
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .layout {
+        width: min(100% - 24px, var(--max));
+        display: block;
+        min-width: 0;
+      }
+
+      .sidebar {
+        position: fixed;
+        inset: 70px auto 0 0;
+        z-index: 45;
+        width: min(84vw, 290px);
+        height: auto;
+        padding: 20px 14px;
+        border-right: 1px solid var(--line);
+        background: var(--bg);
+        transform: translateX(-105%);
+        transition: transform 180ms ease;
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      main {
+        width: 100%;
+        min-width: 0;
+        padding-top: 42px;
+      }
+
+      .verdict > *,
+      .panel,
+      .section-head > * {
+        min-width: 0;
+      }
+
+      section {
+        margin-top: 72px;
+      }
+
+      .section-head {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .runtime-map {
+        grid-template-columns: 1fr;
+      }
+
+      .runtime-step,
+      .runtime-step:nth-child(3) {
+        border-right: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .runtime-step:first-child {
+        border-top: 0;
+      }
+
+      .runtime-step::after {
+        content: none;
+      }
+
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .comparison-head,
+      .bar-row {
+        grid-template-columns: 1fr 82px;
+      }
+
+      .comparison-head > :nth-child(2),
+      .bar-row .track {
+        display: none;
+      }
+
+      .playbook-step {
+        grid-template-columns: 38px minmax(0, 1fr);
+      }
+
+      .playbook-step p {
+        grid-column: 2;
+      }
+
+      .assumption-row {
+        grid-template-columns: 1fr;
+      }
+
+      .assumption-row > span {
+        transform: rotate(90deg);
+        transform-origin: left;
+        height: 13px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .topbar-inner {
+        width: calc(100% - 20px);
+      }
+
+      h1 {
+        font-size: 43px;
+      }
+
+      .lede {
+        font-size: 18px;
+      }
+
+      .verdict {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .metric,
+      .metric:nth-child(2) {
+        border-right: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .metric:first-child {
+        border-top: 0;
+      }
+
+      .footer {
+        flex-direction: column;
+      }
+    }
+
+    @media print {
+      :root {
+        --bg: #fff;
+        --surface: #fff;
+        --surface-2: #f5f3f7;
+        --surface-3: #ece8f0;
+        --text: #111;
+        --muted: #3f3a46;
+        --faint: #655e6f;
+        --line: #ccc5d3;
+        --line-strong: #a89fb4;
+        --accent: #4f32b8;
+        --accent-soft: #f1edff;
+        --accent-text: #4f32b8;
+        --good: #12663f;
+        --good-soft: #effaf4;
+        --warn: #76500d;
+        --warn-soft: #fff8e7;
+        --bad: #9d2d39;
+        --bad-soft: #fff0f1;
+        --info: #275f99;
+        --info-soft: #edf6ff;
+        --code: #f5f3f7;
+      }
+
+      html {
+        font-size: 10pt;
+      }
+
+      .topbar,
+      .sidebar,
+      .progress,
+      .toolbar,
+      .copy-button {
+        display: none !important;
+      }
+
+      .layout {
+        width: auto;
+        display: block;
+      }
+
+      main {
+        padding: 0;
+      }
+
+      section {
+        break-before: page;
+        margin-top: 0;
+      }
+
+      #overview {
+        break-before: auto;
+      }
+
+      .panel,
+      .comparison,
+      .table-wrap,
+      .diagram,
+      .verdict {
+        break-inside: avoid;
+      }
+
+      .deep-only {
+        display: revert !important;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="progress" aria-hidden="true"><span id="progressBar"></span></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#overview" aria-label="Arrows performance field guide home">
+        <span class="brand-mark">↗</span>
+        <span>Performance Field Guide<small>Arrows Snaxx · 2026</small></span>
+      </a>
+      <label class="search">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="Search ownership, jank, native, memory…" autocomplete="off" aria-label="Search this guide">
+        <span class="search-hint">⌘ K</span>
+      </label>
+      <div class="top-actions">
+        <button class="icon-button print-button" id="printButton" type="button" title="Print or save as PDF" aria-label="Print or save as PDF">⇩</button>
+        <button class="icon-button" id="themeButton" type="button" title="Switch light and dark theme" aria-label="Switch light and dark theme">◐</button>
+        <button class="menu-button" id="menuButton" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="Open section navigation">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar" aria-label="Guide sections">
+      <p class="sidebar-label">Field guide</p>
+      <ol>
+        <li><a href="#overview"><span>01</span>Verdict</a></li>
+        <li><a href="#evidence"><span>02</span>Evidence</a></li>
+        <li><a href="#architecture"><span>03</span>Architecture</a></li>
+        <li><a href="#assumptions"><span>04</span>Assumptions corrected</a></li>
+        <li><a href="#journey"><span>05</span>Optimization journey</a></li>
+        <li><a href="#ledger"><span>06</span>Experiment ledger</a></li>
+        <li><a href="#atlas"><span>07</span>Optimization atlas</a></li>
+        <li><a href="#native"><span>08</span>Native modules</a></li>
+        <li><a href="#benchmarking"><span>09</span>Benchmark method</a></li>
+        <li><a href="#decision"><span>10</span>React Native vs Godot</a></li>
+        <li><a href="#playbook"><span>11</span>Reusable playbook</a></li>
+        <li><a href="#limits"><span>12</span>Limits &amp; triggers</a></li>
+        <li><a href="#sources"><span>13</span>Source map</a></li>
+      </ol>
+      <p class="sidebar-note">A durable record of what worked, what failed, and how to reason about the next performance problem.</p>
+    </nav>
+
+    <main id="content">
+      <section id="overview" aria-labelledby="overview-title">
+        <p class="eyebrow">01 · Final engineering verdict</p>
+        <h1 id="overview-title">The bottleneck was <em>ownership</em>, not React Native.</h1>
+        <p class="lede">Dense missions were slow because hundreds of mostly-static arrows were represented and updated at the wrong layer. The winning design keeps game rules in TypeScript, gestures on the UI runtime, and gives the dense static field to one retained native view.</p>
+
+        <div class="hero-meta" role="group" aria-label="Guide scope">
+          <span class="chip"><strong>250</strong> arrows tested</span>
+          <span class="chip"><strong>2,247</strong> removals in final soak</span>
+          <span class="chip"><strong>20</strong> missions, one process</span>
+          <span class="chip"><strong>Android API 31</strong> · 60 Hz</span>
+          <span class="chip"><strong>Release</strong> build</span>
+        </div>
+
+        <div class="verdict">
+          <div class="verdict-mark" aria-hidden="true">✓</div>
+          <div>
+            <strong>Stay with the hybrid React Native architecture.</strong>
+            <p>The final native board renderer cleared every defined frame and memory gate. A Godot rewrite would replace the whole product stack to solve a hotspot that now sits only 1.66 ms above the measured empty-scene floor.</p>
+          </div>
+        </div>
+
+        <div class="runtime-map" role="group" aria-label="Final runtime ownership map">
+          <article class="runtime-step">
+            <small>Rules</small>
+            <strong>TypeScript core</strong>
+            <p>Generation, collision, hints, saves, hearts, and mission state stay deterministic and testable.</p>
+          </article>
+          <article class="runtime-step">
+            <small>Interaction</small>
+            <strong>UI runtime</strong>
+            <p>Pan and pinch transforms stay off the JS thread through Gesture Handler and Reanimated.</p>
+          </article>
+          <article class="runtime-step">
+            <small>Static field</small>
+            <strong>Native board view</strong>
+            <p>One bounded view retains arrow geometry, draws two compound paths, and owns transform-only dense exits.</p>
+          </article>
+          <article class="runtime-step">
+            <small>Transient art</small>
+            <strong>Small Skia layer</strong>
+            <p>Shake, hint, and at most two full slither exits remain here only after the board becomes sparse.</p>
+          </article>
+          <article class="runtime-step">
+            <small>Feedback</small>
+            <strong>Native pool</strong>
+            <p>Audio and haptic resources are loaded once, reused, and fired without Promise traffic.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="evidence" aria-labelledby="evidence-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">02 · Comparable production evidence</p>
+            <h2 id="evidence-title">A measured breakthrough, not a hunch.</h2>
+          </div>
+          <p>These three results share the same release protocol, API 31 host-GPU emulator, 60 Hz target, 20-level sequence, 2,247 arrow removals, enabled feedback, and single process.</p>
+        </div>
+
+        <div class="metrics" role="group" aria-label="Final native renderer improvements over production Skia">
+          <article class="metric">
+            <span class="metric-label">Active frame p95</span>
+            <span class="metric-value">11.45 ms</span>
+            <span class="metric-delta">↓ 39.0% vs Skia</span>
+            <p class="metric-note">Gate: ≤ 20 ms</p>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Active frame p99</span>
+            <span class="metric-value">13.45 ms</span>
+            <span class="metric-delta">↓ 38.0% vs Skia</span>
+            <p class="metric-note">Gate: ≤ 34 ms</p>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Janky frames</span>
+            <span class="metric-value">0.19%</span>
+            <span class="metric-delta">↓ 97.5% vs Skia</span>
+            <p class="metric-note">Gate: ≤ 10%</p>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Tail memory growth</span>
+            <span class="metric-value">5.62 MB</span>
+            <span class="metric-delta">↓ 46.2% vs Skia</span>
+            <p class="metric-note">Memory gate passed</p>
+          </article>
+        </div>
+
+        <div class="comparison" role="group" aria-label="Comparable renderer benchmark">
+          <div class="comparison-head"><span>Renderer</span><span>Relative p95</span><span>Measured p95</span></div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Skia survivor paths</strong><small>Production source baseline · memory fail</small></div>
+            <div class="track"><span class="bar-full"></span></div>
+            <div class="bar-value">18.781 ms</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Cached native paths</strong><small>Parsing/retention experiment · memory pass</small></div>
+            <div class="track"><span class="bar-full"></span></div>
+            <div class="bar-value">18.782 ms</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Retained native board</strong><small>Accepted production architecture · all gates pass</small></div>
+            <div class="track"><span class="bar-native"></span></div>
+            <div class="bar-value">11.448 ms</div>
+          </div>
+          <div class="bar-row diagnostic">
+            <div class="bar-label"><strong>Empty static scene</strong><small>Diagnostic floor · not shippable</small></div>
+            <div class="track"><span class="bar-floor"></span></div>
+            <div class="bar-value">9.793 ms</div>
+          </div>
+        </div>
+        <p class="fine-print">The final board is only 1.66 ms above the empty-scene p95 floor. That does not mean the app “runs at 87 FPS”; p95 is a frame-duration percentile during active input. Surface-presented FPS is intentionally diluted by idle probe gaps and must not be reported as gameplay FPS.</p>
+
+        <div class="grid-2 mt-20">
+          <article class="panel">
+            <h3>Core algorithms were not the final bottleneck</h3>
+            <p>A fresh 3,000-sample Node 24 run across five 224–250-arrow fixtures measured generation p95 around 4.8–5.0 ms, geometry around 0.23 ms, key serialization around 0.03 ms, and hint solving around 0.05 ms.</p>
+            <ul class="deep-only">
+              <li>Typed row and column boundaries made exit-lane lookup O(1).</li>
+              <li>A live-cell linked structure removed repeated board scans.</li>
+              <li>RNG order and fixture fingerprints stayed unchanged.</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Memory needed a lifecycle test</h3>
+            <p>A pre-native 50-level soak passed its frame gate but grew 26.57 MB in the leak-sensitive window. That exposed retention which a single-mission microbenchmark could never see.</p>
+            <ul class="deep-only">
+              <li>The final native result passed a complete 20-level soak.</li>
+              <li>The final 50-level native memory run is incomplete.</li>
+              <li>Never claim a passed 50-level final soak until it exists.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout warn">
+          <strong>Evidence boundary:</strong> early SVG and Skia experiments used a different GPU/runtime phase. They explain the journey, but they are not a clean A/B comparison with the final build. The three production rows above are the defensible same-protocol comparison.
+        </div>
+
+        <div class="grid-3 deep-only">
+          <article class="panel">
+            <h3>58 tests passed</h3>
+            <p>39 Jest tests across six suites plus 19 Android harness parser/utility tests.</p>
+          </article>
+          <article class="panel">
+            <h3>Types and patch shape passed</h3>
+            <p><code>tsc --noEmit</code> and <code>git diff --check</code> completed cleanly in the final audit.</p>
+          </article>
+          <article class="panel">
+            <h3>Generation stayed equivalent</h3>
+            <p>Fixed-level fingerprints and solve validity remained unchanged while generator internals improved.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture" aria-labelledby="architecture-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">03 · Final architecture</p>
+            <h2 id="architecture-title">Move stable work to the layer that can retain it.</h2>
+          </div>
+          <p>The useful boundary is not “JavaScript versus native.” It is mutable versus stable work, and how often data must cross ownership boundaries.</p>
+        </div>
+
+        <div class="diagram" role="img" aria-label="Data flow from TypeScript game model through a compact native protocol to platform drawing">
+          <div class="diagram-flow">
+            <article class="diagram-node">
+              <small>Once per mission</small>
+              <strong>TypeScript model</strong>
+              <p>Build deterministic arrows and immutable geometry.</p>
+            </article>
+            <article class="diagram-node">
+              <small>Compact protocol</small>
+              <strong>Geometry + mask</strong>
+              <p>Full geometry once; visibility updates after exits.</p>
+            </article>
+            <article class="diagram-node">
+              <small>Retained state</small>
+              <strong>Native board view</strong>
+              <p>Parse once, keep paths, rebuild only when visibility changes.</p>
+            </article>
+            <article class="diagram-node">
+              <small>Two draw calls</small>
+              <strong>Platform canvas</strong>
+              <p>Stroke every shaft, then fill every arrow head.</p>
+            </article>
+            <article class="diagram-node">
+              <small>Rare event</small>
+              <strong>Tap to JS</strong>
+              <p>One coordinate crosses back for authoritative game rules.</p>
+            </article>
+          </div>
+        </div>
+
+        <div class="grid-3 mt-16">
+          <article class="panel">
+            <h3>JavaScript owns meaning</h3>
+            <p>The board model, collision rules, level generator, hints, hearts, saves, ads, and navigation remain easy to test and change.</p>
+          </article>
+          <article class="panel accent">
+            <h3>Native owns the dense pixels</h3>
+            <p>Android Canvas and iOS Core Graphics keep immutable paths close to the drawing API instead of rebuilding a host-component tree.</p>
+          </article>
+          <article class="panel">
+            <h3>Skia owns short motion</h3>
+            <p>A transparent persistent surface draws only a hint, one shake, and at most two exit effects—not the hundreds of static arrows.</p>
+          </article>
+        </div>
+
+        <div class="callout good">
+          <strong>The governing rule:</strong> cross runtime boundaries with facts, not frames. Send geometry once per mission, send a bounded visibility change when an arrow exits, and return one tap coordinate. Never stream every arrow’s transformed position through JavaScript on every frame.
+        </div>
+      </section>
+
+      <section id="assumptions" aria-labelledby="assumptions-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">04 · Assumptions corrected</p>
+            <h2 id="assumptions-title">What we believed, and what the traces taught us.</h2>
+          </div>
+          <p>Performance work becomes reusable when failed mental models are recorded—not just the final code.</p>
+        </div>
+
+        <div class="assumption-list">
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: each arrow is a small component.</h4><p>One group and two paths felt harmless in isolation.</p></div>
+              <span>→</span>
+              <div><h4>Learned: multiplicity changes the architecture.</h4><p>At 250 arrows that became roughly 750 SVG host nodes, reconciliation work, native objects, and draw traversal.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: logical board size equals rendering cost.</h4><p>A 1560×1560 logical scene did not sound extreme.</p></div>
+              <span>→</span>
+              <div><h4>Learned: density decides backing memory.</h4><p>At 560 dpi it could become a 5460×5460 bitmap—about 119 MB before normal app memory.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: fewer React renders means smooth frames.</h4><p>Memoization looked like the first-line cure.</p></div>
+              <span>→</span>
+              <div><h4>Learned: render ownership can dominate React work.</h4><p>The largest cost remained in native host nodes, path composition, surfaces, and recurring draw work after React churn was reduced.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: batching into two paths solves the board.</h4><p>It removed hundreds of nodes and saved memory.</p></div>
+              <span>→</span>
+              <div><h4>Learned: batching is necessary, not sufficient.</h4><p>Compound SVG still parsed and rendered through a costly stack; early p95 improved from about 124.7 to 110.6 ms but remained unusable.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: “native” automatically means fast.</h4><p>A first native display-list experiment sounded decisive.</p></div>
+              <span>→</span>
+              <div><h4>Learned: a bad native boundary stays bad.</h4><p>The oversized transformed native child regressed to about 125.6 ms p95. The final win came from a bounded local retained view with a tiny protocol.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: a fast microbenchmark is enough.</h4><p>Some hybrid effects won short interactions.</p></div>
+              <span>→</span>
+              <div><h4>Learned: realistic sequences change the winner.</h4><p>A static-Skia plus SVG-feedback hybrid failed a multi-exit soak at about 50.7 ms p95. Interaction mix and lifecycle matter.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: memory after one mission is representative.</h4><p>Snapshots looked stable enough.</p></div>
+              <span>→</span>
+              <div><h4>Learned: retention is a trend, not a point.</h4><p>Only same-process 20–50 mission soaks exposed monotonic growth, animation retention, and cleanup failures.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: disabling visual feedback is an optimization.</h4><p>No trails reduced allocation and memory.</p></div>
+              <span>→</span>
+              <div><h4>Learned: diagnostics are not product decisions.</h4><p>The no-trail run isolated a cause. The shipping design kept feedback but bounded it to two slots, 180 ms, and dense-board degradation.</p></div>
+            </div>
+          </article>
+          <article class="assumption searchable">
+            <div class="assumption-row">
+              <div><h4>Original: a game engine is the next performance step.</h4><p>Godot promises centralized scene rendering.</p></div>
+              <span>→</span>
+              <div><h4>Learned: migrate only when the remaining system demands it.</h4><p>The narrow native renderer reached the empty-scene floor while preserving store, ads, persistence, navigation, and TypeScript game logic.</p></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="journey" aria-labelledby="journey-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">05 · Optimization journey</p>
+            <h2 id="journey-title">The path was a sequence of falsifiable questions.</h2>
+          </div>
+          <p>Each stage either removed a class of work, isolated a subsystem, or taught us which boundary not to use.</p>
+        </div>
+
+        <div class="timeline">
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">1 · Reproduce the worst density</span>
+            <h3>Make the problem deterministic.</h3>
+            <p>Fixed large missions—especially a 39×39, 250-arrow fixture—turned “sometimes laggy” into a repeatable workload with checksums.</p>
+            <span class="timeline-result">Outcome: stable inputs, no correctness drift</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">2 · Bound the viewport</span>
+            <h3>Stop allocating the whole logical world.</h3>
+            <p>The first emergency fix constrained the SVG backing surface to the visible viewport while transforms handled navigation.</p>
+            <span class="timeline-result">Outcome: prevented ≈119 MB backing-bitmap crash</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">3 · Collapse host objects</span>
+            <h3>Replace 750 nodes with two compound paths.</h3>
+            <p>All shafts became one stroked path and all heads one filled path. It saved memory and some frame time, but established that host-node count was only one layer of cost.</p>
+            <span class="timeline-result">Early p95: ≈124.7 → ≈110.6 ms · still rejected</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">4 · Move pixels to Skia</span>
+            <h3>Separate React reconciliation from canvas drawing.</h3>
+            <p>Static Skia delivered the first major rendering reduction. Feedback was moved onto the same surface and geometry was cached.</p>
+            <span class="timeline-result">Early p95 reached ≈71–75 ms in that phase</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">5 · Learn from a native regression</span>
+            <h3>Reject “native” as a strategy by itself.</h3>
+            <p>An oversized transformed display-list implementation was slower than Skia. Its boundary retained the wrong object and still made composition expensive.</p>
+            <span class="timeline-result">Early native p95 ≈125.6 ms · reverted</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">6 · Isolate dynamic work</span>
+            <h3>Use empty, no-trail, opaque, and feedback-off diagnostics.</h3>
+            <p>Ablations showed static drawing, transparent composition, exit effects, and first-use feedback had distinct costs. Each needed a targeted owner.</p>
+            <span class="timeline-result">Outcome: causal evidence, not shipping variants</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">7 · Bound every transient resource</span>
+            <h3>Turn animations and feedback into fixed-size pools.</h3>
+            <p>Two trail slots, one active shake, one hint, 180 ms cleanup, reusable audio players, and reusable haptic generators replaced open-ended allocation.</p>
+            <span class="timeline-result">Outcome: lower tails with behavior preserved</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">8 · Fix lifecycle, not just draw calls</span>
+            <h3>Make mission transitions boring.</h3>
+            <p>The board stopped remounting, duplicate generation disappeared, stale timers and taps were invalidated, storage writes were coalesced, and native resources were cleared.</p>
+            <span class="timeline-result">Outcome: stable same-process soak behavior</span>
+          </article>
+          <article class="timeline-item searchable">
+            <span class="timeline-kicker">9 · Build the narrow retained view</span>
+            <h3>Give static geometry one long-lived native owner.</h3>
+            <p>Geometry crosses once per mission; a compact mask describes survivors; Android and iOS draw shafts and heads in two passes; transforms remain outside the view.</p>
+            <span class="timeline-result">Final p95 11.45 ms · jank 0.19% · accepted</span>
+          </article>
+          <article class="timeline-item searchable deep-only">
+            <span class="timeline-kicker">10 · Freeze only proven work</span>
+            <h3>Keep the experiment ledger beside the implementation.</h3>
+            <p>Several plausible refactors, caches, chunk sizes, GC calls, and overlays were removed after regressions. Optimization is complete only when rejected complexity is also cleaned up.</p>
+            <span class="timeline-result">Outcome: smaller maintenance surface and honest evidence</span>
+          </article>
+        </div>
+      </section>
+
+      <section id="ledger" aria-labelledby="ledger-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">06 · Searchable experiment ledger</p>
+            <h2 id="ledger-title">Keep the lessons, not just the winners.</h2>
+          </div>
+          <p>“Rejected” means the idea failed this workload or boundary—not that the technique is universally bad. Re-run it if the product shape changes.</p>
+        </div>
+
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter experiments by result">
+            <button class="filter" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-filter="keep" aria-pressed="false">Retained</button>
+            <button class="filter" type="button" data-filter="reject" aria-pressed="false">Rejected</button>
+            <button class="filter" type="button" data-filter="learn" aria-pressed="false">Diagnostic</button>
+            <button class="filter" type="button" data-filter="limit" aria-pressed="false">Open limit</button>
+          </div>
+          <div class="segmented" role="group" aria-label="Reading detail">
+            <button type="button" data-detail-value="compact" aria-pressed="false">Compact</button>
+            <button type="button" data-detail-value="deep" aria-pressed="true">Deep</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="experimentTable">
+            <thead>
+              <tr>
+                <th>Approach</th>
+                <th>Why we tried it</th>
+                <th>Observed result</th>
+                <th>Decision</th>
+                <th class="deep-only">Reusable lesson</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Bound SVG to viewport</strong></td>
+                <td>Prevent density-scaled allocation of the entire logical board.</td>
+                <td>Avoided a possible 119,246,400-byte backing bitmap and stopped the crash.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Rendering bounds and world coordinates are different concepts. Clip first, transform inside.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>Two compound SVG paths</strong></td>
+                <td>Collapse roughly 750 host nodes into one shaft path and one head path.</td>
+                <td>Early p95 ≈124.7 → 110.6 ms; median PSS ≈301.7 → 268.9 MB. Still 100% jank.</td>
+                <td><span class="status learn">Superseded</span></td>
+                <td class="deep-only">Object batching can be a major win even when the underlying renderer remains the bottleneck.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>Static Skia board</strong></td>
+                <td>Use one drawing surface and avoid a large SVG host tree.</td>
+                <td>First major frame-time reduction; later production source reached 18.78 ms p95.</td>
+                <td><span class="status learn">Narrowed</span></td>
+                <td class="deep-only">Canvas rendering was the right direction, but stable geometry still deserved a retained native owner.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Small persistent Skia overlay</strong></td>
+                <td>Keep transient motion off React and avoid canvas remount churn.</td>
+                <td>Useful for one hint, one shake, and two exit slots; not enough as the static renderer.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Use a specialized renderer for the part it is best at, not by default for the whole scene.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Early native display list</strong></td>
+                <td>Assume moving the existing structure native would remove overhead.</td>
+                <td>About 125.6 ms p95—77.6% slower than the then-current Skia phase.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Native code with an oversized transformed child and poor invalidation can be slower than a focused cross-platform renderer.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Per-board geometry cache</strong></td>
+                <td>Stop constructing and serializing identical arrow art on feedback frames.</td>
+                <td>Historical rebuild p95 ≈26.24 → 2.96 ms.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Cache at the lifetime of the thing: per mission, not forever. Global caches create stale data and retention risk.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Forced compositor layer</strong></td>
+                <td>Try to isolate transformed board composition.</td>
+                <td>Regressed the SVG path and added texture/compositor cost.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">A hardware layer is not free; it trades repeated draw work for texture memory and composition.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>Persistent canvas only</strong></td>
+                <td>Remove repeated surface creation while retaining the Skia architecture.</td>
+                <td>About 19.15 ms p95; passed one short frame gate but kept memory slope.</td>
+                <td><span class="status learn">Diagnostic</span></td>
+                <td class="deep-only">Lifecycle stability helps, but cannot erase recurring work inside the surface.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Shared survivor compounds</strong></td>
+                <td>Reduce per-removal path rebuilding through shared/chunked paths.</td>
+                <td>20.57 ms p95 and 20.94% jank; frame gate failed.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Lower allocation is not automatically lower frame latency. Measure both.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>32 / 128-arrow chunks</strong></td>
+                <td>Limit the amount of geometry rebuilt after each exit.</td>
+                <td>Some memory improvement, but p95 moved to about 21.8 / 17.39 ms in different variants.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Chunk size is a workload-specific balance between invalidation and draw-call count.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>Cached native SkPath</strong></td>
+                <td>Eliminate repeated native string parsing and path creation.</td>
+                <td>Frame p95 stayed at 18.78 ms, but tail growth fell 10.43 → 8.25 MB and passed memory.</td>
+                <td><span class="status learn">Evidence</span></td>
+                <td class="deep-only">Caching solved retention/parsing, not frame ownership. A flat p95 is a useful negative result.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Retained native board view</strong></td>
+                <td>Own static paths locally and draw them in two platform-canvas passes.</td>
+                <td>11.45 ms p95, 13.45 ms p99, 0.19% jank, 5.62 MB tail growth.</td>
+                <td><span class="status keep">Accepted</span></td>
+                <td class="deep-only">The winning boundary was bounded, retained, local, and event-driven—not broadly native.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Native feedback pool</strong></td>
+                <td>Avoid first-use decoding, Promise churn, and repeatedly allocated haptic/audio objects.</td>
+                <td>Blocked-action p95 improved ≈41%; exit p95 ≈26%; APK shrank ≈1.66 MB after excluding replaced modules.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Latency-sensitive, tiny, fire-and-forget APIs are excellent native-module candidates.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Native exit overlay</strong></td>
+                <td>Move transient feedback from Skia into an Android view.</td>
+                <td>Redrew the root; about 20.4 ms p95 and 27.5% jank.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">A native overlay can expand invalidation. Inspect which ancestor gets redrawn.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Two reusable trail slots</strong></td>
+                <td>Bound simultaneous animation state without losing visible exits.</td>
+                <td>Stable and sufficient for real input cadence; cleanup at 180 ms.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Size pools from believable concurrency, then define replacement behavior explicitly.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>One shared animation lane</strong></td>
+                <td>Minimize state even further.</td>
+                <td>Crashed Hermes/Worklets under reuse.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Aggressive reuse can create invalid cross-runtime lifetimes. “Fewer objects” is not a safety proof.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Trail threshold 16</strong></td>
+                <td>Disable expensive slither effects earlier on dense boards.</td>
+                <td>Worsened p95 19.05 → 20.08 ms and jank 9.22% → 15.34%.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Simpler-looking behavior can create a worse workload mix. Thresholds must be benchmarked.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>No exit trails</strong></td>
+                <td>Measure how much long-session growth came from transient animation.</td>
+                <td>Ten-level growth dropped roughly 10.8 → 4.5 MB.</td>
+                <td><span class="status learn">Diagnostic</span></td>
+                <td class="deep-only">Ablation identifies causality. It does not grant permission to remove a product feature.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Suppress dense-board exits</strong></td>
+                <td>Skip the exit effect above 64 remaining arrows.</td>
+                <td>Reduced work, but made successful taps abrupt and visually unclear.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">An optimization that removes essential state feedback is a product regression. Bound and isolate the effect instead of deleting its meaning.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Full Skia slither at 250 arrows</strong></td>
+                <td>Restore the original path effect unchanged at maximum density.</td>
+                <td>UI p95 65.59 ms, UI p99 96.40 ms, 53.19% jank, and surface-interval p95 48.12 ms.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Visual correctness alone was not enough. The transparent dynamic pass reintroduced expensive dense-scene composition.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Retained native dense exit</strong></td>
+                <td>Launch the removed arrow toward its edge inside the board owner; keep full slither when sparse.</td>
+                <td>At 250 arrows: UI p95 11.31 ms, p99 15.02 ms, 0% jank, no missed vsyncs, peak PSS ≈148 MB.</td>
+                <td><span class="status keep">Accepted</span></td>
+                <td class="deep-only">Keep the meaning, change the mechanism: two bounded 180 ms native lanes animate transform and opacity without a dense Skia path effect.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Explicit Hermes GC</strong></td>
+                <td>Force reclamation at mission boundaries.</td>
+                <td>Memory slope worsened roughly 936 → 989 KB per level.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Manual GC can move pauses and distort ownership symptoms without fixing retained references.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Runtime upgrades</strong></td>
+                <td>Take lifecycle and memory fixes from Expo/RN/Worklets.</td>
+                <td>One comparable PSS p95 fell ≈310.7 → 181.0 MB while frame p95 stayed near 19 ms.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Upgrade for platform health, but do not mistake a memory win for a rendering cure.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Recorded SkPicture</strong></td>
+                <td>Replay pre-recorded static draw commands.</td>
+                <td>Increased first-level PSS by about 13.1 MB and did not solve the soak.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Recorded commands duplicate representation. Confirm whether replay savings exceed retained memory.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Persistent board lifecycle</strong></td>
+                <td>Avoid remounting the whole board and regenerating levels twice.</td>
+                <td>Reduced churn; enabled clean mission-to-mission ownership and stale-event guards.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Component keys are performance and lifecycle decisions, not merely rendering conveniences.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Coalesced storage writes</strong></td>
+                <td>Stop unrelated persistence traffic from competing during transitions.</td>
+                <td>One startup multiGet, microtask batches, ordered multiSet/multiRemove, immediate memory reads.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">I/O batching reduces runtime-boundary calls and gives writes a clear ordering invariant.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Indexed level generation</strong></td>
+                <td>Remove repeated ray walks and live-cell scans inside dense generation.</td>
+                <td>Typed row/column boundaries, live-cell links, and capped backward scans; a historical same-phase run cut p95 roughly 73% with fingerprints unchanged.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Optimize the repeated query, preserve traversal and RNG order, and compare only within the same benchmark protocol.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Shape allocation cleanup</strong></td>
+                <td>Remove closures and temporary polygon objects created inside sampling loops.</td>
+                <td>Static polygon data and direct arithmetic reduced core churn without changing silhouettes.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Hot-loop allocation matters after the algorithm is right; do not start here while a repeated scan dominates.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Tuple cache in geometry</strong></td>
+                <td>Avoid reconstructing small coordinate pairs.</td>
+                <td>Stayed inside noise and made geometry performance worse.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">Caching tiny values can cost more lookup, lifetime, and indirection than recomputation.</td>
+              </tr>
+              <tr class="searchable" data-status="reject">
+                <td><strong>Gesture write coalescing</strong></td>
+                <td>Reduce UI-runtime transform updates during pan.</td>
+                <td>Reduced vertical-pan frame delivery and changed input quality.</td>
+                <td><span class="status reject">Rejected</span></td>
+                <td class="deep-only">An optimization that drops meaningful input is a behavior regression, even if one counter improves.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Density-at-draw boundary</strong></td>
+                <td>Fix the first native screenshot where Android arrows rendered too small.</td>
+                <td>React Native logical units convert once to Android Canvas physical pixels; iOS stays in UIKit points.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Platform units are part of the protocol. Visual screenshot checks catch mistakes timing data cannot.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Skia lifecycle patch</strong></td>
+                <td>Close native-window, registry, picture handoff, and mapper lifetime holes.</td>
+                <td>RAII release, side-effect-free lookups, mutex handoff, and unmount cleanup were kept.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Correct native ownership can prevent retention and races even when it is not the main frame-time win.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Real ad initialization gate</strong></td>
+                <td>Stop treating SDK call dispatch as successful initialization.</td>
+                <td>Waits for the actual success callback, preloads with typed listeners/backoff, and stays isolated in benchmarks.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">Third-party SDK promises may acknowledge dispatch, not readiness. Model the documented lifecycle.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Fresh benchmark bundle enforcement</strong></td>
+                <td>Prevent Expo public environment flags from reusing stale Gradle outputs.</td>
+                <td>The harness deletes generated bundle/APK outputs and records provenance before runs.</td>
+                <td><span class="status keep">Retained</span></td>
+                <td class="deep-only">A benchmark of stale code is worse than no benchmark because it creates confident false causality.</td>
+              </tr>
+              <tr class="searchable" data-status="learn">
+                <td><strong>Empty board floor</strong></td>
+                <td>Measure everything except static arrow drawing.</td>
+                <td>9.79 ms p95, 0.08% jank; final native view is 1.66 ms above it.</td>
+                <td><span class="status learn">Diagnostic</span></td>
+                <td class="deep-only">A floor tells you when further renderer work has diminishing returns.</td>
+              </tr>
+              <tr class="searchable" data-status="limit">
+                <td><strong>Final 50-level native soak</strong></td>
+                <td>Validate long-session memory beyond the accepted 20-level result.</td>
+                <td>Existing artifact is incomplete: status running, summary null.</td>
+                <td><span class="status limit">Still needed</span></td>
+                <td class="deep-only">Never turn an interrupted benchmark into a conclusion.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="atlas" aria-labelledby="atlas-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">07 · Optimization atlas</p>
+            <h2 id="atlas-title">Every subsystem we audited.</h2>
+          </div>
+          <p>A rendering symptom can be amplified by generation, state, timers, storage, feedback, ads, lifecycle, or the benchmark itself. Audit the whole interaction path.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Question to ask</th>
+                <th>Arrows change</th>
+                <th>Invariant / warning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="searchable"><td><strong>Host-node count</strong></td><td>How many native objects does one logical item create?</td><td>≈750 SVG nodes → one native board + small overlay.</td><td>Count after library expansion, not JSX elements alone.</td></tr>
+              <tr class="searchable"><td><strong>Backing surfaces</strong></td><td>What physical-pixel texture or bitmap gets allocated?</td><td>Bound drawing to viewport.</td><td>Logical size × density × bytes per pixel can dominate RAM.</td></tr>
+              <tr class="searchable"><td><strong>Draw-call shape</strong></td><td>Can visually identical items share one stroke/fill?</td><td>All shafts stroked once; all heads filled once.</td><td>Batch by paint state; avoid state changes inside the hot loop.</td></tr>
+              <tr class="searchable"><td><strong>Static vs dynamic</strong></td><td>Which pixels truly change each frame?</td><td>Static board native; only short feedback on Skia.</td><td>Do not animate the data model when a transform will do.</td></tr>
+              <tr class="searchable"><td><strong>Geometry lifetime</strong></td><td>How often is shape data built, parsed, and serialized?</td><td>Per-board cache and parse once per mission.</td><td>Cache at the narrowest correct lifetime.</td></tr>
+              <tr class="searchable"><td><strong>Runtime-boundary traffic</strong></td><td>Are facts crossing JS/native once, or are frames crossing repeatedly?</td><td>Geometry once, mask on removal, tap once.</td><td>Prefer bounded event protocols over continuous object graphs.</td></tr>
+              <tr class="searchable"><td><strong>Input runtime</strong></td><td>Does pan/pinch wait for JavaScript?</td><td>Transforms stay on UI runtime.</td><td>Never degrade input semantics for an unproven coalescing win.</td></tr>
+              <tr class="searchable"><td><strong>Animation pools</strong></td><td>Can transient objects grow with interaction count?</td><td>Two trail slots, one shake, one hint.</td><td>Bound concurrency, cancellation, replacement, and cleanup.</td></tr>
+              <tr class="searchable"><td><strong>Adaptive fidelity</strong></td><td>Can effects become cheaper when the scene is dense?</td><td>Above 64 arrows, the retained native view launches the removed arrow toward the edge; at 64 or fewer, the full slither returns. Both are bounded to two 180 ms lanes.</td><td>Preserve feedback meaning first; reduce implementation cost without turning success into an unexplained disappearance.</td></tr>
+              <tr class="searchable"><td><strong>Game-state updates</strong></td><td>Does a state updater perform generation or other heavy work?</td><td>Generate outside updater; one session per level.</td><td>React may invoke updater logic in ways that make side effects unsafe.</td></tr>
+              <tr class="searchable"><td><strong>Component lifecycle</strong></td><td>What remounts on every mission?</td><td>Persistent BoardView; explicit reset.</td><td>Unmount must clear timers, mappers, native handles, and callbacks.</td></tr>
+              <tr class="searchable"><td><strong>Race conditions</strong></td><td>Can stale input or timers mutate a new mission?</td><td>Board reference checks and terminal transition guard.</td><td>Correctness bugs often masquerade as unexplained churn.</td></tr>
+              <tr class="searchable"><td><strong>Text churn</strong></td><td>Does one changing number rebuild a large paragraph?</td><td>Static mission label split from remaining count.</td><td>Text layout and paragraph caches have measurable lifetimes.</td></tr>
+              <tr class="searchable"><td><strong>Storage</strong></td><td>Are writes serialized, batched, and scoped to owned keys?</td><td>Hydrated memory cache + coalesced multi operations.</td><td>Define ordering across batches or lose newer data.</td></tr>
+              <tr class="searchable"><td><strong>Audio/haptics</strong></td><td>Does the first interaction load or decode resources?</td><td>Native preload and reuse.</td><td>Handle background, media-service reset, and stale callbacks.</td></tr>
+              <tr class="searchable"><td><strong>Ads/network</strong></td><td>Is external SDK noise mixed into renderer evidence?</td><td>Isolated benchmark mode; real init success gate.</td><td>Isolation is for measurement, not production behavior.</td></tr>
+              <tr class="searchable"><td><strong>Native ownership</strong></td><td>Who releases windows, paths, players, observers, and mappers?</td><td>Explicit destroy/foreground/background cleanup.</td><td>RAII and lifecycle guards matter more than syntax language.</td></tr>
+              <tr class="searchable"><td><strong>Generator complexity</strong></td><td>Is a repeated scan hiding inside a nested loop?</td><td>Typed boundaries and live-cell links.</td><td>Preserve traversal/RNG order and validate fingerprints.</td></tr>
+              <tr class="searchable"><td><strong>Release size</strong></td><td>Did a specialized dependency earn its binary cost?</td><td>R8/resource shrink, two font weights, replaced feedback modules excluded.</td><td>AAB upload size is not per-device installed size.</td></tr>
+              <tr class="searchable"><td><strong>Measurement effects</strong></td><td>Does the profiler perturb memory or timing?</td><td>Separate frame-instrumented and memory-only soak modes.</td><td>Instrumentation is part of the experiment.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="native" aria-labelledby="native-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">08 · Native modules</p>
+            <h2 id="native-title">Use native code as a scalpel.</h2>
+          </div>
+          <p>Native modules worked when the interface was small, the owner was clear, and the operation mapped directly to platform primitives.</p>
+        </div>
+
+        <div class="grid-2">
+          <article class="panel accent">
+            <h3>Module 1 · Retained board view</h3>
+            <p><strong>Interface:</strong> immutable geometry, visibility mask, colors, dimensions, and one tap callback.</p>
+            <ul>
+              <li>Android retains per-arrow <code>Path</code> objects and two visible compound paths.</li>
+              <li>iOS retains immutable <code>CGPath</code> geometry and combines visible paths during draw.</li>
+              <li>Density conversion happens exactly once at Android’s drawing boundary.</li>
+              <li>Malformed, non-finite, oversized, or inconsistent geometry fails closed.</li>
+              <li>Destroy clears retained paths and callbacks.</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Module 2 · Feedback pool</h3>
+            <p><strong>Interface:</strong> tiny fire-and-forget methods for tap, blocked, exit, win, and loss beats.</p>
+            <ul>
+              <li>Android uses one <code>SoundPool</code>, at most four streams, preloaded samples, and view haptics.</li>
+              <li>iOS reuses one decoded player per effect and reusable haptic generators.</li>
+              <li>Foreground/background, destruction, media-service reset, and stale load callbacks are guarded.</li>
+              <li>Expo Go and web lazily fall back to Expo feedback without breaking the app.</li>
+              <li>The release build excludes redundant Expo audio/haptic native modules.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout deep-only">
+          <strong>Expo SDK 57 nuance:</strong> Expo Modules support React Native’s New Architecture and use JSI rather than the legacy JSON message queue. The official guidance says individual call overhead is unlikely to be the bottleneck. That matches our evidence: the breakthrough came from retaining and executing dense drawing in the right owner, not merely from making fewer module calls. See the <a href="https://docs.expo.dev/modules/overview/">Expo Modules API overview</a>.
+        </div>
+
+        <h3 class="section-subhead">Why the final native board was fast when the first native attempt was slow</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Boundary property</th><th>Early display-list attempt</th><th>Final retained view</th><th>Why it matters</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Bounds</strong></td><td>Large transformed child</td><td>Local viewport-sized view</td><td>Composition and invalidation stay bounded.</td></tr>
+              <tr><td><strong>Data lifetime</strong></td><td>Representation followed old renderer shape</td><td>Immutable geometry retained per mission</td><td>Parsing and allocation leave the active frame.</td></tr>
+              <tr><td><strong>Draw shape</strong></td><td>Native version of a complex display structure</td><td>One shaft stroke + one head fill</td><td>The API matches the visual structure directly.</td></tr>
+              <tr><td><strong>Updates</strong></td><td>Broad display invalidation</td><td>Visibility event only</td><td>One removed arrow does not rebuild the app tree.</td></tr>
+              <tr><td><strong>Transforms</strong></td><td>Entangled with rendered child</td><td>Handled by UI runtime container</td><td>Pan/pinch does not require JS or geometry work.</td></tr>
+              <tr><td><strong>Feedback</strong></td><td>Not separated by volatility</td><td>Transient layer kept independent</td><td>Static and dynamic pixels get different owners.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid-3 deep-only mt-16">
+          <article class="panel">
+            <h3>Good native candidate</h3>
+            <p>High-frequency or latency-sensitive work, stable data, direct platform primitive, tiny API, measurable cost, and clear lifecycle.</p>
+          </article>
+          <article class="panel">
+            <h3>Bad native candidate</h3>
+            <p>Business rules that change often, large mutable object graphs, unmeasured work, platform behavior that must remain identical, or unclear ownership.</p>
+          </article>
+          <article class="panel">
+            <h3>Price of admission</h3>
+            <p>Two platform implementations, dev/release builds instead of Expo Go, lifecycle testing, bridge validation, upgrade maintenance, and a web fallback.</p>
+          </article>
+        </div>
+
+        <div class="callout warn deep-only">
+          <strong>Current protocol limit:</strong> native geometry still arrives as text once per mission, and the visibility mask is O(n). For 250 arrows this is bounded and fast. A typed buffer, JSI shared object, bitset, or <code>hideArrow(index)</code> command is justified only if a future trace shows that one-time parse or mask update has become significant.
+        </div>
+      </section>
+
+      <section id="benchmarking" aria-labelledby="benchmarking-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">09 · Benchmark method</p>
+            <h2 id="benchmarking-title">A benchmark is a controlled argument.</h2>
+          </div>
+          <p>Every number needs a workload, build, device, warmup, collection window, validity check, and decision gate. Otherwise it is decoration.</p>
+        </div>
+
+        <div class="grid-2">
+          <article class="panel">
+            <h3>Layer A · Pure core benchmark</h3>
+            <p>Five deterministic high-density fixtures measure generation, geometry, key creation, and hint solve without rendering noise.</p>
+            <ul>
+              <li>Warm up before collecting.</li>
+              <li>Batch enough iterations to reduce timer noise.</li>
+              <li>Check fingerprints, blocked/free validity, and solved output.</li>
+              <li>Use it to reject algorithm regressions—not to predict UI smoothness.</li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Layer B · Release Android soak</h3>
+            <p>A native input driver solves immediately preceding warmup missions and then 20–50 measured missions in one PID.</p>
+            <ul>
+              <li>Release APK, debuggable false, benchmark-only profileable true.</li>
+              <li>API 31 AVD, 60 Hz, animations off, fixed-performance mode.</li>
+              <li>Validate package/hash, PID continuity, tap acceptance, checksums, crash/ANR, and thermal state.</li>
+              <li>Record source/runtime/config provenance in each artifact.</li>
+            </ul>
+          </article>
+        </div>
+
+        <h3 class="section-subhead">Frame and lifecycle gates</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Signal</th><th>Gate</th><th>Why this signal</th><th>What can fool it</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Active frame p95</strong></td><td class="mono">≤ 20 ms</td><td>Captures the slow edge of ordinary interaction.</td><td>A different GPU, sample window, or too few active frames.</td></tr>
+              <tr><td><strong>Active frame p99</strong></td><td class="mono">≤ 34 ms</td><td>Protects against severe tails that averages hide.</td><td>One-off setup frames mixed into the wrong window.</td></tr>
+              <tr><td><strong>Janky frames</strong></td><td class="mono">≤ 10%</td><td>Measures missed 60 Hz budget directly.</td><td>Idle/present gaps and incomplete gfxinfo buffers.</td></tr>
+              <tr><td><strong>Worst-level p95</strong></td><td class="mono">≤ 34 ms</td><td>Stops one difficult mission from hiding inside an aggregate.</td><td>Non-deterministic level sequences.</td></tr>
+              <tr><td><strong>Process health</strong></td><td>No crash, ANR, or PID change</td><td>A fast restart is not a successful soak.</td><td>Harness reconnects that silently follow a new process.</td></tr>
+              <tr><td><strong>Memory trend</strong></td><td>No monotonic steady-state leak signal</td><td>Distinguishes growth from normal GC noise.</td><td>Warmup, profiler calls, system pressure, and too-short runs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid-3 deep-only mt-16">
+          <article class="panel">
+            <h3>Use percentiles</h3>
+            <p>A mean can improve while users still feel periodic 40 ms frames. Report p50 for center, p95 for ordinary tail, p99 for severe tail, and the worst level separately.</p>
+          </article>
+          <article class="panel">
+            <h3>Model memory as a trend</h3>
+            <p>Ignore warmup, compare first/last window medians, compute endpoint growth, Theil–Sen slope, and Spearman correlation. Flag only when size, slope, and monotonicity agree.</p>
+          </article>
+          <article class="panel">
+            <h3>Split intrusive probes</h3>
+            <p>Frame-instrumented runs call many diagnostics. A memory-only mode takes one PSS sample per mission so the observer is less likely to become the leak.</p>
+          </article>
+        </div>
+
+        <details class="recipe deep-only" open>
+          <summary>Reproduce the two benchmark layers</summary>
+          <div class="recipe-body">
+            <p>Run the algorithm suite first. Then use the Android harness with a controlled emulator and release benchmark build. Do not compare an unverified <code>--skip-build</code> artifact with a freshly built source result.</p>
+            <pre><code>npm run perf:core -- --pretty
+
+# The Android harness owns build metadata, AVD setup,
+# deterministic gestures, frame capture, and soak validation.
+npm run perf:android -- --feedback --soak-levels 20
+
+# Run separately when profiler activity may distort memory.
+npm run perf:android -- --feedback --soak-levels 50 --memory-only</code></pre>
+          </div>
+        </details>
+
+        <div class="callout bad">
+          <strong>Discard or quarantine invalid evidence:</strong> partial JSON with <code>status: running</code> or <code>summary: null</code>, a changed runtime/GPU/workload presented as direct A/B, stale Expo public flags inside a reused Gradle bundle, thermal throttling, PID restart, failed input acceptance, or a benchmark build accidentally shipped as production.
+        </div>
+      </section>
+
+      <section id="decision" aria-labelledby="decision-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">10 · React Native versus Godot</p>
+            <h2 id="decision-title">Choose an engine for the remaining product, not the old bottleneck.</h2>
+          </div>
+          <p>We did not produce a Godot benchmark artifact. The conclusion is that migration is not justified after the hybrid app clears its gates—not that Godot was proven slower.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Decision factor</th><th>Hybrid React Native now</th><th>Godot rewrite</th><th>Current call</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Dense static board</strong></td><td>11.45 ms p95; 0.19% jank with retained native view.</td><td>Likely strong scene rendering, but not measured here.</td><td><span class="status keep">RN clears gate</span></td></tr>
+              <tr><td><strong>Distance to floor</strong></td><td>Only 1.66 ms above empty static scene p95.</td><td>Little remaining static-render headroom proven.</td><td><span class="status keep">Diminishing return</span></td></tr>
+              <tr><td><strong>Game rules</strong></td><td>Mature deterministic TypeScript core and tests remain intact.</td><td>Port and revalidate every rule and fingerprint.</td><td><span class="status keep">Keep</span></td></tr>
+              <tr><td><strong>Mobile product stack</strong></td><td>Navigation, storage, ads, app lifecycle, accessibility, and store pipeline exist.</td><td>Rebuild or bridge this infrastructure.</td><td><span class="status keep">Keep</span></td></tr>
+              <tr><td><strong>Native access</strong></td><td>Expo Modules solve focused hotspots with web fallbacks.</td><td>Engine extensions/plugins can solve platform work.</td><td><span class="status keep">Sufficient</span></td></tr>
+              <tr><td><strong>Advanced game systems</strong></td><td>Manual if future game needs physics, particles, shaders, large scene graphs, or editor tooling.</td><td>Engine-native strength.</td><td><span class="status limit">Watch roadmap</span></td></tr>
+              <tr><td><strong>Migration cost</strong></td><td>Incremental, already implemented.</td><td>Parallel rewrite, QA parity, new build/release expertise, longer feature freeze.</td><td><span class="status keep">Avoid now</span></td></tr>
+              <tr><td><strong>Team cognition</strong></td><td>One product codebase plus two small native surfaces.</td><td>New language, editor, runtime, plugins, debugging, and architecture.</td><td><span class="status keep">Preserve</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="section-subhead">Re-open the Godot decision only when evidence crosses a trigger</h3>
+        <div class="grid-3">
+          <article class="panel searchable"><h3>Scene complexity</h3><p>Gameplay becomes many independently moving, colliding, or shader-driven objects—not a stable board with sparse feedback.</p></article>
+          <article class="panel searchable"><h3>Native surface sprawl</h3><p>Several core screens need large custom renderers and the React Native shell stops owning most product behavior.</p></article>
+          <article class="panel searchable"><h3>Frame gate failure</h3><p>Representative low-end physical devices fail defined budgets after the narrow native path is profiled and tuned.</p></article>
+          <article class="panel searchable deep-only"><h3>Tooling need</h3><p>Designers need an engine editor, animation state machines, particle authoring, tilemaps, or physics visualization every day.</p></article>
+          <article class="panel searchable deep-only"><h3>Cross-platform parity cost</h3><p>Duplicated Android/iOS renderer work becomes larger than an engine-based shared scene implementation.</p></article>
+          <article class="panel searchable deep-only"><h3>Prototype wins</h3><p>A small, equivalent Godot vertical slice beats the physical-device gates by enough to repay a measured rewrite budget.</p></article>
+        </div>
+
+        <div class="verdict mt-20">
+          <div class="verdict-mark" aria-hidden="true">RN</div>
+          <div>
+            <strong>Current choice: keep React Native + two narrow native modules.</strong>
+            <p>Do not migrate because “engines are faster.” Migrate when an equivalent prototype, real-device measurements, future feature needs, and full product migration cost form a stronger case than the current system.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="playbook" aria-labelledby="playbook-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">11 · Reusable optimization playbook</p>
+            <h2 id="playbook-title">A straight path for the next app.</h2>
+          </div>
+          <p>Follow this order. It reduces the chance of polishing the wrong layer or accepting a benchmark that does not represent the product.</p>
+        </div>
+
+        <div class="toolbar">
+          <p class="fine-print flush">The copy button creates a portable checklist for an issue, PR, or future optimization skill.</p>
+          <button class="copy-button" id="copyChecklist" type="button">Copy 14-step checklist</button>
+        </div>
+
+        <div class="playbook" id="checklist">
+          <article class="playbook-step searchable">
+            <h3>Name the user-visible failure.</h3>
+            <p>Write “dense level pan misses frames” or “memory rises after twenty missions,” not “make it faster.” Attach a threshold and a representative device class.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Freeze a deterministic worst case.</h3>
+            <p>Choose levels, data, gestures, and feedback that reliably reproduce the complaint. Add fingerprints so an optimization cannot silently change output.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Map work by runtime and lifetime.</h3>
+            <p>For every expensive object, record who creates it, who updates it, how often it crosses a boundary, and who releases it.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Count expanded objects and pixels.</h3>
+            <p>Multiply logical items by host nodes. Multiply logical dimensions by density and bytes per pixel. Estimate the real cost before changing code.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Build the smallest trustworthy harness.</h3>
+            <p>Use release builds, deterministic input, warmup, validity checks, p95/p99/jank, process health, and artifact provenance. Define gates before seeing results.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Ablate one subsystem at a time.</h3>
+            <p>Empty the scene, disable one effect, bypass storage, or replace real feedback with a stub. Label these as diagnostics, never product candidates.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Remove multiplicity first.</h3>
+            <p>Batch identical paint, virtualize offscreen content, bound surfaces, hoist stable data, and prevent remounts before introducing a new language or renderer.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Separate static from dynamic work.</h3>
+            <p>Stable data should be built once and retained. Dynamic transforms should run on the animation/UI runtime. Rare semantic events can return to JS.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Bound transient resources.</h3>
+            <p>Set explicit pool sizes, durations, cancellation, cleanup, and dense-scene degradation. A transient object without a bound is a future soak failure.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Design a narrow native interface.</h3>
+            <p>Move the measured platform-shaped hotspot only. Prefer immutable setup plus tiny event updates; keep changing business rules in shared code.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Benchmark every candidate in context.</h3>
+            <p>A microbenchmark may identify a mechanism, but only the full interaction mix chooses a shipping winner. Compare like with like.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Soak the lifecycle.</h3>
+            <p>Repeat screens, levels, animations, backgrounding, and cleanup in one process. Use robust memory trends, not one snapshot or forced GC.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Audit correctness and release hygiene.</h3>
+            <p>Validate density, stale callbacks, malformed native input, resource destruction, fallback behavior, accessibility, production flags, and AAB contents.</p>
+          </article>
+          <article class="playbook-step searchable">
+            <h3>Freeze evidence and delete losers.</h3>
+            <p>Archive accepted JSON and protocol details. Record caveats. Revert speculative complexity. Define the next trigger instead of optimizing forever.</p>
+          </article>
+        </div>
+
+        <h3 class="recipe-heading">Concrete recipes</h3>
+
+        <details class="recipe deep-only" open>
+          <summary>Recipe A · Estimate a backing surface before it crashes</summary>
+          <div class="recipe-body">
+            <p>Convert logical size into physical pixels, then multiply by bytes per pixel. This is an upper-bound warning, not a complete GPU-memory model.</p>
+            <pre><code>physicalWidth  = logicalWidth  × deviceDensity
+physicalHeight = logicalHeight × deviceDensity
+RGBA bytes     = physicalWidth × physicalHeight × 4
+
+Example:
+1560 × 3.5 = 5460 physical pixels
+5460 × 5460 × 4 = 119,246,400 bytes ≈ 113.7 MiB</code></pre>
+          </div>
+        </details>
+
+        <details class="recipe deep-only">
+          <summary>Recipe B · Split static geometry from transient feedback</summary>
+          <div class="recipe-body">
+            <p>Keep one stable surface for the board and one small surface for the few things that animate. Transform their common parent so they remain aligned.</p>
+            <pre><code>&lt;AnimatedBoardTransform&gt;
+  &lt;NativeStaticBoard
+    geometry={missionGeometry}
+    visibility={survivorMask}
+    onTap={handleBoardTap}
+  /&gt;
+  &lt;TransientFeedbackOverlay
+    hint={hint}
+    shake={shake}
+    exits={twoReusableExitSlots}
+  /&gt;
+&lt;/AnimatedBoardTransform&gt;</code></pre>
+          </div>
+        </details>
+
+        <details class="recipe deep-only">
+          <summary>Recipe C · Define the native protocol before the native code</summary>
+          <div class="recipe-body">
+            <p>A good protocol states frequency, ownership, validation, and cleanup. If it needs a mutable object graph every frame, narrow it again.</p>
+            <pre><code>Mission setup, once:
+  setGeometry(serializedImmutableArrows)
+  setBoardSize(width, height)
+
+Arrow exit, bounded event:
+  setVisibility(compactMask)
+  // Future only if measured: hideArrow(index)
+
+Input, rare event:
+  onBoardTap(x, y)
+
+Destroy:
+  clearPaths()
+  clearCallbacks()</code></pre>
+          </div>
+        </details>
+
+        <details class="recipe deep-only">
+          <summary>Recipe D · Make terminal transitions idempotent</summary>
+          <div class="recipe-body">
+            <p>State updates alone may arrive too late to stop a second tap or timer. Use a synchronous guard and reset it only when a new mission becomes authoritative.</p>
+            <pre><code>if (!terminalGuard.tryEnter()) return;
+
+cancelPendingHint();
+cancelPendingOutcome();
+commitWinOrLoss();
+
+// When the next mission is installed:
+terminalGuard.reset();</code></pre>
+          </div>
+        </details>
+
+        <details class="recipe deep-only">
+          <summary>Recipe E · Interpret a memory soak without fooling yourself</summary>
+          <div class="recipe-body">
+            <p>Warmup can look like a leak and GC can look like a fix. Require multiple signals to agree.</p>
+            <pre><code>1. Skip warmup missions.
+2. Compare median PSS of the first and last five measured missions.
+3. Compute endpoint growth.
+4. Compute Theil–Sen slope across measured missions.
+5. Compute Spearman correlation with mission index.
+6. Flag only when growth is material, slope is positive,
+   and correlation shows a monotonic trend.
+7. Observe final idle reclamation; never force GC as the cure.</code></pre>
+          </div>
+        </details>
+      </section>
+
+      <section id="limits" aria-labelledby="limits-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">12 · Current limits and future triggers</p>
+            <h2 id="limits-title">Good performance has a boundary.</h2>
+          </div>
+          <p>The present architecture is validated for today’s maximum of roughly 250 arrows. The right next optimization depends on which bound changes.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Known limit</th><th>Why acceptable now</th><th>Trigger to revisit</th><th>Likely next experiment</th></tr>
+            </thead>
+            <tbody>
+              <tr class="searchable"><td><strong>20-level final native soak</strong></td><td>Passed frame and memory gates across 2,247 removals.</td><td>Before broad release or after renderer/runtime changes.</td><td>Complete 50-level memory-only and frame soaks on the final build.</td></tr>
+              <tr class="searchable"><td><strong>Controlled emulator evidence</strong></td><td>Excellent for repeatable A/B comparisons.</td><td>Release-candidate signoff.</td><td>Test low-end physical Android, 60/90/120 Hz devices, and real thermal conditions.</td></tr>
+              <tr class="searchable"><td><strong>No physical iOS soak</strong></td><td>Release simulator build verifies compilation and basic behavior.</td><td>Before claiming cross-platform performance parity.</td><td>Automated iPhone mission soak with Instruments signposts and memory graph.</td></tr>
+              <tr class="searchable"><td><strong>O(n) visibility mask</strong></td><td>n ≤ 250; final frame result is comfortably inside gate.</td><td>Boards grow substantially or traces show interop/mask cost.</td><td>Index command, bitset, typed buffer, or shared native state.</td></tr>
+              <tr class="searchable"><td><strong>Text geometry payload</strong></td><td>Parsed once per mission, outside steady-state frame work.</td><td>Mission-start latency becomes visible or geometry grows by an order of magnitude.</td><td>Typed arrays or JSI shared buffer after profiling.</td></tr>
+              <tr class="searchable"><td><strong>Android compound rebuild</strong></td><td>Bounded survivor set; measured final p95 is strong.</td><td>Frequent bulk visibility changes or much larger scenes.</td><td>Incremental native buckets or retained per-arrow display objects—benchmarked against draw-call cost.</td></tr>
+              <tr class="searchable"><td><strong>iOS combines visible paths on draw</strong></td><td>No physical trace yet proves it is a bottleneck.</td><td>iPhone p95 or energy trace points here.</td><td>Retained visible compound CGPaths with explicit invalidation.</td></tr>
+              <tr class="searchable"><td><strong>Transparent Skia overlay</strong></td><td>Small scope and near-floor final result.</td><td>Composition, memory, or binary-size budget tightens.</td><td>Platform animation view, lighter canvas, or static native hint where measured.</td></tr>
+              <tr class="searchable"><td><strong>Pinned Skia patch</strong></td><td>Fixes native window ownership, registry lifetime, mutex handoff, and mapper cleanup.</td><td>Every Skia upgrade.</td><td>Check upstream fixes, drop obsolete hunks, rerun lifecycle soak.</td></tr>
+              <tr class="searchable"><td><strong>Two trail slots</strong></td><td>Matches realistic input cadence and bounds memory.</td><td>New multi-touch or automated rapid-fire mechanic.</td><td>Measure queue/replacement semantics before increasing pool.</td></tr>
+              <tr class="searchable"><td><strong>Native feedback fails silently</strong></td><td>Gameplay remains correct and fallback exists when module is absent.</td><td>User reports missing feedback or observability need.</td><td>Rate-limited diagnostic counters outside latency path.</td></tr>
+              <tr class="searchable"><td><strong>Web uses compound SVG</strong></td><td>Correct fallback with no custom native module.</td><td>Web becomes a high-density primary platform.</td><td>Canvas/WebGL renderer with the same immutable-geometry protocol.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout good">
+          <strong>Stop condition reached:</strong> the representative final build passes predefined gates and sits close to the diagnostic floor. The next responsible work is physical-device validation and durability of evidence—not another speculative renderer rewrite.
+        </div>
+      </section>
+
+      <section id="sources" aria-labelledby="sources-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">13 · Source map</p>
+            <h2 id="sources-title">Follow the evidence into the code.</h2>
+          </div>
+          <p>This page archives decisive temporary benchmark numbers. The linked repository files are the reproducible harness and current implementation.</p>
+        </div>
+
+        <div class="grid-2">
+          <article class="panel">
+            <h3>Benchmark system</h3>
+            <ul>
+              <li><a href="../scripts/perf/core-benchmark.ts">Core algorithm benchmark</a></li>
+              <li><a href="../scripts/perf/android/benchmark.mjs">Android frame and soak harness</a></li>
+              <li><a href="../scripts/perf/android/soak-plan.ts">Deterministic soak planner</a></li>
+              <li><a href="../scripts/perf/android/soak-utils.mjs">Robust memory statistics</a></li>
+              <li><a href="../scripts/perf/android/parse-gfxinfo.mjs">Frame and PSS parser</a></li>
+              <li><a href="../scripts/perf/android/parse-surfaceflinger.mjs">Surface presentation parser</a></li>
+              <li><a href="../scripts/perf/android/ArrowsWorkload.java">Native input driver</a></li>
+            </ul>
+          </article>
+          <article class="panel">
+            <h3>Rendering and native modules</h3>
+            <ul>
+              <li><a href="../src/ui/BoardView.tsx">Board orchestration and transient effects</a></li>
+              <li><a href="../src/ui/StaticBoardSurface.native.tsx">Native board adapter</a></li>
+              <li><a href="../src/ui/StaticBoardSurface.tsx">Web compound-SVG fallback</a></li>
+              <li><a href="../src/ui/arrowGeometry.ts">Geometry and per-board cache</a></li>
+              <li><a href="../modules/arrows-board/">Android/iOS retained board module</a></li>
+              <li><a href="../modules/arrows-feedback/">Android/iOS feedback pool</a></li>
+              <li><a href="../patches/@shopify+react-native-skia+2.6.2.patch">Skia lifecycle patch</a></li>
+            </ul>
+          </article>
+          <article class="panel deep-only">
+            <h3>Core and lifecycle</h3>
+            <ul>
+              <li><a href="../src/core/levelGenerator.ts">Optimized deterministic generator</a></li>
+              <li><a href="../src/core/shapeLibrary.ts">Allocation-conscious shape library</a></li>
+              <li><a href="../src/core/__tests__/levelGenerator.test.ts">Generator fingerprints and invariants</a></li>
+              <li><a href="../src/ui/gameSessionLifecycle.ts">Terminal-transition lifecycle guard</a></li>
+              <li><a href="../src/ui/GameScreen.tsx">Persistent mission/session flow</a></li>
+              <li><a href="../src/ui/storage.ts">Hydrated and coalesced persistence</a></li>
+            </ul>
+          </article>
+          <article class="panel deep-only">
+            <h3>Evidence provenance</h3>
+            <p>The strongest accepted artifacts were <code>arrows-final-source-soak-20.json</code>, <code>arrows-native-path-cache-soak-20.json</code>, <code>arrows-native-view-soak-20.json</code>, and <code>arrows-empty-skia-surface-soak-20.json</code>. They lived in temporary storage when this guide was produced, so their accepted metrics and caveats are preserved here.</p>
+            <p class="mt-12">Historical phase results must stay labeled by runtime, GPU, harness, and workload. Exact-looking numbers are not comparable merely because they share a unit.</p>
+          </article>
+          <article class="panel deep-only">
+            <h3>Versioned platform references</h3>
+            <ul>
+              <li><a href="https://docs.expo.dev/versions/v57.0.0/">Expo SDK 57 reference</a> — React Native 0.86, platform targets, and SDK compatibility.</li>
+              <li><a href="https://docs.expo.dev/modules/overview/">Expo Modules API overview</a> — native modules, native views, New Architecture, and JSI characteristics.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout warn">
+          <strong>Durability improvement for the next campaign:</strong> commit a small machine-readable performance report with each accepted milestone. Include artifact hash, source commit, runtime versions, device/GPU, workload checksum, status, gate result, and any reason a row is diagnostic-only.
+        </div>
+      </section>
+
+      <p class="no-results" id="noResults">No section or experiment matches that search. Try a subsystem such as “memory,” “native,” “trail,” “storage,” or “Godot.”</p>
+
+      <footer class="footer">
+        <p>Arrows Performance Field Guide · benchmark-backed snapshot · September 2026</p>
+        <p>Use the method again; re-measure the conclusions when the workload changes.</p>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var root = document.documentElement;
+      var searchInput = document.getElementById("searchInput");
+      var searchableItems = Array.prototype.slice.call(document.querySelectorAll(".searchable"));
+      var filterButtons = Array.prototype.slice.call(document.querySelectorAll("[data-filter]"));
+      var detailButtons = Array.prototype.slice.call(document.querySelectorAll("[data-detail-value]"));
+      var noResults = document.getElementById("noResults");
+      var themeButton = document.getElementById("themeButton");
+      var menuButton = document.getElementById("menuButton");
+      var sidebar = document.getElementById("sidebar");
+      var progressBar = document.getElementById("progressBar");
+      var activeFilter = "all";
+      var searchTerm = "";
+
+      function safeGet(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function safeSet(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (error) {
+          return;
+        }
+      }
+
+      function normalize(value) {
+        return value.toLowerCase().replace(/\s+/g, " ").trim();
+      }
+
+      function updateVisibility() {
+        var visibleCount = 0;
+        searchableItems.forEach(function (item) {
+          var matchesText = !searchTerm || normalize(item.textContent).indexOf(searchTerm) !== -1;
+          var status = item.getAttribute("data-status");
+          var matchesFilter = activeFilter === "all" || !status || status === activeFilter;
+          var visible = matchesText && matchesFilter;
+          item.classList.toggle("search-hidden", !visible);
+          if (visible) visibleCount += 1;
+        });
+        noResults.classList.toggle("visible", Boolean(searchTerm) && visibleCount === 0);
+      }
+
+      searchInput.addEventListener("input", function () {
+        searchTerm = normalize(searchInput.value);
+        updateVisibility();
+      });
+
+      filterButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          activeFilter = button.getAttribute("data-filter");
+          filterButtons.forEach(function (candidate) {
+            candidate.setAttribute("aria-pressed", String(candidate === button));
+          });
+          updateVisibility();
+        });
+      });
+
+      function setDetail(value) {
+        root.setAttribute("data-detail", value);
+        detailButtons.forEach(function (button) {
+          button.setAttribute("aria-pressed", String(button.getAttribute("data-detail-value") === value));
+        });
+        safeSet("arrows-guide-detail", value);
+      }
+
+      detailButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          setDetail(button.getAttribute("data-detail-value"));
+        });
+      });
+
+      var storedDetail = safeGet("arrows-guide-detail");
+      if (storedDetail === "compact" || storedDetail === "deep") {
+        setDetail(storedDetail);
+      }
+
+      var storedTheme = safeGet("arrows-guide-theme");
+      if (storedTheme === "day" || storedTheme === "ink") {
+        root.setAttribute("data-theme", storedTheme);
+      }
+
+      function updateThemeLabel() {
+        var next = root.getAttribute("data-theme") === "ink" ? "light" : "dark";
+        themeButton.setAttribute("aria-label", "Switch to " + next + " theme");
+        themeButton.setAttribute("title", "Switch to " + next + " theme");
+      }
+
+      themeButton.addEventListener("click", function () {
+        var next = root.getAttribute("data-theme") === "ink" ? "day" : "ink";
+        root.setAttribute("data-theme", next);
+        safeSet("arrows-guide-theme", next);
+        updateThemeLabel();
+      });
+      updateThemeLabel();
+
+      document.getElementById("printButton").addEventListener("click", function () {
+        window.print();
+      });
+
+      function closeMenu() {
+        sidebar.classList.remove("open");
+        menuButton.setAttribute("aria-expanded", "false");
+      }
+
+      menuButton.addEventListener("click", function () {
+        var isOpen = sidebar.classList.toggle("open");
+        menuButton.setAttribute("aria-expanded", String(isOpen));
+      });
+
+      sidebar.addEventListener("click", function (event) {
+        if (event.target.closest("a")) closeMenu();
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          searchInput.focus();
+        }
+        if (event.key === "Escape") {
+          searchInput.value = "";
+          searchTerm = "";
+          updateVisibility();
+          searchInput.blur();
+          closeMenu();
+        }
+      });
+
+      function updateProgress() {
+        var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+        var progress = scrollable > 0 ? window.scrollY / scrollable : 0;
+        progressBar.style.width = Math.min(100, Math.max(0, progress * 100)) + "%";
+      }
+      window.addEventListener("scroll", updateProgress, { passive: true });
+      window.addEventListener("resize", updateProgress);
+      updateProgress();
+
+      var navLinks = Array.prototype.slice.call(sidebar.querySelectorAll("a"));
+      var sections = Array.prototype.slice.call(document.querySelectorAll("main > section[id]"));
+      if ("IntersectionObserver" in window) {
+        var sectionObserver = new IntersectionObserver(function (entries) {
+          var visible = entries.filter(function (entry) { return entry.isIntersecting; });
+          if (!visible.length) return;
+          visible.sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; });
+          var activeId = visible[0].target.id;
+          navLinks.forEach(function (link) {
+            link.classList.toggle("active", link.getAttribute("href") === "#" + activeId);
+          });
+        }, { rootMargin: "-18% 0px -68% 0px", threshold: [0, 0.15, 0.5] });
+        sections.forEach(function (section) { sectionObserver.observe(section); });
+      }
+
+      function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+          var textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          try {
+            document.execCommand("copy") ? resolve() : reject(new Error("Copy failed"));
+          } catch (error) {
+            reject(error);
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        });
+      }
+
+      var copyButton = document.getElementById("copyChecklist");
+      copyButton.addEventListener("click", function () {
+        var steps = Array.prototype.slice.call(document.querySelectorAll(".playbook-step"));
+        var text = "Performance optimization checklist\\n\\n" + steps.map(function (step, index) {
+          var title = step.querySelector("h3").textContent.trim();
+          var body = step.querySelector("p").textContent.trim();
+          return String(index + 1) + ". " + title + "\\n   " + body;
+        }).join("\\n\\n");
+
+        copyText(text).then(function () {
+          copyButton.textContent = "Copied";
+          window.setTimeout(function () { copyButton.textContent = "Copy 14-step checklist"; }, 1800);
+        }).catch(function () {
+          copyButton.textContent = "Select and copy";
+          window.setTimeout(function () { copyButton.textContent = "Copy 14-step checklist"; }, 1800);
+        });
+      });
+    }());
+  </script>
+</body>
+</html>

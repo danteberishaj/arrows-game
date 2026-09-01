@@ -1,0 +1,523 @@
+diff --git a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
+index e8e4c03..806ee98 100644
+--- a/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
++++ b/node_modules/@shopify/react-native-skia/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
+@@ -83,7 +83,8 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+   _surfaceHolder = nullptr;
+
+   // Create renderer!
+-  ANativeWindow *window = nullptr;
++  std::unique_ptr<ANativeWindow, decltype(&ANativeWindow_release)> window(
++      nullptr, &ANativeWindow_release);
+   JNIEnv *env = facebook::jni::Environment::current();
+   if (!opaque) {
+     _jSurfaceTexture = env->NewGlobalRef(jSurfaceTexture);
+@@ -93,7 +94,7 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+     // Create a new Surface instance
+     auto jSurface =
+         env->NewObject(surfaceClass, surfaceConstructor, jSurfaceTexture);
+-    window = ANativeWindow_fromSurface(env, jSurface);
++    window.reset(ANativeWindow_fromSurface(env, jSurface));
+
+     jclass surfaceTextureClass = env->GetObjectClass(_jSurfaceTexture);
+     _updateTexImageMethod =
+@@ -105,12 +106,17 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
+     env->DeleteLocalRef(surfaceClass);
+     env->DeleteLocalRef(surfaceTextureClass);
+   } else {
+-    window = ANativeWindow_fromSurface(env, jSurfaceTexture);
++    window.reset(ANativeWindow_fromSurface(env, jSurfaceTexture));
++  }
++  if (window == nullptr) {
++    RNSkLogger::logToConsole("Failed to acquire Android native window");
++    return;
+   }
+ #if defined(SK_GRAPHITE)
+-  _surfaceHolder = DawnContext::getInstance().MakeWindow(window, width, height);
++  _surfaceHolder =
++      DawnContext::getInstance().MakeWindow(window.get(), width, height);
+ #else
+-  _surfaceHolder = OpenGLContext::getInstance().MakeWindow(window);
++  _surfaceHolder = OpenGLContext::getInstance().MakeWindow(window.get());
+ #endif
+
+   // Post redraw request to ensure we paint in the next draw cycle.
+diff --git a/node_modules/@shopify/react-native-skia/cpp/api/recorder/Drawings.h b/node_modules/@shopify/react-native-skia/cpp/api/recorder/Drawings.h
+index 681555e..7d03367 100644
+--- a/node_modules/@shopify/react-native-skia/cpp/api/recorder/Drawings.h
++++ b/node_modules/@shopify/react-native-skia/cpp/api/recorder/Drawings.h
+@@ -114,69 +114,72 @@ public:
+     bool willMutatePath =
+         hasStartOffset || hasEndOffset || hasStrokeOptions || hasFillType;
+
++    // The overwhelmingly common case only draws the recorder-owned path.
++    // Avoid a shared_ptr allocation and an unnecessary SkPath copy on every
++    // mapper replay (pan, zoom, and each feedback animation frame).
++    if (!willMutatePath) {
++      ctx->canvas->drawPath(props.path, ctx->getPaint());
++      return;
++    }
++
+     std::shared_ptr<const SkPath> pathToUse;
+
+-    if (willMutatePath) {
+-      // Create a filtered path for modifications
+-      SkPath filteredPath(props.path);
+-
+-      // Handle path trimming
+-      if (hasStartOffset || hasEndOffset) {
+-        auto pe =
+-            SkTrimPathEffect::Make(start, end, SkTrimPathEffect::Mode::kNormal);
+-        if (pe != nullptr) {
+-          SkStrokeRec rec(SkStrokeRec::InitStyle::kHairline_InitStyle);
+-          SkPathBuilder filteredBuilder;
+-          if (!pe->filterPath(&filteredBuilder, filteredPath, &rec)) {
+-            throw std::runtime_error(
+-                "Failed trimming path with parameters start: " +
+-                std::to_string(start) + ", end: " + std::to_string(end));
+-          }
+-          filteredPath = filteredBuilder.detach();
+-        } else {
++    // Create a filtered path for modifications.
++    SkPath filteredPath(props.path);
++
++    // Handle path trimming
++    if (hasStartOffset || hasEndOffset) {
++      auto pe =
++          SkTrimPathEffect::Make(start, end, SkTrimPathEffect::Mode::kNormal);
++      if (pe != nullptr) {
++        SkStrokeRec rec(SkStrokeRec::InitStyle::kHairline_InitStyle);
++        SkPathBuilder filteredBuilder;
++        if (!pe->filterPath(&filteredBuilder, filteredPath, &rec)) {
+           throw std::runtime_error(
+               "Failed trimming path with parameters start: " +
+               std::to_string(start) + ", end: " + std::to_string(end));
+         }
++        filteredPath = filteredBuilder.detach();
++      } else {
++        throw std::runtime_error(
++            "Failed trimming path with parameters start: " +
++            std::to_string(start) + ", end: " + std::to_string(end));
+       }
++    }
+
+-      // Set fill type
+-      auto p = std::make_shared<SkPath>(filteredPath);
+-      if (props.fillType.has_value()) {
+-        p->setFillType(props.fillType.value());
+-      }
+-      // Handle stroke options
+-      if (hasStrokeOptions) {
+-        const auto &stroke = props.stroke.value();
+-        SkPaint strokePaint;
++    // Set fill type
++    auto p = std::make_shared<SkPath>(filteredPath);
++    if (props.fillType.has_value()) {
++      p->setFillType(props.fillType.value());
++    }
++    // Handle stroke options
++    if (hasStrokeOptions) {
++      const auto &stroke = props.stroke.value();
++      SkPaint strokePaint;
+
+-        if (stroke.cap.has_value()) {
+-          strokePaint.setStrokeCap(stroke.cap.value());
+-        }
++      if (stroke.cap.has_value()) {
++        strokePaint.setStrokeCap(stroke.cap.value());
++      }
+
+-        if (stroke.join.has_value()) {
+-          strokePaint.setStrokeJoin(stroke.join.value());
+-        }
++      if (stroke.join.has_value()) {
++        strokePaint.setStrokeJoin(stroke.join.value());
++      }
+
+-        if (stroke.width.has_value()) {
+-          strokePaint.setStrokeWidth(stroke.width.value());
+-        }
++      if (stroke.width.has_value()) {
++        strokePaint.setStrokeWidth(stroke.width.value());
++      }
+
+-        if (stroke.miter_limit.has_value()) {
+-          strokePaint.setStrokeMiter(stroke.miter_limit.value());
+-        }
++      if (stroke.miter_limit.has_value()) {
++        strokePaint.setStrokeMiter(stroke.miter_limit.value());
++      }
+
+-        SkPathBuilder resultBuilder;
+-        if (!skpathutils::FillPathWithPaint(*p, strokePaint, &resultBuilder)) {
+-          throw std::runtime_error("Failed to apply stroke to path");
+-        }
+-        pathToUse = std::make_shared<const SkPath>(resultBuilder.snapshot());
+-      } else {
+-        pathToUse = std::const_pointer_cast<const SkPath>(p);
++      SkPathBuilder resultBuilder;
++      if (!skpathutils::FillPathWithPaint(*p, strokePaint, &resultBuilder)) {
++        throw std::runtime_error("Failed to apply stroke to path");
+       }
++      pathToUse = std::make_shared<const SkPath>(resultBuilder.snapshot());
+     } else {
+-      // Use the original path directly
+-      pathToUse = std::make_shared<const SkPath>(props.path);
++      pathToUse = std::const_pointer_cast<const SkPath>(p);
+     }
+
+     if (!pathToUse) {
+diff --git a/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkJsiViewApi.h b/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkJsiViewApi.h
+index 6a18a5b..9310adf 100644
+--- a/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkJsiViewApi.h
++++ b/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkJsiViewApi.h
+@@ -6,6 +6,7 @@
+ #include <shared_mutex>
+ #include <string>
+ #include <unordered_map>
++#include <unordered_set>
+ #include <utility>
+ #include <vector>
+
+@@ -39,33 +40,51 @@ public:
+   void removeViewInfo(size_t id) {
+     std::unique_lock<std::shared_mutex> lock(_mutex);
+     _registry.erase(id);
++    // Ignore property updates that race with unmount instead of recreating a
++    // global registry entry that retains the old SkPicture forever.
++    _unregistered.insert(id);
+   }
+
+-  // Execute a function while holding the registry lock
++  // Execute a function while holding the registry lock. Registration paths
++  // may explicitly revive an id after a JS reload.
+   template <typename F>
+-  auto withViewInfo(size_t id, F &&func)
++  auto withViewInfo(size_t id, F &&func, bool revive = false)
+       -> decltype(func(std::shared_ptr<RNSkViewInfo>())) {
+     std::unique_lock<std::shared_mutex> lock(_mutex);
++    if (revive) {
++      _unregistered.erase(id);
++    }
+     auto it = _registry.find(id);
+     std::shared_ptr<RNSkViewInfo> info;
+     if (it != _registry.end()) {
+       info = it->second;
+     } else {
+       info = std::make_shared<RNSkViewInfo>();
+-      _registry[id] = info;
++      if (_unregistered.find(id) == _unregistered.end()) {
++        _registry[id] = info;
++      }
+     }
+     return func(info);
+   }
+
++  // Read-only lookup: querying an unknown id must not create an entry.
++  std::shared_ptr<RNSkView> getView(size_t id) {
++    std::shared_lock<std::shared_mutex> lock(_mutex);
++    auto it = _registry.find(id);
++    return it != _registry.end() ? it->second->view : nullptr;
++  }
++
+   void clear() {
+     std::unique_lock<std::shared_mutex> lock(_mutex);
+     _registry.clear();
++    _unregistered.clear();
+   }
+
+ private:
+   ViewRegistry() = default;
+   mutable std::shared_mutex _mutex;
+   std::unordered_map<size_t, std::shared_ptr<RNSkViewInfo>> _registry;
++  std::unordered_set<size_t> _unregistered;
+ };
+
+ class RNSkJsiViewApi : public RNJsi::JsiHostObject,
+@@ -137,13 +156,10 @@ public:
+
+     // find Skia View
+     int nativeId = arguments[0].asNumber();
+-    ViewRegistry::getInstance().withViewInfo(
+-        nativeId, [](std::shared_ptr<RNSkViewInfo> info) {
+-          if (info->view != nullptr) {
+-            info->view->requestRedraw();
+-          }
+-          return nullptr;
+-        });
++    auto view = ViewRegistry::getInstance().getView(nativeId);
++    if (view != nullptr) {
++      view->requestRedraw();
++    }
+     return jsi::Value::undefined();
+   }
+
+@@ -164,9 +180,8 @@ public:
+     // find Skia view
+     int nativeId = arguments[0].asNumber();
+     sk_sp<SkImage> image;
+-    std::shared_ptr<RNSkView> view = ViewRegistry::getInstance().withViewInfo(
+-        nativeId,
+-        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    std::shared_ptr<RNSkView> view =
++        ViewRegistry::getInstance().getView(nativeId);
+     if (view != nullptr) {
+       if (count > 1 && !arguments[1].isUndefined() && !arguments[1].isNull()) {
+         auto rect = JsiSkRect::fromValue(runtime, arguments[1]);
+@@ -202,9 +217,8 @@ public:
+
+     // find Skia view
+     int nativeId = arguments[0].asNumber();
+-    std::shared_ptr<RNSkView> view = ViewRegistry::getInstance().withViewInfo(
+-        nativeId,
+-        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    std::shared_ptr<RNSkView> view =
++        ViewRegistry::getInstance().getView(nativeId);
+     auto context = _platformContext;
+     auto bounds =
+         count > 1 && !arguments[1].isUndefined() && !arguments[1].isNull()
+@@ -248,9 +262,8 @@ public:
+
+     // find Skia View
+     int nativeId = arguments[0].asNumber();
+-    std::shared_ptr<RNSkView> view = ViewRegistry::getInstance().withViewInfo(
+-        nativeId,
+-        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    std::shared_ptr<RNSkView> view =
++        ViewRegistry::getInstance().getView(nativeId);
+     if (view != nullptr) {
+       auto pixelDensity = _platformContext->getPixelDensity();
+       auto sizeObj = jsi::Object(runtime);
+@@ -293,7 +306,8 @@ public:
+    */
+   void registerSkiaView(size_t nativeId, std::shared_ptr<RNSkView> view) {
+     ViewRegistry::getInstance().withViewInfo(
+-        nativeId, [&](std::shared_ptr<RNSkViewInfo> info) {
++        nativeId,
++        [&](std::shared_ptr<RNSkViewInfo> info) {
+           info->view = view;
+           info->view->setNativeId(nativeId);
+
+@@ -301,7 +315,8 @@ public:
+           info->props.clear();
+
+           return nullptr;
+-        });
++        },
++        /* revive= */ true);
+   }
+
+   /**
+@@ -320,7 +335,8 @@ public:
+    */
+   void setSkiaView(size_t nativeId, std::shared_ptr<RNSkView> view) {
+     ViewRegistry::getInstance().withViewInfo(
+-        nativeId, [&](std::shared_ptr<RNSkViewInfo> info) {
++        nativeId,
++        [&](std::shared_ptr<RNSkViewInfo> info) {
+           if (view != nullptr) {
+             info->view = view;
+             info->view->setNativeId(nativeId);
+@@ -330,7 +346,8 @@ public:
+             info->view = view; // Set to nullptr
+           }
+           return nullptr;
+-        });
++        },
++        /* revive= */ view != nullptr);
+   }
+
+ private:
+diff --git a/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkPictureView.h b/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkPictureView.h
+index 0059ea1..df1bd29 100644
+--- a/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkPictureView.h
++++ b/node_modules/@shopify/react-native-skia/cpp/rnskia/RNSkPictureView.h
+@@ -52,17 +52,23 @@ public:
+   }
+
+   void setPicture(sk_sp<SkPicture> picture) {
+-    _picture = picture;
++    {
++      std::lock_guard<std::mutex> lock(_pictureMutex);
++      _picture = std::move(picture);
++    }
+     _requestRedraw();
+   }
+
+-  sk_sp<SkPicture> getPicture() const { return _picture; }
++  sk_sp<SkPicture> getPicture() const {
++    std::lock_guard<std::mutex> lock(_pictureMutex);
++    return _picture;
++  }
+
+ private:
+   bool performDraw(std::shared_ptr<RNSkCanvasProvider> canvasProvider) {
+-    // Capture picture pointer to ensure thread safety - _picture can be
+-    // modified from the JS thread while we're drawing on the render thread
+-    sk_sp<SkPicture> picture = _picture;
++    // Copy under the lock: setPicture() writes from the JS thread while this
++    // reads on the render thread. The local ref then protects the whole draw.
++    sk_sp<SkPicture> picture = getPicture();
+     auto pd = _platformContext->getPixelDensity();
+     return canvasProvider->renderToCanvas([=](SkCanvas *canvas) {
+       canvas->clear(SK_ColorTRANSPARENT);
+@@ -76,6 +82,7 @@ private:
+   }
+
+   std::shared_ptr<RNSkPlatformContext> _platformContext;
++  mutable std::mutex _pictureMutex;
+   sk_sp<SkPicture> _picture;
+ };
+
+diff --git a/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.native.js b/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.native.js
+index 91b2235..4da1b61 100644
+--- a/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.native.js
++++ b/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.native.js
+@@ -36,9 +36,17 @@ class NativeReanimatedContainer extends _StaticContainer.Container {
+     _defineProperty(this, "picture", void 0);
+     this.picture = Skia.Picture.MakePicture(null);
+   }
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      _ReanimatedProxy.default.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
+   redraw() {
+     if (this.mapperId !== null) {
+       _ReanimatedProxy.default.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;
+@@ -61,7 +69,6 @@ class NativeReanimatedContainer extends _StaticContainer.Container {
+     if (sharedValues.length > 0) {
+       this.mapperId = _ReanimatedProxy.default.startMapper(() => {
+         "worklet";
+-
+         sharedRecorder.applyUpdates(sharedValues);
+         nativeDrawOnscreen(nativeId, sharedRecorder, picture);
+       }, sharedValues);
+diff --git a/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.web.js b/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.web.js
+index a19cfdf..0a57360 100644
+--- a/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.web.js
++++ b/node_modules/@shopify/react-native-skia/lib/commonjs/sksg/Container.web.js
+@@ -42,9 +42,17 @@ class ReanimatedContainer extends _StaticContainer.Container {
+     this.nativeId = nativeId;
+     _defineProperty(this, "mapperId", null);
+   }
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      _ReanimatedProxy.default.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
+   redraw() {
+     if (this.mapperId !== null) {
+       _ReanimatedProxy.default.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;
+diff --git a/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.native.js b/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.native.js
+index 1baab98..ff10a4c 100644
+--- a/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.native.js
++++ b/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.native.js
+@@ -30,9 +30,17 @@ class NativeReanimatedContainer extends Container {
+     _defineProperty(this, "picture", void 0);
+     this.picture = Skia.Picture.MakePicture(null);
+   }
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
+   redraw() {
+     if (this.mapperId !== null) {
+       Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;
+@@ -55,7 +63,6 @@ class NativeReanimatedContainer extends Container {
+     if (sharedValues.length > 0) {
+       this.mapperId = Rea.startMapper(() => {
+         "worklet";
+-
+         sharedRecorder.applyUpdates(sharedValues);
+         nativeDrawOnscreen(nativeId, sharedRecorder, picture);
+       }, sharedValues);
+diff --git a/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.web.js b/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.web.js
+index 728bc58..a342538 100644
+--- a/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.web.js
++++ b/node_modules/@shopify/react-native-skia/lib/module/sksg/Container.web.js
+@@ -36,9 +36,17 @@ class ReanimatedContainer extends Container {
+     this.nativeId = nativeId;
+     _defineProperty(this, "mapperId", null);
+   }
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
+   redraw() {
+     if (this.mapperId !== null) {
+       Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;
+diff --git a/node_modules/@shopify/react-native-skia/src/sksg/Container.native.ts b/node_modules/@shopify/react-native-skia/src/sksg/Container.native.ts
+index 08c16a9..a1be70d 100644
+--- a/node_modules/@shopify/react-native-skia/src/sksg/Container.native.ts
++++ b/node_modules/@shopify/react-native-skia/src/sksg/Container.native.ts
+@@ -39,9 +39,19 @@ class NativeReanimatedContainer extends Container {
+     this.picture = Skia.Picture.MakePicture(null)!;
+   }
+
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      // The mapper closure retains the recorder and picture on the UI runtime.
++      Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
++
+   redraw() {
+     if (this.mapperId !== null) {
+       Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;
+diff --git a/node_modules/@shopify/react-native-skia/src/sksg/Container.web.ts b/node_modules/@shopify/react-native-skia/src/sksg/Container.web.ts
+index d71fc97..321f108 100644
+--- a/node_modules/@shopify/react-native-skia/src/sksg/Container.web.ts
++++ b/node_modules/@shopify/react-native-skia/src/sksg/Container.web.ts
+@@ -40,9 +40,19 @@ class ReanimatedContainer extends Container {
+     super(Skia);
+   }
+
++  unmount() {
++    super.unmount();
++    if (this.mapperId !== null) {
++      // The mapper closure retains the recording on the UI runtime.
++      Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
++    }
++  }
++
+   redraw() {
+     if (this.mapperId !== null) {
+       Rea.stopMapper(this.mapperId);
++      this.mapperId = null;
+     }
+     if (this.unmounted) {
+       return;

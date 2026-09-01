@@ -101,24 +101,91 @@ export const LevelGenerator = {
     rng: DotNetRandom,
   ): ArrowPath[] {
     const need = mask.map((row) => [...row]); // true = a shape cell still waiting to be filled
-    let remaining = countTrue(need);
+    const rowFirst = new Int16Array(rows);
+    const rowLast = new Int16Array(rows);
+    const colFirst = new Int16Array(cols);
+    const colLast = new Int16Array(cols);
+    // Remaining cells stay linked in row-major order, so candidate gathering
+    // visits only live cells while preserving the original traversal order.
+    const cellCount = rows * cols;
+    const liveNext = new Int32Array(cellCount);
+    const livePrevious = new Int32Array(cellCount);
+    rowFirst.fill(cols);
+    rowLast.fill(-1);
+    colFirst.fill(rows);
+    colLast.fill(-1);
+
+    let remaining = 0;
+    let liveHead = -1;
+    let liveTail = -1;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!need[r][c]) continue;
+        const cellIndex = r * cols + c;
+        livePrevious[cellIndex] = liveTail;
+        liveNext[cellIndex] = -1;
+        if (liveTail === -1) liveHead = cellIndex;
+        else liveNext[liveTail] = cellIndex;
+        liveTail = cellIndex;
+        remaining++;
+        if (c < rowFirst[r]) rowFirst[r] = c;
+        rowLast[r] = c;
+        if (r < colFirst[c]) colFirst[c] = r;
+        colLast[c] = r;
+      }
+    }
     const result: ArrowPath[] = [];
     const span = Math.max(rows, cols);
+    const cap = Math.min(cfg.maxLen, span);
 
     const inBounds = (r: number, c: number) => r >= 0 && r < rows && c >= 0 && c < cols;
 
-    // A head can exit in direction d if its straight lane to the edge crosses
-    // no cell that is still unfilled. (Already-filled cells are carved earlier
-    // => removed earlier when solving, so they never block; background cells
-    // are never filled.)
+    // A head can exit when it is the outermost still-needed cell in its row or
+    // column. The four bounds are updated as cells are consumed, turning the
+    // old repeated ray walks into constant-time checks without changing
+    // candidate order, weights, or RNG consumption.
     const rayClearOfNeed = (r: number, c: number, d: Direction): boolean => {
-      const [dr, dc] = toDelta(d);
-      let rr = r + dr, cc = c + dc;
-      while (inBounds(rr, cc)) {
-        if (need[rr][cc]) return false;
-        rr += dr; cc += dc;
+      switch (d) {
+        case Direction.Up: return colFirst[c] === r;
+        case Direction.Down: return colLast[c] === r;
+        case Direction.Left: return rowFirst[r] === c;
+        case Direction.Right: return rowLast[r] === c;
+        default: return false;
       }
-      return true;
+    };
+
+    const consumeCell = (r: number, c: number): void => {
+      need[r][c] = false;
+      remaining--;
+
+      const cellIndex = r * cols + c;
+      const previous = livePrevious[cellIndex];
+      const next = liveNext[cellIndex];
+      if (previous === -1) liveHead = next;
+      else liveNext[previous] = next;
+      if (next === -1) liveTail = previous;
+      else livePrevious[next] = previous;
+
+      if (rowFirst[r] === c) {
+        let next = c + 1;
+        while (next < cols && !need[r][next]) next++;
+        rowFirst[r] = next;
+      }
+      if (rowLast[r] === c) {
+        let next = c - 1;
+        while (next >= 0 && !need[r][next]) next--;
+        rowLast[r] = next;
+      }
+      if (colFirst[c] === r) {
+        let next = r + 1;
+        while (next < rows && !need[next][c]) next++;
+        colFirst[c] = next;
+      }
+      if (colLast[c] === r) {
+        let next = r - 1;
+        while (next >= 0 && !need[next][c]) next--;
+        colLast[c] = next;
+      }
     };
 
     // Room (in cells, incl. the head) available straight back from a head —
@@ -126,7 +193,7 @@ export const LevelGenerator = {
     const backwardRoom = (r: number, c: number, headDir: Direction): number => {
       const [dr, dc] = toDelta(opposite(headDir));
       let len = 1, rr = r + dr, cc = c + dc;
-      while (inBounds(rr, cc) && need[rr][cc]) { len++; rr += dr; cc += dc; }
+      while (len < cap && inBounds(rr, cc) && need[rr][cc]) { len++; rr += dr; cc += dc; }
       return len;
     };
 
@@ -144,8 +211,6 @@ export const LevelGenerator = {
       return n;
     };
 
-    const cap = Math.min(cfg.maxLen, span);
-
     while (remaining > 0) {
       // Gather every legal (head, direction). One always exists while cells
       // remain: a cell in the top-most unfilled row can point Up with nothing
@@ -156,30 +221,29 @@ export const LevelGenerator = {
       // shape still fills with many short, bendy arrows.
       const cands: { r: number; c: number; d: Direction; w: number }[] = [];
       let weightTotal = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (!need[r][c]) continue;
-          for (const d of DIRS) {
-            if (!rayClearOfNeed(r, c, d)) continue;
-            const room = Math.min(backwardRoom(r, c, d), cap);
-            let w = room * room; // squared: steer away from length-2 stubs (so arrows
-                                 // are long enough to bend) without forcing long strokes
-            // Big bonus when a CLEAN L fits here: a 2-cell straight neck plus a
-            // free perpendicular cell off it. This is what lets us draw
-            // mostly-bent arrows while still keeping the 2-cell neck (no goofy
-            // bend at the head).
-            const [tdr, tdc] = toDelta(opposite(d));
-            const n2r = r + 2 * tdr, n2c = c + 2 * tdc;
-            if (room >= 3) {
-              for (const pd of DIRS) {
-                const [pr, pc] = toDelta(pd);
-                if (pr * tdr + pc * tdc !== 0) continue; // keep only perpendiculars
-                if (inBounds(n2r + pr, n2c + pc) && need[n2r + pr][n2c + pc]) { w *= 10; break; }
-              }
+      for (let cellIndex = liveHead; cellIndex !== -1; cellIndex = liveNext[cellIndex]) {
+        const r = Math.trunc(cellIndex / cols);
+        const c = cellIndex - r * cols;
+        for (const d of DIRS) {
+          if (!rayClearOfNeed(r, c, d)) continue;
+          const room = Math.min(backwardRoom(r, c, d), cap);
+          let w = room * room; // squared: steer away from length-2 stubs (so arrows
+                               // are long enough to bend) without forcing long strokes
+          // Big bonus when a CLEAN L fits here: a 2-cell straight neck plus a
+          // free perpendicular cell off it. This is what lets us draw
+          // mostly-bent arrows while still keeping the 2-cell neck (no goofy
+          // bend at the head).
+          const [tdr, tdc] = toDelta(opposite(d));
+          const n2r = r + 2 * tdr, n2c = c + 2 * tdc;
+          if (room >= 3) {
+            for (const pd of DIRS) {
+              const [pr, pc] = toDelta(pd);
+              if (pr * tdr + pc * tdc !== 0) continue; // keep only perpendiculars
+              if (inBounds(n2r + pr, n2c + pc) && need[n2r + pr][n2c + pc]) { w *= 10; break; }
             }
-            cands.push({ r, c, d, w });
-            weightTotal += w;
           }
+          cands.push({ r, c, d, w });
+          weightTotal += w;
         }
       }
       if (cands.length === 0) break; // unreachable by construction; guards against surprises
@@ -195,7 +259,7 @@ export const LevelGenerator = {
       // tightly. Length is capped and most arrows are made to bend (a clean
       // L / Z), which reads better and plays harder.
       const headFirst: Cell[] = [{ r: hr, c: hc }];
-      need[hr][hc] = false; remaining--;
+      consumeCell(hr, hc);
       let cur: Cell = { r: hr, c: hc };
 
       let travel = opposite(headDir); // straight neck runs back from the head
@@ -256,7 +320,7 @@ export const LevelGenerator = {
           break; // boxed in (or a straight arrow that hit its length limit)
         }
 
-        need[nextCell.r][nextCell.c] = false; remaining--;
+        consumeCell(nextCell.r, nextCell.c);
         headFirst.push(nextCell);
         cur = nextCell;
       }
@@ -300,7 +364,7 @@ export const LevelGenerator = {
           if (fn <= 1 && fn < chosenFree) { chosen = d; chosenCell = { r: rr, c: cc }; chosenFree = fn; }
         }
         if (chosen === null) break; // nothing dead-ended hangs off the tail
-        need[chosenCell.r][chosenCell.c] = false; remaining--;
+        consumeCell(chosenCell.r, chosenCell.c);
         headFirst.push(chosenCell);
         tail = chosenCell;
       }

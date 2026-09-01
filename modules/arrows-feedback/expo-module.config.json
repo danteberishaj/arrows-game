@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["ArrowsFeedbackModule"]
+  },
+  "android": {
+    "modules": ["com.danteb.arrows.feedback.ArrowsFeedbackModule"]
+  }
+}

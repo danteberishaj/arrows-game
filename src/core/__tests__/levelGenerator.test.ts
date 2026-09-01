@@ -19,6 +19,19 @@ function solveGreedy(board: BoardLogic): boolean {
   return board.isCleared();
 }
 
+function checksumLines(lines: readonly string[]): string {
+  let hash = 0x811c9dc5;
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      hash ^= line.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    hash ^= 10;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
 test('difficulty cycle follows pattern', () => {
   // Normal, Normal, Hard, Normal, Normal, SuperHard, then repeat.
   expect(Difficulties.forLevel(0)).toBe(Difficulty.Normal);
@@ -132,4 +145,16 @@ test('generate is deterministic by index', () => {
     expect(br[i].headDir).toBe(ar[i].headDir); // arrow i dir
     expect(br[i].length).toBe(ar[i].length); // arrow i length
   }
+});
+
+test.each([
+  [239, 'a05a623c'],
+  [917, 'eb373575'],
+  [935, '546a69c0'],
+  [3827, 'b1f50ecb'],
+  [5363, '63599476'],
+] as const)('level %i preserves its full serialized board checksum', (index, expected) => {
+  const level = LevelGenerator.generate(index);
+  const lines = level.board.arrows().map((arrow) => arrow.toLine());
+  expect(checksumLines(lines)).toBe(expected);
 });

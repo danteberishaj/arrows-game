@@ -4,6 +4,9 @@ import { DotNetRandom } from './dotnetRandom';
 type InsideFn = (nx: number, ny: number) => boolean;
 type Pt = readonly [number, number];
 
+const PINE_TOP: readonly Pt[] = [[0, 0.95], [0.55, 0.25], [-0.55, 0.25]];
+const PINE_LOWER: readonly Pt[] = [[0, 0.5], [0.8, -0.45], [-0.8, -0.45]];
+
 /**
  * A scalable shape silhouette. {@link ShapeDef.inside} answers "is this
  * normalized point part of the shape?" in a coordinate space where x and y
@@ -164,12 +167,16 @@ export const ShapeLibrary = (() => {
 
   // Four-petal flower: the union of four petal discs and a core disc.
   const Flower = new ShapeDef('Flower', false, 1, false, (x, y) => {
-    const disc = (cx: number, cy: number, r: number) =>
-      (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+    const rightX = x - 0.47;
+    const leftX = x + 0.47;
+    const topY = y - 0.47;
+    const bottomY = y + 0.47;
     return (
-      disc(0, 0, 0.34) ||
-      disc(0.47, 0, 0.4) || disc(-0.47, 0, 0.4) ||
-      disc(0, 0.47, 0.4) || disc(0, -0.47, 0.4)
+      x * x + y * y <= 0.34 * 0.34 ||
+      rightX * rightX + y * y <= 0.4 * 0.4 ||
+      leftX * leftX + y * y <= 0.4 * 0.4 ||
+      x * x + topY * topY <= 0.4 * 0.4 ||
+      x * x + bottomY * bottomY <= 0.4 * 0.4
     );
   });
 
@@ -218,12 +225,18 @@ export const ShapeLibrary = (() => {
 
   // Butterfly: two wing discs per side + a body bar.
   const Butterfly = new ShapeDef('Butterfly', false, 1.1, false, (x, y) => {
-    const disc = (cx: number, cy: number, r: number) =>
-      (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r;
+    const upperY = y - 0.34;
+    const lowerY = y + 0.4;
+    const rightUpperX = x - 0.5;
+    const leftUpperX = x + 0.5;
+    const rightLowerX = x - 0.42;
+    const leftLowerX = x + 0.42;
     return (
       (Math.abs(x) <= 0.12 && Math.abs(y) <= 0.7) ||
-      disc(0.5, 0.34, 0.42) || disc(-0.5, 0.34, 0.42) ||
-      disc(0.42, -0.4, 0.34) || disc(-0.42, -0.4, 0.34)
+      rightUpperX * rightUpperX + upperY * upperY <= 0.42 * 0.42 ||
+      leftUpperX * leftUpperX + upperY * upperY <= 0.42 * 0.42 ||
+      rightLowerX * rightLowerX + lowerY * lowerY <= 0.34 * 0.34 ||
+      leftLowerX * leftLowerX + lowerY * lowerY <= 0.34 * 0.34
     );
   });
 
@@ -236,11 +249,9 @@ export const ShapeLibrary = (() => {
 
   // Pine tree: two stacked canopy triangles over a trunk.
   const Pine = new ShapeDef('Pine', false, 0.9, false, (x, y) => {
-    const inTri = (ax: number, ay: number, bx: number, by: number, cx2: number, cy2: number) =>
-      pointInPolygon(x, y, [[ax, ay], [bx, by], [cx2, cy2]]);
     return (
-      inTri(0, 0.95, 0.55, 0.25, -0.55, 0.25) ||
-      inTri(0, 0.5, 0.8, -0.45, -0.8, -0.45) ||
+      pointInPolygon(x, y, PINE_TOP) ||
+      pointInPolygon(x, y, PINE_LOWER) ||
       (Math.abs(x) <= 0.14 && y >= -0.95 && y <= -0.45)
     );
   });

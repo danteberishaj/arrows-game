@@ -38,6 +38,17 @@ const LastPlayDayKey = 'arrows_last_play_day';
 const SoundKey = 'arrows_sound_on';
 const DarkKey = 'arrows_dark_mode';
 
+const PersistenceKeys: readonly string[] = Object.freeze([
+  CurrentKey,
+  SolvedKey,
+  PerfectStreakKey,
+  BestPerfectStreakKey,
+  DayStreakKey,
+  LastPlayDayKey,
+  SoundKey,
+  DarkKey,
+]);
+
 let store: IntStore = new MemoryStore();
 
 // Days since an arbitrary epoch, in LOCAL time, so "yesterday" matches the
@@ -49,6 +60,11 @@ function dayNumber(t: Date): number {
 }
 
 export const SaveSystem = {
+  /** Complete, immutable list of persistence keys owned by the save system. */
+  get persistenceKeys(): readonly string[] {
+    return PersistenceKeys;
+  },
+
   /** Swap in the platform store (MMKV / localStorage adapter) at app startup. */
   useStore(s: IntStore): void {
     store = s;

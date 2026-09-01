@@ -8,7 +8,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Difficulties, Difficulty, SaveSystem } from '../core';
+import { Difficulties, Difficulty } from '../core/difficulty';
+import { SaveSystem } from '../core/saveSystem';
 import { HeaderButton } from './HeaderButton';
 import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';

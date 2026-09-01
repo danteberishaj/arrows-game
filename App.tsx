@@ -1,11 +1,14 @@
-import { Fredoka_600SemiBold, Fredoka_700Bold, useFonts } from '@expo-google-fonts/fredoka';
+import { Fredoka_600SemiBold } from '@expo-google-fonts/fredoka/600SemiBold';
+import { Fredoka_700Bold } from '@expo-google-fonts/fredoka/700Bold';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { SaveSystem } from './src/core';
+import { SaveSystem } from './src/core/saveSystem';
+import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE } from './src/perfMode';
 import { AdHost, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -16,13 +19,14 @@ import { paletteFor } from './src/ui/theme';
 type Screen = 'splash' | 'menu' | 'game';
 
 export default function App() {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(PERF_MODE);
   const [fontsReady] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
-  const [screen, setScreen] = useState<Screen>('splash');
+  const [screen, setScreen] = useState<Screen>(PERF_MODE ? 'game' : 'splash');
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
 
   useEffect(() => {
+    if (PERF_MODE) return;
     initSaveSystem().then(() => {
       setDark(SaveSystem.darkMode);
       setSoundOn(SaveSystem.soundOn);
@@ -69,10 +73,16 @@ export default function App() {
       )}
       {screen === 'game' && (
         <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
-          <GameScreen palette={p} onHome={() => setScreen('menu')} />
+          <GameScreen
+            palette={p}
+            initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
+            benchmarkMode={PERF_MODE}
+            feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
+            onHome={() => setScreen('menu')}
+          />
         </Animated.View>
       )}
-      <AdHost palette={p} />
+      {!PERF_MODE && <AdHost palette={p} />}
     </GestureHandlerRootView>
     </SafeAreaProvider>
   );

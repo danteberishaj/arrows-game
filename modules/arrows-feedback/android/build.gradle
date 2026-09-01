@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.danteb.arrows'
+version = '1.0.0'
+
+android {
+  namespace 'com.danteb.arrows.feedback'
+
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+
+  // Keep one source of truth for the synthesized effects. Android packages
+  // these files as uncompressed assets, which lets SoundPool read them by fd.
+  sourceSets {
+    main {
+      assets.srcDir("${rootProject.projectDir}/../assets/audio")
+    }
+  }
+}

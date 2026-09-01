@@ -1,6 +1,12 @@
 import Constants from 'expo-constants';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import type {
+  LevelPlayInterstitialAd,
+  LevelPlayInterstitialAdListener,
+  LevelPlayRewardedAd,
+  LevelPlayRewardedAdListener,
+} from 'unity-levelplay-mediation';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -8,12 +14,16 @@ import { Fonts, Palette } from './theme';
  * interstitial paced to every Nth finished game (shown only after a clear)
  * and one rewarded ad for the "+1 heart continue" and the hint.
  *
- * The native LevelPlay SDK (ironsource-mediation) only exists in a dev build
- * (`npx expo run:android` / EAS) — Expo Go and web can't load it. Everywhere
- * it's missing, a simulated "test ad" modal (countdown, then claim/skip)
- * stands in, so every ad-gated flow stays testable. Like Unity, every call
- * degrades gracefully: no ad ready => interstitial skipped, rewarded reports
- * failure, gameplay never soft-locks.
+ * The native LevelPlay SDK (unity-levelplay-mediation) only exists in a dev
+ * build (`npx expo run:android` / EAS) — Expo Go and web can't load it.
+ * Everywhere it's missing, a simulated "test ad" modal (countdown, then
+ * claim/skip) stands in, so every ad-gated flow stays testable. Like Unity,
+ * every call degrades gracefully: no ad ready => interstitial skipped,
+ * rewarded reports failure, gameplay never soft-locks.
+ *
+ * The `import type` above is erased at compile time (zero runtime cost), so it
+ * cannot break the Expo Go / web bundle where the native module is absent — the
+ * only real load happens through the guarded dynamic `require` in initAds().
  */
 
 // =====================  EDIT THESE  (from the LevelPlay dashboard)  =========
@@ -124,9 +134,11 @@ export function AdHost({ palette }: { palette: Palette }) {
 
 // ---- LevelPlay adapter ------------------------------------------------------
 
-type LpAd = { loadAd(): Promise<void>; showAd(): Promise<void>; isAdReady(): Promise<boolean>; setListener(l: unknown): void };
-let lpInterstitial: LpAd | null = null;
-let lpRewarded: LpAd | null = null;
+type LevelPlayModule = typeof import('unity-levelplay-mediation');
+
+let lpInterstitial: LevelPlayInterstitialAd | null = null;
+let lpRewarded: LevelPlayRewardedAd | null = null;
+let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
 let rewardEarned = false;
 let onRewardedClosed: ((earned: boolean) => void) | null = null;
 let onInterstitialClosed: (() => void) | null = null;
@@ -145,21 +157,37 @@ export async function initAds(): Promise<void> {
 
   try {
     // Dynamic require: only resolvable in a dev build with the native module.
-    const lp = require('ironsource-mediation');
-    const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd, AdFormat } = lp;
+    const lp = require('unity-levelplay-mediation') as LevelPlayModule;
+    const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd } = lp;
 
-    const request = LevelPlayInitRequest.builder(APP_KEY)
-      .withLegacyAdFormats([AdFormat.INTERSTITIAL, AdFormat.REWARDED])
-      .build();
-    await LevelPlay.init(request, {
-      onInitSuccess: () => {},
-      onInitFailed: () => {},
+    // Enable the LevelPlay Test Suite in dev builds only (must precede init).
+    if (__DEV__) {
+      await LevelPlay.setMetaData('is_test_suite', ['enable']);
+    }
+
+    // 9.x init request: no legacy ad formats — appKey (+ optional userId) only.
+    // LevelPlay.init()'s promise resolves when the call is dispatched, NOT when
+    // init finishes — loading an ad before onInitSuccess fails with error 625,
+    // so gate ad creation on the actual callback.
+    const request = LevelPlayInitRequest.builder(APP_KEY).build();
+    await new Promise<void>((resolve, reject) => {
+      LevelPlay.init(request, {
+        onInitSuccess: () => {
+          if (__DEV__) console.log('[ads] LevelPlay init success');
+          resolve();
+        },
+        onInitFailed: (error) => {
+          if (__DEV__) console.log('[ads] LevelPlay init failed:', error);
+          reject(new Error('LevelPlay init failed'));
+        },
+      }).catch(reject);
     });
 
-    const inter: LpAd = new LevelPlayInterstitialAd(INTERSTITIAL_AD_UNIT);
-    inter.setListener({
+    const inter = new LevelPlayInterstitialAd(INTERSTITIAL_AD_UNIT);
+    const interListener: LevelPlayInterstitialAdListener = {
       onAdLoaded: () => {},
       onAdLoadFailed: () => setTimeout(() => inter.loadAd().catch(() => {}), 15000),
+      onAdDisplayed: () => {},
       onAdClosed: () => {
         onInterstitialClosed?.();
         onInterstitialClosed = null;
@@ -169,17 +197,21 @@ export async function initAds(): Promise<void> {
         onInterstitialClosed?.();
         onInterstitialClosed = null;
       },
-    });
+    };
+    inter.setListener(interListener);
     await inter.loadAd();
 
-    const rew: LpAd = new LevelPlayRewardedAd(REWARDED_AD_UNIT);
-    rew.setListener({
+    const rew = new LevelPlayRewardedAd(REWARDED_AD_UNIT);
+    const rewListener: LevelPlayRewardedAdListener = {
       onAdLoaded: () => {},
       onAdLoadFailed: () => setTimeout(() => rew.loadAd().catch(() => {}), 15000),
+      onAdDisplayed: () => {},
       onAdRewarded: () => {
+        if (__DEV__) console.log('[ads] rewarded: reward earned');
         rewardEarned = true;
       },
       onAdClosed: () => {
+        if (__DEV__) console.log('[ads] rewarded closed, earned =', rewardEarned);
         onRewardedClosed?.(rewardEarned);
         onRewardedClosed = null;
         rewardEarned = false;
@@ -189,14 +221,32 @@ export async function initAds(): Promise<void> {
         onRewardedClosed?.(false);
         onRewardedClosed = null;
       },
-    });
+    };
+    rew.setListener(rewListener);
     await rew.loadAd();
 
     lpInterstitial = inter;
     lpRewarded = rew;
-  } catch {
+    levelPlayApi = LevelPlay;
+  } catch (e) {
+    if (__DEV__) console.log('[ads] native ads unavailable:', e);
     lpInterstitial = null;
     lpRewarded = null;
+    levelPlayApi = null;
+  }
+}
+
+/**
+ * Launches the LevelPlay Test Suite (ad-unit validation / mediation debug) when
+ * the native SDK is present; a no-op on the simulated path (Expo Go / web).
+ * Not wired to any UI — call from a dev affordance when needed.
+ */
+export async function launchAdTestSuite(): Promise<void> {
+  if (!levelPlayApi) return;
+  try {
+    await levelPlayApi.launchTestSuite();
+  } catch {
+    /* degrade gracefully */
   }
 }
 

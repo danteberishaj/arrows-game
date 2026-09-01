@@ -1,21 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { IntStore, SaveSystem } from '../core';
+import { SaveSystem, type IntStore } from '../core/saveSystem';
 
 /**
  * AsyncStorage-backed implementation of the core's synchronous IntStore
  * (Unity PlayerPrefs equivalent). AsyncStorage is async, so all `arrows_*`
- * keys are hydrated into a memory cache once at boot; reads are served from
- * the cache and writes go through to AsyncStorage fire-and-forget. On web
- * AsyncStorage is a localStorage wrapper, so persistence works everywhere.
+ * keys owned by SaveSystem are hydrated into a memory cache once at boot;
+ * reads are served from the cache and writes go through to AsyncStorage
+ * fire-and-forget. On web AsyncStorage is a localStorage wrapper, so
+ * persistence works everywhere.
  */
 class HydratedIntStore implements IntStore {
   private readonly cache = new Map<string, number>();
+  private readonly pending = new Map<string, string | null>();
+  private flushScheduled = false;
+  private persistence = Promise.resolve();
 
   async hydrate(): Promise<void> {
     try {
-      const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith('arrows_'));
-      if (keys.length === 0) return;
-      const pairs = await AsyncStorage.multiGet(keys);
+      const pairs = await AsyncStorage.multiGet(SaveSystem.persistenceKeys);
       for (const [key, value] of pairs) {
         if (value !== null) {
           const n = parseInt(value, 10);
@@ -34,12 +36,36 @@ class HydratedIntStore implements IntStore {
 
   setInt(key: string, value: number): void {
     this.cache.set(key, value);
-    AsyncStorage.setItem(key, String(value)).catch(() => {});
+    this.enqueue(key, String(value));
   }
 
   deleteKey(key: string): void {
     this.cache.delete(key);
-    AsyncStorage.removeItem(key).catch(() => {});
+    this.enqueue(key, null);
+  }
+
+  private enqueue(key: string, value: string | null): void {
+    this.pending.set(key, value);
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    queueMicrotask(() => this.flush());
+  }
+
+  private flush(): void {
+    this.flushScheduled = false;
+    const operations = [...this.pending];
+    this.pending.clear();
+    const writes = operations.filter((entry): entry is [string, string] => entry[1] !== null);
+    const removals = operations.filter((entry) => entry[1] === null).map(([key]) => key);
+
+    // Serialize batches so a later write/delete cannot finish before an older
+    // one. Most game events collapse to one native multiSet or multiRemove.
+    this.persistence = this.persistence
+      .then(async () => {
+        if (writes.length > 0) await AsyncStorage.multiSet(writes);
+        if (removals.length > 0) await AsyncStorage.multiRemove(removals);
+      })
+      .catch(() => {});
   }
 }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -7,86 +7,142 @@ import Animated, {
   withDelay,
   withSpring,
 } from 'react-native-reanimated';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import {
   ArrowPath,
   Difficulties,
   Difficulty,
-  GeneratedLevel,
-  LevelGenerator,
   SaveSystem,
 } from '../core';
 import { Ads } from './ads';
-import { Sfx } from './audio';
 import { BoardView } from './BoardView';
-import { Haptic } from './haptics';
+import {
+  feedback,
+  prepareFeedback,
+  releaseFeedback,
+} from './feedback';
 import { HeaderButton } from './HeaderButton';
+import {
+  createLevelSession,
+  TerminalTransitionGuard,
+  type GamePhase,
+  type TerminalPhase,
+} from './gameSessionLifecycle';
 import { Fonts, Palette } from './theme';
-
-type Phase = 'playing' | 'won' | 'lost';
 
 /**
  * One play session: header (home, level, difficulty, hearts), the pan/zoom
  * board, and the win / lose overlays. Progress lives in SaveSystem; the level
  * is regenerated from its index, so leaving to the menu loses no state.
  */
-export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () => void }) {
+export function GameScreen({
+  palette,
+  onHome,
+  initialLevelIndex,
+  benchmarkMode = false,
+  feedbackEnabled = true,
+}: {
+  palette: Palette;
+  onHome: () => void;
+  initialLevelIndex?: number;
+  benchmarkMode?: boolean;
+  feedbackEnabled?: boolean;
+}) {
   const p = palette;
   const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
 
-  const [levelIndex, setLevelIndex] = useState(() => SaveSystem.currentLevel);
-  const [attempt, setAttempt] = useState(0); // bump to regenerate the same index (Retry)
-  const level: GeneratedLevel = useMemo(
-    () => LevelGenerator.generate(levelIndex),
-    [levelIndex, attempt],
-  );
+  const revisionRef = useRef(0);
+  const [session, setSession] = useState(() => {
+    const index = initialLevelIndex ?? SaveSystem.currentLevel;
+    return createLevelSession(index, revisionRef.current);
+  });
+  const { index: levelIndex, level } = session;
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
-  const [phase, setPhase] = useState<Phase>('playing');
+  const [phase, setPhase] = useState<GamePhase>('playing');
+  const [terminalPending, setTerminalPending] = useState(false);
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
   const [adBusy, setAdBusy] = useState(false);
   const hintId = useRef(1);
+  const heartsRef = useRef(hearts);
+  const terminalTransitionRef = useRef<TerminalTransitionGuard | null>(null);
+  if (terminalTransitionRef.current === null) {
+    terminalTransitionRef.current = new TerminalTransitionGuard();
+  }
+  const terminalTransition = terminalTransitionRef.current;
+  heartsRef.current = hearts;
+  const clearHint = useCallback(() => setHint(null), []);
+
+  useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
+  useEffect(() => {
+    if (!feedbackEnabled) return undefined;
+    prepareFeedback(SaveSystem.soundOn);
+    return releaseFeedback;
+  }, [feedbackEnabled]);
+
+  const beginTerminalTransition = useCallback(
+    (nextPhase: TerminalPhase, delayMs: number) => {
+      const accepted = terminalTransition.begin(nextPhase, delayMs, setPhase);
+      if (!accepted) return false;
+      setTerminalPending(true);
+      return true;
+    },
+    [terminalTransition],
+  );
 
   const loadLevel = useCallback((index: number) => {
-    setLevelIndex(index);
-    setAttempt((a) => a + 1);
-    const next = LevelGenerator.generate(index);
-    setHearts(next.hearts);
-    setRemaining(next.arrowCount);
+    revisionRef.current += 1;
+    const next = createLevelSession(index, revisionRef.current);
+    terminalTransition.reset();
+    setTerminalPending(false);
+    setSession(next);
+    heartsRef.current = next.level.hearts;
+    setHearts(next.level.hearts);
+    setRemaining(next.level.arrowCount);
     setPhase('playing');
     setHint(null);
-  }, []);
+  }, [terminalTransition]);
 
   const onRemoved = useCallback(
     (cleared: boolean) => {
-      Sfx.playSuccess();
-      Haptic.exit();
+      if (terminalTransition.isPending) return;
+      if (feedbackEnabled) {
+        feedback('exit', SaveSystem.soundOn);
+      }
       setRemaining(level.board.count());
       if (!cleared) return;
-      SaveSystem.registerSolve(hearts === level.hearts); // perfect = no heart lost
-      SaveSystem.setCurrentLevel(levelIndex + 1);
-      Ads.registerGameFinished(); // counts toward the every-2-games interstitial
-      Sfx.playWin();
-      Haptic.cleared();
-      setTimeout(() => setPhase('won'), 450); // let the last slither finish
+      if (!beginTerminalTransition('won', 450)) return;
+      if (!benchmarkMode) {
+        SaveSystem.registerSolve(heartsRef.current === level.hearts); // perfect = no heart lost
+        SaveSystem.setCurrentLevel(levelIndex + 1);
+        Ads.registerGameFinished(); // counts toward the every-2-games interstitial
+      }
+      if (feedbackEnabled) {
+        feedback('cleared', SaveSystem.soundOn);
+      }
     },
-    [hearts, level, levelIndex],
+    [benchmarkMode, beginTerminalTransition, feedbackEnabled, level, levelIndex, terminalTransition],
   );
 
   const onBlocked = useCallback(() => {
-    Sfx.playFail();
-    Haptic.blocked();
-    setHearts((h) => {
-      const left = h - 1;
-      if (left <= 0) {
-        Ads.registerGameFinished(); // a loss counts toward the pacing too
-        setTimeout(() => setPhase('lost'), 350); // let the shake finish
-      }
-      return left;
-    });
-  }, []);
+    if (terminalTransition.isPending) return;
+    if (feedbackEnabled) {
+      feedback('blocked', SaveSystem.soundOn);
+    }
+    const left = heartsRef.current - 1;
+    heartsRef.current = left;
+    setHearts(left);
+    if (left <= 0 && beginTerminalTransition('lost', 350) && !benchmarkMode) {
+      Ads.registerGameFinished(); // a loss counts toward the pacing too
+    }
+  }, [benchmarkMode, beginTerminalTransition, feedbackEnabled, terminalTransition]);
 
   /** "Next level" after a clear: the paced interstitial slots in between. */
   const onNextLevel = useCallback(async () => {
+    if (benchmarkMode) {
+      loadLevel(levelIndex + 1);
+      return;
+    }
     setAdBusy(true);
     try {
       await Ads.showInterstitialIfDue();
@@ -94,7 +150,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
       setAdBusy(false);
     }
     loadLevel(levelIndex + 1);
-  }, [levelIndex, loadLevel]);
+  }, [benchmarkMode, levelIndex, loadLevel]);
 
   /** Rewarded "+1 heart continue" from the lose panel. */
   const onContinueWithAd = useCallback(async () => {
@@ -102,13 +158,16 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     const earned = await Ads.showRewarded();
     setAdBusy(false);
     if (!earned) return; // stay on the lose panel; Retry still works
+    terminalTransition.reset();
+    setTerminalPending(false);
+    heartsRef.current = 1;
     setHearts(1);
     setPhase('playing');
-  }, []);
+  }, [terminalTransition]);
 
   /** Rewarded hint: pulse an arrow that can slither out right now. */
   const onHint = useCallback(async () => {
-    if (phase !== 'playing' || adBusy) return;
+    if (phase !== 'playing' || terminalPending || adBusy) return;
     const arrow = level.board.findHint();
     if (!arrow) return;
     setAdBusy(true);
@@ -118,7 +177,7 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     // Re-find: the board may have changed while the ad played.
     const fresh = level.board.findHint();
     if (fresh) setHint({ arrow: fresh, id: hintId.current++ });
-  }, [phase, adBusy, level]);
+  }, [phase, terminalPending, adBusy, level]);
 
   const diffColor =
     level.difficulty === Difficulty.SuperHard ? p.heart
@@ -126,7 +185,10 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
     : p.inkDim;
 
   return (
-    <View style={[styles.root, { backgroundColor: p.bg }]}>
+    <View
+      testID={benchmarkMode ? 'perf-game-screen' : undefined}
+      style={[styles.root, { backgroundColor: p.bg }]}
+    >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerLeft}>
@@ -135,32 +197,45 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
             <Text style={[styles.levelLabel, { color: p.accentLight }]}>
               LEVEL {levelIndex + 1}
             </Text>
-            <Text style={[styles.diffLabel, { color: diffColor }]}>
-              {Difficulties.displayName(level.difficulty)} · {level.shapeName} · {remaining} left
-            </Text>
+            <View style={styles.missionLabelRow}>
+              <MissionLabel
+                difficulty={level.difficulty}
+                shapeName={level.shapeName}
+                color={diffColor}
+              />
+              <Text style={[styles.diffLabel, { color: diffColor }]}>
+                {remaining} left
+              </Text>
+            </View>
           </View>
         </View>
         <View style={styles.headerRight}>
           <HeartPips left={hearts} max={level.hearts} palette={p} />
-          <HeaderButton label="💡" palette={p} onPress={onHint} active={!adBusy} />
+          <HeaderButton
+            label="💡"
+            palette={p}
+            onPress={onHint}
+            active={!terminalPending && !adBusy}
+          />
         </View>
       </View>
 
-      {/* Board (remounts per level/attempt so pan/zoom refits) */}
+      {/* Board persists across missions; BoardView resets its mission state. */}
       <BoardView
-        key={`${levelIndex}:${attempt}`}
         board={level.board}
         palette={p}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
-        locked={phase !== 'playing' || adBusy}
+        locked={phase !== 'playing' || terminalPending || adBusy}
         hint={hint}
-        clearHint={() => setHint(null)}
+        clearHint={clearHint}
+        testID={benchmarkMode ? 'perf-board' : undefined}
       />
 
       {/* Win / lose overlays */}
       {phase !== 'playing' && (
         <View
+          testID={benchmarkMode ? 'perf-terminal-overlay' : undefined}
           style={[
             styles.overlay,
             { backgroundColor: phase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)' },
@@ -171,7 +246,12 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
               {phase === 'won' ? 'Cleared!' : 'Out of hearts'}
             </Text>
             {phase === 'won' && (
-              <Stars earned={Math.max(1, hearts)} total={level.hearts} palette={p} />
+              <Stars
+                earned={Math.max(1, hearts)}
+                total={level.hearts}
+                palette={p}
+                feedbackEnabled={feedbackEnabled}
+              />
             )}
             <Text style={[styles.panelSub, { color: p.inkDim }]}>
               {phase === 'won'
@@ -197,6 +277,8 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
               </Pressable>
             )}
             <Pressable
+              testID={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
+              accessibilityLabel={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
               disabled={adBusy}
               style={({ pressed }) => [
                 styles.button,
@@ -223,11 +305,41 @@ export function GameScreen({ palette, onHome }: { palette: Palette; onHome: () =
 }
 
 /**
+ * Keep the per-level words out of the per-tap counter paragraph. React
+ * Native caches measured paragraphs by their full attributed string; this
+ * bounds gameplay to the small set of numeric counter labels instead of one
+ * unique long paragraph for every removal across every mission.
+ */
+const MissionLabel = React.memo(function MissionLabel({
+  difficulty,
+  shapeName,
+  color,
+}: {
+  difficulty: Difficulty;
+  shapeName: string;
+  color: string;
+}) {
+  return (
+    <Text style={[styles.diffLabel, { color }]}>
+      {Difficulties.displayName(difficulty)} · {shapeName} ·{' '}
+    </Text>
+  );
+});
+
+/**
  * The heart row, one pip per heart. A pip that just went out pops (scale
  * ~1.35 springing back) as it dims — losing a life is unmistakable
  * (GameManager.SpendHeart).
  */
-function HeartPips({ left, max, palette }: { left: number; max: number; palette: Palette }) {
+const HeartPips = React.memo(function HeartPips({
+  left,
+  max,
+  palette,
+}: {
+  left: number;
+  max: number;
+  palette: Palette;
+}) {
   return (
     <View style={{ flexDirection: 'row' }}>
       {Array.from({ length: max }, (_, i) => (
@@ -235,9 +347,24 @@ function HeartPips({ left, max, palette }: { left: number; max: number; palette:
       ))}
     </View>
   );
-}
+});
 
-function HeartPip({ filled, palette }: { filled: boolean; palette: Palette }) {
+/** Filled-heart silhouette (24×24 viewBox). SVG fill honours our colour —
+ * unlike the bare ♥ glyph, which Android paints as a red emoji regardless of
+ * the text `color`, so a spent pip never dimmed (it stayed full red). */
+const HEART_PATH =
+  'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 ' +
+  '4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 ' +
+  '11.54L12 21.35z';
+const HEART_SIZE = 22;
+
+const HeartPip = React.memo(function HeartPip({
+  filled,
+  palette,
+}: {
+  filled: boolean;
+  palette: Palette;
+}) {
   const k = useSharedValue(1);
   const prev = useRef(filled);
   useEffect(() => {
@@ -249,20 +376,34 @@ function HeartPip({ filled, palette }: { filled: boolean; palette: Palette }) {
   }, [filled]);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
   return (
-    <Animated.View style={style}>
-      <Text style={{ fontSize: 20, letterSpacing: 2, color: filled ? palette.heart : palette.heartLost }}>
-        ♥
-      </Text>
+    <Animated.View style={[style, { marginHorizontal: 1 }]}>
+      <Svg width={HEART_SIZE} height={HEART_SIZE} viewBox="0 0 24 24">
+        <SvgPath
+          d={HEART_PATH}
+          fill={filled ? palette.heart : palette.heartLost}
+          opacity={filled ? 1 : 0.85}
+        />
+      </Svg>
     </Animated.View>
   );
-}
+});
 
 /**
  * Star rating on the win panel: one star per heart still beating. Stars pop
  * in left to right with a springy stagger; unearned slots settle in dim so
  * the player sees exactly what a cleaner run would have paid.
  */
-function Stars({ earned, total, palette }: { earned: number; total: number; palette: Palette }) {
+function Stars({
+  earned,
+  total,
+  palette,
+  feedbackEnabled,
+}: {
+  earned: number;
+  total: number;
+  palette: Palette;
+  feedbackEnabled: boolean;
+}) {
   return (
     <View style={styles.starsRow}>
       {Array.from({ length: total }, (_, i) => (
@@ -272,6 +413,7 @@ function Stars({ earned, total, palette }: { earned: number; total: number; pale
           big={i === Math.floor(total / 2)}
           delay={250 + i * 170}
           palette={palette}
+          feedbackEnabled={feedbackEnabled}
         />
       ))}
     </View>
@@ -283,21 +425,23 @@ function Star({
   big,
   delay,
   palette,
+  feedbackEnabled,
 }: {
   filled: boolean;
   big: boolean;
   delay: number;
   palette: Palette;
+  feedbackEnabled: boolean;
 }) {
   const k = useSharedValue(0);
   useEffect(() => {
     k.value = withDelay(delay, withSpring(1, { damping: 11, stiffness: 260 }));
     // Each earned star pops with a tiny rising chirp, timed to its entrance.
-    if (filled) {
-      const t = setTimeout(() => Sfx.playStar(), delay);
+    if (filled && feedbackEnabled) {
+      const t = setTimeout(() => feedback('star', SaveSystem.soundOn), delay);
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [delay, feedbackEnabled, filled]);
   const style = useAnimatedStyle(() => ({
     opacity: k.value,
     transform: [{ scale: k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
@@ -354,6 +498,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: Fonts.semi,
     letterSpacing: 0.5,
+  },
+  missionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
     marginTop: 2,
   },
   overlay: {
