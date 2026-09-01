@@ -1,5 +1,6 @@
 import type { SharedValue } from 'react-native-reanimated';
 import type { SlitherPath } from './arrowGeometry';
+import type { NativeExitAnimation } from './nativeExitAnimation';
 
 export interface AnimatedArrowArt {
   id: number;
@@ -10,15 +11,11 @@ export interface AnimatedArrowArt {
 export interface AnimatedExitTrail {
   id: number;
   path: SlitherPath;
-  reducedMotion: boolean;
-}
-
-export interface NativeExitAnimation {
-  id: number;
-  arrowIndex: number;
   durationMs: number;
   reducedMotion: boolean;
 }
+
+export type { NativeExitAnimation } from './nativeExitAnimation';
 
 export interface StaticBoardSurfaceProps {
   scale: SharedValue<number>;

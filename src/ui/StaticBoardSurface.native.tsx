@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   Canvas,
-  DashPathEffect,
   Group,
   interpolateColors,
   Path,
@@ -18,21 +17,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
 import { PERF_MODE } from '../perfMode';
+import { serializeNativeExitAnimation } from './nativeExitAnimation';
 import type {
   AnimatedArrowArt,
-  AnimatedExitTrail,
   StaticBoardSurfaceProps,
 } from './StaticBoardSurface.types';
-import { EXIT_TRAIL_DURATION_MS } from './exitAnimationConfig';
 
 const PERF_EMPTY_BOARD =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1';
 const PERF_OPAQUE_SURFACE =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_OPAQUE_SURFACE === '1';
-const PERF_NO_EXIT_TRAILS =
-  PERF_MODE && process.env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1';
 
-/** Native retained board with a small Skia layer only for transient feedback. */
+/**
+ * Native retained board (static arrows + slither exits) with a small Skia
+ * layer only for the hint pulse and the blocked shake. The `exiting` prop is
+ * consumed by the web surface; on native every exit is drawn by the board view.
+ */
 export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   scale,
   tx,
@@ -49,7 +49,6 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   strokeWidth,
   shaking,
   hint,
-  exiting,
   nativeExitAnimation,
 }: StaticBoardSurfaceProps) {
   const boardStyle = useMemo(() => ({
@@ -68,6 +67,12 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
       { scale: scale.value },
     ],
   }));
+  const exitAnimation = useMemo(
+    () => nativeExitAnimation === null
+      ? ''
+      : serializeNativeExitAnimation(nativeExitAnimation),
+    [nativeExitAnimation],
+  );
 
   return (
     <>
@@ -87,14 +92,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
             visibleMask={nativeVisibilityMask}
             ink={ink}
             strokeWidth={strokeWidth}
-            exitAnimation={nativeExitAnimation === null
-              ? ''
-              : [
-                  nativeExitAnimation.id,
-                  nativeExitAnimation.arrowIndex,
-                  nativeExitAnimation.durationMs,
-                  nativeExitAnimation.reducedMotion ? 1 : 0,
-                ].join(',')}
+            exitAnimation={exitAnimation}
             style={StyleSheet.absoluteFill}
           />
         )}
@@ -112,7 +110,6 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
         strokeWidth={strokeWidth}
         shaking={shaking}
         hint={hint}
-        exiting={exiting}
       />
     </>
   );
@@ -131,7 +128,6 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   strokeWidth,
   shaking,
   hint,
-  exiting,
 }: Pick<
   StaticBoardSurfaceProps,
   | 'scale'
@@ -146,7 +142,6 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   | 'strokeWidth'
   | 'shaking'
   | 'hint'
-  | 'exiting'
 >) {
   const boardTransform = useDerivedValue((): Transforms3d => [
     { translateX: tx.value },
@@ -182,14 +177,6 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
               strokeWidth={strokeWidth}
             />
           )}
-          {!PERF_EMPTY_BOARD && !PERF_NO_EXIT_TRAILS && exiting.map((trail, slot) => (
-            <ExitTrailSlot
-              key={slot}
-              trail={trail}
-              ink={ink}
-              cellSize={cellSize}
-            />
-          ))}
         </Group>
       </Group>
     </Canvas>
@@ -273,94 +260,6 @@ function HintArrow({
         strokeJoin="round"
       />
       <Path path={art.headD} color={accent} />
-    </Group>
-  );
-}
-
-function ExitTrailSlot({
-  trail,
-  ink,
-  cellSize,
-}: {
-  trail: AnimatedExitTrail | null;
-  ink: string;
-  cellSize: number;
-}) {
-  const progress = useSharedValue(0);
-  const totalLength = useSharedValue(0);
-  const directionX = useSharedValue(0);
-  const directionY = useSharedValue(0);
-  const active = useSharedValue(0);
-  const path = trail?.path ?? null;
-  const reducedMotion = trail?.reducedMotion ?? false;
-  const headD = useMemo(() => {
-    if (path === null) return '';
-    const tip = path.headTip;
-    const left = path.headBaseL;
-    const right = path.headBaseR;
-    return `M${tip.x} ${tip.y} L${left.x} ${left.y} L${right.x} ${right.y} Z`;
-  }, [path]);
-
-  React.useEffect(() => {
-    progress.value = 0;
-    if (path === null) {
-      active.value = 0;
-      totalLength.value = 0;
-      directionX.value = 0;
-      directionY.value = 0;
-      return;
-    }
-    totalLength.value = path.totalLen;
-    directionX.value = path.dir.x;
-    directionY.value = path.dir.y;
-    active.value = 1;
-    progress.value = withTiming(1, {
-      duration: EXIT_TRAIL_DURATION_MS,
-      easing: Easing.linear,
-    });
-  }, [trail?.id]);
-
-  const phase = useDerivedValue(
-    () => reducedMotion ? 0 : progress.value * progress.value * totalLength.value,
-  );
-  const opacity = useDerivedValue(() => {
-    if (active.value === 0) return 0;
-    if (reducedMotion) return 1 - progress.value;
-    if (progress.value < 0.55) return 1;
-    const fade = (progress.value - 0.55) / 0.45;
-    return 1 - fade * fade * (3 - 2 * fade);
-  });
-  const headTransform = useDerivedValue((): Transforms3d => {
-    const travelled = reducedMotion
-      ? 0
-      : progress.value * progress.value * totalLength.value;
-    return [
-      { translateX: directionX.value * travelled },
-      { translateY: directionY.value * travelled },
-    ];
-  });
-
-  if (path === null) return null;
-
-  return (
-    <Group>
-      <Path
-        path={path.d}
-        color={ink}
-        opacity={opacity}
-        style="stroke"
-        strokeWidth={0.26 * cellSize}
-        strokeCap="round"
-        strokeJoin="round"
-      >
-        <DashPathEffect
-          intervals={[path.bodyLen, path.totalLen + path.bodyLen]}
-          phase={phase}
-        />
-      </Path>
-      <Group transform={headTransform}>
-        <Path path={headD} color={ink} />
-      </Group>
     </Group>
   );
 }

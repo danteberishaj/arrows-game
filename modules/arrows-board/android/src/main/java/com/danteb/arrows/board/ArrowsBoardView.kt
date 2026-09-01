@@ -1,42 +1,57 @@
 package com.danteb.arrows.board
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
+import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Retained renderer for the board's static arrow art.
+ * Retained renderer for the board's static arrow art plus the slither exit.
  *
  * Geometry is parsed only when the board geometry prop changes. The cached
  * arrow paths are never mutated after parsing; the two compound paths are the
- * only paths rebuilt when visibility changes.
+ * only paths rebuilt when visibility changes. Exits are two fixed slots driven
+ * from the frame clock in onDraw, so they follow the same curve as the web
+ * slither (SlitherExit.cs) regardless of the system animator scale.
  */
 class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   private data class ArrowPaths(
     val shaft: Path,
     val head: Path,
-    val bounds: RectF,
-    val directionX: Float,
-    val directionY: Float,
   )
 
-  private data class ExitSlot(
-    var id: Long = -1,
-    var arrow: ArrowPaths? = null,
-    var progress: Float = 0f,
-    var reducedMotion: Boolean = false,
-    var animator: ValueAnimator? = null,
-  )
+  private class ExitSlot {
+    var id = -1L
+    var head: Path? = null
+    var trail: Path? = null
+    var intervals = FloatArray(2)
+    var totalLength = 0f
+    var directionX = 0f
+    var directionY = 0f
+    var trailStrokeWidth = 1f
+    var durationMs = 180L
+    var startTimeMs = 0L
+    var reducedMotion = false
+
+    val active: Boolean get() = trail != null
+
+    fun clear() {
+      id = -1L
+      head = null
+      trail = null
+      totalLength = 0f
+      directionX = 0f
+      directionY = 0f
+      startTimeMs = 0L
+      reducedMotion = false
+    }
+  }
 
   private val stateLock = Any()
   private val arrowPaths = ArrayList<ArrowPaths>()
@@ -55,7 +70,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     style = Paint.Style.FILL
     color = Color.BLACK
   }
-  private val exitShaftPaint = Paint(shaftPaint)
+  private val trailPaint = Paint(shaftPaint)
   private val exitHeadPaint = Paint(headPaint)
   private val exitSlots = Array(MAX_CONCURRENT_EXITS) { ExitSlot() }
 
@@ -111,7 +126,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     synchronized(stateLock) {
       shaftPaint.color = color
       headPaint.color = color
-      exitShaftPaint.color = color
+      trailPaint.color = color
       exitHeadPaint.color = color
     }
     postInvalidateOnAnimation()
@@ -126,12 +141,14 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
     synchronized(stateLock) {
       shaftPaint.strokeWidth = strokeWidth
-      exitShaftPaint.strokeWidth = strokeWidth
     }
     postInvalidateOnAnimation()
   }
 
-  /** Starts one of two bounded, transform-only dense-board exit animations. */
+  /**
+   * Starts one of two bounded slither exits. Event format (board points):
+   * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
+   */
   internal fun setExitAnimation(value: String) {
     if (value.isBlank()) {
       clearExitAnimations()
@@ -139,59 +156,56 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     }
 
     val tokens = value.split(',')
-    if (tokens.size != EXIT_EVENT_TOKEN_COUNT) return
+    if (tokens.size < EXIT_HEADER_TOKEN_COUNT) return
     val id = tokens[0].toLongOrNull() ?: return
     val arrowIndex = tokens[1].toIntOrNull() ?: return
     val durationMs = tokens[2].toLongOrNull() ?: return
     val reducedMotion = tokens[3] == "1"
+    val trailStrokeWidth = tokens[4].toFloatOrNull() ?: return
+    val bodyLength = tokens[5].toFloatOrNull() ?: return
+    val totalLength = tokens[6].toFloatOrNull() ?: return
+    val directionX = tokens[7].toFloatOrNull() ?: return
+    val directionY = tokens[8].toFloatOrNull() ?: return
+    val pointCount = tokens[9].toIntOrNull() ?: return
     if (durationMs !in MIN_EXIT_DURATION_MS..MAX_EXIT_DURATION_MS) return
+    if (!trailStrokeWidth.isFinite() || trailStrokeWidth <= 0f) return
+    if (!bodyLength.isFinite() || bodyLength <= 0f) return
+    if (!totalLength.isFinite() || totalLength <= 0f) return
+    if (!directionX.isFinite() || !directionY.isFinite()) return
+    if (pointCount < 2 || pointCount > MAX_TRAIL_POINTS) return
+    if (tokens.size != EXIT_HEADER_TOKEN_COUNT + pointCount * 2) return
 
-    val slotIndex: Int
-    val oldAnimator: ValueAnimator?
+    val trail = Path()
+    for (pointIndex in 0 until pointCount) {
+      val tokenIndex = EXIT_HEADER_TOKEN_COUNT + pointIndex * 2
+      val x = tokens[tokenIndex].toFloatOrNull() ?: return
+      val y = tokens[tokenIndex + 1].toFloatOrNull() ?: return
+      if (!x.isFinite() || !y.isFinite()) return
+      if (pointIndex == 0) trail.moveTo(x, y) else trail.lineTo(x, y)
+    }
+
     synchronized(stateLock) {
       if (id == lastExitId || arrowIndex !in arrowPaths.indices) return
       lastExitId = id
-      slotIndex = nextExitSlot
+      val slot = exitSlots[nextExitSlot]
       nextExitSlot = (nextExitSlot + 1) % exitSlots.size
-      val slot = exitSlots[slotIndex]
-      oldAnimator = slot.animator
+      slot.clear()
       slot.id = id
-      slot.arrow = arrowPaths[arrowIndex]
-      slot.progress = 0f
+      slot.head = arrowPaths[arrowIndex].head
+      slot.trail = trail
+      // One dash the length of the body, then a gap long enough that no
+      // second dash ever appears on the path (matches the Skia/SVG intervals).
+      slot.intervals[0] = bodyLength
+      slot.intervals[1] = totalLength + bodyLength
+      slot.totalLength = totalLength
+      slot.directionX = directionX
+      slot.directionY = directionY
+      slot.trailStrokeWidth = trailStrokeWidth
+      slot.durationMs = durationMs
+      slot.startTimeMs = AnimationUtils.currentAnimationTimeMillis()
       slot.reducedMotion = reducedMotion
-      slot.animator = null
     }
-    oldAnimator?.cancel()
-
-    val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-      duration = durationMs
-      addUpdateListener { running ->
-        synchronized(stateLock) {
-          val slot = exitSlots[slotIndex]
-          if (slot.id != id) return@addUpdateListener
-          slot.progress = running.animatedValue as Float
-        }
-        postInvalidateOnAnimation()
-      }
-      addListener(object : AnimatorListenerAdapter() {
-        override fun onAnimationEnd(animation: Animator) {
-          synchronized(stateLock) {
-            val slot = exitSlots[slotIndex]
-            if (slot.id != id) return
-            slot.arrow = null
-            slot.animator = null
-            slot.progress = 0f
-          }
-          postInvalidateOnAnimation()
-        }
-      })
-    }
-    synchronized(stateLock) {
-      val slot = exitSlots[slotIndex]
-      if (slot.id != id) return
-      slot.animator = animator
-    }
-    animator.start()
+    postInvalidateOnAnimation()
   }
 
   internal fun clearPaths() {
@@ -207,8 +221,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   }
 
   override fun onDraw(canvas: Canvas) {
+    var keepAnimating = false
     synchronized(stateLock) {
-      val hasActiveExit = exitSlots.any { it.arrow != null }
+      val hasActiveExit = exitSlots.any { it.active }
       if (!geometryIsValid || (!hasVisibleArrows && !hasActiveExit)) {
         return
       }
@@ -223,13 +238,15 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         canvas.drawPath(compoundShaft, shaftPaint)
         canvas.drawPath(compoundHead, headPaint)
       }
-      val logicalWidth = width / logicalPointScale
-      val logicalHeight = height / logicalPointScale
-      for (slot in exitSlots) {
-        drawExitSlot(canvas, slot, logicalWidth, logicalHeight)
+      if (hasActiveExit) {
+        val now = AnimationUtils.currentAnimationTimeMillis()
+        for (slot in exitSlots) {
+          if (drawExitSlot(canvas, slot, now)) keepAnimating = true
+        }
       }
       canvas.restoreToCount(saveCount)
     }
+    if (keepAnimating) postInvalidateOnAnimation()
   }
 
   override fun onDetachedFromWindow() {
@@ -237,66 +254,49 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     super.onDetachedFromWindow()
   }
 
-  private fun drawExitSlot(
-    canvas: Canvas,
-    slot: ExitSlot,
-    logicalWidth: Float,
-    logicalHeight: Float,
-  ) {
-    val arrow = slot.arrow ?: return
-    val progress = slot.progress.coerceIn(0f, 1f)
-    val travelledFraction = if (slot.reducedMotion) 0f else easeOutCubic(progress)
-    val distance = exitDistance(arrow, logicalWidth, logicalHeight)
-    val opacity = if (slot.reducedMotion) {
-      1f - progress
-    } else if (progress < EXIT_FADE_START) {
-      1f
-    } else {
-      val fade = ((progress - EXIT_FADE_START) / (1f - EXIT_FADE_START)).coerceIn(0f, 1f)
-      1f - fade * fade * (3f - 2f * fade)
+  /** Draws one slither frame; returns true while the slot still needs frames. */
+  private fun drawExitSlot(canvas: Canvas, slot: ExitSlot, nowMs: Long): Boolean {
+    val trail = slot.trail ?: return false
+    val head = slot.head ?: return false
+    val progress = ((nowMs - slot.startTimeMs).toFloat() / slot.durationMs.toFloat())
+      .coerceIn(0f, 1f)
+    if (progress >= 1f) {
+      slot.clear()
+      return false
+    }
+
+    // Same curve as ExitTrail: the dash accelerates out (k^2) and fades past 55%.
+    val travelled = if (slot.reducedMotion) 0f else progress * progress * slot.totalLength
+    val opacity = when {
+      slot.reducedMotion -> 1f - progress
+      progress < EXIT_FADE_START -> 1f
+      else -> {
+        val fade = ((progress - EXIT_FADE_START) / (1f - EXIT_FADE_START)).coerceIn(0f, 1f)
+        1f - fade * fade * (3f - 2f * fade)
+      }
     }
     val alpha = (opacity * 255f).roundToInt().coerceIn(0, 255)
-    exitShaftPaint.alpha = alpha
+
+    trailPaint.strokeWidth = slot.trailStrokeWidth
+    trailPaint.pathEffect = DashPathEffect(slot.intervals, -travelled)
+    trailPaint.alpha = alpha
     exitHeadPaint.alpha = alpha
+    canvas.drawPath(trail, trailPaint)
+    trailPaint.pathEffect = null
 
     val saveCount = canvas.save()
-    canvas.translate(
-      arrow.directionX * distance * travelledFraction,
-      arrow.directionY * distance * travelledFraction,
-    )
-    canvas.drawPath(arrow.shaft, exitShaftPaint)
-    canvas.drawPath(arrow.head, exitHeadPaint)
+    canvas.translate(slot.directionX * travelled, slot.directionY * travelled)
+    canvas.drawPath(head, exitHeadPaint)
     canvas.restoreToCount(saveCount)
-  }
-
-  private fun exitDistance(
-    arrow: ArrowPaths,
-    logicalWidth: Float,
-    logicalHeight: Float,
-  ): Float {
-    val margin = exitShaftPaint.strokeWidth
-    return when {
-      arrow.directionX > 0f -> logicalWidth - arrow.bounds.left + margin
-      arrow.directionX < 0f -> arrow.bounds.right + margin
-      arrow.directionY > 0f -> logicalHeight - arrow.bounds.top + margin
-      else -> arrow.bounds.bottom + margin
-    }.coerceAtLeast(0f)
+    return true
   }
 
   private fun clearExitAnimations() {
-    val animators = synchronized(stateLock) {
-      val active = exitSlots.mapNotNull { it.animator }
-      for (slot in exitSlots) {
-        slot.id = -1
-        slot.arrow = null
-        slot.progress = 0f
-        slot.animator = null
-      }
+    synchronized(stateLock) {
+      for (slot in exitSlots) slot.clear()
       nextExitSlot = 0
       lastExitId = -1L
-      active
     }
-    for (animator in animators) animator.cancel()
     postInvalidateOnAnimation()
   }
 
@@ -380,46 +380,18 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       close()
     }
 
-    val shaftBounds = RectF()
-    val headBounds = RectF()
-    shaft.computeBounds(shaftBounds, true)
-    head.computeBounds(headBounds, true)
-    shaftBounds.union(headBounds)
-
-    val tipX = coordinates[headCoordinateIndex]
-    val tipY = coordinates[headCoordinateIndex + 1]
-    val baseCenterX =
-      (coordinates[headCoordinateIndex + 2] + coordinates[headCoordinateIndex + 4]) / 2f
-    val baseCenterY =
-      (coordinates[headCoordinateIndex + 3] + coordinates[headCoordinateIndex + 5]) / 2f
-    val rawDirectionX = tipX - baseCenterX
-    val rawDirectionY = tipY - baseCenterY
-    val directionX: Float
-    val directionY: Float
-    if (abs(rawDirectionX) >= abs(rawDirectionY)) {
-      directionX = if (rawDirectionX >= 0f) 1f else -1f
-      directionY = 0f
-    } else {
-      directionX = 0f
-      directionY = if (rawDirectionY >= 0f) 1f else -1f
-    }
-
-    return ArrowPaths(shaft, head, shaftBounds, directionX, directionY)
-  }
-
-  private fun easeOutCubic(value: Float): Float {
-    val inverse = 1f - value
-    return 1f - inverse * inverse * inverse
+    return ArrowPaths(shaft, head)
   }
 
   private companion object {
     const val DEFAULT_STROKE_WIDTH = 1f
     const val MAX_SHAFT_POINTS = 4096f
+    const val MAX_TRAIL_POINTS = 4098
     const val HEAD_COORDINATE_COUNT = 6
     const val MAX_CONCURRENT_EXITS = 2
-    const val EXIT_EVENT_TOKEN_COUNT = 4
+    const val EXIT_HEADER_TOKEN_COUNT = 10
     const val MIN_EXIT_DURATION_MS = 160L
     const val MAX_EXIT_DURATION_MS = 1000L
-    const val EXIT_FADE_START = 0.65f
+    const val EXIT_FADE_START = 0.55f
   }
 }

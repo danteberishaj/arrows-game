@@ -237,10 +237,10 @@ function benchmarkConfiguration(options) {
     boardSurfaceOpacity: opaqueSurface ? 'opaque-diagnostic' : 'transparent',
     exitTrailCleanup: exitTrailsDisabled
       ? 'disabled-diagnostic'
-      : 'two-bounded-native-or-skia-slots',
+      : 'two-bounded-native-slots',
     exitTrailPolicy: exitTrailsDisabled
       ? 'disabled-diagnostic'
-      : 'dense-native-launch-over-64-otherwise-full-slither',
+      : 'native-slither-at-every-density',
     exitTrailDurationMs: EXIT_ANIMATION_DURATION_MS,
   };
 }

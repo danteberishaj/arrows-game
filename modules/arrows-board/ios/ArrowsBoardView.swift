@@ -6,18 +6,25 @@ import UIKit
 private struct ArrowGeometry {
   let shaftPath: CGPath
   let headPath: CGPath
-  let bounds: CGRect
-  let direction: CGVector
 }
 
 private final class ExitLayerSlot {
   var id: Int64 = -1
   var container: CALayer?
-  var shaft: CAShapeLayer?
+  var trail: CAShapeLayer?
   var head: CAShapeLayer?
   var cleanup: DispatchWorkItem?
 }
 
+/**
+ * Retained renderer for the board's static arrow art plus the slither exit.
+ * Static arrows are drawn as two compound paths; exits are two bounded
+ * Core Animation slots that follow the same curve as the web slither.
+ *
+ * Known gap (docs/IOS_BOARD_PLAN.md): `draw(_:)` allocates a board-sized
+ * backing store. The exit slots below already use CAShapeLayer and are the
+ * model for moving the static paths there too.
+ */
 class ArrowsBoardView: ExpoView {
   private var arrows: [ArrowGeometry] = []
   private var visibleArrows: [Bool] = []
@@ -53,7 +60,7 @@ class ArrowsBoardView: ExpoView {
   func setInk(_ ink: String) {
     inkColor = Self.parseColor(ink) ?? .black
     for slot in exitSlots {
-      slot.shaft?.strokeColor = inkColor.cgColor
+      slot.trail?.strokeColor = inkColor.cgColor
       slot.head?.fillColor = inkColor.cgColor
     }
     setNeedsDisplay()
@@ -62,13 +69,13 @@ class ArrowsBoardView: ExpoView {
   func setStrokeWidth(_ strokeWidth: Double) {
     let width = CGFloat(strokeWidth)
     arrowStrokeWidth = width.isFinite ? max(0, width) : 0
-    for slot in exitSlots {
-      slot.shaft?.lineWidth = arrowStrokeWidth
-    }
     setNeedsDisplay()
   }
 
-  /** Starts one of two bounded Core Animation exits for a dense board. */
+  /**
+   * Starts one of two bounded slither exits. Event format (board points):
+   * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
+   */
   func setExitAnimation(_ value: String) {
     if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       clearExitAnimations()
@@ -76,14 +83,42 @@ class ArrowsBoardView: ExpoView {
     }
 
     let tokens = value.split(separator: ",", omittingEmptySubsequences: false)
-    guard tokens.count == 4,
+    let headerCount = 10
+    guard tokens.count >= headerCount,
           let id = Int64(tokens[0]),
           let arrowIndex = Int(tokens[1]),
           let durationMs = Double(tokens[2]),
+          let trailStrokeWidth = Double(tokens[4]),
+          let bodyLength = Double(tokens[5]),
+          let totalLength = Double(tokens[6]),
+          let directionX = Double(tokens[7]),
+          let directionY = Double(tokens[8]),
+          let pointCount = Int(tokens[9]),
           (160...1000).contains(durationMs),
+          trailStrokeWidth.isFinite, trailStrokeWidth > 0,
+          bodyLength.isFinite, bodyLength > 0,
+          totalLength.isFinite, totalLength > 0,
+          directionX.isFinite, directionY.isFinite,
+          pointCount >= 2, pointCount <= 4098,
+          tokens.count == headerCount + pointCount * 2,
           arrows.indices.contains(arrowIndex),
           id != lastExitId else {
       return
+    }
+
+    let trailPath = CGMutablePath()
+    for pointIndex in 0..<pointCount {
+      let tokenIndex = headerCount + pointIndex * 2
+      guard let x = Double(tokens[tokenIndex]), x.isFinite,
+            let y = Double(tokens[tokenIndex + 1]), y.isFinite else {
+        return
+      }
+      let point = CGPoint(x: x, y: y)
+      if pointIndex == 0 {
+        trailPath.move(to: point)
+      } else {
+        trailPath.addLine(to: point)
+      }
     }
     lastExitId = id
 
@@ -91,59 +126,77 @@ class ArrowsBoardView: ExpoView {
     nextExitSlot = (nextExitSlot + 1) % exitSlots.count
     clearExitSlot(slot)
 
-    let arrow = arrows[arrowIndex]
+    let reducedMotion = tokens[3] == "1"
+    let duration = durationMs / 1000
     let container = CALayer()
     container.frame = bounds
 
-    let shaft = CAShapeLayer()
-    shaft.frame = bounds
-    shaft.path = arrow.shaftPath
-    shaft.strokeColor = inkColor.cgColor
-    shaft.fillColor = UIColor.clear.cgColor
-    shaft.lineWidth = arrowStrokeWidth
-    shaft.lineCap = .round
-    shaft.lineJoin = .round
+    // One dash the length of the body, then a gap long enough that no second
+    // dash appears. Phase `sum` is the pattern origin; decreasing it by the
+    // travelled distance slides the dash toward and off the board edge.
+    let patternSum = totalLength + 2 * bodyLength
+    let trail = CAShapeLayer()
+    trail.frame = bounds
+    trail.path = trailPath
+    trail.strokeColor = inkColor.cgColor
+    trail.fillColor = UIColor.clear.cgColor
+    trail.lineWidth = CGFloat(trailStrokeWidth)
+    trail.lineCap = .round
+    trail.lineJoin = .round
+    trail.lineDashPattern = [NSNumber(value: bodyLength), NSNumber(value: totalLength + bodyLength)]
+    trail.lineDashPhase = CGFloat(patternSum)
 
     let head = CAShapeLayer()
     head.frame = bounds
-    head.path = arrow.headPath
+    head.path = arrows[arrowIndex].headPath
     head.fillColor = inkColor.cgColor
 
-    container.addSublayer(shaft)
+    container.addSublayer(trail)
     container.addSublayer(head)
     layer.addSublayer(container)
     slot.id = id
     slot.container = container
-    slot.shaft = shaft
+    slot.trail = trail
     slot.head = head
 
-    let reducedMotion = tokens[3] == "1"
-    let distance = exitDistance(for: arrow)
-    let translation = reducedMotion
+    // travelled = k^2 * totalLen (ExitTrail): ease-in quadratic on both the
+    // dash phase and the head translation.
+    let easeInQuad = CAMediaTimingFunction(controlPoints: 0.11, 0, 0.5, 0)
+
+    let phase = CABasicAnimation(keyPath: "lineDashPhase")
+    phase.fromValue = patternSum
+    phase.toValue = reducedMotion ? patternSum : patternSum - totalLength
+    phase.duration = duration
+    phase.timingFunction = easeInQuad
+    phase.isRemovedOnCompletion = false
+    phase.fillMode = .forwards
+    trail.add(phase, forKey: "slitherPhase")
+
+    let translation = CABasicAnimation(keyPath: "transform")
+    translation.fromValue = CATransform3DIdentity
+    translation.toValue = reducedMotion
       ? CATransform3DIdentity
       : CATransform3DMakeTranslation(
-          arrow.direction.dx * distance,
-          arrow.direction.dy * distance,
+          CGFloat(directionX * totalLength),
+          CGFloat(directionY * totalLength),
           0
         )
-    let duration = durationMs / 1000
-
-    let transform = CABasicAnimation(keyPath: "transform")
-    transform.fromValue = CATransform3DIdentity
-    transform.toValue = translation
-    transform.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
+    translation.duration = duration
+    translation.timingFunction = easeInQuad
+    translation.isRemovedOnCompletion = false
+    translation.fillMode = .forwards
+    head.add(translation, forKey: "slitherHead")
 
     let opacity = CAKeyframeAnimation(keyPath: "opacity")
     opacity.values = reducedMotion ? [1, 0] : [1, 1, 0]
-    opacity.keyTimes = reducedMotion ? [0, 1] : [0, 0.65, 1]
-    opacity.timingFunctions = [CAMediaTimingFunction(name: .easeOut)]
-
-    let group = CAAnimationGroup()
-    group.animations = [transform, opacity]
-    group.duration = duration
-    group.isRemovedOnCompletion = false
-    group.fillMode = .forwards
-    container.add(group, forKey: "denseExit")
+    opacity.keyTimes = reducedMotion ? [0, 1] : [0, 0.55, 1]
+    opacity.timingFunctions = reducedMotion
+      ? [CAMediaTimingFunction(name: .linear)]
+      : [CAMediaTimingFunction(name: .linear), CAMediaTimingFunction(name: .easeInEaseOut)]
+    opacity.duration = duration
+    opacity.isRemovedOnCompletion = false
+    opacity.fillMode = .forwards
+    container.add(opacity, forKey: "slitherFade")
 
     let cleanup = DispatchWorkItem { [weak self, weak slot] in
       guard let self, let slot, slot.id == id else { return }
@@ -185,20 +238,6 @@ class ArrowsBoardView: ExpoView {
     context.fillPath()
   }
 
-  private func exitDistance(for arrow: ArrowGeometry) -> CGFloat {
-    let margin = arrowStrokeWidth
-    if arrow.direction.dx > 0 {
-      return max(0, bounds.width - arrow.bounds.minX + margin)
-    }
-    if arrow.direction.dx < 0 {
-      return max(0, arrow.bounds.maxX + margin)
-    }
-    if arrow.direction.dy > 0 {
-      return max(0, bounds.height - arrow.bounds.minY + margin)
-    }
-    return max(0, arrow.bounds.maxY + margin)
-  }
-
   private func clearExitAnimations() {
     for slot in exitSlots {
       clearExitSlot(slot)
@@ -213,7 +252,7 @@ class ArrowsBoardView: ExpoView {
     slot.container?.removeFromSuperlayer()
     slot.id = -1
     slot.container = nil
-    slot.shaft = nil
+    slot.trail = nil
     slot.head = nil
     slot.cleanup = nil
   }
@@ -289,28 +328,7 @@ class ArrowsBoardView: ExpoView {
       return nil
     }
 
-    let arrowBounds = immutableShaftPath.boundingBoxOfPath
-      .union(immutableHeadPath.boundingBoxOfPath)
-    let tip = CGPoint(x: values[headStart], y: values[headStart + 1])
-    let baseCenter = CGPoint(
-      x: (values[headStart + 2] + values[headStart + 4]) / 2,
-      y: (values[headStart + 3] + values[headStart + 5]) / 2
-    )
-    let rawX = tip.x - baseCenter.x
-    let rawY = tip.y - baseCenter.y
-    let direction: CGVector
-    if abs(rawX) >= abs(rawY) {
-      direction = CGVector(dx: rawX >= 0 ? 1 : -1, dy: 0)
-    } else {
-      direction = CGVector(dx: 0, dy: rawY >= 0 ? 1 : -1)
-    }
-
-    return ArrowGeometry(
-      shaftPath: immutableShaftPath,
-      headPath: immutableHeadPath,
-      bounds: arrowBounds,
-      direction: direction
-    )
+    return ArrowGeometry(shaftPath: immutableShaftPath, headPath: immutableHeadPath)
   }
 
   private static func trimmed(_ value: Substring) -> String {

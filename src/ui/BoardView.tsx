@@ -22,10 +22,11 @@ import {
   STROKE,
 } from './arrowGeometry';
 import {
-  EXIT_TRAIL_CLEANUP_MS,
-  EXIT_TRAIL_DURATION_MS,
+  EXIT_TRAIL_CLEANUP_MARGIN_MS,
+  EXIT_TRAIL_STROKE_CELLS,
   MAX_CONCURRENT_EXIT_TRAILS,
   exitAnimationKind,
+  exitTrailDurationMs,
 } from './exitAnimationConfig';
 import { StaticBoardSurface } from './StaticBoardSurface';
 import type { NativeExitAnimation } from './StaticBoardSurface.types';
@@ -62,6 +63,7 @@ export interface BoardViewProps {
 interface ExitingTrail {
   id: number;
   path: SlitherPath;
+  durationMs: number;
   reducedMotion: boolean;
 }
 
@@ -236,28 +238,33 @@ export function BoardView({
       const id = nextId.current++;
       const animationKind = exitAnimationKind(
         PERF_NO_EXIT_TRAILS,
-        board.count(),
         Platform.OS !== 'web',
       );
-      if (animationKind === 'native-launch') {
+      if (animationKind === 'native-slither') {
+        // The retained board view already owns the arrowhead path; it only
+        // needs the trail polyline, which is identical to the web slither.
         const arrowIndex = arrowArtCache.indexFor(owner);
         if (arrowIndex !== null) {
+          const path = slitherPath(owner, CELL, board.rows, board.cols);
           setNativeExitAnimation({
             id,
             arrowIndex,
-            durationMs: EXIT_TRAIL_DURATION_MS,
+            durationMs: exitTrailDurationMs(path.totalLen * scale.value),
             reducedMotion,
+            path,
+            trailStrokeWidth: EXIT_TRAIL_STROKE_CELLS * CELL,
           });
         }
       } else if (animationKind === 'slither') {
         const path = slitherPath(owner, CELL, board.rows, board.cols);
+        const durationMs = exitTrailDurationMs(path.totalLen * scale.value);
         const slot = nextExitSlot.current;
         nextExitSlot.current = (slot + 1) % MAX_CONCURRENT_EXIT_TRAILS;
         const previousTimer = exitCleanupTimers[slot];
         if (previousTimer !== null) clearTimeout(previousTimer);
         setExiting((current) => {
           const next = [...current];
-          next[slot] = { id, path, reducedMotion };
+          next[slot] = { id, path, durationMs, reducedMotion };
           return next;
         });
         const timer = setTimeout(() => {
@@ -270,7 +277,7 @@ export function BoardView({
             next[slot] = null;
             return next;
           });
-        }, EXIT_TRAIL_CLEANUP_MS);
+        }, durationMs + EXIT_TRAIL_CLEANUP_MARGIN_MS);
         exitCleanupTimers[slot] = timer;
       }
       onRemoved(board.isCleared());
@@ -548,6 +555,7 @@ function WebDynamicBoardLayer({
             <ExitTrail
               key={trail.id}
               path={trail.path}
+              durationMs={trail.durationMs}
               ink={palette.ink}
               reducedMotion={trail.reducedMotion}
             />
@@ -657,10 +665,12 @@ function HintArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
  */
 function ExitTrail({
   path,
+  durationMs,
   ink,
   reducedMotion,
 }: {
   path: SlitherPath;
+  durationMs: number;
   ink: string;
   reducedMotion: boolean;
 }) {
@@ -668,7 +678,7 @@ function ExitTrail({
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: EXIT_TRAIL_DURATION_MS, easing: Easing.linear });
+    k.value = withTiming(1, { duration: durationMs, easing: Easing.linear });
   }, []);
 
   const fadeAt = (kk: number) => {
@@ -704,7 +714,7 @@ function ExitTrail({
         d={path.d}
         animatedProps={trailProps}
         stroke={ink}
-        strokeWidth={0.26 * CELL} // the bead tube's diameter
+        strokeWidth={EXIT_TRAIL_STROKE_CELLS * CELL} // the bead tube's diameter
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"

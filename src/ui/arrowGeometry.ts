@@ -219,6 +219,8 @@ function shaftPoints(arrow: ArrowPath, cell: number, endPoint: Pt): Pt[] {
 export interface SlitherPath {
   /** SVG path data: tail end -> head -> straight off the board. */
   d: string;
+  /** The same polyline as `d`, for renderers that build their own path. */
+  points: readonly Pt[];
   /** Arc length of the arrow body (the visible dash). */
   bodyLen: number;
   /** Total arc length including the off-board exit ray. */
@@ -278,6 +280,7 @@ export function slitherPath(arrow: ArrowPath, cell: number, rows: number, cols: 
   const dStr = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${round(p.x)} ${round(p.y)}`).join(' ');
   return {
     d: dStr,
+    points: pts,
     bodyLen,
     totalLen,
     headTip: tip,
