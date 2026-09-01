@@ -43,3 +43,7 @@ yarn-error.*
 
 # Play upload keystore + passwords (backup: credentials.backup.enc)
 /credentials/
+
+# Encrypted keystore backup: the durable off-machine copy belongs in a password
+# manager or a private repo, not in this public one.
+credentials.backup.enc
