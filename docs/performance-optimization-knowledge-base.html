@@ -1524,6 +1524,10 @@
           </div>
         </div>
 
+        <div class="callout warn">
+          <strong>Revised 1 September 2026 — exit feedback.</strong> The dense-board “launch” exit and its 64-arrow threshold were removed. Every successful tap now plays the same slither at every density, drawn by the retained native view, with a duration that scales with the distance the trail crosses on screen. The earlier accepted exit measurement was invalidated in the process; see the ledger for both the correction and the replacement evidence.
+        </div>
+
         <div class="runtime-map" role="group" aria-label="Final runtime ownership map">
           <article class="runtime-step">
             <small>Rules</small>
@@ -1538,12 +1542,12 @@
           <article class="runtime-step">
             <small>Static field</small>
             <strong>Native board view</strong>
-            <p>One bounded view retains arrow geometry, draws two compound paths, and owns transform-only dense exits.</p>
+            <p>One bounded view retains arrow geometry, draws two compound paths, and animates every exit from the frame clock.</p>
           </article>
           <article class="runtime-step">
             <small>Transient art</small>
             <strong>Small Skia layer</strong>
-            <p>Shake, hint, and at most two full slither exits remain here only after the board becomes sparse.</p>
+            <p>The blocked shake and the hint pulse only. Exits moved into the board view, so this layer stays idle through ordinary play.</p>
           </article>
           <article class="runtime-step">
             <small>Feedback</small>
@@ -1705,7 +1709,7 @@
           </article>
           <article class="panel">
             <h3>Skia owns short motion</h3>
-            <p>A transparent persistent surface draws only a hint, one shake, and at most two exit effects—not the hundreds of static arrows.</p>
+            <p>A transparent persistent surface draws only the hint pulse and one blocked shake—not the hundreds of static arrows, and no longer the exits.</p>
           </article>
         </div>
 
@@ -1777,7 +1781,7 @@
             <div class="assumption-row">
               <div><h4>Original: disabling visual feedback is an optimization.</h4><p>No trails reduced allocation and memory.</p></div>
               <span>→</span>
-              <div><h4>Learned: diagnostics are not product decisions.</h4><p>The no-trail run isolated a cause. The shipping design kept feedback but bounded it to two slots, 180 ms, and dense-board degradation.</p></div>
+              <div><h4>Learned: diagnostics are not product decisions.</h4><p>The no-trail run isolated a cause. The shipping design kept the feedback and bounded it to two slots; the density-based degradation it first shipped with was later removed as unnecessary.</p></div>
             </div>
           </article>
           <article class="assumption searchable">
@@ -1922,7 +1926,7 @@
               <tr class="searchable" data-status="keep">
                 <td><strong>Small persistent Skia overlay</strong></td>
                 <td>Keep transient motion off React and avoid canvas remount churn.</td>
-                <td>Useful for one hint, one shake, and two exit slots; not enough as the static renderer.</td>
+                <td>Useful for one hint and one shake; not enough as the static renderer, and exits later moved to the board view.</td>
                 <td><span class="status keep">Retained</span></td>
                 <td class="deep-only">Use a specialized renderer for the part it is best at, not by default for the whole scene.</td>
               </tr>
@@ -2038,12 +2042,26 @@
                 <td><span class="status reject">Rejected</span></td>
                 <td class="deep-only">Visual correctness alone was not enough. The transparent dynamic pass reintroduced expensive dense-scene composition.</td>
               </tr>
-              <tr class="searchable" data-status="keep">
-                <td><strong>Retained native dense exit</strong></td>
+              <tr class="searchable" data-status="limit">
+                <td><strong>Retained native dense exit (launch)</strong></td>
                 <td>Launch the removed arrow toward its edge inside the board owner; keep full slither when sparse.</td>
-                <td>At 250 arrows: UI p95 11.31 ms, p99 15.02 ms, 0% jank, no missed vsyncs, peak PSS ≈148 MB.</td>
+                <td>Reported UI p95 11.31 ms at 250 arrows. <strong>Measurement invalidated:</strong> the lane ran on <code>ValueAnimator</code>, and the harness sets <code>animator_duration_scale</code> to 0, so the animation completed in a single frame. The run measured a skipped effect, not a drawn one.</td>
+                <td><span class="status limit">Superseded</span></td>
+                <td class="deep-only">Animation driven through the platform animator inherits the harness&rsquo;s animation scale. Drive benchmarked motion from the frame clock, and prove the effect actually rendered before quoting its cost. Playback review would have caught this; a percentile never would.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Native slither at every density</strong></td>
+                <td>Drop the threshold entirely: draw the same trail the web draws, inside the view that already retains the paths, off the frame clock.</td>
+                <td>Exit phase at 250 arrows: UI p95 13.30 ms, p99 15.12 ms, 0% jank across 120 measured frames (10 runs &times; 12, reconciled). Screen recordings show 12&ndash;14 rendered frames per exit.</td>
                 <td><span class="status keep">Accepted</span></td>
-                <td class="deep-only">Keep the meaning, change the mechanism: two bounded 180 ms native lanes animate transform and opacity without a dense Skia path effect.</td>
+                <td class="deep-only">The dense-board cost was the transparent Skia overlay, never the slither itself. Once the owner of the geometry also owned the effect, the expensive variant became the affordable one and the adaptive branch stopped earning its complexity.</td>
+              </tr>
+              <tr class="searchable" data-status="keep">
+                <td><strong>Duration scaled to on-screen travel</strong></td>
+                <td>A constant 180 ms reads as a teleport when the exit ray spans a 39-cell board and as a crawl on a small one.</td>
+                <td>Predicted 180&ndash;320 ms across the first twelve solve taps; recorded bursts of 182 / 214 / 198 / 177 ms matched their predictions within one frame.</td>
+                <td><span class="status keep">Accepted</span></td>
+                <td class="deep-only">Perceived speed is distance over time <em>on screen</em>. A duration constant is only constant in code; scale it by the distance the pixels actually move, then clamp both ends.</td>
               </tr>
               <tr class="searchable" data-status="reject">
                 <td><strong>Explicit Hermes GC</strong></td>
@@ -2183,7 +2201,7 @@
               <tr class="searchable"><td><strong>Runtime-boundary traffic</strong></td><td>Are facts crossing JS/native once, or are frames crossing repeatedly?</td><td>Geometry once, mask on removal, tap once.</td><td>Prefer bounded event protocols over continuous object graphs.</td></tr>
               <tr class="searchable"><td><strong>Input runtime</strong></td><td>Does pan/pinch wait for JavaScript?</td><td>Transforms stay on UI runtime.</td><td>Never degrade input semantics for an unproven coalescing win.</td></tr>
               <tr class="searchable"><td><strong>Animation pools</strong></td><td>Can transient objects grow with interaction count?</td><td>Two trail slots, one shake, one hint.</td><td>Bound concurrency, cancellation, replacement, and cleanup.</td></tr>
-              <tr class="searchable"><td><strong>Adaptive fidelity</strong></td><td>Can effects become cheaper when the scene is dense?</td><td>Above 64 arrows, the retained native view launches the removed arrow toward the edge; at 64 or fewer, the full slither returns. Both are bounded to two 180 ms lanes.</td><td>Preserve feedback meaning first; reduce implementation cost without turning success into an unexplained disappearance.</td></tr>
+              <tr class="searchable"><td><strong>Effect ownership</strong></td><td>Is a dense-scene effect expensive by nature, or only where it is drawn?</td><td>One slither for every density, drawn by the retained board view, bounded to two slots, 180&ndash;320 ms by on-screen travel.</td><td>Before degrading an effect on dense scenes, try moving it to the layer that already owns the geometry. Density should change where motion is drawn, not whether the player sees it.</td></tr>
               <tr class="searchable"><td><strong>Game-state updates</strong></td><td>Does a state updater perform generation or other heavy work?</td><td>Generate outside updater; one session per level.</td><td>React may invoke updater logic in ways that make side effects unsafe.</td></tr>
               <tr class="searchable"><td><strong>Component lifecycle</strong></td><td>What remounts on every mission?</td><td>Persistent BoardView; explicit reset.</td><td>Unmount must clear timers, mappers, native handles, and callbacks.</td></tr>
               <tr class="searchable"><td><strong>Race conditions</strong></td><td>Can stale input or timers mutate a new mission?</td><td>Board reference checks and terminal transition guard.</td><td>Correctness bugs often masquerade as unexplained churn.</td></tr>
@@ -2355,7 +2373,7 @@ npm run perf:android -- --feedback --soak-levels 50 --memory-only</code></pre>
         </details>
 
         <div class="callout bad">
-          <strong>Discard or quarantine invalid evidence:</strong> partial JSON with <code>status: running</code> or <code>summary: null</code>, a changed runtime/GPU/workload presented as direct A/B, stale Expo public flags inside a reused Gradle bundle, thermal throttling, PID restart, failed input acceptance, or a benchmark build accidentally shipped as production.
+          <strong>Discard or quarantine invalid evidence:</strong> partial JSON with <code>status: running</code> or <code>summary: null</code>, a changed runtime/GPU/workload presented as direct A/B, stale Expo public flags inside a reused Gradle bundle, thermal throttling, PID restart, failed input acceptance, a benchmark build accidentally shipped as production, or <strong>an animation driven by the platform animator while the harness holds <code>animator_duration_scale</code> at 0</strong> &mdash; that setting also flips Reanimated&rsquo;s <code>useReducedMotion</code>, so harness exit runs measure the reduced-motion variant and must be paired with a screen recording taken at animation scale 1.
         </div>
       </section>
 
@@ -2507,7 +2525,6 @@ Example:
   &lt;TransientFeedbackOverlay
     hint={hint}
     shake={shake}
-    exits={twoReusableExitSlots}
   /&gt;
 &lt;/AnimatedBoardTransform&gt;</code></pre>
           </div>
@@ -2523,6 +2540,11 @@ Example:
 
 Arrow exit, bounded event:
   setVisibility(compactMask)
+  setExitAnimation(id, index, durationMs, reducedMotion,
+                   strokeWidth, bodyLen, totalLen, dir, points)
+  // The effect's shape crosses once, with the fact that
+  // caused it. The owner of the paths animates it from the
+  // frame clock -- never a per-frame value from JavaScript.
   // Future only if measured: hideArrow(index)
 
 Input, rare event:
@@ -2582,7 +2604,9 @@ terminalGuard.reset();</code></pre>
             <tbody>
               <tr class="searchable"><td><strong>20-level final native soak</strong></td><td>Passed frame and memory gates across 2,247 removals.</td><td>Before broad release or after renderer/runtime changes.</td><td>Complete 50-level memory-only and frame soaks on the final build.</td></tr>
               <tr class="searchable"><td><strong>Controlled emulator evidence</strong></td><td>Excellent for repeatable A/B comparisons.</td><td>Release-candidate signoff.</td><td>Test low-end physical Android, 60/90/120 Hz devices, and real thermal conditions.</td></tr>
-              <tr class="searchable"><td><strong>No physical iOS soak</strong></td><td>Release simulator build verifies compilation and basic behavior.</td><td>Before claiming cross-platform performance parity.</td><td>Automated iPhone mission soak with Instruments signposts and memory graph.</td></tr>
+              <tr class="searchable"><td><strong>No physical iOS soak</strong></td><td>Android carries the evidence; iOS shares the protocol and the geometry.</td><td>Before claiming cross-platform performance parity.</td><td>Automated iPhone mission soak with Instruments signposts and memory graph.</td></tr>
+              <tr class="searchable"><td><strong>iOS slither never compiled</strong></td><td>The Swift exit path was written against the same event protocol Android passes, but no iOS build has run since.</td><td>The next iOS build, before any iOS release.</td><td>Compile, confirm the dash slides toward the head, and match one tap&rsquo;s duration against Android. See <a href="IOS_BOARD_PLAN.md">IOS_BOARD_PLAN.md</a>.</td></tr>
+              <tr class="searchable"><td><strong>Exit timing tuned on an emulator</strong></td><td>Frame-accurate recordings confirm the curve and duration at a locked 60 Hz.</td><td>A physical phone, a 120 Hz panel, or player feedback that exits feel slow or abrupt.</td><td>Re-record on device at 60 and 120 Hz; the curve is taste, so it closes with an eyeball, not a percentile.</td></tr>
               <tr class="searchable"><td><strong>O(n) visibility mask</strong></td><td>n ≤ 250; final frame result is comfortably inside gate.</td><td>Boards grow substantially or traces show interop/mask cost.</td><td>Index command, bitset, typed buffer, or shared native state.</td></tr>
               <tr class="searchable"><td><strong>Text geometry payload</strong></td><td>Parsed once per mission, outside steady-state frame work.</td><td>Mission-start latency becomes visible or geometry grows by an order of magnitude.</td><td>Typed arrays or JSI shared buffer after profiling.</td></tr>
               <tr class="searchable"><td><strong>Android compound rebuild</strong></td><td>Bounded survivor set; measured final p95 is strong.</td><td>Frequent bulk visibility changes or much larger scenes.</td><td>Incremental native buckets or retained per-arrow display objects—benchmarked against draw-call cost.</td></tr>
@@ -2668,7 +2692,7 @@ terminalGuard.reset();</code></pre>
       <p class="no-results" id="noResults">No section or experiment matches that search. Try a subsystem such as “memory,” “native,” “trail,” “storage,” or “Godot.”</p>
 
       <footer class="footer">
-        <p>Arrows Performance Field Guide · benchmark-backed snapshot · September 2026</p>
+        <p>Arrows Performance Field Guide · benchmark-backed snapshot · September 2026 · exit-feedback revision 1 September 2026</p>
         <p>Use the method again; re-measure the conclusions when the workload changes.</p>
       </footer>
     </main>

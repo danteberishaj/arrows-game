@@ -1,0 +1,745 @@
+[perf:android] gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+[perf:android] Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 3m 30s
+636 actionable tasks: 608 executed, 28 up-to-date
+[perf:android] installing app-release.apk
+[perf:android] validating deterministic workload
+[perf:android] warmup 1/1
+[perf:android] run 1/10: exit
+[perf:android] run 2/10: exit
+[perf:android] run 3/10: exit
+[perf:android] run 4/10: exit
+[perf:android] run 5/10: exit
+[perf:android] run 6/10: exit
+[perf:android] run 7/10: exit
+[perf:android] run 8/10: exit
+[perf:android] run 9/10: exit
+[perf:android] run 10/10: exit
+{
+  "schemaVersion": 2,
+  "label": null,
+  "timestamp": "2026-09-01T20:52:22.789Z",
+  "benchmark": {
+    "levelIndex": 3827,
+    "displayedLevel": 3828,
+    "rows": 39,
+    "cols": 39,
+    "arrowCount": 250,
+    "checksum": "b1f50ecb",
+    "warmups": 1,
+    "measuredRuns": 10,
+    "phases": [
+      "exit"
+    ],
+    "feedbackEnabled": false,
+    "configurationVerifiedFromFreshBuild": true,
+    "nativePrebuildRecreated": false,
+    "productionRenderer": true,
+    "staticBoardRenderer": "expo-native-view-retained-compound-paths",
+    "skiaLifecycleBackport": "89f6954",
+    "skiaPictureMutexBackport": "eef2afa",
+    "skiaNativeWindowOwnershipBackport": "local-ndk-acquire-release-fix",
+    "skiaPathReplayAllocationPatch": "local-no-copy-fast-path",
+    "runtimeMemoryFix": "expo-57.0.18-rn-0.86.3-worklets-0.10.1",
+    "runtimeVersions": {
+      "expo": "57.0.18",
+      "react-native": "0.86.3",
+      "react-native-reanimated": "4.5.1",
+      "react-native-worklets": "0.10.1",
+      "@shopify/react-native-skia": "2.6.2"
+    },
+    "tapGestureThread": "ui-coordinate-snapshot-to-js",
+    "boardSurfaceLifetime": "native-board-plus-persistent-dynamic-skia",
+    "arrowArtCache": "per-board-serialized-geometry-and-native-retained-paths",
+    "remainingLabelLayout": "split-static-mission-and-bounded-counter",
+    "boardSurfaceOpacity": "transparent",
+    "exitTrailCleanup": "two-bounded-native-slots",
+    "exitTrailPolicy": "native-slither-at-every-density",
+    "exitTrailDurationMs": 180,
+    "exitTrailPhaseStartingArrowCount": 250
+  },
+  "environment": {
+    "serial": "emulator-5556",
+    "avd": "fleet_floor_api31",
+    "apiLevel": 31,
+    "refreshRateHz": 60,
+    "abi": "arm64-v8a",
+    "model": "sdk_gphone64_arm64",
+    "gpuRenderer": "Google (Apple), Android Emulator OpenGL ES Translator (Apple M1 Pro), OpenGL ES 3.0 (4.1 Metal - 90.5)",
+    "boardSurfaceKind": "rootWindow",
+    "thermalStatusBefore": 0,
+    "thermalStatusAfter": 0,
+    "apk": {
+      "path": "/Users/gentlegen/Desktop/Projects/arrows-game/android/app/build/outputs/apk/release/app-release.apk",
+      "applicationId": "com.danteb.arrows",
+      "debuggable": false,
+      "profileable": true,
+      "bytes": 41864223,
+      "sha256": "4ed0748801819454aa606f587ff32da9c21b8f32050fb40a9d88019753ab4a16"
+    },
+    "git": {
+      "head": "0a1df946a0da04de0446fd8134068331d636b57a",
+      "branch": "main",
+      "dirty": true
+    }
+  },
+  "measurements": [
+    {
+      "run": 1,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 5.572539,
+          "uiFrameP95Ms": 12.918662,
+          "uiFrameP99Ms": 12.918662,
+          "uiFrameMaxMs": 12.918662,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.269899348281854,
+          "surfacePresentIntervalP50Ms": 16.892417,
+          "surfacePresentIntervalP95Ms": 18.728542,
+          "surfacePresentIntervalP99Ms": 18.728542,
+          "surfacePresentIntervalMaxMs": 18.728542,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.048791,
+          "surfaceDesiredToPresentP95Ms": 16.411917,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 16.411917,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.269899348281854,
+            "surfacePresentIntervalP50Ms": 16.892417,
+            "surfacePresentIntervalP95Ms": 18.728542,
+            "surfacePresentIntervalP99Ms": 18.728542,
+            "surfacePresentIntervalMaxMs": 18.728542,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 14.048791,
+            "surfaceDesiredToPresentP95Ms": 16.411917,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 16.411917,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25827238390190",
+            "endNs": "25827276269440",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 37.87925,
+            "captureDurationMs": 457.87925,
+            "captureStartNs": "25827238390190",
+            "captureEndNs": "25827696269440"
+          },
+          "pssKb": 143745
+        }
+      }
+    },
+    {
+      "run": 2,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 6.296178,
+          "uiFrameP95Ms": 13.33959,
+          "uiFrameP99Ms": 13.33959,
+          "uiFrameMaxMs": 13.33959,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.265772164820994,
+          "surfacePresentIntervalP50Ms": 16.679708,
+          "surfacePresentIntervalP95Ms": 19.613875,
+          "surfacePresentIntervalP99Ms": 19.613875,
+          "surfacePresentIntervalMaxMs": 19.613875,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 13.879958,
+          "surfaceDesiredToPresentP95Ms": 17.403083,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 17.403083,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.265772164820994,
+            "surfacePresentIntervalP50Ms": 16.679708,
+            "surfacePresentIntervalP95Ms": 19.613875,
+            "surfacePresentIntervalP99Ms": 19.613875,
+            "surfacePresentIntervalMaxMs": 19.613875,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 13.879958,
+            "surfaceDesiredToPresentP95Ms": 17.403083,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 17.403083,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25834706622110",
+            "endNs": "25834745553318",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 38.931208,
+            "captureDurationMs": 458.93120799999997,
+            "captureStartNs": "25834706622110",
+            "captureEndNs": "25835165553318"
+          },
+          "pssKb": 143628
+        }
+      }
+    },
+    {
+      "run": 3,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 5.31785,
+          "uiFrameP95Ms": 13.296347,
+          "uiFrameP99Ms": 13.296347,
+          "uiFrameMaxMs": 13.296347,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.82619950302231,
+          "surfacePresentIntervalP50Ms": 16.68,
+          "surfacePresentIntervalP95Ms": 20.219833,
+          "surfacePresentIntervalP99Ms": 20.219833,
+          "surfacePresentIntervalMaxMs": 20.219833,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.202958,
+          "surfaceDesiredToPresentP95Ms": 17.473292,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 17.473292,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.82619950302231,
+            "surfacePresentIntervalP50Ms": 16.68,
+            "surfacePresentIntervalP95Ms": 20.219833,
+            "surfacePresentIntervalP99Ms": 20.219833,
+            "surfacePresentIntervalMaxMs": 20.219833,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 14.202958,
+            "surfaceDesiredToPresentP95Ms": 17.473292,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 17.473292,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25842098236322",
+            "endNs": "25842134500530",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 36.264208,
+            "captureDurationMs": 456.264208,
+            "captureStartNs": "25842098236322",
+            "captureEndNs": "25842554500530"
+          },
+          "pssKb": 143406
+        }
+      }
+    },
+    {
+      "run": 4,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 5.336815,
+          "uiFrameP95Ms": 13.150189,
+          "uiFrameP99Ms": 13.150189,
+          "uiFrameMaxMs": 13.150189,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.13408523389935,
+          "surfacePresentIntervalP50Ms": 16.997708,
+          "surfacePresentIntervalP95Ms": 21.580292,
+          "surfacePresentIntervalP99Ms": 21.580292,
+          "surfacePresentIntervalMaxMs": 21.580292,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.49375,
+          "surfaceDesiredToPresentP95Ms": 19.008417,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 19.008417,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.13408523389935,
+            "surfacePresentIntervalP50Ms": 16.997708,
+            "surfacePresentIntervalP95Ms": 21.580292,
+            "surfacePresentIntervalP99Ms": 21.580292,
+            "surfacePresentIntervalMaxMs": 21.580292,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 14.49375,
+            "surfaceDesiredToPresentP95Ms": 19.008417,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 19.008417,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25849509554700",
+            "endNs": "25849545445659",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 35.890959,
+            "captureDurationMs": 455.890959,
+            "captureStartNs": "25849509554700",
+            "captureEndNs": "25849965445659"
+          },
+          "pssKb": 143740
+        }
+      }
+    },
+    {
+      "run": 5,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 4.76445,
+          "uiFrameP95Ms": 12.994822,
+          "uiFrameP99Ms": 12.994822,
+          "uiFrameMaxMs": 12.994822,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 59.375758575920145,
+          "surfacePresentIntervalP50Ms": 16.814667,
+          "surfacePresentIntervalP95Ms": 19.861916,
+          "surfacePresentIntervalP99Ms": 19.861916,
+          "surfacePresentIntervalMaxMs": 19.861916,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.286875,
+          "surfaceDesiredToPresentP95Ms": 18.028708,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 18.028708,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 59.375758575920145,
+            "surfacePresentIntervalP50Ms": 16.814667,
+            "surfacePresentIntervalP95Ms": 19.861916,
+            "surfacePresentIntervalP99Ms": 19.861916,
+            "surfacePresentIntervalMaxMs": 19.861916,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 14.286875,
+            "surfaceDesiredToPresentP95Ms": 18.028708,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 18.028708,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25856912467829",
+            "endNs": "25856949977954",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 37.510125,
+            "captureDurationMs": 457.510125,
+            "captureStartNs": "25856912467829",
+            "captureEndNs": "25857369977954"
+          },
+          "pssKb": 143857
+        }
+      }
+    },
+    {
+      "run": 6,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 7.016125,
+          "uiFrameP95Ms": 15.596372,
+          "uiFrameP99Ms": 15.596372,
+          "uiFrameMaxMs": 15.596372,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.59135777091489,
+          "surfacePresentIntervalP50Ms": 16.617209,
+          "surfacePresentIntervalP95Ms": 21.625958,
+          "surfacePresentIntervalP99Ms": 21.625958,
+          "surfacePresentIntervalMaxMs": 21.625958,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 13.842167,
+          "surfaceDesiredToPresentP95Ms": 19.398792,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 19.398792,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.59135777091489,
+            "surfacePresentIntervalP50Ms": 16.617209,
+            "surfacePresentIntervalP95Ms": 21.625958,
+            "surfacePresentIntervalP99Ms": 21.625958,
+            "surfacePresentIntervalMaxMs": 21.625958,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 13.842167,
+            "surfaceDesiredToPresentP95Ms": 19.398792,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 19.398792,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25864323723749",
+            "endNs": "25864362519541",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 38.795792,
+            "captureDurationMs": 458.795792,
+            "captureStartNs": "25864323723749",
+            "captureEndNs": "25864782519541"
+          },
+          "pssKb": 143535
+        }
+      }
+    },
+    {
+      "run": 7,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 6.028346,
+          "uiFrameP95Ms": 13.837132,
+          "uiFrameP99Ms": 13.837132,
+          "uiFrameMaxMs": 13.837132,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 59.354866559468185,
+          "surfacePresentIntervalP50Ms": 16.669708,
+          "surfacePresentIntervalP95Ms": 20.0875,
+          "surfacePresentIntervalP99Ms": 20.0875,
+          "surfacePresentIntervalMaxMs": 20.0875,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 13.370375,
+          "surfaceDesiredToPresentP95Ms": 17.7335,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 17.7335,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 59.354866559468185,
+            "surfacePresentIntervalP50Ms": 16.669708,
+            "surfacePresentIntervalP95Ms": 20.0875,
+            "surfacePresentIntervalP99Ms": 20.0875,
+            "surfacePresentIntervalMaxMs": 20.0875,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 13.370375,
+            "surfaceDesiredToPresentP95Ms": 17.7335,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 17.7335,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25871774404419",
+            "endNs": "25871811231461",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 36.827042,
+            "captureDurationMs": 456.827042,
+            "captureStartNs": "25871774404419",
+            "captureEndNs": "25872231231461"
+          },
+          "pssKb": 144045
+        }
+      }
+    },
+    {
+      "run": 8,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 7.002688,
+          "uiFrameP95Ms": 15.125223,
+          "uiFrameP99Ms": 15.125223,
+          "uiFrameMaxMs": 15.125223,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.55534758769516,
+          "surfacePresentIntervalP50Ms": 16.795042,
+          "surfacePresentIntervalP95Ms": 21.042792,
+          "surfacePresentIntervalP99Ms": 21.042792,
+          "surfacePresentIntervalMaxMs": 21.042792,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.419792,
+          "surfaceDesiredToPresentP95Ms": 19.667292,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 19.667292,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.55534758769516,
+            "surfacePresentIntervalP50Ms": 16.795042,
+            "surfacePresentIntervalP95Ms": 21.042792,
+            "surfacePresentIntervalP99Ms": 21.042792,
+            "surfacePresentIntervalMaxMs": 21.042792,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 14.419792,
+            "surfaceDesiredToPresentP95Ms": 19.667292,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 19.667292,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25879176884548",
+            "endNs": "25879216867173",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 39.982625,
+            "captureDurationMs": 459.982625,
+            "captureStartNs": "25879176884548",
+            "captureEndNs": "25879636867173"
+          },
+          "pssKb": 143562
+        }
+      }
+    },
+    {
+      "run": 9,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 7.302618,
+          "uiFrameP95Ms": 13.857486,
+          "uiFrameP99Ms": 13.857486,
+          "uiFrameMaxMs": 13.857486,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.38163918628737,
+          "surfacePresentIntervalP50Ms": 16.786709,
+          "surfacePresentIntervalP95Ms": 22.973792,
+          "surfacePresentIntervalP99Ms": 22.973792,
+          "surfacePresentIntervalMaxMs": 22.973792,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 12.123917,
+          "surfaceDesiredToPresentP95Ms": 20.709584,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 20.709584,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.38163918628737,
+            "surfacePresentIntervalP50Ms": 16.786709,
+            "surfacePresentIntervalP95Ms": 22.973792,
+            "surfacePresentIntervalP99Ms": 22.973792,
+            "surfacePresentIntervalMaxMs": 22.973792,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 12.123917,
+            "surfaceDesiredToPresentP95Ms": 20.709584,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 20.709584,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25886706809468",
+            "endNs": "25886744787760",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 37.978292,
+            "captureDurationMs": 457.978292,
+            "captureStartNs": "25886706809468",
+            "captureEndNs": "25887164787760"
+          },
+          "pssKb": 143220
+        }
+      }
+    },
+    {
+      "run": 10,
+      "phases": {
+        "exit": {
+          "frameCount": 12,
+          "uiFrameP50Ms": 6.046085,
+          "uiFrameP95Ms": 14.718995,
+          "uiFrameP99Ms": 14.718995,
+          "uiFrameMaxMs": 14.718995,
+          "jankyFramePercent": 0,
+          "surfaceFrameCount": 12,
+          "surfacePresentedFps": 60.93758017965984,
+          "surfacePresentIntervalP50Ms": 16.253292,
+          "surfacePresentIntervalP95Ms": 18.302417,
+          "surfacePresentIntervalP99Ms": 18.302417,
+          "surfacePresentIntervalMaxMs": 18.302417,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 13.85475,
+          "surfaceDesiredToPresentP95Ms": 16.496667,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 16.496667,
+          "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0",
+          "surfaceKind": "rootWindow",
+          "rootSurface": {
+            "surfaceFrameCount": 12,
+            "surfacePresentedFps": 60.93758017965984,
+            "surfacePresentIntervalP50Ms": 16.253292,
+            "surfacePresentIntervalP95Ms": 18.302417,
+            "surfacePresentIntervalP99Ms": 18.302417,
+            "surfacePresentIntervalMaxMs": 18.302417,
+            "surfaceMissedVsyncCount": 0,
+            "surfaceMissedVsyncPercent": 0,
+            "surfaceTwoPlusRefreshHitchCount": 0,
+            "surfaceFourPlusRefreshHitchCount": 0,
+            "surfaceDesiredToPresentP50Ms": 13.85475,
+            "surfaceDesiredToPresentP95Ms": 16.496667,
+            "surfaceDesiredToReadyP95Ms": 0,
+            "surfaceReadyToPresentP95Ms": 16.496667,
+            "surfaceLayer": "com.danteb.arrows/com.danteb.arrows.MainActivity#0"
+          },
+          "driverTiming": {
+            "startNs": "25894127287680",
+            "endNs": "25894166070472",
+            "acceptedMoves": 0,
+            "acceptedTaps": 1,
+            "durationMs": 38.782792,
+            "captureDurationMs": 458.782792,
+            "captureStartNs": "25894127287680",
+            "captureEndNs": "25894586070472"
+          },
+          "pssKb": 144191
+        }
+      }
+    }
+  ],
+  "summary": {
+    "frameCount": 120,
+    "uiFrameP50Ms": 6.343372,
+    "uiFrameP95Ms": 13.296347,
+    "uiFrameP99Ms": 15.125223,
+    "uiFrameMaxMs": 15.596372,
+    "jankyFramePercent": 0,
+    "surfaceFrameCount": 120,
+    "surfacePresentedFps": 60.26489707248106,
+    "surfacePresentIntervalP50Ms": 16.68,
+    "surfacePresentIntervalP95Ms": 20.33675,
+    "surfacePresentIntervalP99Ms": 21.625958,
+    "surfacePresentIntervalMaxMs": 22.973792,
+    "surfaceMissedVsyncCount": 0,
+    "surfaceMissedVsyncPercent": 0,
+    "surfaceTwoPlusRefreshHitchCount": 0,
+    "surfaceFourPlusRefreshHitchCount": 0,
+    "surfaceDesiredToPresentP50Ms": 14.093917,
+    "surfaceDesiredToPresentP95Ms": 18.028708,
+    "surfaceDesiredToReadyP95Ms": 0,
+    "surfaceReadyToPresentP95Ms": 18.028708,
+    "rootSurface": {
+      "surfaceFrameCount": 120,
+      "surfacePresentedFps": 60.26489707248106,
+      "surfacePresentIntervalP50Ms": 16.68,
+      "surfacePresentIntervalP95Ms": 20.33675,
+      "surfacePresentIntervalP99Ms": 21.625958,
+      "surfacePresentIntervalMaxMs": 22.973792,
+      "surfaceMissedVsyncCount": 0,
+      "surfaceMissedVsyncPercent": 0,
+      "surfaceTwoPlusRefreshHitchCount": 0,
+      "surfaceFourPlusRefreshHitchCount": 0,
+      "surfaceDesiredToPresentP50Ms": 14.093917,
+      "surfaceDesiredToPresentP95Ms": 18.028708,
+      "surfaceDesiredToReadyP95Ms": 0,
+      "surfaceReadyToPresentP95Ms": 18.028708
+    },
+    "pssKb": 143628,
+    "pssP95Kb": 144191,
+    "pssPeakKb": 144191,
+    "phases": {
+      "exit": {
+        "frameCount": 120,
+        "uiFrameP50Ms": 6.343372,
+        "uiFrameP95Ms": 13.296347,
+        "uiFrameP99Ms": 15.125223,
+        "uiFrameMaxMs": 15.596372,
+        "jankyFramePercent": 0,
+        "surfaceFrameCount": 120,
+        "surfacePresentedFps": 60.26489707248106,
+        "surfacePresentIntervalP50Ms": 16.68,
+        "surfacePresentIntervalP95Ms": 20.33675,
+        "surfacePresentIntervalP99Ms": 21.625958,
+        "surfacePresentIntervalMaxMs": 22.973792,
+        "surfaceMissedVsyncCount": 0,
+        "surfaceMissedVsyncPercent": 0,
+        "surfaceTwoPlusRefreshHitchCount": 0,
+        "surfaceFourPlusRefreshHitchCount": 0,
+        "surfaceDesiredToPresentP50Ms": 14.093917,
+        "surfaceDesiredToPresentP95Ms": 18.028708,
+        "surfaceDesiredToReadyP95Ms": 0,
+        "surfaceReadyToPresentP95Ms": 18.028708,
+        "rootSurface": {
+          "surfaceFrameCount": 120,
+          "surfacePresentedFps": 60.26489707248106,
+          "surfacePresentIntervalP50Ms": 16.68,
+          "surfacePresentIntervalP95Ms": 20.33675,
+          "surfacePresentIntervalP99Ms": 21.625958,
+          "surfacePresentIntervalMaxMs": 22.973792,
+          "surfaceMissedVsyncCount": 0,
+          "surfaceMissedVsyncPercent": 0,
+          "surfaceTwoPlusRefreshHitchCount": 0,
+          "surfaceFourPlusRefreshHitchCount": 0,
+          "surfaceDesiredToPresentP50Ms": 14.093917,
+          "surfaceDesiredToPresentP95Ms": 18.028708,
+          "surfaceDesiredToReadyP95Ms": 0,
+          "surfaceReadyToPresentP95Ms": 18.028708
+        }
+      }
+    }
+  }
+}
+exit 0
