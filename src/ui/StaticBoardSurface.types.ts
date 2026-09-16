@@ -8,6 +8,13 @@ export interface AnimatedArrowArt {
   headD: string;
 }
 
+/** An arrow that moves along its own exit direction (the blocked bump). */
+export interface BumpingArrowArt extends AnimatedArrowArt {
+  /** Unit exit direction in board space (y down). */
+  x: number;
+  y: number;
+}
+
 export interface AnimatedExitTrail {
   id: number;
   path: SlitherPath;
@@ -37,8 +44,13 @@ export interface StaticBoardSurfaceProps {
   heart: string;
   cellSize: number;
   strokeWidth: number;
-  shaking: AnimatedArrowArt | null;
+  shaking: BumpingArrowArt | null;
+  /** The arrow in a blocked arrow's lane, flashing in the fail colour. */
+  blocker: AnimatedArrowArt | null;
+  /** The arrow under the finger, previewed from touch-down to release. */
+  pressed: AnimatedArrowArt | null;
   hint: AnimatedArrowArt | null;
   exiting: (AnimatedExitTrail | null)[];
   nativeExitAnimation: NativeExitAnimation | null;
+  reducedMotion: boolean;
 }

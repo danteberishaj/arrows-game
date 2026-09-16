@@ -2,21 +2,24 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   Easing,
   interpolateColor,
-  runOnJS,
   useAnimatedProps,
   useReducedMotion,
   useSharedValue,
+  withDecay,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
 import { PERF_MODE } from '../perfMode';
 import {
   arrowArt,
   BoardArrowArtCache,
+  dirVec,
   slitherPath,
   SlitherPath,
   STROKE,
@@ -28,8 +31,18 @@ import {
   exitAnimationKind,
   exitTrailDurationMs,
 } from './exitAnimationConfig';
+import {
+  BLOCKED_BUMP_MS,
+  BLOCKER_FLASH_MS,
+  blockedBumpAt,
+  blockerOpacityAt,
+  blockerStrokeSwellAt,
+  PRESSED_STROKE_SWELL,
+} from './feedbackCurves';
+import { ArrowHitTester, TAP_RADIUS_PT } from './hitTest';
 import { StaticBoardSurface } from './StaticBoardSurface';
 import type { NativeExitAnimation } from './StaticBoardSurface.types';
+import { BlockedTapLedger, isGhostTap, type RecentRemoval } from './tapRules';
 import { Palette } from './theme';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -38,9 +51,36 @@ const AnimatedG = Animated.createAnimatedComponent(G);
 /** Board pixel size of one grid cell (the viewport scales, so this is arbitrary). */
 export const CELL = 40;
 
-// Pan/zoom feel, ported from BoardPanZoom.cs.
-const MAX_ZOOM_FACTOR = 3.5; // max zoom in, relative to fit-to-view
+// Pan/zoom feel, ported from BoardPanZoom.cs and then tuned for thumbs.
+const MAX_ZOOM_FACTOR = 3.5; // max zoom in, relative to fit-to-view ...
+/** ... but never less than this many screen points per cell: a 46-cell board
+ * at 3.5x fit was still only 29 pt per cell, under every touch-target guide. */
+const MAX_ZOOM_CELL_PT = 64;
 const FIT_MARGIN = 0.94; // small border when fully zoomed out
+/**
+ * Once zoomed past the viewport the board can be pulled this far inward, so
+ * an arrow on the board's edge can sit under the thumb instead of against
+ * the bezel. Fully zoomed out the board stays centred.
+ */
+const EDGE_PAD_PT = 72;
+/**
+ * A tap has no distance limit of its own; the pan's activation distance IS
+ * the tap slop. Android's own slop is 8 dp, but a thumb rolling on release
+ * wobbles more than a stylus: 12 pt keeps such taps firing without making
+ * the pan feel late.
+ */
+const PAN_SLOP_PT = 12;
+/** A slow, deliberate press still counts as a tap (accessibility). */
+const TAP_MAX_DURATION_MS = 900;
+/**
+ * The press preview appears only if the finger is still down after this
+ * long (Android's own pressed-state delay is 64 ms). A quick tap resolves
+ * its arrow at touch-down but never draws the preview, so rapid play costs
+ * no extra render; a hesitant press sees which arrow will fire.
+ */
+const PRESS_PREVIEW_DELAY_MS = 64;
+/** iOS scroll-view rubber band (x*d*c)/(d+c*x), c = 0.55, d = viewport size. */
+const RUBBER_BAND_C = 0.55;
 const PERF_NO_EXIT_TRAILS =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1';
 
@@ -49,8 +89,12 @@ export interface BoardViewProps {
   palette: Palette;
   /** An arrow left the board. `cleared` = it was the last one. */
   onRemoved: (cleared: boolean) => void;
-  /** A blocked arrow was tapped (costs a heart). */
-  onBlocked: () => void;
+  /**
+   * A blocked arrow was tapped. `costsHeart` is false when this arrow has
+   * already been charged this level (a probe or an echoed touch, not a new
+   * mistake): shake it, nudge the player, keep the heart.
+   */
+  onBlocked: (costsHeart: boolean) => void;
   /** Ignore taps (win/lose overlay up). */
   locked: boolean;
   /** Arrow to pulse as a hint (ArrowTile.Highlight), keyed to retrigger. */
@@ -67,16 +111,41 @@ interface ExitingTrail {
   reducedMotion: boolean;
 }
 
-interface ShakingArrowState {
+interface AnimatedArrowState {
   arrow: ArrowPath;
   id: number;
 }
 
+/** Pan range along one axis for content of `size` in a `viewport`. */
+function panRange(size: number, viewport: number): [number, number] {
+  'worklet';
+  if (size <= viewport) {
+    const centred = (viewport - size) / 2;
+    return [centred, centred];
+  }
+  const pad = Math.min(EDGE_PAD_PT, viewport * 0.25);
+  return [viewport - size - pad, pad];
+}
+
+/** Resist dragging past [lo, hi] the way a scroll view does. */
+function rubberBand(value: number, lo: number, hi: number, dimension: number): number {
+  'worklet';
+  const d = Math.max(1, dimension);
+  const band = (x: number) => (x * d * RUBBER_BAND_C) / (d + RUBBER_BAND_C * x);
+  if (value < lo) return lo - band(lo - value);
+  if (value > hi) return hi + band(value - hi);
+  return value;
+}
+
 /**
  * The playable board: black line-art arrows (rounded polyline + solid
- * triangular head, per UIFactory), slither-exit and blocked-shake feedback
+ * triangular head, per UIFactory), slither-exit and blocked-bump feedback
  * (SlitherExit / ArrowTile), inside a fit-to-view pinch/pan/wheel viewport
- * (BoardPanZoom).
+ * (BoardPanZoom) with momentum and rubber-band edges.
+ *
+ * Taps resolve to the arrow whose ink is nearest the finger within a
+ * 44 pt disc (see hitTest.ts), preview that arrow on touch-down, and fire
+ * it on release.
  */
 export function BoardView({
   board,
@@ -96,7 +165,9 @@ export function BoardView({
   );
   const [nativeExitAnimation, setNativeExitAnimation] =
     useState<NativeExitAnimation | null>(null);
-  const [shaking, setShaking] = useState<ShakingArrowState | null>(null);
+  const [shaking, setShaking] = useState<AnimatedArrowState | null>(null);
+  const [blocker, setBlocker] = useState<AnimatedArrowState | null>(null);
+  const [pressed, setPressed] = useState<AnimatedArrowState | null>(null);
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   const nextId = useRef(1);
   const nextExitSlot = useRef(0);
@@ -104,13 +175,19 @@ export function BoardView({
     Array.from({ length: MAX_CONCURRENT_EXIT_TRAILS }, () => null),
   ).current;
   const shakeCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const shakingRef = useRef<ShakingArrowState | null>(null);
+  const blockerCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shakingRef = useRef<AnimatedArrowState | null>(null);
+  const pressedRef = useRef<ArrowPath | null>(null);
+  const pressPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRemoved = useRef<RecentRemoval | null>(null);
+  const blockedLedger = useRef(new BlockedTapLedger()).current;
   const boardRef = useRef(board);
   const lockedRef = useRef(locked);
   const arrowArtCache = useMemo(
     () => new BoardArrowArtCache(board.arrows(), CELL),
     [board],
   );
+  const hitTester = useMemo(() => new ArrowHitTester(board, CELL), [board]);
   const reducedMotion = useReducedMotion();
   boardRef.current = board;
   lockedRef.current = locked;
@@ -120,6 +197,8 @@ export function BoardView({
       if (timer !== null) clearTimeout(timer);
     }
     if (shakeCleanupTimer.current !== null) clearTimeout(shakeCleanupTimer.current);
+    if (blockerCleanupTimer.current !== null) clearTimeout(blockerCleanupTimer.current);
+    if (pressPreviewTimer.current !== null) clearTimeout(pressPreviewTimer.current);
   }, []);
 
   // ---- pan / zoom ------------------------------------------------------
@@ -129,16 +208,19 @@ export function BoardView({
   const ty = useSharedValue(0);
   const minScale = useSharedValue(1);
   const maxScale = useSharedValue(1);
-  const pinchStart = useSharedValue(1);
+  const pinchStart = useSharedValue({ scale: 1, tx: 0, ty: 0, fx: 0, fy: 0 });
+  const panStart = useSharedValue({ tx: 0, ty: 0 });
   const viewport = useSharedValue({ w: 0, h: 0 });
 
   const clampPos = useCallback(() => {
     'worklet';
-    // Keep the (scaled) content covering the viewport; centre any axis smaller than it.
+    // Keep the (scaled) content covering the viewport (plus the edge pad);
+    // centre any axis smaller than it.
     const vw = viewport.value.w, vh = viewport.value.h;
-    const sw = boardW * scale.value, sh = boardH * scale.value;
-    tx.value = sw <= vw ? (vw - sw) / 2 : Math.min(0, Math.max(vw - sw, tx.value));
-    ty.value = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, ty.value));
+    const [xlo, xhi] = panRange(boardW * scale.value, vw);
+    const [ylo, yhi] = panRange(boardH * scale.value, vh);
+    tx.value = Math.min(xhi, Math.max(xlo, tx.value));
+    ty.value = Math.min(yhi, Math.max(ylo, ty.value));
   }, [boardW, boardH]);
 
   const zoomAround = useCallback((fx: number, fy: number, target: number) => {
@@ -158,8 +240,9 @@ export function BoardView({
     // Fully zoomed out shows the whole board / shape; the player pinches in.
     const fit = Math.min(vw / boardW, vh / boardH) * FIT_MARGIN;
     minScale.value = fit;
-    maxScale.value = fit * MAX_ZOOM_FACTOR;
-    pinchStart.value = fit;
+    maxScale.value = Math.max(fit * MAX_ZOOM_FACTOR, MAX_ZOOM_CELL_PT / CELL);
+    cancelAnimation(tx);
+    cancelAnimation(ty);
     scale.value = fit;
     tx.value = (vw - boardW * fit) / 2;
     ty.value = (vh - boardH * fit) / 2;
@@ -175,13 +258,26 @@ export function BoardView({
       clearTimeout(shakeCleanupTimer.current);
       shakeCleanupTimer.current = null;
     }
+    if (blockerCleanupTimer.current !== null) {
+      clearTimeout(blockerCleanupTimer.current);
+      blockerCleanupTimer.current = null;
+    }
+    if (pressPreviewTimer.current !== null) {
+      clearTimeout(pressPreviewTimer.current);
+      pressPreviewTimer.current = null;
+    }
     shakingRef.current = null;
+    pressedRef.current = null;
+    lastRemoved.current = null;
+    blockedLedger.reset();
     nextExitSlot.current = 0;
     setExiting((current) => current.some((trail) => trail !== null)
       ? current.map(() => null)
       : current);
     setNativeExitAnimation(null);
     setShaking(null);
+    setBlocker(null);
+    setPressed(null);
     const measuredViewport = viewport.value;
     fitToViewport(measuredViewport.w, measuredViewport.h);
   }, [board, fitToViewport]);
@@ -205,27 +301,71 @@ export function BoardView({
     const s = scale.value;
     const { w: vw, h: vh } = viewport.value;
     if (vw < 1 || vh < 1) return;
-    const sw = boardW * s, sh = boardH * s;
-    let txT = vw / 2 - cx * s;
-    let tyT = vh / 2 - cy * s;
-    txT = sw <= vw ? (vw - sw) / 2 : Math.min(0, Math.max(vw - sw, txT));
-    tyT = sh <= vh ? (vh - sh) / 2 : Math.min(0, Math.max(vh - sh, tyT));
+    const [xlo, xhi] = panRange(boardW * s, vw);
+    const [ylo, yhi] = panRange(boardH * s, vh);
+    const txT = Math.min(xhi, Math.max(xlo, vw / 2 - cx * s));
+    const tyT = Math.min(yhi, Math.max(ylo, vh / 2 - cy * s));
+    cancelAnimation(tx);
+    cancelAnimation(ty);
     tx.value = withTiming(txT, { duration: 280, easing: Easing.out(Easing.cubic) });
     ty.value = withTiming(tyT, { duration: 280, easing: Easing.out(Easing.cubic) });
   }, [hint, boardW, boardH]);
 
   // ---- tap -> game move --------------------------------------------------
 
-  const handleTap = useCallback((bx: number, by: number) => {
+  /**
+   * The arrow a touch at board point (bx, by) means, or null. `radius` is the
+   * forgiveness disc in board units (screen points / zoom). A touch on the
+   * spot an arrow just left is an echo and resolves to nothing.
+   */
+  const resolveTap = useCallback((bx: number, by: number, radius: number): ArrowPath | null => {
+    const cell = { r: Math.floor(by / CELL), c: Math.floor(bx / CELL) };
+    if (isGhostTap(board, lastRemoved.current, cell, Date.now())) return null;
+    const hit = hitTester.nearest(bx, by, radius, (arrow) => board.canExit(arrow));
+    return hit?.arrow ?? null;
+  }, [board, hitTester]);
+
+  /** Touch-down: resolve the arrow that will fire now (the finger's intent
+   * point), and preview it if the press lasts, so the player can bail out
+   * (drag to pan) before committing. */
+  const handlePressStart = useCallback((bx: number, by: number, radius: number) => {
+    if (lockedRef.current || boardRef.current !== board) return;
+    const arrow = resolveTap(bx, by, radius);
+    pressedRef.current = arrow;
+    if (pressPreviewTimer.current !== null) clearTimeout(pressPreviewTimer.current);
+    if (!arrow) return;
+    const timer = setTimeout(() => {
+      if (pressPreviewTimer.current !== timer) return;
+      pressPreviewTimer.current = null;
+      if (pressedRef.current !== arrow) return;
+      setPressed({ arrow, id: nextId.current++ });
+    }, PRESS_PREVIEW_DELAY_MS);
+    pressPreviewTimer.current = timer;
+  }, [board, resolveTap]);
+
+  const handlePressEnd = useCallback(() => {
+    if (pressPreviewTimer.current !== null) {
+      clearTimeout(pressPreviewTimer.current);
+      pressPreviewTimer.current = null;
+    }
+    pressedRef.current = null;
+    setPressed((current) => (current === null ? current : null));
+  }, []);
+
+  const handleTap = useCallback((bx: number, by: number, radius: number) => {
     // Drop a UI-thread tap that reached JS after Next/Retry replaced the
     // mission; its closure still points at the previous mutable board.
     if (lockedRef.current || boardRef.current !== board) return;
-    const c = Math.floor(bx / CELL);
-    const r = Math.floor(by / CELL);
-    const owner = board.ownerAt(r, c);
+    // What was highlighted at touch-down is what fires: the finger rolls a
+    // little on release and must not slip onto a neighbour.
+    const previewed = pressedRef.current;
+    const owner = previewed && board.arrows().includes(previewed)
+      ? previewed
+      : resolveTap(bx, by, radius);
     if (!owner) return;
 
     if (board.tryRemove(owner)) {
+      lastRemoved.current = { arrow: owner, at: Date.now() };
       if (hint && hint.arrow === owner) clearHint();
       if (shakingRef.current?.arrow === owner) {
         if (shakeCleanupTimer.current !== null) {
@@ -235,6 +375,7 @@ export function BoardView({
         shakingRef.current = null;
         setShaking(null);
       }
+      setBlocker((current) => (current?.arrow === owner ? null : current));
       const id = nextId.current++;
       const animationKind = exitAnimationKind(
         PERF_NO_EXIT_TRAILS,
@@ -296,56 +437,120 @@ export function BoardView({
           shakingRef.current = null;
           return null;
         });
-      }, 340);
+      }, BLOCKED_BUMP_MS + 40);
       shakeCleanupTimer.current = timer;
-      onBlocked();
+
+      // Show WHY: the first arrow in the lane lights up for a moment.
+      const blocking = board.blockerOf(owner);
+      if (blocking) {
+        const blockerId = nextId.current++;
+        setBlocker({ arrow: blocking, id: blockerId });
+        if (blockerCleanupTimer.current !== null) {
+          clearTimeout(blockerCleanupTimer.current);
+        }
+        const blockerTimer = setTimeout(() => {
+          if (blockerCleanupTimer.current === blockerTimer) {
+            blockerCleanupTimer.current = null;
+          }
+          setBlocker((current) => (current?.id === blockerId ? null : current));
+        }, BLOCKER_FLASH_MS + 40);
+        blockerCleanupTimer.current = blockerTimer;
+      }
+      onBlocked(blockedLedger.charge(owner));
     }
   }, [
     arrowArtCache,
+    blockedLedger,
     board,
     clearHint,
     hint,
     onBlocked,
     onRemoved,
     reducedMotion,
+    resolveTap,
   ]);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()
-      .minDistance(8)
+      .minDistance(PAN_SLOP_PT)
       .maxPointers(1)
-      .onChange((e) => {
-        'worklet';
-        tx.value += e.changeX;
-        ty.value += e.changeY;
-        clampPos();
-      });
-
-    const pinch = Gesture.Pinch()
       .onStart(() => {
         'worklet';
-        pinchStart.value = scale.value;
+        panStart.value = { tx: tx.value, ty: ty.value };
       })
       .onUpdate((e) => {
         'worklet';
-        zoomAround(e.focalX, e.focalY, pinchStart.value * e.scale);
+        const vw = viewport.value.w, vh = viewport.value.h;
+        const [xlo, xhi] = panRange(boardW * scale.value, vw);
+        const [ylo, yhi] = panRange(boardH * scale.value, vh);
+        tx.value = rubberBand(panStart.value.tx + e.translationX, xlo, xhi, vw);
+        ty.value = rubberBand(panStart.value.ty + e.translationY, ylo, yhi, vh);
+      })
+      .onEnd((e) => {
+        'worklet';
+        // Fling carries on and settles; an overscrolled drag springs back.
+        const vw = viewport.value.w, vh = viewport.value.h;
+        const xr = panRange(boardW * scale.value, vw);
+        const yr = panRange(boardH * scale.value, vh);
+        tx.value = withDecay({ velocity: e.velocityX, clamp: xr, rubberBandEffect: true });
+        ty.value = withDecay({ velocity: e.velocityY, clamp: yr, rubberBandEffect: true });
+      });
+
+    const pinch = Gesture.Pinch()
+      .onStart((e) => {
+        'worklet';
+        cancelAnimation(tx);
+        cancelAnimation(ty);
+        pinchStart.value = {
+          scale: scale.value,
+          tx: tx.value,
+          ty: ty.value,
+          fx: e.focalX,
+          fy: e.focalY,
+        };
+      })
+      .onUpdate((e) => {
+        'worklet';
+        // The board point under the first focal point follows the fingers:
+        // two fingers both zoom and pan, like every map.
+        const start = pinchStart.value;
+        const s2 = Math.min(maxScale.value, Math.max(minScale.value, start.scale * e.scale));
+        const k = s2 / start.scale;
+        tx.value = e.focalX - (start.fx - start.tx) * k;
+        ty.value = e.focalY - (start.fy - start.ty) * k;
+        scale.value = s2;
+        clampPos();
       });
 
     const tap = Gesture.Tap()
-      .maxDuration(400)
-      .onEnd((e, success) => {
+      .maxDuration(TAP_MAX_DURATION_MS)
+      .onBegin((e) => {
         'worklet';
-        if (!success) return;
+        // A touch stops any momentum, then previews its arrow immediately.
+        cancelAnimation(tx);
+        cancelAnimation(ty);
+        if (scale.value <= 0) return;
         const bx = (e.x - tx.value) / scale.value;
         const by = (e.y - ty.value) / scale.value;
-        runOnJS(handleTap)(bx, by);
+        scheduleOnRN(handlePressStart, bx, by, TAP_RADIUS_PT / scale.value);
+      })
+      .onEnd((e, success) => {
+        'worklet';
+        if (!success || scale.value <= 0) return;
+        const bx = (e.x - tx.value) / scale.value;
+        const by = (e.y - ty.value) / scale.value;
+        scheduleOnRN(handleTap, bx, by, TAP_RADIUS_PT / scale.value);
+      })
+      .onFinalize(() => {
+        'worklet';
+        scheduleOnRN(handlePressEnd);
       });
 
     // A drag that starts on an arrow pans instead of firing it; a clean tap
     // fires. Race (not Exclusive): on web the mouse-driven pinch never fails,
     // which would leave an Exclusive tap waiting forever.
     return Gesture.Race(tap, Gesture.Simultaneous(pan, pinch));
-  }, [clampPos, zoomAround, handleTap]);
+  }, [boardW, boardH, clampPos, handlePressEnd, handlePressStart, handleTap]);
 
   // Mouse-wheel zoom on web (BoardPanZoom.OnScroll).
   const onWheel = useCallback((e: any) => {
@@ -383,7 +588,10 @@ export function BoardView({
           exiting={exiting}
           nativeExitAnimation={nativeExitAnimation}
           shaking={shaking}
+          blocker={blocker}
+          pressed={pressed}
           hint={hint}
+          reducedMotion={reducedMotion}
         />
       </View>
     </GestureDetector>
@@ -404,8 +612,11 @@ function BoardContent(props: {
   palette: Palette;
   exiting: (ExitingTrail | null)[];
   nativeExitAnimation: NativeExitAnimation | null;
-  shaking: ShakingArrowState | null;
+  shaking: AnimatedArrowState | null;
+  blocker: AnimatedArrowState | null;
+  pressed: AnimatedArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
+  reducedMotion: boolean;
 }) {
   const {
     scale,
@@ -421,10 +632,17 @@ function BoardContent(props: {
     exiting,
     nativeExitAnimation,
     shaking,
+    blocker,
+    pressed,
     hint,
+    reducedMotion,
   } = props;
 
   const arrowCount = board.count();
+  // Only arrows that MOVE (bump) or change colour for good (hint) leave the
+  // static layer. The press preview and the blocker flash draw over their
+  // static twin with a wider stroke, so a touch never rebuilds the native
+  // board (on iOS that is a full board-sized redraw).
   const excludedArrows = useMemo(() => {
     const excluded = new Set<ArrowPath>();
     if (shaking) excluded.add(shaking.arrow);
@@ -447,8 +665,16 @@ function BoardContent(props: {
     [arrows, arrowArtCache, arrowCount, excludedArrows],
   );
   const hasDynamicLayer =
-    shaking !== null || hint !== null || exiting.some((trail) => trail !== null);
-  const shakingArt = shaking ? { id: shaking.id, ...arrowArtCache.artFor(shaking.arrow) } : null;
+    shaking !== null ||
+    hint !== null ||
+    blocker !== null ||
+    pressed !== null ||
+    exiting.some((trail) => trail !== null);
+  const shakingArt = shaking
+    ? { id: shaking.id, ...arrowArtCache.artFor(shaking.arrow), ...dirVec(shaking.arrow.headDir) }
+    : null;
+  const blockerArt = blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null;
+  const pressedArt = pressed ? { id: pressed.id, ...arrowArtCache.artFor(pressed.arrow) } : null;
   const hintArt = hint ? { id: hint.id, ...arrowArtCache.artFor(hint.arrow) } : null;
 
   return (
@@ -472,9 +698,12 @@ function BoardContent(props: {
         cellSize={CELL}
         strokeWidth={STROKE * CELL}
         shaking={shakingArt}
+        blocker={blockerArt}
+        pressed={pressedArt}
         hint={hintArt}
         exiting={exiting}
         nativeExitAnimation={nativeExitAnimation}
+        reducedMotion={reducedMotion}
       />
       {Platform.OS === 'web' && hasDynamicLayer && (
         <WebDynamicBoardLayer
@@ -488,7 +717,10 @@ function BoardContent(props: {
           palette={palette}
           exiting={exiting}
           shaking={shaking}
+          blocker={blocker}
+          pressed={pressed}
           hint={hint}
+          reducedMotion={reducedMotion}
         />
       )}
     </>
@@ -508,7 +740,10 @@ function WebDynamicBoardLayer({
   palette,
   exiting,
   shaking,
+  blocker,
+  pressed,
   hint,
+  reducedMotion,
 }: {
   scale: SharedValue<number>;
   tx: SharedValue<number>;
@@ -519,8 +754,11 @@ function WebDynamicBoardLayer({
   boardH: number;
   palette: Palette;
   exiting: (ExitingTrail | null)[];
-  shaking: ShakingArrowState | null;
+  shaking: AnimatedArrowState | null;
+  blocker: AnimatedArrowState | null;
+  pressed: AnimatedArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
+  reducedMotion: boolean;
 }) {
   const boardProps = useAnimatedProps(() => ({
     transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
@@ -542,12 +780,19 @@ function WebDynamicBoardLayer({
       </Defs>
       <AnimatedG animatedProps={boardProps}>
         <G clipPath="url(#dynamic-board-clip)">
+          {pressed && (
+            <PressedArrow key={`p${pressed.id}`} arrow={pressed.arrow} palette={palette} />
+          )}
+          {blocker && (
+            <BlockerArrow key={`b${blocker.id}`} arrow={blocker.arrow} palette={palette} />
+          )}
           {shaking && (
             <ShakingArrow
               key={`s${shaking.id}`}
               arrow={shaking.arrow}
               id={shaking.id}
               palette={palette}
+              reducedMotion={reducedMotion}
             />
           )}
           {hint && <HintArrow key={`h${hint.id}`} arrow={hint.arrow} palette={palette} />}
@@ -566,32 +811,86 @@ function WebDynamicBoardLayer({
   );
 }
 
-/**
- * Blocked feedback (ArrowTile.PlayShake): decaying horizontal shake, red
- * flash settling back to ink, ~0.3 s.
- */
-function ShakingArrow({
-  arrow,
-  id,
-  palette,
-}: {
-  arrow: ArrowPath;
-  id: number;
-  palette: Palette;
-}) {
+/** Touch-down preview: the arrow under the finger, accent-tinted and a
+ * little bolder, before the release commits it. Static on purpose: it must
+ * appear on the very next frame and must not move. */
+function PressedArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
+  const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
+  return (
+    <G>
+      <Path
+        d={art.shaftD}
+        stroke={palette.accent}
+        strokeWidth={STROKE * CELL * PRESSED_STROKE_SWELL}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path d={art.headD} fill={palette.accent} />
+    </G>
+  );
+}
+
+/** The arrow in the way lights up in the fail colour and fades back, so a
+ * lost heart teaches something. */
+function BlockerArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
   const k = useSharedValue(0);
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: 300, easing: Easing.linear });
+    k.value = withTiming(1, { duration: BLOCKER_FLASH_MS, easing: Easing.linear });
+  }, [arrow]);
+
+  const gProps = useAnimatedProps(() => ({ opacity: blockerOpacityAt(k.value) }) as any);
+  const shaftProps = useAnimatedProps(() => ({
+    strokeWidth: STROKE * CELL * blockerStrokeSwellAt(k.value),
+  }));
+
+  return (
+    <AnimatedG animatedProps={gProps}>
+      <AnimatedPath
+        d={art.shaftD}
+        animatedProps={shaftProps}
+        stroke={palette.heart}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <Path d={art.headD} fill={palette.heart} />
+    </AnimatedG>
+  );
+}
+
+/**
+ * Blocked feedback (ArrowTile.PlayShake, revised): the arrow bumps INTO the
+ * lane it cannot enter and springs back, flashing the fail colour and
+ * settling to ink, ~0.3 s. Under Reduce Motion only the colour flashes.
+ */
+function ShakingArrow({
+  arrow,
+  id,
+  palette,
+  reducedMotion,
+}: {
+  arrow: ArrowPath;
+  id: number;
+  palette: Palette;
+  reducedMotion: boolean;
+}) {
+  const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
+  const dir = useMemo(() => dirVec(arrow.headDir), [arrow]);
+  const k = useSharedValue(0);
+
+  React.useEffect(() => {
+    k.value = 0;
+    k.value = withTiming(1, { duration: BLOCKED_BUMP_MS, easing: Easing.linear });
   }, [id]);
 
   const gProps = useAnimatedProps(() => {
-    const t = k.value * 0.3; // seconds, matching Unity's Time.time-based sin
-    const dx = Math.sin(t * 70) * 0.4 * CELL * (1 - k.value); // decaying side-to-side
+    const d = reducedMotion ? 0 : blockedBumpAt(k.value) * CELL;
     // transform string, not x/y props: <g> has no x attribute on web SVG.
-    return { transform: `translate(${dx}, 0)` } as any;
+    return { transform: `translate(${dir.x * d}, ${dir.y * d})` } as any;
   });
 
   const colorAt = (kv: number) => {

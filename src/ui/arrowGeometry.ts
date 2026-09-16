@@ -83,6 +83,19 @@ function arrowShape(arrow: ArrowPath, cell: number): ArrowShape {
 }
 
 /**
+ * The arrow's ink as one polyline: rounded tail extension -> every cell
+ * center -> arrowhead tip. Hit-testing measures the finger's distance to
+ * this, so a tap lands on the stroke the player sees rather than on a grid
+ * cell they cannot.
+ */
+export function arrowCenterline(arrow: ArrowPath, cell: number): Pt[] {
+  const d = dirVec(arrow.headDir);
+  const headCenter = center(arrow.head.r, arrow.head.c, cell);
+  const tip = { x: headCenter.x + d.x * TIP_EXT * cell, y: headCenter.y + d.y * TIP_EXT * cell };
+  return shaftPoints(arrow, cell, tip);
+}
+
+/**
  * Compact, immutable per-board geometry consumed by the native board view.
  * Each semicolon-delimited arrow starts with its shaft point count, followed
  * by shaft x/y pairs and the three arrowhead x/y pairs.

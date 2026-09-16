@@ -591,8 +591,9 @@ function gestureGeometry(bounds) {
   const cx = Math.round((bounds.left + bounds.right) / 2);
   const cy = Math.round((bounds.top + bounds.bottom) / 2);
   const inner = Math.max(32, Math.round(width / 16));
-  // BoardView clamps at 3.5x its fit scale. Reach that limit on the final
-  // injected MOVE instead of spending the tail of the sample at the clamp.
+  // BoardView's max zoom is at least 3.5x its fit scale (more when that
+  // leaves a cell under 64 pt). Reach 3.5x on the final injected MOVE so the
+  // sample never spends its tail sitting at a clamp.
   const outer = Math.round(inner * 3.5);
   return {
     cx,
@@ -910,8 +911,13 @@ function validateWorkload(context, levelPlan) {
   assertUiContains(context, `${EXIT_PHASE_STARTING_ARROW_COUNT - 1} left`);
 
   bounds = startReady(context);
-  for (let tap = 0; tap < 3; tap += 1) {
-    tapCell(context, bounds, 35, 19);
+  // Three DIFFERENT blocked arrows: a blocked arrow costs one heart the first
+  // time only (src/ui/tapRules.ts), so re-tapping (35,19) would not end the
+  // level. Cells chosen from the level-3827 board: (35,19) owns "35,19,R:LLU",
+  // (31,14) owns "31,17,R:LLLLL", (30,21) owns "31,22,D:UULDD"; all blocked
+  // at the start of the mission.
+  for (const [row, col] of [[35, 19], [31, 14], [30, 21]]) {
+    tapCell(context, bounds, row, col);
     delay(400);
   }
   delay(400);

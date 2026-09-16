@@ -68,16 +68,27 @@ export class BoardLogic {
    */
   canExit(arrow: ArrowPath | null): boolean {
     if (arrow === null || !this._arrows.includes(arrow)) return false;
+    return this.blockerOf(arrow) === null;
+  }
+
+  /**
+   * The first OTHER arrow in the straight lane from `arrow`'s head to the
+   * board edge: the piece the player must clear before this one can leave.
+   * Null when the lane is clear, or when `arrow` is null. Does not check that
+   * `arrow` is on this board (see {@link canExit} for that).
+   */
+  blockerOf(arrow: ArrowPath | null): ArrowPath | null {
+    if (arrow === null) return null;
 
     const { r: hr, c: hc } = arrow.head;
     const [dr, dc] = toDelta(arrow.headDir);
     let rr = hr + dr, cc = hc + dc;
     while (this.inBounds(rr, cc)) {
       const owner = this._owner[rr][cc];
-      if (owner !== null && owner !== arrow) return false; // blocked by another arrow
+      if (owner !== null && owner !== arrow) return owner; // blocked by another arrow
       rr += dr; cc += dc;
     }
-    return true;
+    return null;
   }
 
   /**

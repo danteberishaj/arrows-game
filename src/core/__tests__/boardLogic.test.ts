@@ -134,3 +134,18 @@ test('greedy removal detects deadlock', () => {
   expect(solveGreedy(board)).toBe(false);
   expect(board.count()).toBe(2);
 });
+
+test('blockerOf names the first arrow in the lane and null when clear', () => {
+  // Three arrows in row 0 all pointing right; the leftmost sees the middle one first.
+  const board = BoardLogic.parse(1, 6, ['0,0,R', '0,2,R', '0,4,R']);
+  const left = board.ownerAt(0, 0)!;
+  const middle = board.ownerAt(0, 2)!;
+  const right = board.ownerAt(0, 4)!;
+  expect(board.blockerOf(left)).toBe(middle);
+  expect(board.blockerOf(middle)).toBe(right);
+  expect(board.blockerOf(right)).toBeNull();
+  expect(board.blockerOf(null)).toBeNull();
+  expect(board.tryRemove(right)).toBe(true);
+  expect(board.blockerOf(middle)).toBeNull();
+  expect(board.blockerOf(left)).toBe(middle);
+});

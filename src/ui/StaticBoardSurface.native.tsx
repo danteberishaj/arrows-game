@@ -17,9 +17,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
 import { PERF_MODE } from '../perfMode';
+import {
+  BLOCKED_BUMP_MS,
+  BLOCKER_FLASH_MS,
+  blockedBumpAt,
+  blockerOpacityAt,
+  blockerStrokeSwellAt,
+  PRESSED_STROKE_SWELL,
+} from './feedbackCurves';
 import { serializeNativeExitAnimation } from './nativeExitAnimation';
 import type {
   AnimatedArrowArt,
+  BumpingArrowArt,
   StaticBoardSurfaceProps,
 } from './StaticBoardSurface.types';
 
@@ -48,8 +57,11 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   cellSize,
   strokeWidth,
   shaking,
+  blocker,
+  pressed,
   hint,
   nativeExitAnimation,
+  reducedMotion,
 }: StaticBoardSurfaceProps) {
   const boardStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -109,7 +121,10 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
         cellSize={cellSize}
         strokeWidth={strokeWidth}
         shaking={shaking}
+        blocker={blocker}
+        pressed={pressed}
         hint={hint}
+        reducedMotion={reducedMotion}
       />
     </>
   );
@@ -127,7 +142,10 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   cellSize,
   strokeWidth,
   shaking,
+  blocker,
+  pressed,
   hint,
+  reducedMotion,
 }: Pick<
   StaticBoardSurfaceProps,
   | 'scale'
@@ -141,7 +159,10 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   | 'cellSize'
   | 'strokeWidth'
   | 'shaking'
+  | 'blocker'
+  | 'pressed'
   | 'hint'
+  | 'reducedMotion'
 >) {
   const boardTransform = useDerivedValue((): Transforms3d => [
     { translateX: tx.value },
@@ -159,6 +180,22 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
     >
       <Group transform={boardTransform}>
         <Group clip={boardClip}>
+          {!PERF_EMPTY_BOARD && pressed !== null && (
+            <PressedArrow
+              key={pressed.id}
+              art={pressed}
+              accent={accent}
+              strokeWidth={strokeWidth}
+            />
+          )}
+          {!PERF_EMPTY_BOARD && blocker !== null && (
+            <BlockerArrow
+              key={blocker.id}
+              art={blocker}
+              heart={heart}
+              strokeWidth={strokeWidth}
+            />
+          )}
           {!PERF_EMPTY_BOARD && shaking !== null && (
             <ShakingArrow
               key={shaking.id}
@@ -167,6 +204,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
               heart={heart}
               cellSize={cellSize}
               strokeWidth={strokeWidth}
+              reducedMotion={reducedMotion}
             />
           )}
           {!PERF_EMPTY_BOARD && hint !== null && (
@@ -183,30 +221,96 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   );
 });
 
-function ShakingArrow({
+/** Touch-down preview: accent, bolder, drawn over the static arrow. Static
+ * on purpose so it appears on the next frame and never moves. */
+function PressedArrow({
   art,
-  ink,
-  heart,
-  cellSize,
+  accent,
   strokeWidth,
 }: {
   art: AnimatedArrowArt;
-  ink: string;
+  accent: string;
+  strokeWidth: number;
+}) {
+  return (
+    <Group>
+      <Path
+        path={art.shaftD}
+        color={accent}
+        style="stroke"
+        strokeWidth={strokeWidth * PRESSED_STROKE_SWELL}
+        strokeCap="round"
+        strokeJoin="round"
+      />
+      <Path path={art.headD} color={accent} />
+    </Group>
+  );
+}
+
+/** The arrow in the way flashes the fail colour and fades back to ink. */
+function BlockerArrow({
+  art,
+  heart,
+  strokeWidth,
+}: {
+  art: AnimatedArrowArt;
   heart: string;
-  cellSize: number;
   strokeWidth: number;
 }) {
   const progress = useSharedValue(0);
 
   React.useEffect(() => {
     progress.value = 0;
-    progress.value = withTiming(1, { duration: 300, easing: Easing.linear });
+    progress.value = withTiming(1, { duration: BLOCKER_FLASH_MS, easing: Easing.linear });
+  }, [art.id]);
+
+  const opacity = useDerivedValue(() => blockerOpacityAt(progress.value));
+  const animatedStrokeWidth = useDerivedValue(
+    () => strokeWidth * blockerStrokeSwellAt(progress.value),
+  );
+
+  return (
+    <Group opacity={opacity}>
+      <Path
+        path={art.shaftD}
+        color={heart}
+        style="stroke"
+        strokeWidth={animatedStrokeWidth}
+        strokeCap="round"
+        strokeJoin="round"
+      />
+      <Path path={art.headD} color={heart} />
+    </Group>
+  );
+}
+
+/** Blocked bump: lunge into the lane, spring back, flash red to ink. Under
+ * Reduce Motion only the colour flashes. */
+function ShakingArrow({
+  art,
+  ink,
+  heart,
+  cellSize,
+  strokeWidth,
+  reducedMotion,
+}: {
+  art: BumpingArrowArt;
+  ink: string;
+  heart: string;
+  cellSize: number;
+  strokeWidth: number;
+  reducedMotion: boolean;
+}) {
+  const progress = useSharedValue(0);
+
+  React.useEffect(() => {
+    progress.value = 0;
+    progress.value = withTiming(1, { duration: BLOCKED_BUMP_MS, easing: Easing.linear });
   }, [art.id]);
 
   const transform = useDerivedValue((): Transforms3d => {
-    const t = progress.value * 0.3;
-    const dx = Math.sin(t * 70) * 0.4 * cellSize * (1 - progress.value);
-    return [{ translateX: dx }];
+    const d = reducedMotion ? 0 : blockedBumpAt(progress.value) * cellSize;
+    return [{ translateX: art.x * d }, { translateY: art.y * d }];
   });
   const color = useDerivedValue(() => {
     const eased = 1 - (1 - progress.value) * (1 - progress.value);
