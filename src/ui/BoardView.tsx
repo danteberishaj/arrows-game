@@ -35,8 +35,10 @@ import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS,
   blockedBumpAt,
+  blockedFlashMixAt,
   blockerOpacityAt,
   blockerStrokeSwellAt,
+  hintStrokeSwellAt,
   PRESSED_STROKE_SWELL,
 } from './feedbackCurves';
 import { ArrowHitTester, TAP_RADIUS_PT } from './hitTest';
@@ -784,7 +786,12 @@ function WebDynamicBoardLayer({
             <PressedArrow key={`p${pressed.id}`} arrow={pressed.arrow} palette={palette} />
           )}
           {blocker && (
-            <BlockerArrow key={`b${blocker.id}`} arrow={blocker.arrow} palette={palette} />
+            <BlockerArrow
+              key={`b${blocker.id}`}
+              arrow={blocker.arrow}
+              palette={palette}
+              reducedMotion={reducedMotion}
+            />
           )}
           {shaking && (
             <ShakingArrow
@@ -795,7 +802,14 @@ function WebDynamicBoardLayer({
               reducedMotion={reducedMotion}
             />
           )}
-          {hint && <HintArrow key={`h${hint.id}`} arrow={hint.arrow} palette={palette} />}
+          {hint && (
+            <HintArrow
+              key={`h${hint.id}`}
+              arrow={hint.arrow}
+              palette={palette}
+              reducedMotion={reducedMotion}
+            />
+          )}
           {exiting.filter((trail): trail is ExitingTrail => trail !== null).map((trail) => (
             <ExitTrail
               key={trail.id}
@@ -832,19 +846,32 @@ function PressedArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }
 }
 
 /** The arrow in the way lights up in the fail colour and fades back, so a
- * lost heart teaches something. */
-function BlockerArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
+ * lost heart teaches something. Under Reduce Motion it stays solid heart at the
+ * onset swell until it unmounts. */
+function BlockerArrow({
+  arrow,
+  palette,
+  reducedMotion,
+}: {
+  arrow: ArrowPath;
+  palette: Palette;
+  reducedMotion: boolean;
+}) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
   const k = useSharedValue(0);
 
   React.useEffect(() => {
     k.value = 0;
+    // Reduce Motion: no driver; the curves return their static values.
+    if (reducedMotion) return;
     k.value = withTiming(1, { duration: BLOCKER_FLASH_MS, easing: Easing.linear });
-  }, [arrow]);
+  }, [arrow, reducedMotion]);
 
-  const gProps = useAnimatedProps(() => ({ opacity: blockerOpacityAt(k.value) }) as any);
+  const gProps = useAnimatedProps(
+    () => ({ opacity: blockerOpacityAt(k.value, reducedMotion) }) as any,
+  );
   const shaftProps = useAnimatedProps(() => ({
-    strokeWidth: STROKE * CELL * blockerStrokeSwellAt(k.value),
+    strokeWidth: STROKE * CELL * blockerStrokeSwellAt(k.value, reducedMotion),
   }));
 
   return (
@@ -865,7 +892,8 @@ function BlockerArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }
 /**
  * Blocked feedback (ArrowTile.PlayShake, revised): the arrow bumps INTO the
  * lane it cannot enter and springs back, flashing the fail colour and
- * settling to ink, ~0.3 s. Under Reduce Motion only the colour flashes.
+ * settling to ink, ~0.3 s. Under Reduce Motion it stays still and solid
+ * fail colour until it unmounts.
  */
 function ShakingArrow({
   arrow,
@@ -884,8 +912,10 @@ function ShakingArrow({
 
   React.useEffect(() => {
     k.value = 0;
+    // Reduce Motion: no driver; the curves return their static values.
+    if (reducedMotion) return;
     k.value = withTiming(1, { duration: BLOCKED_BUMP_MS, easing: Easing.linear });
-  }, [id]);
+  }, [id, reducedMotion]);
 
   const gProps = useAnimatedProps(() => {
     const d = reducedMotion ? 0 : blockedBumpAt(k.value) * CELL;
@@ -895,8 +925,12 @@ function ShakingArrow({
 
   const colorAt = (kv: number) => {
     'worklet';
-    const e = 1 - (1 - kv) * (1 - kv); // easeOutQuad: flash red, settle to ink
-    return interpolateColor(e, [0, 1], [palette.heart, palette.ink]);
+    // easeOutQuad: flash red, settle to ink (held red under Reduce Motion)
+    return interpolateColor(
+      blockedFlashMixAt(kv, reducedMotion),
+      [0, 1],
+      [palette.heart, palette.ink],
+    );
   };
 
   const shaftProps = useAnimatedProps(() => ({ stroke: colorAt(k.value) }));
@@ -923,21 +957,31 @@ function ShakingArrow({
  * accent tint STAYS until the arrow is fired, so the player never loses
  * track of the paid-for suggestion. The tint is a static prop on purpose —
  * even if animated attribute updates fail on some renderer, the hint still
- * visibly lights up. The arrow stays tappable throughout.
+ * visibly lights up. The arrow stays tappable throughout. Under Reduce Motion
+ * the stroke holds the pulse peak instead of breathing.
  */
-function HintArrow({ arrow, palette }: { arrow: ArrowPath; palette: Palette }) {
+function HintArrow({
+  arrow,
+  palette,
+  reducedMotion,
+}: {
+  arrow: ArrowPath;
+  palette: Palette;
+  reducedMotion: boolean;
+}) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
   const k = useSharedValue(0);
 
   React.useEffect(() => {
     k.value = 0;
+    // Reduce Motion: no driver; the curve returns its static value.
+    if (reducedMotion) return;
     k.value = withTiming(1, { duration: 1600, easing: Easing.linear });
-  }, [arrow]);
+  }, [arrow, reducedMotion]);
 
-  const shaftProps = useAnimatedProps(() => {
-    const pulse = Math.abs(Math.sin(k.value * Math.PI * 4)) * (1 - k.value * 0.6);
-    return { strokeWidth: STROKE * CELL * (1 + 0.45 * pulse) }; // the swell
-  });
+  const shaftProps = useAnimatedProps(() => ({
+    strokeWidth: STROKE * CELL * hintStrokeSwellAt(k.value, reducedMotion), // the swell
+  }));
 
   return (
     <G>

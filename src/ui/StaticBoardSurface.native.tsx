@@ -21,8 +21,10 @@ import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS,
   blockedBumpAt,
+  blockedFlashMixAt,
   blockerOpacityAt,
   blockerStrokeSwellAt,
+  hintStrokeSwellAt,
   PRESSED_STROKE_SWELL,
 } from './feedbackCurves';
 import { serializeNativeExitAnimation } from './nativeExitAnimation';
@@ -194,6 +196,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
               art={blocker}
               heart={heart}
               strokeWidth={strokeWidth}
+              reducedMotion={reducedMotion}
             />
           )}
           {!PERF_EMPTY_BOARD && shaking !== null && (
@@ -213,6 +216,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
               art={hint}
               accent={accent}
               strokeWidth={strokeWidth}
+              reducedMotion={reducedMotion}
             />
           )}
         </Group>
@@ -247,26 +251,31 @@ function PressedArrow({
   );
 }
 
-/** The arrow in the way flashes the fail colour and fades back to ink. */
+/** The arrow in the way flashes the fail colour and fades back to ink. Under
+ * Reduce Motion it stays solid heart at the onset swell until it unmounts. */
 function BlockerArrow({
   art,
   heart,
   strokeWidth,
+  reducedMotion,
 }: {
   art: AnimatedArrowArt;
   heart: string;
   strokeWidth: number;
+  reducedMotion: boolean;
 }) {
   const progress = useSharedValue(0);
 
   React.useEffect(() => {
     progress.value = 0;
+    // Reduce Motion: no driver; the curves return their static values.
+    if (reducedMotion) return;
     progress.value = withTiming(1, { duration: BLOCKER_FLASH_MS, easing: Easing.linear });
-  }, [art.id]);
+  }, [art.id, reducedMotion]);
 
-  const opacity = useDerivedValue(() => blockerOpacityAt(progress.value));
+  const opacity = useDerivedValue(() => blockerOpacityAt(progress.value, reducedMotion));
   const animatedStrokeWidth = useDerivedValue(
-    () => strokeWidth * blockerStrokeSwellAt(progress.value),
+    () => strokeWidth * blockerStrokeSwellAt(progress.value, reducedMotion),
   );
 
   return (
@@ -285,7 +294,7 @@ function BlockerArrow({
 }
 
 /** Blocked bump: lunge into the lane, spring back, flash red to ink. Under
- * Reduce Motion only the colour flashes. */
+ * Reduce Motion it stays still and solid heart until it unmounts. */
 function ShakingArrow({
   art,
   ink,
@@ -305,17 +314,18 @@ function ShakingArrow({
 
   React.useEffect(() => {
     progress.value = 0;
+    // Reduce Motion: no driver; the curves return their static values.
+    if (reducedMotion) return;
     progress.value = withTiming(1, { duration: BLOCKED_BUMP_MS, easing: Easing.linear });
-  }, [art.id]);
+  }, [art.id, reducedMotion]);
 
   const transform = useDerivedValue((): Transforms3d => {
     const d = reducedMotion ? 0 : blockedBumpAt(progress.value) * cellSize;
     return [{ translateX: art.x * d }, { translateY: art.y * d }];
   });
-  const color = useDerivedValue(() => {
-    const eased = 1 - (1 - progress.value) * (1 - progress.value);
-    return interpolateColors(eased, [0, 1], [heart, ink]);
-  });
+  const color = useDerivedValue(() =>
+    interpolateColors(blockedFlashMixAt(progress.value, reducedMotion), [0, 1], [heart, ink]),
+  );
 
   return (
     <Group transform={transform}>
@@ -332,26 +342,31 @@ function ShakingArrow({
   );
 }
 
+/** Hint: accent with a settling stroke pulse. Under Reduce Motion the stroke
+ * holds the pulse peak. */
 function HintArrow({
   art,
   accent,
   strokeWidth,
+  reducedMotion,
 }: {
   art: AnimatedArrowArt;
   accent: string;
   strokeWidth: number;
+  reducedMotion: boolean;
 }) {
   const progress = useSharedValue(0);
 
   React.useEffect(() => {
     progress.value = 0;
+    // Reduce Motion: no driver; the curve returns its static value.
+    if (reducedMotion) return;
     progress.value = withTiming(1, { duration: 1600, easing: Easing.linear });
-  }, [art.id]);
+  }, [art.id, reducedMotion]);
 
-  const animatedStrokeWidth = useDerivedValue(() => {
-    const pulse = Math.abs(Math.sin(progress.value * Math.PI * 4)) * (1 - progress.value * 0.6);
-    return strokeWidth * (1 + 0.45 * pulse);
-  });
+  const animatedStrokeWidth = useDerivedValue(
+    () => strokeWidth * hintStrokeSwellAt(progress.value, reducedMotion),
+  );
 
   return (
     <Group>
