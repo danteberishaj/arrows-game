@@ -20,18 +20,26 @@ type Screen = 'splash' | 'menu' | 'game';
 
 export default function App() {
   const [ready, setReady] = useState(PERF_MODE);
-  const [fontsReady] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
+  const [fontsLoaded, fontError] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
+  // A font-load error must not leave a blank screen: fall back to the platform font.
+  const fontsReady = fontsLoaded || fontError != null;
   const [screen, setScreen] = useState<Screen>(PERF_MODE ? 'game' : 'splash');
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
 
   useEffect(() => {
     if (PERF_MODE) return;
-    initSaveSystem().then(() => {
-      setDark(SaveSystem.darkMode);
-      setSoundOn(SaveSystem.soundOn);
-      setReady(true);
-    });
+    // No timeout here: `ready` must never come before hydration settles, or a later
+    // SaveSystem.useStore swap could write an in-memory level-1 session over real
+    // progress. On a rejection SaveSystem keeps its in-memory store, which never
+    // writes to AsyncStorage, so saved progress cannot be overwritten.
+    initSaveSystem()
+      .then(() => {
+        setDark(SaveSystem.darkMode);
+        setSoundOn(SaveSystem.soundOn);
+        setReady(true);
+      })
+      .catch(() => setReady(true));
     initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
     // A device that launched offline recovers ads when the player comes back.
     const sub = AppState.addEventListener('change', (s) => {
