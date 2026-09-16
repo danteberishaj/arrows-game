@@ -124,3 +124,98 @@ describe('characterisation of the shipped behaviour', () => {
     expect(SaveSystem.darkMode).toBe(true);
   });
 });
+
+describe('P-01 key registry', () => {
+  test('no orphans: every Keys value is registered, every registered key is in Keys, no duplicates', () => {
+    const recordValues = Object.values(SaveSystem.registeredKeys);
+    const registered = SaveSystem.persistenceKeys;
+
+    expect(Object.isFrozen(SaveSystem.registeredKeys)).toBe(true);
+    for (const key of recordValues) expect(registered).toContain(key);
+    for (const key of registered) expect(recordValues).toContain(key);
+    expect(new Set(recordValues).size).toBe(recordValues.length);
+    expect(new Set(registered).size).toBe(registered.length);
+    expect(registered).toHaveLength(recordValues.length);
+    for (const key of registered) expect(key).toMatch(/^arrows_[a-z0-9_]+$/);
+  });
+});
+
+describe('P-01 schema version and migrate()', () => {
+  function spyWrites(): { set: jest.SpyInstance; del: jest.SpyInstance } {
+    return { set: jest.spyOn(store, 'setInt'), del: jest.spyOn(store, 'deleteKey') };
+  }
+
+  test('SCHEMA_VERSION is 1', () => {
+    expect(SaveSystem.SCHEMA_VERSION).toBe(1);
+  });
+
+  test('an unversioned save (version absent = 0) is stamped with version 1 and nothing else', () => {
+    store.setInt('arrows_current_level', 37);
+    const { set, del } = spyWrites();
+
+    SaveSystem.migrate();
+
+    expect(set.mock.calls).toEqual([['arrows_schema_version', 1]]);
+    expect(del).not.toHaveBeenCalled();
+    expect(SaveSystem.schemaVersion).toBe(1);
+    expect(SaveSystem.currentLevel).toBe(37);
+  });
+
+  test('a save already at SCHEMA_VERSION is not written', () => {
+    store.setInt('arrows_schema_version', 1);
+    const { set, del } = spyWrites();
+
+    SaveSystem.migrate();
+    SaveSystem.migrate();
+
+    expect(set).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  test('a save from a newer build (version > SCHEMA_VERSION) is inert: no write, no delete', () => {
+    store.setInt('arrows_schema_version', 99);
+    store.setInt('arrows_current_level', 37);
+    const { set, del } = spyWrites();
+
+    SaveSystem.migrate();
+
+    expect(set).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+    expect(SaveSystem.schemaVersion).toBe(99);
+    expect(SaveSystem.currentLevel).toBe(37);
+  });
+
+  test('a corrupt negative version is left untouched rather than rewritten', () => {
+    store.setInt('arrows_schema_version', -3);
+    const { set, del } = spyWrites();
+
+    SaveSystem.migrate();
+
+    expect(set).not.toHaveBeenCalled();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  test('persistenceHealthy is false before initSaveSystem has run', () => {
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fresh = require('../saveSystem') as typeof import('../saveSystem');
+      expect(fresh.SaveSystem.persistenceHealthy).toBe(false);
+    });
+  });
+});
+
+describe('P-01 reset lock', () => {
+  test('resetProgress removes exactly the six legacy progress keys and none of rows 9-29', () => {
+    const newKeys = SaveSystem.persistenceKeys.slice(8);
+    expect(newKeys).toHaveLength(21);
+    SaveSystem.persistenceKeys.forEach((key, i) => store.setInt(key, 100 + i));
+
+    SaveSystem.resetProgress();
+
+    expect([...store.deleted].sort()).toEqual([...LEGACY_PROGRESS_KEYS].sort());
+    SaveSystem.persistenceKeys.forEach((key, i) => {
+      if (LEGACY_PROGRESS_KEYS.includes(key)) expect(store.map.has(key)).toBe(false);
+      else expect(store.getInt(key, -999)).toBe(100 + i);
+    });
+  });
+});

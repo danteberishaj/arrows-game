@@ -15,7 +15,8 @@ class HydratedIntStore implements IntStore {
   private flushScheduled = false;
   private persistence = Promise.resolve();
 
-  async hydrate(): Promise<void> {
+  /** Reads every registered key. Returns false when the native read threw. */
+  async hydrate(): Promise<boolean> {
     try {
       const pairs = await AsyncStorage.multiGet(SaveSystem.persistenceKeys);
       for (const [key, value] of pairs) {
@@ -24,8 +25,10 @@ class HydratedIntStore implements IntStore {
           if (!Number.isNaN(n)) this.cache.set(key, n);
         }
       }
+      return true;
     } catch {
       // No persistence (e.g. private browsing): play with in-memory state.
+      return false;
     }
   }
 
@@ -69,9 +72,17 @@ class HydratedIntStore implements IntStore {
   }
 }
 
-/** Hydrates saved progress and points SaveSystem at persistent storage. */
+/**
+ * Hydrates saved progress, points SaveSystem at persistent storage and runs the
+ * additive schema migration. The migration runs only when the hydrate
+ * succeeded: stamping a version over a save that was never read would mark it
+ * migrated.
+ */
 export async function initSaveSystem(): Promise<void> {
   const store = new HydratedIntStore();
-  await store.hydrate();
+  SaveSystem.setPersistenceHealthy(false);
+  const healthy = await store.hydrate();
   SaveSystem.useStore(store);
+  SaveSystem.setPersistenceHealthy(healthy);
+  if (healthy) SaveSystem.migrate();
 }
