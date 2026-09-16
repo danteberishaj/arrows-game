@@ -82,7 +82,7 @@ export default function App() {
           />
         </Animated.View>
       )}
-      {!PERF_MODE && <AdHost palette={p} />}
+      {!PERF_MODE && __DEV__ && <AdHost palette={p} />}
     </GestureHandlerRootView>
     </SafeAreaProvider>
   );

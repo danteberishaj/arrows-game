@@ -16,8 +16,10 @@ import { Fonts, Palette } from './theme';
  *
  * The native LevelPlay SDK (unity-levelplay-mediation) only exists in a dev
  * build (`npx expo run:android` / EAS) — Expo Go and web can't load it.
- * Everywhere it's missing, a simulated "test ad" modal (countdown, then
- * claim/skip) stands in, so every ad-gated flow stays testable. Like Unity,
+ * Where it's missing in a DEVELOPMENT build (`__DEV__`: web preview, Expo Go,
+ * debug builds), a simulated "test ad" modal (countdown, then claim/skip)
+ * stands in, so every ad-gated flow stays testable. A release build never
+ * simulates: without the native SDK it behaves as "no fill". Like Unity,
  * every call degrades gracefully: no ad ready => interstitial skipped,
  * rewarded reports failure, gameplay never soft-locks.
  *
@@ -47,6 +49,9 @@ interface FakeAdRequest {
 let fakeAdListener: ((req: FakeAdRequest) => void) | null = null;
 
 function showFakeAd(kind: FakeAdRequest['kind']): Promise<boolean> {
+  // Release builds never simulate an ad: no fill, nothing granted. `__DEV__` is
+  // a build-time constant, so Metro drops the simulated path from the bundle.
+  if (!__DEV__) return Promise.resolve(false);
   return new Promise((resolve) => {
     if (fakeAdListener) fakeAdListener({ kind, resolve });
     else resolve(false); // no host mounted: behave like "no fill"
@@ -58,6 +63,9 @@ function showFakeAd(kind: FakeAdRequest['kind']): Promise<boolean> {
  * app root, above everything.
  */
 export function AdHost({ palette }: { palette: Palette }) {
+  // Dev-only. `__DEV__` never changes within a build, so the hook order below
+  // is stable; in a release bundle everything after this line is dead code.
+  if (!__DEV__) return null;
   const [req, setReq] = useState<FakeAdRequest | null>(null);
   const [left, setLeft] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -285,6 +293,9 @@ export const Ads = {
       return;
     }
 
+    // No native ad: a release build shows nothing, so it must not touch the
+    // pacing counter (only a displayed ad may reset it).
+    if (!__DEV__) return;
     finishedGames = 0;
     await showFakeAd('interstitial');
   },
