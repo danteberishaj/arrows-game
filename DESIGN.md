@@ -34,19 +34,28 @@ values below equal `theme.ts` at the commit that last edited this table.
 |---|---|---|---|---|
 | bg | `bg` | `#FFFFFF` | `#13111C` | screen background (`GameScreen.tsx:202`, `HomeScreen.tsx:61`, `SplashScreen.tsx:72`); lose scrim at 86% (`GameScreen.tsx:253`) |
 | surface | `surface` | `#EFEDF8` | `#201D30` | header/menu buttons (`HeaderButton.tsx:30`), win/lose panel (`GameScreen.tsx:256`) |
-| border | `border` | `#E0DCEF` | `#2B2841` | button edge and pressed fill (`HeaderButton.tsx:30-31`), panel edge (`GameScreen.tsx:256`), Retry outline (`GameScreen.tsx:298`) |
-| muted / spent | `heartLost` | `#DBD7ED` | `#3B3653` | spent heart (`GameScreen.tsx:395`), unearned star (`GameScreen.tsx:467`), sound-off glyph (`HeaderButton.tsx:35`) |
+| border | `border` | `#8E80C5` | `#69629E` | button hairline (`HeaderButton.tsx:54`), panel edge (`GameScreen.tsx:284`), Retry outline (`GameScreen.tsx:331`); ≥3:1 on `surface` |
+| inactive fill | `heartLost` | `#DBD7ED` | `#3B3653` | pressed header button fill (`HeaderButton.tsx:53`) |
+| glyph off | `glyphOff` | `#8D80C6` | `#6C6398` | off or disabled header glyph and the sound-off strike (`HeaderButton.tsx:38,80`, `HomeScreen.tsx:65`) |
+| spent pip | `pipSpent` | `#988CCB` | `#635B8B` | spent heart, drawn as an outline (`GameScreen.tsx:438`) |
+| unearned star | `starUnearned` | `#8D80C6` | `#6C6398` | unearned star on the win panel (`GameScreen.tsx:512`) |
 | ink | `ink` | `#191724` | `#EFEDF9` | arrows (`BoardView.tsx:695`), wordmark text (`Wordmark.tsx:35`), splash arrow (`SplashScreen.tsx:83`) |
-| ink-dim | `inkDim` | `#6E6A8A` | `#A29DC1` | Normal tier label (`GameScreen.tsx:197`, `HomeScreen.tsx:45`), panel subline (`GameScreen.tsx:268`), Retry label (`GameScreen.tsx:303`), stats line (`HomeScreen.tsx:94`) |
-| accent | `accent` | `#6D4AEF` | `#7C5CF5` | Play pill (`HomeScreen.tsx:85`), Hard tier (`GameScreen.tsx:196`), hint and press preview (`StaticBoardSurface.native.tsx:239,360`), "Cleared!" title (`GameScreen.tsx:257`), panel buttons (`GameScreen.tsx:279,299`), earned stars (`GameScreen.tsx:467`), splash arrowhead (`SplashScreen.tsx:93`) |
-| accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels (`GameScreen.tsx:209`, `HomeScreen.tsx:71`), perfect-run line (`GameScreen.tsx:308`) |
+| ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:216`, `HomeScreen.tsx:45`), panel subline (`GameScreen.tsx:296`), Retry and disabled Continue labels (`GameScreen.tsx:319,336`; the disabled Continue fill is `bg`, `GameScreen.tsx:311`), stats line (`HomeScreen.tsx:94`) |
+| accent | `accent` | `#6D4AEF` | `#7B5BF5` | Play pill (`HomeScreen.tsx:85`), hint and press preview (`StaticBoardSurface.native.tsx:243,375`), "Cleared!" title (`GameScreen.tsx:285`), panel buttons (`GameScreen.tsx:312,332`), earned stars (`GameScreen.tsx:512`), splash arrowhead (`SplashScreen.tsx:129`) |
+| accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels, both 24 Bold (`GameScreen.tsx:228`, `HomeScreen.tsx:71`) |
+| accent text | `accentText` | `#6D4AEF` | `#8C70F6` | Hard tier (`GameScreen.tsx:215`, `HomeScreen.tsx:44`), perfect-run line (`GameScreen.tsx:341`); ≥4.5:1 on `bg` and `surface` |
 | accent-core | `accentCore` | `#4A3E8C` | `#CBC4F0` | glyphs on `surface` buttons (`HeaderButton.tsx:35`) |
 | accent-deep | `accentDeep` | `#5636D6` | `#6247D6` | pressed accent buttons (`HomeScreen.tsx:85`, `GameScreen.tsx:279,299`) |
-| heart / danger | `heart` | `#E4327D` | `#F0468C` | hearts (`GameScreen.tsx:395`), blocked arrow and blocker flash (`StaticBoardSurface.native.tsx:276,317`), Super Hard tier (`GameScreen.tsx:195`), "Out of hearts" title (`GameScreen.tsx:257`) |
+| heart / danger | `heart` | `#E4327D` | `#F0468C` | hearts (`GameScreen.tsx:433`), blocked arrow and blocker flash (`StaticBoardSurface.native.tsx:285,327`), "Out of hearts" title (`GameScreen.tsx:285`) |
+| heart text | `heartText` | `#E11F71` | `#F0468C` | Super Hard tier (`GameScreen.tsx:214`, `HomeScreen.tsx:43`); ≥4.5:1 on `bg` |
 | on-accent | `inkOnAccent` | `#FFFFFF` | `#FFFFFF` | labels on accent buttons (`HomeScreen.tsx:90`, `GameScreen.tsx:286,303`) |
 
-Contrast (vs its own bg): ink ≈ 16:1 / 15:1; ink-dim ≈ 4.8:1 / 6.5:1; accent-light
-(large decorative only) ≈ 3.2:1 / 5:1; white on accent ≈ 5:1 / 4.8:1 (large bold).
+Contrast is gated by `src/ui/contrastAudit.ts` and printed by `npx tsx scripts/contrast-audit.ts`
+(Daylight / Ink Night; body text ≥4.5:1, large text and graphics ≥3:1; SemiBold counts as not bold):
+ink on `bg` 17.66 / 16.14; ink-dim 5.22 / 7.23 on `bg` and 4.51 / 6.35 on `surface`; accent-light
+(large only, 24 Bold) 3.49 / 7.09 on `bg`; accent text 5.42 / 5.12 on `bg` and 4.68 / 4.50 on
+`surface`; heart text 4.53 / 5.30 on `bg`; white on accent 5.42 / 4.51; border on `surface`
+3.00 / 3.00; glyph off and unearned star on `surface` 3.01 / 3.03; spent pip on `bg` 3.02 / 3.02.
 
 ## Typography
 

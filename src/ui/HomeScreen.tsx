@@ -40,8 +40,8 @@ export function HomeScreen({
   const difficulty = Difficulties.forLevel(resumeIndex);
 
   const diffColor =
-    difficulty === Difficulty.SuperHard ? p.heart
-    : difficulty === Difficulty.Hard ? p.accent
+    difficulty === Difficulty.SuperHard ? p.heartText
+    : difficulty === Difficulty.Hard ? p.accentText
     : p.inkDim;
 
   // Gentle "tap me" breathing on the Play pill (IdlePulse).
@@ -62,7 +62,7 @@ export function HomeScreen({
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + 14 }]}>
         <HeaderButton label={dark ? '☀' : '☾'} palette={p} onPress={onToggleTheme} size={44} />
-        <HeaderButton label="♪" active={soundOn} palette={p} onPress={onToggleSound} size={44} />
+        <HeaderButton label="♪" off={!soundOn} palette={p} onPress={onToggleSound} size={44} />
       </View>
 
       <View style={styles.upper}>

@@ -19,7 +19,7 @@
  *   - The disabled Continue button's fill edge: WCAG 1.4.11 exempts inactive components.
  *     Its LABEL is still a gated text row (PRODUCT.md states no exemption for text).
  *   - The win/lose panel fill against its composited scrim: W5-05 owns those rows and the
- *     scrim tokens (ruling W5-1). `SCRIM_INFO` computes them for the script to print as
+ *     scrim tokens (ruling W5-1). `scrimInfo()` computes them for the script to print as
  *     information only; they are not gated here.
  */
 import { Daylight, InkNight, Palette } from './theme';
@@ -180,46 +180,47 @@ const HS = 'src/ui/HomeScreen.tsx';
 const GS = 'src/ui/GameScreen.tsx';
 
 export const USAGES: ReadonlyArray<Usage> = [
-  // Header buttons (menu theme + sound toggles HomeScreen.tsx:64-65, game back GameScreen.tsx:226)
-  { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:45` },
-  { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'border', kind: 'graphic', site: `${HB}:45`, note: 'pressed fill is `border`' },
-  { id: 'header-glyph-off', fgRole: 'heartLost', bgRole: 'surface', kind: 'graphic', site: `${HB}:45`, note: 'sound off (HomeScreen.tsx:65)' },
-  { id: 'header-button-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${HB}:39` },
-  { id: 'header-button-hairline-on-bg', fgRole: 'border', bgRole: 'bg', kind: 'boundary', site: `${HB}:39` },
+  // Header buttons (menu theme + sound toggles HomeScreen.tsx:64-65, game back GameScreen.tsx:226).
+  // The Ink Night theme toggle ☀ and the 💡 hint are emoji: no token reaches them.
+  { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:38` },
+  { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:38`, note: 'pressed fill is `heartLost` (HeaderButton.tsx:53)' },
+  { id: 'header-glyph-off', fgRole: 'glyphOff', bgRole: 'surface', kind: 'graphic', site: `${HB}:38`, note: 'sound off glyph and its strike (HeaderButton.tsx:80)' },
+  { id: 'header-button-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${HB}:54` },
+  { id: 'header-button-hairline-on-bg', fgRole: 'border', bgRole: 'bg', kind: 'boundary', site: `${HB}:54` },
 
   // Menu
   { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:71`, sizeSite: `${HS}:131` },
   { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:45`, sizeSite: `${HS}:137` },
-  { id: 'home-tier-hard', fgRole: 'accent', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:44`, sizeSite: `${HS}:137` },
-  { id: 'home-tier-super-hard', fgRole: 'heart', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:43`, sizeSite: `${HS}:137` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:44`, sizeSite: `${HS}:137` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:43`, sizeSite: `${HS}:137` },
   { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:90`, sizeSite: `${HS}:150` },
   { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:90`, sizeSite: `${HS}:150` },
   { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:94`, sizeSite: `${HS}:156` },
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35' },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
-  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:228`, sizeSite: `${GS}:540` },
-  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:216`, sizeSite: `${GS}:545` },
-  { id: 'game-tier-hard', fgRole: 'accent', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:215`, sizeSite: `${GS}:545` },
-  { id: 'game-tier-super-hard', fgRole: 'heart', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:214`, sizeSite: `${GS}:545` },
-  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:430` },
-  { id: 'heart-pip-spent', fgRole: 'heartLost', fgAlpha: 0.85, bgRole: 'bg', kind: 'graphic', site: `${GS}:430`, note: 'paler fill at opacity 0.85 (GameScreen.tsx:431)' },
+  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:228`, sizeSite: `${GS}:550` },
+  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:216`, sizeSite: `${GS}:555` },
+  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:215`, sizeSite: `${GS}:555` },
+  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:214`, sizeSite: `${GS}:555` },
+  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:433` },
+  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:438`, note: 'outline stroke, no fill' },
 
   // Win / lose panel (on `surface`)
-  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:285`, sizeSite: `${GS}:572` },
-  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:285`, sizeSite: `${GS}:572` },
-  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:502` },
-  { id: 'star-unearned', fgRole: 'heartLost', bgRole: 'surface', kind: 'graphic', site: `${GS}:502` },
-  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:296`, sizeSite: `${GS}:583` },
-  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:594` },
-  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:594` },
-  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'heartLost', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:594`, note: 'no rewarded ad ready' },
-  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:594` },
-  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:594` },
-  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:594` },
+  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:285`, sizeSite: `${GS}:582` },
+  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:285`, sizeSite: `${GS}:582` },
+  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:512` },
+  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:512` },
+  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:296`, sizeSite: `${GS}:593` },
+  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:604` },
+  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:604` },
+  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:319`, sizeSite: `${GS}:604`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:311)' },
+  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:604` },
+  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:604` },
+  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:336`, sizeSite: `${GS}:604` },
   { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:331` },
   { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:284` },
-  { id: 'streak-line', fgRole: 'accentLight', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:341`, sizeSite: `${GS}:598` },
+  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:341`, sizeSite: `${GS}:608` },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
   { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:697' },

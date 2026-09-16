@@ -1,7 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  PALETTES,
   USAGES,
+  type Role,
   audit,
   composite,
   contrastRatio,
@@ -73,44 +75,43 @@ describe('every usage row names a real site', () => {
 });
 
 /**
- * Pre-fix failure record (instrument commit). These rows fail on the unfixed tokens; they are
- * marked `it.failing` so the suite stays green and the failure stays visible. The fix commit
- * deletes this set, so every row must then pass.
+ * No new hue (W0-06 acceptance 6): every token W0-06 changed or split keeps the HSL hue and
+ * saturation of the token it came from; only lightness moved. Tolerances cover 8-bit rounding
+ * (the solver prints the exact values).
  */
-const PRE_FIX_FAILING = new Set([
-  'Daylight / header-glyph-off',
-  'Daylight / header-button-hairline',
-  'Daylight / header-button-hairline-on-bg',
-  'Daylight / home-tier-super-hard',
-  'Daylight / game-level',
-  'Daylight / game-tier-super-hard',
-  'Daylight / heart-pip-spent',
-  'Daylight / star-unearned',
-  'Daylight / panel-subline',
-  'Daylight / continue-label-disabled',
-  'Daylight / retry-label',
-  'Daylight / retry-outline',
-  'Daylight / panel-hairline',
-  'Daylight / streak-line',
-  'Ink Night / header-glyph-off',
-  'Ink Night / header-button-hairline',
-  'Ink Night / header-button-hairline-on-bg',
-  'Ink Night / home-tier-hard',
-  'Ink Night / game-tier-hard',
-  'Ink Night / heart-pip-spent',
-  'Ink Night / star-unearned',
-  'Ink Night / continue-label',
-  'Ink Night / continue-label-disabled',
-  'Ink Night / next-level-label',
-  'Ink Night / retry-outline',
-  'Ink Night / panel-hairline',
-]);
+const PRE_W006 = {
+  Daylight: { border: '#E0DCEF', accent: '#6D4AEF', heart: '#E4327D', heartLost: '#DBD7ED', inkDim: '#6E6A8A' },
+  'Ink Night': { border: '#2B2841', accent: '#7C5CF5', heart: '#F0468C', heartLost: '#3B3653', inkDim: '#A29DC1' },
+} as const;
+const DERIVED_FROM: Array<[Role, keyof (typeof PRE_W006)['Daylight']]> = [
+  ['border', 'border'],
+  ['accent', 'accent'],
+  ['inkDim', 'inkDim'],
+  ['heartLost', 'heartLost'],
+  ['glyphOff', 'heartLost'],
+  ['pipSpent', 'heartLost'],
+  ['starUnearned', 'heartLost'],
+  ['accentText', 'accent'],
+  ['heartText', 'heart'],
+];
+
+describe('changed tokens keep hue and saturation', () => {
+  for (const { name, palette } of PALETTES) {
+    const before = PRE_W006[name as keyof typeof PRE_W006];
+    it.each(DERIVED_FROM)(`${name} / %s (from %s)`, (role, source) => {
+      const now = hexToHsl(palette[role]);
+      const was = hexToHsl(before[source]);
+      const dh = Math.abs(((now.h - was.h + 540) % 360) - 180);
+      expect(dh).toBeLessThanOrEqual(1);
+      expect(Math.abs(now.s - was.s)).toBeLessThanOrEqual(1);
+    });
+  }
+});
 
 describe('every text and state colour meets its gate', () => {
   for (const row of audit()) {
     const name = `${row.palette} / ${row.usage.id}`;
-    const test = PRE_FIX_FAILING.has(name) ? it.failing : it;
-    test(`${name}: ${row.usage.fgRole} ${row.fg} on ${row.usage.bgRole} ${row.bg} >= ${row.gate}`, () => {
+    it(`${name}: ${row.usage.fgRole} ${row.fg} on ${row.usage.bgRole} ${row.bg} >= ${row.gate}`, () => {
       expect(row.ratio).toBeGreaterThanOrEqual(row.gate);
     });
   }

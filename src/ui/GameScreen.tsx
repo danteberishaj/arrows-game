@@ -211,8 +211,8 @@ export function GameScreen({
   }, [phase, terminalPending, adBusy, level]);
 
   const diffColor =
-    level.difficulty === Difficulty.SuperHard ? p.heart
-    : level.difficulty === Difficulty.Hard ? p.accent
+    level.difficulty === Difficulty.SuperHard ? p.heartText
+    : level.difficulty === Difficulty.Hard ? p.accentText
     : p.inkDim;
 
   return (
@@ -308,7 +308,7 @@ export function GameScreen({
                   styles.button,
                   {
                     backgroundColor: !rewardedReady
-                      ? p.heartLost // same inactive tone as a disabled header glyph
+                      ? p.bg // inactive well; keeps the inkDim label ≥4.5:1 (W0-06)
                       : pressed ? p.accentDeep : p.accent,
                     marginBottom: 12,
                     transform: [{ scale: pressed ? 0.94 : 1 }],
@@ -338,7 +338,7 @@ export function GameScreen({
               </Text>
             </Pressable>
             {phase === 'won' && SaveSystem.perfectStreak > 1 && (
-              <Text style={[styles.streak, { color: p.accentLight }]}>
+              <Text style={[styles.streak, { color: p.accentText }]}>
                 ✦ {SaveSystem.perfectStreak} perfect in a row
               </Text>
             )}
@@ -398,12 +398,16 @@ const HeartPips = React.memo(function HeartPips({
 
 /** Filled-heart silhouette (24×24 viewBox). SVG fill honours our colour —
  * unlike the bare ♥ glyph, which Android paints as a red emoji regardless of
- * the text `color`, so a spent pip never dimmed (it stayed full red). */
+ * the text `color`, so a spent pip never dimmed (it stayed full red).
+ * A spent pip is the same path as an OUTLINE (stroke, no fill), so hearts left
+ * read by shape, not by colour alone (W0-06). */
 const HEART_PATH =
   'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 ' +
   '4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 ' +
   '11.54L12 21.35z';
 const HEART_SIZE = 22;
+/** Spent-pip outline width in viewBox units (≈1.8 dp at HEART_SIZE 22). */
+const SPENT_PIP_STROKE = 2; // OWNER-PICKED STARTING VALUE
 
 const HeartPip = React.memo(function HeartPip({
   filled,
@@ -425,11 +429,17 @@ const HeartPip = React.memo(function HeartPip({
   return (
     <Animated.View style={[style, { marginHorizontal: 1 }]}>
       <Svg width={HEART_SIZE} height={HEART_SIZE} viewBox="0 0 24 24">
-        <SvgPath
-          d={HEART_PATH}
-          fill={filled ? palette.heart : palette.heartLost}
-          opacity={filled ? 1 : 0.85}
-        />
+        {filled ? (
+          <SvgPath d={HEART_PATH} fill={palette.heart} />
+        ) : (
+          <SvgPath
+            d={HEART_PATH}
+            fill="none"
+            stroke={palette.pipSpent}
+            strokeWidth={SPENT_PIP_STROKE}
+            strokeLinejoin="round"
+          />
+        )}
       </Svg>
     </Animated.View>
   );
@@ -499,7 +509,7 @@ function Star({
         style={{
           fontSize: big ? 44 : 34,
           lineHeight: big ? 50 : 40,
-          color: filled ? palette.accent : palette.heartLost,
+          color: filled ? palette.accent : palette.starUnearned,
           marginHorizontal: 6,
         }}
       >
@@ -537,7 +547,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   levelLabel: {
-    fontSize: 18,
+    fontSize: 24, // was 18: 18 bold is body text and accentLight fails 4.5:1 (W0-06); matches Home
     fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
