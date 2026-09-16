@@ -5,8 +5,8 @@ import { Direction } from '../core';
  * Line-art geometry for a multi-cell bent arrow, ported from
  * UIFactory.GenerateArrowPathSprite: a rounded-cap polyline through the cell
  * centers ending in a solid filled triangular arrowhead. Here it becomes SVG
- * path data instead of a baked sprite; strokeLinejoin="round" stands in for
- * the small corner fillet (BendRadiusCells = 0.12).
+ * path data instead of a baked sprite. Bends are rounded only by the round
+ * line join: outer radius STROKE/2 = 0.072 cell, inner edge not filleted.
  *
  * Board pixel space: x right, y DOWN (SVG), cell (r,c) center at
  * ((c+0.5)*cell, (r+0.5)*cell).

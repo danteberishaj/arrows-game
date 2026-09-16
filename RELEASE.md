@@ -72,7 +72,7 @@ install via the opt-in link, and play a few levels.
   (heart/crescent) makes a great third. Play policy expects screenshots to show
   REAL gameplay — use the promo art around them, not instead of them.
 - Short description (≤80 chars), e.g.:
-  "Calm arrow puzzles. Find the order, clear the shape, keep your streak."
+  "Calm arrow puzzles. Spot the clear arrows, clear the shape, keep your streak."
 - Privacy policy URL: from step 2.
 
 **Data safety** form — declare honestly (this matches the LevelPlay SDK):
