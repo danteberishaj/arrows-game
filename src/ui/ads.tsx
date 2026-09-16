@@ -7,6 +7,8 @@ import type {
   LevelPlayRewardedAd,
   LevelPlayRewardedAdListener,
 } from 'unity-levelplay-mediation';
+import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
+import { createReadiness } from './adReadiness';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -23,6 +25,10 @@ import { Fonts, Palette } from './theme';
  * every call degrades gracefully: no ad ready => interstitial skipped,
  * rewarded reports failure, gameplay never soft-locks.
  *
+ * Rewarded readiness (`Ads.rewardedReady`) comes only from SDK callbacks, so a
+ * button can say "no ad right now" instead of silently doing nothing. Init is
+ * retried (timed, and whenever the app becomes active) until it succeeds.
+ *
  * The `import type` above is erased at compile time (zero runtime cost), so it
  * cannot break the Expo Go / web bundle where the native module is absent — the
  * only real load happens through the guarded dynamic `require` in initAds().
@@ -38,6 +44,14 @@ const REWARDED_AD_UNIT = 'smim4g4z79173hcw';
 
 /** Show an interstitial once this many games have finished (win or loss). */
 const GAMES_PER_INTERSTITIAL = 2;
+
+/** Delay before re-requesting an ad whose load failed (the shipped 15 s retry). */
+const RELOAD_DELAY_MS = 15000;
+
+/** Development-only log line (release builds print nothing). */
+function adLog(...args: unknown[]): void {
+  if (__DEV__) console.log(...args);
+}
 
 // ---- Simulated test-ad host -------------------------------------------------
 
@@ -75,8 +89,10 @@ export function AdHost({ palette }: { palette: Palette }) {
       setReq(r);
       setLeft(r.kind === 'rewarded' ? 3 : 2);
     };
+    syncRewardedReady();
     return () => {
       fakeAdListener = null;
+      syncRewardedReady();
     };
   }, []);
 
@@ -147,6 +163,7 @@ type LevelPlayModule = typeof import('unity-levelplay-mediation');
 let lpInterstitial: LevelPlayInterstitialAd | null = null;
 let lpRewarded: LevelPlayRewardedAd | null = null;
 let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
+let levelPlayModule: LevelPlayModule | null = null;
 let rewardEarned = false;
 let onRewardedClosed: ((earned: boolean) => void) | null = null;
 let onInterstitialClosed: (() => void) | null = null;
@@ -155,93 +172,173 @@ function nativeAvailable(): boolean {
   return lpInterstitial !== null && lpRewarded !== null;
 }
 
+/** Native: the last rewarded SDK callback left a loaded, unconsumed ad. */
+let rewardedLoaded = false;
+const rewardedReadiness = createReadiness(false);
+
+/**
+ * Readiness = native SDK state once the handles exist. Without them, only a
+ * development build with the simulated host mounted can "serve" an ad; a
+ * release build without the native SDK is never ready.
+ */
+function syncRewardedReady(): void {
+  rewardedReadiness.set(
+    nativeAvailable() ? rewardedLoaded : __DEV__ && fakeAdListener !== null,
+  );
+}
+
+function setRewardedLoaded(loaded: boolean): void {
+  rewardedLoaded = loaded;
+  syncRewardedReady();
+}
+
+/**
+ * One pending reload per ad: a rejected `loadAd()` and an `onAdLoadFailed`
+ * for the same request schedule a single retry, after RELOAD_DELAY_MS.
+ */
+function createReloader(label: string, load: () => Promise<void>): () => void {
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  const schedule = () => {
+    if (pending !== null) return;
+    adLog(`[ads] ${label} reload scheduled in ${RELOAD_DELAY_MS} ms`);
+    pending = setTimeout(() => {
+      pending = null;
+      load().catch(schedule);
+    }, RELOAD_DELAY_MS);
+  };
+  return schedule;
+}
+
+let initAttemptCount = 0;
+
+/**
+ * One init attempt: LevelPlay.init, then assign the handles, then start the
+ * first loads (un-awaited). Rejects when init fails, so the controller retries.
+ * Keep this order (init, assign handles, load) for any later consent work.
+ */
+async function initLevelPlayOnce(): Promise<void> {
+  const lp = levelPlayModule;
+  if (!lp) throw new Error('LevelPlay module missing');
+  const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd } = lp;
+  initAttemptCount += 1;
+  adLog('[ads] LevelPlay init attempt', initAttemptCount);
+
+  // Enable the LevelPlay Test Suite in dev builds only (must precede init).
+  if (__DEV__) {
+    await LevelPlay.setMetaData('is_test_suite', ['enable']);
+  }
+
+  // 9.x init request: no legacy ad formats — appKey (+ optional userId) only.
+  // LevelPlay.init()'s promise resolves when the call is dispatched, NOT when
+  // init finishes — loading an ad before onInitSuccess fails with error 625,
+  // so gate ad creation on the actual callback. A second init after
+  // onInitFailed succeeds once the network is back (W0-02 premise check).
+  const request = LevelPlayInitRequest.builder(APP_KEY).build();
+  await new Promise<void>((resolve, reject) => {
+    LevelPlay.init(request, {
+      onInitSuccess: () => {
+        adLog('[ads] LevelPlay init success');
+        resolve();
+      },
+      onInitFailed: (error) => {
+        adLog('[ads] LevelPlay init failed:', error);
+        reject(new Error('LevelPlay init failed'));
+      },
+    }).catch(reject);
+  });
+
+  const inter = new LevelPlayInterstitialAd(INTERSTITIAL_AD_UNIT);
+  const rew = new LevelPlayRewardedAd(REWARDED_AD_UNIT);
+  const reloadInterstitial = createReloader('interstitial', () => inter.loadAd());
+  const reloadRewarded = createReloader('rewarded', () => rew.loadAd());
+
+  const interListener: LevelPlayInterstitialAdListener = {
+    onAdLoaded: () => {},
+    onAdLoadFailed: () => reloadInterstitial(),
+    onAdDisplayed: () => {},
+    onAdClosed: () => {
+      onInterstitialClosed?.();
+      onInterstitialClosed = null;
+      inter.loadAd().catch(reloadInterstitial); // keep one preloaded
+    },
+    onAdDisplayFailed: () => {
+      onInterstitialClosed?.();
+      onInterstitialClosed = null;
+    },
+  };
+  inter.setListener(interListener);
+
+  const rewListener: LevelPlayRewardedAdListener = {
+    onAdLoaded: () => {
+      adLog('[ads] rewarded onAdLoaded');
+      setRewardedLoaded(true);
+    },
+    onAdLoadFailed: (error) => {
+      adLog('[ads] rewarded onAdLoadFailed:', error);
+      setRewardedLoaded(false);
+      reloadRewarded();
+    },
+    onAdDisplayed: () => {
+      setRewardedLoaded(false); // the loaded ad is consumed
+    },
+    onAdRewarded: () => {
+      adLog('[ads] rewarded: reward earned');
+      rewardEarned = true;
+    },
+    onAdClosed: () => {
+      adLog('[ads] rewarded closed, earned =', rewardEarned);
+      setRewardedLoaded(false);
+      onRewardedClosed?.(rewardEarned);
+      onRewardedClosed = null;
+      rewardEarned = false;
+      rew.loadAd().catch(reloadRewarded); // keep one preloaded
+    },
+    onAdDisplayFailed: () => {
+      setRewardedLoaded(false);
+      onRewardedClosed?.(false);
+      onRewardedClosed = null;
+    },
+  };
+  rew.setListener(rewListener);
+
+  // Handles first, so a failed first load can never take the SDK offline for
+  // the session; the reload listeners above recover from load failures.
+  lpInterstitial = inter;
+  lpRewarded = rew;
+  levelPlayApi = LevelPlay;
+  syncRewardedReady();
+
+  inter.loadAd().catch(reloadInterstitial);
+  rew.loadAd().catch(reloadRewarded);
+}
+
+/** Retries a failed init; see adInit.ts for the policy. */
+export const adInitController = createAdInitController({
+  attempt: initLevelPlayOnce,
+  delaysMs: AD_INIT_RETRY_DELAYS_MS,
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (handle) => clearTimeout(handle),
+});
+
 /**
  * Initializes LevelPlay when the native module exists (dev build). In Expo
- * Go / web this quietly leaves the simulated path active.
+ * Go / web this quietly leaves the simulated path active. Safe to call more
+ * than once; a failed init is retried by `adInitController`.
  */
 export async function initAds(): Promise<void> {
   if (Platform.OS === 'web') return;
   if (Constants.executionEnvironment === 'storeClient') return; // Expo Go
 
-  try {
-    // Dynamic require: only resolvable in a dev build with the native module.
-    const lp = require('unity-levelplay-mediation') as LevelPlayModule;
-    const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd } = lp;
-
-    // Enable the LevelPlay Test Suite in dev builds only (must precede init).
-    if (__DEV__) {
-      await LevelPlay.setMetaData('is_test_suite', ['enable']);
+  if (!levelPlayModule) {
+    try {
+      // Dynamic require: only resolvable in a dev build with the native module.
+      levelPlayModule = require('unity-levelplay-mediation') as LevelPlayModule;
+    } catch (e) {
+      adLog('[ads] native ads unavailable:', e);
+      return; // no native module: nothing to retry
     }
-
-    // 9.x init request: no legacy ad formats — appKey (+ optional userId) only.
-    // LevelPlay.init()'s promise resolves when the call is dispatched, NOT when
-    // init finishes — loading an ad before onInitSuccess fails with error 625,
-    // so gate ad creation on the actual callback.
-    const request = LevelPlayInitRequest.builder(APP_KEY).build();
-    await new Promise<void>((resolve, reject) => {
-      LevelPlay.init(request, {
-        onInitSuccess: () => {
-          if (__DEV__) console.log('[ads] LevelPlay init success');
-          resolve();
-        },
-        onInitFailed: (error) => {
-          if (__DEV__) console.log('[ads] LevelPlay init failed:', error);
-          reject(new Error('LevelPlay init failed'));
-        },
-      }).catch(reject);
-    });
-
-    const inter = new LevelPlayInterstitialAd(INTERSTITIAL_AD_UNIT);
-    const interListener: LevelPlayInterstitialAdListener = {
-      onAdLoaded: () => {},
-      onAdLoadFailed: () => setTimeout(() => inter.loadAd().catch(() => {}), 15000),
-      onAdDisplayed: () => {},
-      onAdClosed: () => {
-        onInterstitialClosed?.();
-        onInterstitialClosed = null;
-        inter.loadAd().catch(() => {}); // keep one preloaded
-      },
-      onAdDisplayFailed: () => {
-        onInterstitialClosed?.();
-        onInterstitialClosed = null;
-      },
-    };
-    inter.setListener(interListener);
-    await inter.loadAd();
-
-    const rew = new LevelPlayRewardedAd(REWARDED_AD_UNIT);
-    const rewListener: LevelPlayRewardedAdListener = {
-      onAdLoaded: () => {},
-      onAdLoadFailed: () => setTimeout(() => rew.loadAd().catch(() => {}), 15000),
-      onAdDisplayed: () => {},
-      onAdRewarded: () => {
-        if (__DEV__) console.log('[ads] rewarded: reward earned');
-        rewardEarned = true;
-      },
-      onAdClosed: () => {
-        if (__DEV__) console.log('[ads] rewarded closed, earned =', rewardEarned);
-        onRewardedClosed?.(rewardEarned);
-        onRewardedClosed = null;
-        rewardEarned = false;
-        rew.loadAd().catch(() => {}); // keep one preloaded
-      },
-      onAdDisplayFailed: () => {
-        onRewardedClosed?.(false);
-        onRewardedClosed = null;
-      },
-    };
-    rew.setListener(rewListener);
-    await rew.loadAd();
-
-    lpInterstitial = inter;
-    lpRewarded = rew;
-    levelPlayApi = LevelPlay;
-  } catch (e) {
-    if (__DEV__) console.log('[ads] native ads unavailable:', e);
-    lpInterstitial = null;
-    lpRewarded = null;
-    levelPlayApi = null;
   }
+  await adInitController.start();
 }
 
 /**
@@ -304,6 +401,16 @@ export const Ads = {
    * Shows the rewarded ad ("continue" / hint). Resolves with whether the
    * user actually earned the reward; false when no ad is available.
    */
+  /** Whether a rewarded ad can be shown right now (from SDK callbacks only). */
+  get rewardedReady(): boolean {
+    return rewardedReadiness.get();
+  },
+
+  /** Notifies on every readiness change; returns an unsubscribe function. */
+  subscribeRewardedReady(cb: (ready: boolean) => void): () => void {
+    return rewardedReadiness.subscribe(cb);
+  },
+
   async showRewarded(): Promise<boolean> {
     if (nativeAvailable()) {
       try {

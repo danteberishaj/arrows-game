@@ -3,13 +3,13 @@ import { Fredoka_700Bold } from '@expo-google-fonts/fredoka/700Bold';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { SaveSystem } from './src/core/saveSystem';
 import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE } from './src/perfMode';
-import { AdHost, initAds } from './src/ui/ads';
+import { AdHost, adInitController, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
@@ -32,7 +32,12 @@ export default function App() {
       setSoundOn(SaveSystem.soundOn);
       setReady(true);
     });
-    initAds(); // no-op in Expo Go / web (simulated ads take over)
+    initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
+    // A device that launched offline recovers ads when the player comes back.
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') adInitController.onAppActive();
+    });
+    return () => sub.remove();
   }, []);
 
   const toggleSound = useCallback(() => {

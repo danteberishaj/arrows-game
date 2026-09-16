@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -64,6 +64,10 @@ export function GameScreen({
   const [terminalPending, setTerminalPending] = useState(false);
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
   const [adBusy, setAdBusy] = useState(false);
+  const rewardedReady = useSyncExternalStore(Ads.subscribeRewardedReady, readRewardedReady);
+  // A rewarded show was attempted and resolved false. Cleared by the next
+  // readiness change or board tap (no timer).
+  const [adShowFailed, setAdShowFailed] = useState(false);
   const hintId = useRef(1);
   const heartsRef = useRef(hearts);
   const exitCombo = useRef<ExitCombo | null>(null);
@@ -76,6 +80,10 @@ export function GameScreen({
   const clearHint = useCallback(() => setHint(null), []);
 
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
+  // Subscribed directly (not via an effect on `rewardedReady`) so the clear
+  // runs synchronously at the SDK callback, before a failed show's
+  // `setAdShowFailed(true)` that follows it.
+  useEffect(() => Ads.subscribeRewardedReady(() => setAdShowFailed(false)), []);
   useEffect(() => {
     if (!feedbackEnabled) return undefined;
     prepareFeedback(SaveSystem.soundOn);
@@ -104,10 +112,12 @@ export function GameScreen({
     exitCombo.current = null;
     setPhase('playing');
     setHint(null);
+    setAdShowFailed(false);
   }, [terminalTransition]);
 
   const onRemoved = useCallback(
     (cleared: boolean) => {
+      setAdShowFailed(false);
       if (terminalTransition.isPending) return;
       if (feedbackEnabled) {
         const combo = nextExitCombo(exitCombo.current, Date.now());
@@ -130,6 +140,7 @@ export function GameScreen({
   );
 
   const onBlocked = useCallback((costsHeart: boolean) => {
+    setAdShowFailed(false);
     if (terminalTransition.isPending) return;
     exitCombo.current = null;
     if (!costsHeart) {
@@ -166,10 +177,14 @@ export function GameScreen({
 
   /** Rewarded "+1 heart continue" from the lose panel. */
   const onContinueWithAd = useCallback(async () => {
+    setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
     const earned = await Ads.showRewarded();
     setAdBusy(false);
-    if (!earned) return; // stay on the lose panel; Retry still works
+    if (!earned) {
+      setAdShowFailed(true); // stay on the lose panel and say so; nothing granted
+      return;
+    }
     terminalTransition.reset();
     setTerminalPending(false);
     heartsRef.current = 1;
@@ -182,10 +197,14 @@ export function GameScreen({
     if (phase !== 'playing' || terminalPending || adBusy) return;
     const arrow = level.board.findHint();
     if (!arrow) return;
+    setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
     const earned = await Ads.showRewarded();
     setAdBusy(false);
-    if (!earned) return;
+    if (!earned) {
+      setAdShowFailed(true); // "Hint unavailable"; no hint without a reward
+      return;
+    }
     // Re-find: the board may have changed while the ad played.
     const fresh = level.board.findHint();
     if (fresh) setHint({ arrow: fresh, id: hintId.current++ });
@@ -210,11 +229,19 @@ export function GameScreen({
               LEVEL {levelIndex + 1}
             </Text>
             <View style={styles.missionLabelRow}>
-              <MissionLabel
-                difficulty={level.difficulty}
-                shapeName={level.shapeName}
-                color={diffColor}
-              />
+              {adShowFailed && phase === 'playing' ? (
+                // Takes the mission label's place while shown: appended after
+                // "N left" it pushed the hint button off a 411 dp-wide screen.
+                <Text style={[styles.diffLabel, { color: diffColor }]}>
+                  Hint unavailable ·{' '}
+                </Text>
+              ) : (
+                <MissionLabel
+                  difficulty={level.difficulty}
+                  shapeName={level.shapeName}
+                  color={diffColor}
+                />
+              )}
               <Text style={[styles.diffLabel, { color: diffColor }]}>
                 {remaining} left
               </Text>
@@ -228,6 +255,7 @@ export function GameScreen({
             palette={p}
             onPress={onHint}
             active={!terminalPending && !adBusy}
+            disabled={!rewardedReady || terminalPending || adBusy}
           />
         </View>
       </View>
@@ -268,22 +296,27 @@ export function GameScreen({
             <Text style={[styles.panelSub, { color: p.inkDim }]}>
               {phase === 'won'
                 ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
-                : 'The shape got the better of you.'}
+                : !rewardedReady || adShowFailed
+                  ? 'No ad available right now — Retry is free'
+                  : 'The shape got the better of you.'}
             </Text>
             {phase === 'lost' && (
               <Pressable
-                disabled={adBusy}
+                disabled={!rewardedReady || adBusy}
+                accessibilityState={{ disabled: !rewardedReady || adBusy }}
                 style={({ pressed }) => [
                   styles.button,
                   {
-                    backgroundColor: pressed ? p.accentDeep : p.accent,
+                    backgroundColor: !rewardedReady
+                      ? p.heartLost // same inactive tone as a disabled header glyph
+                      : pressed ? p.accentDeep : p.accent,
                     marginBottom: 12,
                     transform: [{ scale: pressed ? 0.94 : 1 }],
                   },
                 ]}
                 onPress={onContinueWithAd}
               >
-                <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>
+                <Text style={[styles.buttonText, { color: rewardedReady ? p.inkOnAccent : p.inkDim }]}>
                   Continue +♥ (ad)
                 </Text>
               </Pressable>
@@ -315,6 +348,8 @@ export function GameScreen({
     </View>
   );
 }
+
+const readRewardedReady = () => Ads.rewardedReady;
 
 /**
  * Keep the per-level words out of the per-tap counter paragraph. React
