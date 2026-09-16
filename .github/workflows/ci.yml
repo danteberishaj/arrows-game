@@ -1,0 +1,37 @@
+# CI for the next-level branch: typecheck and the jest suite on a clean
+# Linux checkout, so "tests pass" stops being a claim about one Mac.
+# Scope is P-05 (docs/next-level/tasks/P.md): jest + tsc only. No native
+# builds, emulator runs, lint, deploy, or triggers on main.
+name: ci
+
+on:
+  push:
+    branches: [next-level]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # OWNER-PICKED STARTING VALUE
+    steps:
+      # Majors checked on github.com 2026-09-16: checkout v7.0.1, setup-node v7.0.0.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20.19.4 # matches the local toolchain the suite was written on
+          cache: npm
+
+      # Lockfile-only install; runs the postinstall patch-package step.
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+
+      - run: npx jest --ci
