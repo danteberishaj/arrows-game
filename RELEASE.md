@@ -100,6 +100,74 @@ auto-increments the versionCode (`autoIncrement` in eas.json; version name comes
 from `version` in app.json). Optionally wire `eas submit -p android` with a Play
 service account for CLI uploads (eas.json is preconfigured to the internal track).
 
+## Target SDK proof (local release artifact)
+
+Play requires target API 36 for updates from 2026-08-31. `targetSdk` is pinned
+nowhere in the tracked repo (`app.json` has no `targetSdkVersion`; the value comes
+from the React Native / expo-modules-core gradle defaults). So the proof is read
+from the compiled manifest of a built artifact, which is what Play checks.
+
+- **Commit:** `a1e2b43512959ba66fbacdd8908f44cc37e5bb24` on `next-level` (app code
+  identical to `da93dcd`; only `docs/` and `.gitignore` differ).
+- **Date:** 2026-09-16.
+- **Build shape:** non-perf release. `ARROWS_PERF_BUILD` and every
+  `EXPO_PUBLIC_PERF_*` unset; arm64-v8a only (the ABI filter does not change the
+  manifest). Signed by the local upload keystore config (`credentials/` present;
+  signer DN `CN=Arrows`, not the debug key).
+
+Commands (from the repo root; `ANDROID_HOME` had to be passed because
+`prebuild --clean` removes `android/local.properties`):
+
+```bash
+df -h /                                   # 11Gi available
+npx expo prebuild --platform android --clean --no-install
+# generated outputs from scripts/perf/android/benchmark.mjs:415-421 removed (none existed after --clean)
+cd android
+env -u CI -u ARROWS_PERF_BUILD ANDROID_HOME=$HOME/Library/Android/sdk \
+  ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
+env -u CI -u ARROWS_PERF_BUILD ANDROID_HOME=$HOME/Library/Android/sdk \
+  ./gradlew :app:bundleRelease -PreactNativeArchitectures=arm64-v8a --console=plain
+cd ..
+~/Library/Android/sdk/build-tools/36.0.0/aapt dump badging android/app/build/outputs/apk/release/app-release.apk | grep -E "sdkVersion|targetSdkVersion|versionCode"
+~/Library/Android/sdk/cmdline-tools/latest/bin/apkanalyzer manifest print android/app/build/outputs/apk/release/app-release.apk | grep -c profileable
+bundletool dump manifest --bundle android/app/build/outputs/bundle/release/app-release.aab --xpath /manifest/uses-sdk/@android:targetSdkVersion
+```
+
+Printed lines:
+
+```text
+# aapt dump badging (APK)
+package: name='com.danteb.arrows' versionCode='6' versionName='1.0.0' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
+sdkVersion:'24'
+targetSdkVersion:'36'
+
+# apkanalyzer manifest print (APK) | grep -c profileable
+0
+
+# bundletool 1.18.1 dump manifest (AAB)
+/manifest/uses-sdk/@android:targetSdkVersion  -> 36
+/manifest/uses-sdk/@android:minSdkVersion     -> 24
+/manifest/@android:versionCode                -> 6
+dump manifest | grep -c profileable           -> 0
+```
+
+Hashes:
+
+```text
+7556f834c720842d47385e066da7aec7b3e05ce2808ed443fe7b794f8f32a428  app-release.apk (42035912 bytes)
+ab0426acbbc1d7ff0aa86cbf4c3293325d244258599ebdf2db988a4d3aa40302  app-release.aab (34146058 bytes)
+```
+
+The APK is kept as the base build for later verification at
+`artifacts/base/da93dcd-release-arm64.apk` (sha256 in
+`artifacts/base/da93dcd-release-arm64.apk.sha256`). `artifacts/` is gitignored and
+must stay that way: the APK is signed with the real upload key and this repo is
+public. The `.aab` was not kept; its hash is recorded above.
+
+**Still unverified:** the `.aab` that EAS builds in the cloud and that is actually
+uploaded. It is expected to match, because EAS runs the same prebuild and
+`bundleRelease`, but only a `bundletool` read of that file proves it (P-04b).
+
 ## Asset regeneration
 
 - Icons / store art (from `assets/images/mark.png`): `node scripts/generate-store-assets.js`
