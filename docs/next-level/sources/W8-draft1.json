@@ -1,0 +1,377 @@
+{
+ "workstream": "W8 — iOS",
+ "goal": "Split iOS into a cheap \"keep it buildable and honest\" tranche done now (W8-01..W8-08: the never-compiled native board view actually compiles, renders, and is measured) and a deferred \"ship it\" tranche (W8-09..W8-14) that is NOT started until the Android retention work has landed and shown the product is worth duplicating — so the player on iOS eventually gets the same board without the solo owner paying a second-platform tax on a product that is not yet good on the first.",
+ "non_goals": [
+  "Submitting to the App Store in this workstream. W8-09..W8-14 are specified but explicitly gated on the escalation below.",
+  "Any change to Android: ArrowsBoardView.kt, the gfxinfo/SurfaceFlinger parsers, and the Android ad path are untouched.",
+  "Any change to the JS<->native protocol (geometry, visibleMask, ink, strokeWidth, exitAnimation). Both platforms keep the same delimited text payload; no typed buffers, no JSI.",
+  "Any change to SaveSystem, PersistenceKeys, or the boot hydrate contract. This workstream persists nothing and requires no migration.",
+  "A visual redesign. The iOS board must look identical to Android at fit and at max zoom; W8-05 is the gate that proves it, not an opportunity to change art.",
+  "A premium/paid iOS SKU or an IAP ladder. That is a product decision, raised as an escalation, not a step here.",
+  "Fixing the interstitial counter bug, the reduce-motion bug, the splash backstop, or the missing CMP. Those are other workstreams; W8-13 only says iOS must inherit the CMP fix rather than ship a second copy of the gap."
+ ],
+ "steps": [
+  {
+   "id": "W8-01",
+   "title": "First compile of the iOS app from a clean prebuild; record the baseline",
+   "what": "Free disk to >=25 GB, then from the repo root run `npx expo prebuild -p ios --clean`, `cd ios && pod install`, then `xcodebuild -workspace ios/Arrows.xcworkspace -scheme Arrows -configuration Debug -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build CODE_SIGNING_ALLOWED=NO`. Fix only what blocks compilation, and only in files under modules/arrows-board/ios/ and modules/arrows-feedback/ios/. Write the exact command, `xcodebuild -version`, `xcrun --sdk iphonesimulator --show-sdk-version`, and the verbatim error list (or '0 errors') into a new docs/ios-build-log-<YYYY-MM-DD>.md. Do not start the refactor in this step.",
+   "why": "modules/arrows-board/ios/ArrowsBoardView.swift has never been compiled since the 2026-09-01 exit-protocol change (its only two commits are 0a1df94 and 0f7968b), and modules/arrows-feedback/ios/ArrowsFeedbackModule.swift is uncommitted-modified for the whoosh->pop0..pop7 audio change. EXECUTED: `ls ~/Library/Developer/Xcode/DerivedData` returns nothing and `find ios/build` contains only generated codegen with no Build/Products — consistent with no successful build ever. EXECUTED, and this narrows the risk: `swiftc -typecheck` of ArrowsBoardView.swift against a stubbed ExpoView, target arm64-apple-ios16.4-simulator, Xcode 26.6, produced ZERO errors — so the file's own body is type-clean and what remains unproven is the ExpoModulesCore View/Prop DSL in ArrowsBoardModule.swift and the whole-app link.",
+   "files": [
+    "ios/ (generated and gitignored — see risk)",
+    "modules/arrows-board/ios/ArrowsBoardView.swift",
+    "modules/arrows-board/ios/ArrowsBoardModule.swift",
+    "modules/arrows-feedback/ios/ArrowsFeedbackModule.swift",
+    "docs/ios-build-log-<YYYY-MM-DD>.md"
+   ],
+   "acceptance": [
+    "`xcodebuild ... -configuration Debug -sdk iphonesimulator build` exits 0.",
+    "docs/ios-build-log-<date>.md records the exact command, Xcode build number, SDK version, and either '0 errors' or every error with file:line.",
+    "No file under ios/ was hand-edited: running `npx expo prebuild -p ios --clean && pod install` a second time still produces a build that exits 0."
+   ],
+   "verification": "The literal xcodebuild command above on the project Mac, with the toolchain versions captured. This exercises the thing being changed because compilation is itself the unknown — this Swift file has never been through a compiler as part of the app target, and no jest/tsc check in this repo touches Swift.",
+   "effort": "S",
+   "risk": "`expo prebuild --clean` deletes the whole ios/ tree including the 1.2 GB Pods directory, and /ios is gitignored (EXECUTED: `git check-ignore -v ios` -> `.gitignore:40:/ios`), so there is nothing to restore from git if pod install then fails on disk. EXECUTED 2026-09-09: `df -g` shows 22 GB free on /System/Volumes/Data — above docs/IOS_BOARD_PLAN.md's >=20 GB prerequisite but only ~2 GB of headroom over it, and the 2026-09-01 attempt already failed once at 132 MB free. Re-check free space immediately before starting; clear DerivedData and unused simulator runtimes first. Rollback: none needed, ios/ is fully regenerable.",
+   "brand_perf_check": "FLAG TEST N/A — no motion is added or changed; this step compiles existing code. No brand surface touched.",
+   "depends_on": []
+  },
+  {
+   "id": "W8-02",
+   "title": "Simulator smoke: prove the board renders and the slither exit is correct on iOS",
+   "what": "Launch the W8-01 build on the iPhone 16 Pro simulator and play three levels. Capture and store in docs/ios-smoke-<date>/: (a) a still of a filled board at fit zoom in both themes, (b) a screen recording of one arrow exit at normal speed and one with `xcrun simctl ui booted` slow animations, (c) a still after 30 taps on a known level index, (d) a recording of five taps inside one second. Put an Android recording of the same level index beside the iOS one.",
+   "why": "setExitAnimation in ArrowsBoardView.swift has never run. Two behaviours are unverifiable by any static check. (1) INFERRED FROM READING, must be observed: CAShapeLayer's `lineDashPhase` sign convention versus Android's `DashPathEffect(slot.intervals, -travelled)` at ArrowsBoardView.kt:281. Reading both files, Android sets intervals [bodyLength, totalLength+bodyLength] and animates phase 0 -> -travelled, while iOS animates phase from `patternSum = totalLength + 2*bodyLength` down by `totalLength`; patternSum is exactly one pattern period, so the two are congruent modulo the period and should agree — but the sign convention itself is untested, and docs/IOS_BOARD_PLAN.md explicitly says 'if it slides backwards, flip the sign of the phase delta'. (2) INFERRED FROM READING: iOS approximates Android's exact per-frame `travelled = k^2 * totalLen` with `CAMediaTimingFunction(controlPoints: 0.11, 0, 0.5, 0)`, so the two curves agree at the endpoints and may differ mid-flight. ALREADY CLEARED, do not re-litigate: I suspected `CATransform3D` assigned to `CABasicAnimation.fromValue` would box as a _SwiftValue and be silently ignored; EXECUTED a 10-line swiftc program on this toolchain which printed `is NSValue: true`, so the head translation will animate.",
+   "files": [
+    "modules/arrows-board/ios/ArrowsBoardView.swift",
+    "docs/ios-smoke-<YYYY-MM-DD>/"
+   ],
+   "acceptance": [
+    "In the recording, the dash travels from the arrow's tail toward its head and off the board edge — the same direction as the Android recording of the same tap. Falsifiable by a third party from the two clips side by side.",
+    "The head glyph translates along the same ray as the dash and both fade together; no head is left stranded on the board after the trail is gone.",
+    "After 30 taps on a fixed level index, exactly the tapped arrows are absent and every other arrow is drawn; the count in the screenshot equals arrowCount - 30.",
+    "No arrow visibly morphs, stretches, or slides into another shape at the moment of removal.",
+    "Tapping five arrows inside one second shows at most two trails on screen at any frame of the recording."
+   ],
+   "verification": "Simulator screen recordings and stills, filenames carrying device, runtime version and level index, compared side by side with the Android recordings. A recording is required rather than a test because every failure mode listed is render-only and invisible to tsc, jest and xcodebuild — this repo already has a scar from transform fixes verified only by tsc.",
+   "effort": "S",
+   "risk": "If the dash slides backwards the fix is a one-line sign flip on the phase delta plus a re-record. If the timing-function approximation reads visibly different from Android, replace the two CABasicAnimations with a CADisplayLink that recomputes k^2 per frame exactly as ArrowsBoardView.kt:drawExitSlot does — still two bounded slots, still no per-arrow React node. EXECUTED: `xcrun simctl list devices available` shows only iOS 18.0 and 18.1 runtimes installed; behaviour on an iOS 26 runtime is therefore UNVERIFIED by this step.",
+   "brand_perf_check": "FLAG TEST PASS — no arrow that is still in the static layer is animated, and no third concurrent node is added: iOS keeps `exitSlots = (0..<2)` in ArrowsBoardView.swift, matching MAX_CONCURRENT_EXITS = 2 in ArrowsBoardView.kt and the cap in exitAnimationConfig.ts. Brand gates: no glow, gradient or particle is introduced; direction stays conveyed by shape.",
+   "depends_on": [
+    "W8-01"
+   ]
+  },
+  {
+   "id": "W8-03",
+   "title": "Measure the draw(_:) memory baseline BEFORE refactoring anything",
+   "what": "Build Release for the simulator pinned to a dense board via EXPO_PUBLIC_PERF_LEVEL (read by src/perfMode.ts:1). Record total footprint and the largest single CoreAnimation/IOSurface/CG-raster region for four cases: dense board mounted; dense board with EXPO_PUBLIC_PERF_EMPTY_BOARD=1 (consumed at src/ui/StaticBoardSurface.native.tsx:36); and the same pair on the largest board the generator produces. Use `footprint $(pgrep -x Arrows)` plus an Instruments VM Tracker snapshot. Replace the arithmetic table in docs/IOS_BOARD_PLAN.md with the measured one.",
+   "why": "docs/IOS_BOARD_PLAN.md's '~88 MB' and '~122 MB' are computed as bounds x scale x 4 bytes, not measured, and its acceptance gate A1 ('no region >= 16 MB', 'delta <= 20 MB') is derived from that arithmetic. This project's rule is that a brief pinning a number must name the measurement that produced it; six prior briefs were burned by unmeasured targets. Measuring first also produces the pre-fix failure — without it the refactor cannot be shown to have touched the broken path at all.",
+   "files": [
+    "docs/IOS_BOARD_PLAN.md",
+    "src/perfMode.ts",
+    "src/ui/StaticBoardSurface.native.tsx"
+   ],
+   "acceptance": [
+    "A table in docs/IOS_BOARD_PLAN.md giving, for both board sizes and both PERF_EMPTY_BOARD states, total footprint and the largest single CA/IOSurface/CG-raster region, each row naming the tool, simulator model, runtime version and level index.",
+    "The gates in W8-04 are rewritten as fractions of these measured numbers rather than the inherited 16 MB / 20 MB figures.",
+    "If the measurement does NOT show a board-sized backing store, the stated justification for W8-04 is void — record that and re-open whether to do W8-04 at all rather than proceeding."
+   ],
+   "verification": "`footprint $(pgrep -x Arrows)` and an Instruments VM Tracker snapshot taken with the board mounted and again with EXPO_PUBLIC_PERF_EMPTY_BOARD=1, in the same session on the same simulator. The delta between those two isolates the board view's own allocation, which is exactly what W8-04 changes; the empty-board flag is the existing, already-wired control for this comparison.",
+   "effort": "S",
+   "risk": "Simulator memory behaviour is not device memory behaviour (different GPU and IOSurface backing). Every number must be labelled 'simulator, not device' and repeated on hardware in W8-08. It is still a valid paired before/after because both sides run on the same host in the same session. Also note PERF_MODE boots straight into 'game', so splash and menu memory remain unmeasurable with today's harness.",
+   "brand_perf_check": "FLAG TEST N/A — measurement only, no code behaviour changes.",
+   "depends_on": [
+    "W8-01"
+   ]
+  },
+  {
+   "id": "W8-04",
+   "title": "Replace draw(_:) with two retained CAShapeLayers",
+   "what": "Implement docs/IOS_BOARD_PLAN.md steps 1-6 in modules/arrows-board/ios/ArrowsBoardView.swift: create `staticShaft: CAShapeLayer` (stroke, fillColor nil, lineCap/lineJoin .round) and `staticHead: CAShapeLayer` (fill) in `init(appContext:)` and insert them at sublayer indices 0 and 1 so exit containers stay above; override `layoutSubviews` to set both frames to `bounds`; move path assembly out of `draw(_:)` into `updateVisibleArrows()`, building one CGMutablePath of visible shafts and one of visible heads and assigning them to the two layers; make `setInk` and `setStrokeWidth` mutate `strokeColor`/`fillColor`/`lineWidth` instead of calling `setNeedsDisplay()`; delete the `draw(_:)` override and the `contentMode = .redraw` line in init. Wrap EVERY assignment to those two layers' `path`, `strokeColor`, `fillColor`, `lineWidth` and `frame` in `CATransaction.begin(); CATransaction.setDisableActions(true); ...; CATransaction.commit()`. Leave `shouldRasterize` at its default false everywhere. Do not touch ArrowsBoardModule.swift, the TS bindings, or Android.",
+   "why": "UIKit backs a view that overrides `draw(_:)` with a `bounds x screenScale` bitmap. This view's bounds are the entire board (cols * CELL by rows * CELL, CELL defined in src/ui/BoardView.tsx), and every arrow removal calls `setNeedsDisplay()` (see setVisibleMask), redrawing all arrows into that bitmap and re-uploading it. docs/performance-optimization-knowledge-base.html records this as the same failure mode the Android SVG path was already fixed for. The exit slots in the same Swift file already use CAShapeLayer successfully and are the working model. Without CATransaction.setDisableActions(true), CAShapeLayer implicitly animates the `path` property for 0.25 s and a removed arrow morphs into the new compound path instead of vanishing.",
+   "files": [
+    "modules/arrows-board/ios/ArrowsBoardView.swift",
+    "docs/IOS_BOARD_PLAN.md"
+   ],
+   "acceptance": [
+    "`grep -n \"override func draw\" modules/arrows-board/ios/ArrowsBoardView.swift` returns nothing, and `grep -n \"contentMode\" ` returns nothing.",
+    "`grep -n \"shouldRasterize\" modules/arrows-board/ios/ArrowsBoardView.swift` returns nothing (default false) or only `= false`.",
+    "Every assignment to staticShaft/staticHead `path`, `strokeColor`, `fillColor`, `lineWidth`, `frame` sits inside a `CATransaction.setDisableActions(true)` block — readable in the diff, and behaviourally proven by the no-morph criterion in W8-05.",
+    "Memory, re-running W8-03's procedure unchanged: the board's own allocation (mounted minus PERF_EMPTY_BOARD) falls to at most 20% of the W8-03 baseline delta, and the largest single CA/IOSurface/CG-raster region falls to at most 25% of the W8-03 largest region. Expressed as fractions of a measured baseline because no measured absolute iOS number exists until W8-03 runs.",
+    "Diff is confined to modules/arrows-board/ios/ArrowsBoardView.swift plus docs; `git diff --stat` shows no other file."
+   ],
+   "verification": "Re-run the exact W8-03 measurement on the refactored build and report it as a paired before/after on the same simulator, same fixture, same session. This exercises the original failing path because W8-03 first establishes that the board-sized backing store exists and how large it is; the identical probe on the identical fixture is what shows it gone. Compilation alone is explicitly not evidence here.",
+   "effort": "M",
+   "risk": "CAShapeLayer re-rasterizes the compound path on every pan/pinch frame in the render server. 250 polylines should be cheap but this is unmeasured on iOS — W8-07/W8-08 decide it. The plan's own fallback if it fails: restore `draw(_:)` with a capped `layer.contentsScale` so the bitmap stays small, accepting softer strokes at max zoom. No feature flag: this is a native rendering path with a single call site and a flag would mean shipping both renderers; rollback is `git revert` of one file. Second risk: CAShapeLayer anti-aliasing is slightly softer than Core Graphics, which is why W8-05 is a separate veto gate rather than a checkbox inside this step.",
+   "brand_perf_check": "FLAG TEST PASS — this animates nothing. It moves static art from a bitmap to a shape layer; no arrow in the static layer becomes animated, and no concurrent node is added (exits stay at 2 slots, Skia feedback stays at <=4 nodes: pressed, blocker, shaking, hint). Brand gates: no visual change is intended, and W8-05 is the gate that proves none happened.",
+   "depends_on": [
+    "W8-02",
+    "W8-03"
+   ]
+  },
+  {
+   "id": "W8-05",
+   "title": "Visual parity gate for the refactor — this step can veto W8-04",
+   "what": "Capture matched screenshot pairs from the pre-W8-04 build and the post-W8-04 build on the same simulator, same level index: board at fit zoom and at max zoom (3.5x fit), in Ink Night and Daylight themes, plus a slow-motion recording of a single arrow removal on a dense board. Store in docs/ios-parity-<date>/ with the device and runtime in the filenames.",
+   "why": "docs/IOS_BOARD_PLAN.md acceptance A4. Two concrete regressions are possible and neither is visible to any headless check: a missing CATransaction.setDisableActions(true) makes a removed arrow morph over 0.25 s instead of vanishing, and CAShapeLayer's softer anti-aliasing can blur strokes at max zoom where Core Graphics was crisp. This project's rule is that visual and motion work closes only with a simulator or device screenshot.",
+   "files": [
+    "docs/ios-parity-<YYYY-MM-DD>/",
+    "modules/arrows-board/ios/ArrowsBoardView.swift"
+   ],
+   "acceptance": [
+    "At fit zoom, the before and after screenshots differ only in anti-aliasing: every arrow present in one is present in the other, at the same position, with the same head fill and the same stroke width. Falsifiable by a third party overlaying the two images.",
+    "At max zoom, no stroke is visibly blurred relative to the before image and no arrow head is missing.",
+    "In the slow-motion removal recording, the removed arrow disappears within one frame; it does not shrink, stretch, slide, or bend toward a neighbouring arrow. This is the specific tell for a missed setDisableActions.",
+    "Both themes render the correct ink colour after a theme toggle (setInk no longer calls setNeedsDisplay, so a stale colour is a plausible regression)."
+   ],
+   "verification": "Side-by-side simulator screenshots and a slow-motion recording, taken from builds of the commit before and the commit after W8-04. This exercises the change because the morph regression and the anti-aliasing regression are both purely visual and produce no error, no log line and no failing test.",
+   "effort": "S",
+   "risk": "If parity fails at max zoom the decision is taste-based — escalate with the two screenshots rather than deciding alone. If the morph appears, the fix is the missing CATransaction wrapper, then re-record.",
+   "brand_perf_check": "FLAG TEST N/A — verification only. Brand gate 'the board is sacred' is exactly what this step defends.",
+   "depends_on": [
+    "W8-04"
+   ]
+  },
+  {
+   "id": "W8-06",
+   "title": "iOS feedback module smoke: audio bundle resolution and haptics",
+   "what": "On the simulator and on a device if one exists, confirm ArrowsFeedbackModule.swift compiles and that all eleven clips (pop0..pop7, fail, win, star, enumerated at ArrowsFeedbackModule.swift:17-19) load from the resource bundle. Capture a video with sound of eight consecutive taps, and of mount/unmount cycling gameplay five times.",
+   "why": "ArrowsFeedbackModule.swift is uncommitted-modified for the whoosh.wav -> pop0..pop7 change and has never been compiled since. `feedbackResourceBundle()` looks for a bundle named ArrowsFeedback inside `Bundle(for: ArrowsFeedbackModule.self)` and then `Bundle.main`, matching `s.resource_bundles = { 'ArrowsFeedback' => ['Resources/*.wav'] }` in modules/arrows-feedback/ios/ArrowsFeedback.podspec — a lookup that silently returns nil and degrades to no sound. There is no safety net: package.json excludes expo-audio and expo-haptics from apple autolinking, and src/ui/feedback.ios.ts only falls back to feedbackFallback when ArrowsFeedback is entirely absent, not when it is present but silent.",
+   "files": [
+    "modules/arrows-feedback/ios/ArrowsFeedbackModule.swift",
+    "modules/arrows-feedback/ios/ArrowsFeedback.podspec",
+    "modules/arrows-feedback/ios/Resources/pop0.wav .. pop7.wav",
+    "src/ui/feedback.ios.ts"
+   ],
+   "acceptance": [
+    "Eight consecutive arrow taps produce eight audible pops with rising pitch, audible in the captured video.",
+    "fail, win and star each produce their clip at the corresponding game beat.",
+    "On a physical device, a haptic is felt for pop, fail and win (simulator cannot verify haptics — mark UNVERIFIED until a device exists).",
+    "Mounting and unmounting gameplay five times (prepare/release) leaves audio still working on the fifth mount, with no growth in the process's audio memory across the five cycles."
+   ],
+   "verification": "A screen recording with the simulator's audio captured, plus a device video for haptics. Audio bundle resolution cannot be verified by compilation — a nil bundle produces a silently muted game with no error, which is precisely the failure this step is looking for.",
+   "effort": "S",
+   "risk": "If the resource bundle does not resolve on iOS, the fix is in the podspec's resource_bundles path or in feedbackResourceBundle()'s search order, both local to modules/arrows-feedback/ios/. Haptics remain UNVERIFIED without hardware.",
+   "brand_perf_check": "FLAG TEST N/A — audio and haptics only, no rendering node added.",
+   "depends_on": [
+    "W8-01"
+   ]
+  },
+  {
+   "id": "W8-07",
+   "title": "Build iOS perf measurement infrastructure, or explicitly downgrade the claim",
+   "what": "Port scripts/perf/android/ArrowsWorkload.java (265 lines) and scripts/perf/android/soak-plan.ts (126 lines) to an XCUITest target driving the same tap/pan/pinch sequence at the same level indices, and drive it under `xcrun xctrace record --template 'Animation Hitches'`, parsing the export the way scripts/perf/android/parse-gfxinfo.mjs parses gfxinfo. If this is judged too expensive, take the alternative in the risk field instead — do not silently substitute a hand-played soak while still reporting percentiles.",
+   "why": "There is no iOS verification infrastructure of any kind: no XCUITest target, no simulator harness, no port of the Android driver, and jest is node-env with .test.ts only. Without a driver, every iOS perf claim reduces to a human tapping and an impression. This project has been burned four times in one session by percentiles quoted over an unverified sample count.",
+   "files": [
+    "ios/ (new XCUITest target — must be added via a config plugin or an eas/xcodebuild step, because /ios is gitignored and regenerated)",
+    "scripts/perf/ios/ (new)",
+    "scripts/perf/android/ArrowsWorkload.java (reference)",
+    "scripts/perf/android/soak-plan.ts (reference)"
+   ],
+   "acceptance": [
+    "The xctrace export's frame count reconciles with `window_seconds x display_refresh_hz` to within 5%, and that reconciliation is printed immediately next to every percentile in the report. A percentile without its reconciliation is not accepted.",
+    "The soak visits the same level indices as scripts/perf/android/soak-plan.ts, verified by the level indices appearing in both reports.",
+    "Two consecutive runs of the same build give p95 values within 15% of each other; if they do not, the harness is not yet a measuring instrument and the number must not be quoted.",
+    "A config-matrix self-check: running with EXPO_PUBLIC_PERF_EMPTY_BOARD=1 measures faster than with the board mounted. If it measures slower, park the result and audit the harness before publishing any number."
+   ],
+   "verification": "Run the harness twice on an unchanged build and publish both runs with their frame-count reconciliations. Repeatability across two runs on identical code is what distinguishes an instrument from a coin toss; the empty-board inversion check is the standard config-matrix guard this project requires before quoting a benchmark.",
+   "effort": "L",
+   "risk": "Instruments automation is brittle across Xcode versions and the XCUITest target lives in the gitignored, prebuild-regenerated ios/ tree, so it must be injected by a config plugin or it will vanish on the next prebuild. HONEST ALTERNATIVE if the port is not worth the days: run the soak by hand, record it, and report the result as a bounded qualitative observation only — 'no visible stutter across a 20-level hand-played soak, recording attached' — and state in writing that no percentile exists for iOS. That is an acceptable outcome; a fabricated percentile is not.",
+   "brand_perf_check": "FLAG TEST N/A — instrumentation only, ships in no production build.",
+   "depends_on": [
+    "W8-04"
+   ]
+  },
+  {
+   "id": "W8-08",
+   "title": "Physical-iPhone perf run with gates re-derived per device (BLOCKED: no device exists)",
+   "what": "Run the W8-07 soak on a physical iPhone, on the oldest model to be supported. Before the run, derive the frame gates from that device's own reported refresh rate and from the trace's timing resolution, and write them down; do NOT copy Android's numbers. Record the result next to the Android numbers in docs/performance-optimization-knowledge-base.html.",
+   "why": "docs/IOS_BOARD_PLAN.md's gate A2 copies Android's 'p95 <= 20 ms, p99 <= 34 ms, hitch ratio <= 10%'. Those are 60 Hz budgets and they do not transfer: an iPhone 16 Pro is 120 Hz (8.33 ms frame) and ios/Arrows/Info.plist sets `CADisableMinimumFrameDurationOnPhone` = true, so the app opts into the full high-refresh range — a 20 ms p95 there is 2.4 frame periods, i.e. a gate so lax it would pass a visibly stuttering build. Instruments' hitch ratio (ms of hitch per second) is also not the same quantity as Android gfxinfo's jank percentage, so 10% is not a translatable figure. Separately, every perf number this project owns comes from ONE API 31 Android emulator; no physical device on any platform has ever been measured, and the 2026-09-08 A/B could not evaluate absolute gates at all because the host Mac was loaded.",
+   "files": [
+    "docs/performance-optimization-knowledge-base.html",
+    "docs/IOS_BOARD_PLAN.md",
+    "scripts/perf/ios/"
+   ],
+   "acceptance": [
+    "NEEDS MEASUREMENT FIRST — the numeric gates cannot be written until a device is chosen. Write them as: p95 <= 1 frame period and p99 <= 2 frame periods at the device's actually reported refresh rate, with that refresh rate printed in the report.",
+    "Any reported shortfall larger than the trace's own timing resolution is reported; any shortfall smaller than that resolution is reported as 'within instrument resolution', not as a failure.",
+    "Footprint trend across a 20-level soak is reported as an absolute MB figure with the measurement window stated. The inherited '<= 10 MB' leak gate in docs/IOS_BOARD_PLAN.md A5 is unsourced — replace it with the measured trend plus a judgement, or with a threshold derived from the W8-03 baseline."
+   ],
+   "verification": "xctrace export from a physical iPhone, with the device model, iOS version, thermal state and refresh rate recorded. A device run is required because the simulator executes on the Mac's CPU and GPU and therefore measures the wrong hardware entirely — a simulator perf number for this change is not evidence.",
+   "effort": "M once a device exists",
+   "risk": "UNVERIFIABLE with today's tooling: no physical iPhone is available to this project. Closing this requires buying or borrowing one — see the escalation. Until then, all iOS perf claims stay tagged UNVERIFIED and iOS must not be described as perf-validated in any release note.",
+   "brand_perf_check": "FLAG TEST N/A — measurement only.",
+   "depends_on": [
+    "W8-07"
+   ]
+  },
+  {
+   "id": "W8-09",
+   "title": "ATT, SKAdNetwork and a truthful privacy manifest — all through a config plugin",
+   "what": "Add expo-tracking-transparency at the SDK 57 pinned version. Add `ios.infoPlist.NSUserTrackingUsageDescription` to app.json. Write plugins/withIosAds.js (mirroring the MARKER-guarded idempotency of plugins/withLevelPlay.js) that injects the SKAdNetworkItems array from IronSource's published identifier list into Info.plist AND rewrites ios/Arrows/PrivacyInfo.xcprivacy to set NSPrivacyTracking = true, list the ad SDK's tracking domains, and declare the collected data types. Call requestTrackingPermissionsAsync at a contextual moment — after the player has completed at least one level, never at first launch — and pass the outcome to LevelPlay before init in src/ui/ads.tsx.",
+   "why": "EXECUTED, `grep` of ios/Podfile.lock: IronSourceSDK 9.4.0.0 and unity-levelplay-mediation 9.2.0 ARE already in the iOS Pods, so the ad SDK is linked into any iOS build today. EXECUTED, `cat ios/Arrows/Info.plist`: no NSUserTrackingUsageDescription and no SKAdNetworkItems, so IDFA is permanently unavailable and mediated networks cannot attribute installs. Worse, EXECUTED `cat ios/Arrows/PrivacyInfo.xcprivacy`: it declares `NSPrivacyTracking = false` with an EMPTY `NSPrivacyCollectedDataTypes` while an ad SDK is linked — a false privacy declaration and a direct App Review / App Store Connect rejection path. READ: plugins/withLevelPlay.js uses `withAppBuildGradle` only and has no iOS counterpart, so nothing injects any of this. AND THE TRAP: EXECUTED `git check-ignore -v ios` -> `.gitignore:40:/ios`. Every hand edit to Info.plist or PrivacyInfo.xcprivacy is destroyed by the next `expo prebuild`. This MUST go through app.json and a config plugin or it will silently vanish.",
+   "files": [
+    "app.json",
+    "plugins/withIosAds.js (new)",
+    "src/ui/ads.tsx",
+    "package.json"
+   ],
+   "acceptance": [
+    "After `npx expo prebuild -p ios --clean`, `plutil -p ios/Arrows/Info.plist` shows NSUserTrackingUsageDescription and a non-empty SKAdNetworkItems array, and `plutil -p ios/Arrows/PrivacyInfo.xcprivacy` shows NSPrivacyTracking = true with a non-empty NSPrivacyCollectedDataTypes.",
+    "Running prebuild twice from clean produces byte-identical Info.plist and PrivacyInfo.xcprivacy — the plugin is idempotent, the same guarantee plugins/withLevelPlay.js's MARKER provides on Android.",
+    "In a simulator recording, the ATT prompt does not appear during first launch and does appear after the first completed level.",
+    "The declared privacy manifest matches what the app actually does: a third party comparing the manifest against the linked pods (ios/Podfile.lock) finds no linked ad SDK undeclared."
+   ],
+   "verification": "`plutil -p` on the files regenerated by a clean prebuild, run twice, plus a simulator recording of first launch through the first level completion. Reading the checked-in source is NOT sufficient evidence here — the whole failure mode is that the generated tree diverges from the source of truth, so the generated tree is what must be inspected.",
+   "effort": "M",
+   "risk": "The ATT usage string is user-facing and a rejected string costs an App Review round trip. Apple's SKAdNetwork identifier list for IronSource changes over time and a stale list quietly costs attribution — date the list in a comment and name where it came from. Ships as part of the iOS-only tranche; no Android behaviour changes (assert this with `git diff` showing no Android file touched).",
+   "brand_perf_check": "FLAG TEST N/A — no rendering change. Brand: the ATT prompt is a system modal placed after a completed level so it does not interrupt the board; 'flow over menus' is respected by not gating first launch.",
+   "depends_on": [
+    "W8-01"
+   ]
+  },
+  {
+   "id": "W8-10",
+   "title": "Per-platform LevelPlay app key and ad unit ids",
+   "what": "src/ui/ads.tsx:32-34 hardcodes `APP_KEY = '27012eed5'`, `INTERSTITIAL_AD_UNIT = 'tme2lh9p1pkvk1bl'` and `REWARDED_AD_UNIT = 'smim4g4z79173hcw'` with no platform switch. Wrap all three in `Platform.select({ android: ..., ios: ... })` and register a separate iOS app entry in the LevelPlay dashboard under bundle id com.danteb.arrows.",
+   "why": "LevelPlay issues a distinct app key and distinct ad unit ids per platform app entry. Using the Android key on iOS fails init, and initAds() is called once and never retried (audit finding) — so the failure drops the app into the simulated TEST AD modal at src/ui/ads.tsx:94, which is compiled into and mounted in production builds. An iOS release would ship showing fake ads to real players.",
+   "files": [
+    "src/ui/ads.tsx"
+   ],
+   "acceptance": [
+    "On an iOS dev build, the console logs '[ads] LevelPlay init success' (already logged under __DEV__ in initAds), and a test interstitial and a test rewarded ad both display real LevelPlay creatives, confirmed by a screen recording.",
+    "`grep -n \"27012eed5\" src/ui/ads.tsx` shows that key still selected for the android branch only.",
+    "On iOS, no view with the text 'TEST AD' is ever mounted in a production configuration — verified by playing to an interstitial in a Release build."
+   ],
+   "verification": "A screen recording of an iOS build reaching a real LevelPlay creative, plus the __DEV__ init log. The recording is required because a wrong key produces a plausible-looking ad — the simulated fallback — rather than an error.",
+   "effort": "S",
+   "risk": "If the iOS LevelPlay app entry is not yet created, init fails and the fallback masks it. Add a visible-in-dev assertion that the TEST AD modal is never reached when Constants.executionEnvironment is not storeClient.",
+   "brand_perf_check": "FLAG TEST N/A — no rendering change.",
+   "depends_on": [
+    "W8-09"
+   ]
+  },
+  {
+   "id": "W8-11",
+   "title": "Decide iPad support, then either drop it or verify it",
+   "what": "Pick (a) set `ios.supportsTablet: false` in app.json for the first iOS release, or (b) keep it and produce the mandatory 13-inch iPad screenshot set plus a layout pass covering iPad landscape. See the escalation for the recommendation.",
+   "why": "EXECUTED, `cat app.json`: `ios.supportsTablet` is true, which makes a 13-inch iPad screenshot set mandatory at submission. EXECUTED, `cat ios/Arrows/Info.plist`: `UISupportedInterfaceOrientations~ipad` contains BOTH landscape orientations even though app.json declares `orientation: \"portrait\"` — so an iPad build ships landscape-capable and App Review will exercise it. The app has never been run on iPad in any orientation. The audit already records that on a 19.5:9 phone the square board fills only ~41% of screen height; on a 4:3 iPad in landscape that ratio changes again and is completely unverified.",
+   "files": [
+    "app.json",
+    "src/ui/BoardView.tsx",
+    "src/ui/GameScreen.tsx",
+    "store/ (screenshot set)"
+   ],
+   "acceptance": [
+    "For (a): after a clean prebuild, `plutil -p ios/Arrows/Info.plist` no longer contains `UISupportedInterfaceOrientations~ipad`, and the App Store Connect submission form does not request iPad screenshots.",
+    "For (b): screenshots on the iPad Pro 13-inch (M4) simulator in portrait and in both landscape orientations showing the full board with no clipped header, no control glyph overlapping the board, and every tap target at least 44x44 pt. Falsifiable by a third party measuring the screenshots."
+   ],
+   "verification": "For (a), `plutil -p` on the regenerated Info.plist after a clean prebuild — the point is that this is a generated file and only the regenerated copy proves the config took. For (b), simulator screenshots; EXECUTED `xcrun simctl list devices available` confirms iPad Pro 13-inch (M4) and iPad Air 13-inch (M2) simulators are installed, so the mandatory screenshot set is producible today without hardware.",
+   "effort": "S for (a), L for (b)",
+   "risk": "Choosing (b) adds an untested landscape layout to App Review's path and an ongoing second layout to maintain for every future UI workstream. Choosing (a) forecloses iPad revenue, which for a calm puzzle game is not negligible — hence the escalation rather than a unilateral decision.",
+   "brand_perf_check": "FLAG TEST N/A. Brand: an iPad landscape layout would be the first place the 'board is sacred' gate meets a 4:3 screen; do not invent a layout — escalate with a screenshot.",
+   "depends_on": [
+    "W8-05"
+   ]
+  },
+  {
+   "id": "W8-12",
+   "title": "App Store Connect and EAS iOS pipeline",
+   "what": "Add ios blocks to eas.json's development/preview/production profiles and a `submit.production.ios` entry; add `ios.buildNumber` handling consistent with `appVersionSource: \"remote\"`; add `ios.infoPlist.ITSAppUsesNonExemptEncryption: false` to app.json; run `eas init` to write `extra.eas.projectId` into app.json. Extend RELEASE.md with the iOS half of the release procedure.",
+   "why": "EXECUTED, `cat eas.json`: there is no ios block in any build profile and no ios submit profile — only android. EXECUTED, `cat app.json`: no `extra.eas.projectId` despite eas.json setting `appVersionSource: \"remote\"`, which is an existing latent problem for Android too (RELEASE.md step 1 says to run `eas init` and commit the change; it has not been done). EXECUTED, `cat ios/Arrows/Info.plist`: no ITSAppUsesNonExemptEncryption, so every single upload stops on the export-compliance question.",
+   "files": [
+    "eas.json",
+    "app.json",
+    "RELEASE.md"
+   ],
+   "acceptance": [
+    "`eas build -p ios --profile production` produces a signed .ipa.",
+    "`eas submit -p ios --profile production` reaches TestFlight processing without an interactive export-compliance prompt.",
+    "After a clean prebuild, `plutil -p ios/Arrows/Info.plist` contains ITSAppUsesNonExemptEncryption = false.",
+    "`app.json` contains `extra.eas.projectId` and the Android production build still succeeds after the change (regression check — appVersionSource: remote affects both platforms)."
+   ],
+   "verification": "An actual `eas build -p ios` and `eas submit -p ios` reaching TestFlight, with the build id recorded. Nothing short of a real submission exercises the signing, provisioning and export-compliance path; a local xcodebuild does not.",
+   "effort": "M",
+   "risk": "Apple Developer Program enrolment ($99/yr) is a hard prerequisite and can take days to clear. Adding `extra.eas.projectId` touches the shared app.json and could disturb Android versionCode handling — re-run an Android production build before merging.",
+   "depends_on": [
+    "W8-09",
+    "W8-11"
+   ]
+  },
+  {
+   "id": "W8-13",
+   "title": "iOS inherits the consent solution — ATT is not GDPR consent",
+   "what": "Whatever CMP the compliance workstream selects for Android must be wired into the iOS path in the same change, and LevelPlay's setConsent must be called on both platforms from a single shared code path in src/ui/ads.tsx. Do not build an iOS-only consent flow.",
+   "why": "Audit finding: LevelPlay's setConsent is never called anywhere, there is no GDPR flow, no CCPA signal, no COPPA flag and no Google UMP, on either platform. ATT is an Apple tracking-transparency requirement and is not a lawful basis under GDPR, so shipping W8-09 does not close this. Shipping a second store with the same gap doubles the regulatory exposure for one owner.",
+   "files": [
+    "src/ui/ads.tsx"
+   ],
+   "acceptance": [
+    "A single consent code path in src/ui/ads.tsx is exercised by both platforms — `grep` shows setConsent called once, not once per platform.",
+    "On iOS, the consent decision is obtained before LevelPlay.init and passed to it, verified by ordering in a __DEV__ log trace.",
+    "No numeric target is invented here; the acceptance criteria for the CMP itself belong to the compliance workstream."
+   ],
+   "verification": "A __DEV__ log trace on an iOS build showing consent resolution strictly before the LevelPlay init call, plus the same trace on Android showing the same code path. Ordering is the failure mode — a consent call after init is a no-op that looks correct in a diff.",
+   "effort": "Sized by the compliance workstream, not here — the iOS wiring on top of an existing Android CMP is S",
+   "risk": "If iOS ships before the CMP exists, the exposure is doubled rather than added to. This is a reason to sequence iOS after the compliance workstream, not merely alongside it.",
+   "depends_on": [
+    "W8-09"
+   ]
+  },
+  {
+   "id": "W8-14",
+   "title": "Document the iOS/Android cloud-save asymmetry (documentation only, no code)",
+   "what": "Record in project memory and in RELEASE.md that Android Auto Backup is already on (allowBackup=\"true\" with no fullBackupContent or dataExtractionRules declared), so the eight SaveSystem int keys are already being backed up unconfigured and undeclared, while iOS has no equivalent. State that a player reinstalling on iOS loses progress where an Android player may not, and that cross-platform progress transfer does not exist.",
+   "why": "An iOS launch creates a support surface ('I lost my streak') that does not exist today, and a meta/persistence workstream needs to know the two platforms already differ before it designs anything on top of SaveSystem.",
+   "files": [
+    "RELEASE.md",
+    "project memory"
+   ],
+   "acceptance": [
+    "The asymmetry is written down with the specific manifest attribute named.",
+    "PERSISTED-STATE NOTE, explicit: this entire W8 workstream changes NO persisted state. PersistenceKeys in SaveSystem is untouched and its Object.freeze assertion in src/ui/__tests__/storage.test.ts:36 still passes unchanged. There is no migration and no wipe risk from W8. Any future iOS cloud save would be a new workstream with its own migration note, and the store is int-only (getInt/setInt/deleteKey), so it would require widening the store interface and the boot hydrate contract."
+   ],
+   "verification": "`npm test` shows src/ui/__tests__/storage.test.ts still passing with no change to its expected key list — this is the assertion that would fail if anyone in this workstream had touched persisted state, so a green run of that specific test is the evidence that the no-migration claim holds.",
+   "effort": "S",
+   "risk": "None — documentation only.",
+   "depends_on": []
+  }
+ ],
+ "escalations": [
+  {
+   "question": "When should iOS be sequenced against the other workstreams — now, next, or after the Android retention work?",
+   "options": "(A) Ship iOS now, in parallel with the Android product work. (B) Do the cheap 'keep it buildable' tranche now (W8-01..W8-08), defer the ship tranche (W8-09..W8-14) until the Android retention workstreams have landed and shown a D1/D7 worth duplicating. (C) Defer all of W8, touch nothing iOS.",
+   "recommendation": "(B). Reasoning, in order of weight. First, the Monument Valley 73%-of-revenue-from-iOS argument is a PREMIUM argument, and Arrows is ad-monetised: on iOS without ATT consent the IDFA is unavailable and mediated eCPM is gutted, so the structural iOS advantage does not transfer to this business model as it stands. Second, iOS is not 'port one file' — it is an unverified renderer plus ZERO verification infrastructure (no XCUITest, no harness, no device) plus a second full compliance surface (ATT, SKAdNetwork, a privacy manifest that is currently FALSE, iPad, App Review, a second LevelPlay app entry), and after it ships every subsequent workstream costs roughly double. Third, and decisive: the Android product is not yet good. Difficulty is flat forever, FTUE is absent, the reduce-motion bug deletes the game's only explanation of its core rule, and there is no daily content. Shipping a second platform multiplies a weak product instead of fixing it. Fourth, the counter-argument for doing something now: the native board view rots with every protocol change, the person with the context has it now, and a Swift file that has never compiled is a liability that gets more expensive the longer it sits — the 2026-09-01 attempt already failed on disk space and nothing has been learned since. Doing W8-01..W8-06 (roughly 2-3 days) removes that decay for good and is the only part with a time cost for waiting. W8-07/W8-08 can wait for a device.",
+   "why_it_cannot_be_decided_here": "It is a portfolio allocation call on a solo developer's finite time, and it trades a measurable near-term cost against an unmeasured revenue hypothesis. The owner knows their available hours and their appetite for a second store."
+  },
+  {
+   "question": "If iOS ships, does it ship ad-supported (like Android) or as a premium/paid calm-puzzle SKU?",
+   "options": "(A) Ad-supported, mirroring Android, with ATT. (B) Premium paid, no ads, iOS-only positioning. (C) Free with a single 'remove ads' IAP, on both platforms.",
+   "recommendation": "(C), and if forced to choose between (A) and (B), (A). Premium on iOS with zero marketing spend and no existing audience is close to zero downloads — Monument Valley's $14.38M came with a design award and press, not with a solo procedural title competing against a Miniclip-owned incumbent with 100M+ downloads. The Block Blast evidence (roughly 15M DAU at roughly $1M/day on ads, lifetime IAP of only about $66k) argues against rushing an IAP ladder and for tuning ad placement. A single remove-ads IAP is the cheapest thing that captures the willingness-to-pay a calm ad-light game actually generates, and it works on both stores rather than forking the product. Note this changes W8 materially: option (B) would delete W8-09 and W8-10 entirely and make iOS much cheaper to ship.",
+   "why_it_cannot_be_decided_here": "It is a pricing and positioning decision that determines whether half of this workstream exists at all, and it depends on the owner's revenue goal and tolerance for ads in a product positioned as calm."
+  },
+  {
+   "question": "Buy or borrow a physical iPhone before the iOS ship tranche?",
+   "options": "(A) Buy a used iPhone SE 3rd gen or iPhone 11 (the oldest realistic supported hardware) before W8-08. (B) Borrow one for a day. (C) Ship with simulator-only verification.",
+   "recommendation": "(A). The simulator executes on the Mac's CPU and GPU, so a simulator perf number for a rendering change measures the wrong hardware entirely — it is not weak evidence, it is the wrong measurement. This project's entire perf record is already from ONE API 31 Android emulator with no physical device on any platform, and the 2026-09-08 A/B could not evaluate absolute gates because the host Mac was loaded. Buying one 60 Hz device also retires that gap for Android-adjacent claims. (C) is acceptable only if every iOS perf statement is explicitly tagged UNVERIFIED in the release notes and no percentile is ever quoted; (B) is not enough because a leak gate and a 20-level soak need repeated access.",
+   "why_it_cannot_be_decided_here": "It is a spending decision."
+  },
+  {
+   "question": "iPad: drop support for the first iOS release, or support it properly?",
+   "options": "(A) Set ios.supportsTablet: false for v1. (B) Keep it and do the 13-inch screenshot set plus an iPad landscape layout pass.",
+   "recommendation": "(A) for the first release. app.json currently says supportsTablet: true and the generated Info.plist already declares BOTH iPad landscape orientations despite app.json's orientation: 'portrait', so the app would ship landscape-capable on a layout that has never once been run on an iPad. That is an App Review risk and a permanent second layout to maintain for every future UI workstream. Revisit iPad after the iPhone release has data. If the owner prefers (B), the iPad Pro 13-inch (M4) simulator is already installed so the screenshots are producible without hardware — but the landscape layout for a square board on a 4:3 screen is a taste call that must come back as a screenshot for approval, not be invented by the implementer.",
+   "why_it_cannot_be_decided_here": "It forecloses a revenue segment and the landscape board layout is a taste-based design decision that the brand gate 'the board is sacred' does not resolve on its own."
+  }
+ ],
+ "open_verification_gaps": [
+  "No physical iPhone exists for this project. Every frame-timing, thermal, haptic and real-memory claim on iOS is UNVERIFIABLE with today's tooling. Closing it needs one device plus the W8-07 harness.",
+  "No iOS 26 simulator runtime is installed (EXECUTED: `xcrun simctl list devices available` shows only iOS 18.0 and 18.1). Xcode 26.6 with the iOS 26.5 SDK is installed, so Apple's iOS-26-SDK submission floor is satisfied for BUILDING, but runtime behaviour on iOS 26 is unverified.",
+  "docs/IOS_BOARD_PLAN.md's numbers are all unmeasured: the ~88 MB / ~122 MB backing-store table is arithmetic (bounds x scale x 4 bytes), gate A1's 16 MB / 20 MB thresholds derive from that arithmetic, and gate A5's '<= 10 MB over 20 levels' leak allowance has no stated source. W8-03 must measure before any of them are quoted.",
+  "Gate A2's frame budgets ('p95 <= 20 ms, p99 <= 34 ms, hitch ratio <= 10%, same gates as Android') do not transfer to iOS. They are 60 Hz budgets; Info.plist sets CADisableMinimumFrameDurationOnPhone = true so a 120 Hz device runs at 8.33 ms per frame, and Instruments' hitch ratio is not the same quantity as Android gfxinfo jank. Gates must be re-derived per device in W8-08.",
+  "ArrowsBoardModule.swift's ExpoModulesCore View/Prop DSL has never been compiled. My standalone `swiftc -typecheck` covered ArrowsBoardView.swift only, against a stubbed ExpoView — it proves that file's body is type-clean and proves nothing about the module DSL or the app link.",
+  "The iOS dash direction (CAShapeLayer lineDashPhase sign convention vs Android DashPathEffect) is INFERRED FROM READING to match — patternSum is exactly one pattern period, so iOS's patternSum -> patternSum - totalLen is congruent to Android's 0 -> -totalLen — but it has never been observed running. W8-02 must observe it.",
+  "iOS approximates Android's exact per-frame travelled = k^2 * totalLen with cubic-bezier(0.11, 0, 0.5, 0). The two agree at the endpoints; mid-flight parity is unobserved.",
+  "The generated ios/ tree currently on disk may be stale relative to app.json — /ios is gitignored and there is no record of when it was last prebuilt. Nothing in it should be trusted as the source of truth; W8-01 starts from `expo prebuild --clean` for exactly this reason.",
+  "No component-render tests exist anywhere in this project (jest is node-env, .test.ts only, every .tsx is untested), so no automated check on either platform covers the board's rendering. iOS does not make this worse but does not get to lean on it either.",
+  "PERF_MODE boots straight into 'game', so splash and menu memory and frame cost are unmeasurable on iOS exactly as on Android.",
+  "Whether the LevelPlay iOS app entry exists in the dashboard under com.danteb.arrows is unknown to me — I only verified that src/ui/ads.tsx has one hardcoded key with no platform switch and that the IronSource pods are linked.",
+  "iOS haptics are entirely unverified (simulators do not produce haptics) and package.json excludes expo-haptics from apple autolinking, so ArrowsFeedbackModule.swift is the only implementation and it has never run."
+ ]
+}

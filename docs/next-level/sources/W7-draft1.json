@@ -1,0 +1,457 @@
+{
+ "workstream": "W7 — Monetisation, compliance and platform",
+ "goal": "A player in the EEA/UK is asked for ad consent before any ad SDK touches their device, can find the policy, consent re-prompt and support contact from a Settings sheet, never sees a fake \"TEST AD\" panel, and meets a listing on both stores that actually describes the game — while ad pacing stops resetting on every cold start.",
+ "non_goals": [
+  "Building an IAP ladder or any consumable/currency economy. Block Blast's ~$66k lifetime IAP against ~$1M/day ads (evidence brief) says placement tuning beats an SKU ladder at this stage; a single remove-ads SKU is escalated, not planned.",
+  "Adding an analytics or crash-reporting SDK. Every new SDK re-opens the Data safety form, the privacy policy vendor list and the consent scope. W7-12 gets its baseline from LevelPlay's own dashboard/impression data instead.",
+  "Shipping banner or native ad formats (the SDK exposes LevelPlayBannerAdView / LevelPlayNativeAdView). 'The board is sacred' in PRODUCT.md rules a persistent banner out of the game screen.",
+  "Making iOS shippable. W7-17 specifies only the ads/privacy prerequisites; the native board view compile is the iOS workstream's (docs/IOS_BOARD_PLAN.md).",
+  "Changing the reward economy (hint / +1 heart continue). Rewarded is the retention-positive format already in use; W7 does not touch its placement.",
+  "Server-side anything: no remote config, no cloud save, no backend. Every step here is client + store console only."
+ ],
+ "steps": [
+  {
+   "id": "W7-01",
+   "title": "Consent state module + LevelPlay privacy API wiring (CMP-agnostic half)",
+   "what": "Add /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts exporting a small, UI-free consent state: `type ConsentState = { gdprApplies: boolean; personalisedAds: boolean; ccpaOptOut: boolean; resolved: boolean }`, a `loadConsent()`/`saveConsent()` pair backed by SaveSystem ints (see the migration note in RISK), and `applyConsentToAdSdk(state)` which calls, in this order, `LevelPlayPrivacySettings.setCOPPA(false)`, `LevelPlayPrivacySettings.setCCPA(state.ccpaOptOut)`, and `LevelPlay.setConsent(state.personalisedAds)` — all three exist in node_modules/unity-levelplay-mediation/lib/typescript/src/models/LevelPlayPrivacySettings.d.ts and .../src/LevelPlay.d.ts:36 and are today never called anywhere in the repo (grep -rn 'setConsent|GDPR|CCPA|COPPA' src/ returns 0 hits). Then restructure src/ui/ads.tsx:154 `initAds()`: it must take a resolved ConsentState as an argument, call applyConsentToAdSdk BEFORE `LevelPlay.init(request, …)` at src/ui/ads.tsx:174, and return early without initialising at all when GDPR applies and the user refused. App.tsx:35 currently fires `initAds()` unconditionally inside the boot effect — change it to await the consent gate (W7-02) first.",
+   "why": "Legal exposure, not optimisation. app.json declares com.google.android.gms.permission.AD_ID and plugins/withLevelPlay.js injects play-services-appset / play-services-ads-identifier / play-services-basement, so the shipped binary reads advertising and app-set identifiers with no lawful basis captured anywhere. Unity's own LevelPlay docs state the privacy APIs should be set before SDK init (6.14.0+) and that consent must be obtained before initialising the ad SDK — https://docs.unity.com/en-us/grow/levelplay/sdk/react/regulation-advanced-settings and https://docs.unity.com/en-us/grow/levelplay/platform/legal-resources/ironsource-gdpr-compliance (read 2026-09-09).",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ads.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/App.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/consent.test.ts"
+   ],
+   "acceptance": [
+    "With consent refused, `LevelPlay.init` is never called: a release-candidate build with a temporary `console.log` at each privacy call plus `adb logcat` over a full cold start shows the three privacy calls and NO '[ads] LevelPlay init success' line, and no interstitial or rewarded ad is ever shown in that session (the rewarded button reports failure and the lose panel still offers Retry — the existing degrade path at src/ui/ads.tsx:297).",
+    "With consent granted, logcat shows setCOPPA → setCCPA → setConsent all emitted BEFORE the '[ads] LevelPlay init success' line, in that order, on the same cold start.",
+    "Consent survives a cold start: after granting, force-stop and relaunch; logcat shows the same three calls with the same values and no consent UI.",
+    "A unit test in src/ui/__tests__/consent.test.ts asserts loadConsent() returns resolved:false on a virgin int store and returns the saved triple after saveConsent(), using the existing MemoryStore path in src/core/saveSystem.ts."
+   ],
+   "verification": "`npx eas build -p android --profile preview` → install the APK on a physical Android device (NOT the emulator: the perf emulator has no Play Services ad stack) → `adb logcat -c` → cold start → drive one clear and one loss → `adb logcat | grep -E '\\[ads\\]|\\[consent\\]'`. This exercises the original failure directly because the failure IS 'the SDK initialises and reads the ad ID without any consent call ever executing' — the log ordering on a real cold start is the only artifact that shows the call order the SDK actually saw. Jest cannot close this: the native module does not exist under ts-jest/node, which is exactly why the bug survived to now.",
+   "effort": "M",
+   "risk": "If the consent gate throws or hangs, ads never initialise and rewarded hints/continues silently stop working. Ship behind an exported `CONSENT_GATE_ENABLED` constant in src/ui/consent.ts, default ON but flippable in one line, and wrap applyConsentToAdSdk in the same try/catch style already used in src/ui/ads.tsx:242 so a privacy-API rejection degrades to 'no ads' rather than a crash. PERSISTED-STATE MIGRATION NOTE: three new int keys — arrows_consent_resolved, arrows_consent_personalised, arrows_consent_ccpa — packed as 0/1 ints, so the INT-ONLY store interface (getInt/setInt/deleteKey in src/core/saveSystem.ts) does NOT need widening. They MUST be appended to the frozen PersistenceKeys array in src/core/saveSystem.ts or they will never hydrate (src/ui/storage.ts hydrates exactly SaveSystem.persistenceKeys via multiGet), and the exact-array assertion at src/ui/__tests__/storage.test.ts:36-46 will fail until updated. Wipe risk: NONE — purely additive, absent keys read as the getInt default (0 = unresolved = show the consent flow), and SaveSystem.resetProgress() must NOT delete them (consent is not progress).",
+   "brand_perf_check": "FLAG TEST: no arrow is animated, nothing is pulled from the static layer, no Skia node added — not a motion change at all. PASS. Brand gates: none touched (no UI in this step).",
+   "depends_on": [],
+   "verdict_note": null
+  },
+  {
+   "id": "W7-02",
+   "title": "Consent UI: integrate a Google-certified CMP (decision escalated in W7-E1)",
+   "what": "Add the actual consent screen behind the state module from W7-01. Recommended path: add Google's User Messaging Platform via a CMP module, call its gather-consent flow once at boot from App.tsx (after fonts/save hydrate, before initAds), and map its result into ConsentState. LevelPlay 7.7.0+ automatically consumes GDPR consent from Google UMP and registered CMPs supporting Google Additional Consent (https://docs.unity.com/en-us/grow/levelplay/sdk/react/regulation-advanced-settings), and this repo runs unity-levelplay-mediation 9.2.0 / IronSourceSDK 9.4.0.0 (package.json, node_modules/unity-levelplay-mediation/unity-levelplay-mediation.podspec) — so the explicit setConsent from W7-01 becomes belt-and-braces rather than the only channel. The consent form must NOT be a full-screen branded takeover of our own design: a CMP form is the CMP's UI. Our only owned surface is the re-prompt entry point in Settings (W7-04).",
+   "why": "Legal exposure. GDPR/UK-GDPR require consent before an ad SDK reads device identifiers, and Google requires a Google-certified CMP integrated with IAB TCF for serving Google demand to EEA/UK/CH users (https://support.google.com/admanager/answer/13554116, https://support.google.com/adsense/answer/13554116). This binds hard the moment W7-13 adds an AdMob adapter; until then GDPR still binds for the ironSource/Unity demand source itself.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/App.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/package.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json"
+   ],
+   "acceptance": [
+    "GATE 0 (do this first, it can kill the whole approach): the chosen CMP module compiles and runs on Expo SDK 57 / RN 0.86.3 with newArchEnabled=true (android/gradle.properties) — evidenced by a successful `npx expo prebuild --clean && npx expo run:android --variant release` and the app reaching the menu. Its RN 0.86 / new-architecture support is UNVERIFIED as of 2026-09-09 and must be established before any other work in this step.",
+    "On a test device forced to EEA geography via the CMP's debug-geography setting, a consent form appears exactly once on first launch, before the menu is interactive, and never again on subsequent cold starts.",
+    "Choosing 'reject all' in that form results in the W7-01 refusal path: no init, no ads, gameplay fully playable including Retry after a loss.",
+    "Outside EEA/UK (no debug geography), no form appears and ConsentState resolves with gdprApplies:false — the non-EEA player's flow from splash to Play is unchanged in tap count."
+   ],
+   "verification": "Physical Android device, release-variant build, CMP debug geography forced to EEA, `adb logcat -c` then cold start; capture (a) a device screenshot of the consent form, (b) the logcat ordering from W7-01, (c) a second cold start showing no form. Screenshot is required because this is a UI surface and this project has a scar from UI changes verified only by tsc. Forcing debug geography is what makes the EEA branch reachable from a non-EEA test device — without it the branch is untestable and any 'it works' claim is unfounded.",
+   "effort": "L",
+   "risk": "HIGH integration risk: a CMP module is a new native dependency on a project that pins an exact Expo/RN matrix, and one of the two candidate wrappers is a thin community package. Rollback = the CONSENT_GATE_ENABLED constant from W7-01 plus removing the dependency; because /android and /ios are gitignored (.gitignore 'generated native folders'), removal is a package.json + app.json plugin-list revert followed by prebuild, with no hand-edited native files to unwind. If GATE 0 fails, escalate W7-E1 rather than hand-rolling a consent dialog: a self-built dialog is not a Google-certified CMP and does not satisfy the AdMob requirement.",
+   "depends_on": [
+    "W7-01"
+   ],
+   "brand_perf_check": "FLAG TEST: no arrow animation, no static-layer exclusion, no Skia node. PASS. Brand gate CONFLICT, declared: PRODUCT.md 'Flow over menus — Open → Play → resume' is violated by any interstitial screen before the menu. This is a legally mandated exception, not a design choice; it is constrained to EEA/UK, once per install, and never appears on the board."
+  },
+  {
+   "id": "W7-03",
+   "title": "Stop shipping the simulated TEST AD modal to real players, and retry ad init",
+   "what": "Two defects in one file. (1) src/ui/ads.tsx:60 `AdHost` — the simulated 'TEST AD' countdown panel — is mounted unconditionally in production at App.tsx:85 (`{!PERF_MODE && <AdHost palette={p} />}`), and src/ui/ads.tsx:271/297 fall back to `showFakeAd()` whenever `nativeAvailable()` is false. `nativeAvailable()` is false not only in Expo Go/web but in ANY production build where the try/catch at src/ui/ads.tsx:242 ran (init failure, no fill on first load, no network at boot) — so a real Play user with a bad first connection is shown a panel reading 'TEST AD … A word from our sponsor … Real LevelPlay ads appear in a dev build.' Gate AdHost and the showFakeAd fallbacks on `__DEV__ || Platform.OS === 'web'` so the production binary can only ever show a real ad or nothing. (2) src/ui/ads.tsx:154 `initAds()` is called exactly once (App.tsx:35) and never retried, so a transient failure disables ads for the whole install-session: add bounded retry (the file already uses the 15 s `setTimeout` retry idiom for loadAd at src/ui/ads.tsx:190) and re-attempt on the first AppState 'active' transition (grep AppState across src/ = 0 hits today).",
+   "why": "Player-trust and store-quality exposure plus direct revenue loss: the fallback path silently substitutes a fake ad for a real impression, and the rewarded fake even grants the reward for free (showFakeAd resolves true on 'Claim'), so a player who loses network gets unlimited free hints/continues while the app shows them placeholder copy meant for developers.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ads.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/App.tsx"
+   ],
+   "acceptance": [
+    "In a release-variant build with airplane mode ON from before launch, tapping the hint button shows NO panel of any kind, the hint is not granted, and the game remains playable (verified by device screenshot of the board with the hint untriggered).",
+    "In a release-variant build with airplane mode ON, finishing two levels and tapping 'Next level' advances immediately with no panel (the src/ui/ads.tsx:269 pacing check must not consume the counter — see W7-11).",
+    "Grepping the release JS bundle (`npx expo export --platform android` then grep the bundle) for the string 'TEST AD' returns zero matches.",
+    "Re-enabling network and backgrounding/foregrounding the app once results in a later successful init: logcat shows '[ads] LevelPlay init success' after the AppState resume."
+   ],
+   "verification": "Release-variant build on a physical device: (a) `grep -c 'TEST AD' dist/_expo/static/js/android/*.hbc` or the exported bundle → 0; (b) airplane-mode run with device screenshots at the hint tap and the Next-level tap; (c) logcat across an airplane-mode→online→background→foreground cycle showing the retry firing. The bundle grep exercises the original failure (the modal is COMPILED INTO production) at the artifact level rather than by reading the diff; the airplane-mode run reproduces the exact condition — nativeAvailable() false in a production binary — that makes the fake path reachable.",
+   "effort": "S",
+   "risk": "Removing the fallback means QA loses its ad-flow test path on web/Expo Go — that is why the gate keeps it under __DEV__ and web rather than deleting it. AppState retry could re-init the SDK twice if the guard is sloppy; guard with a module-level `initInFlight`/`initDone` pair. Rollback: single-constant revert; no persisted state touched.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: no arrow animation, no static-layer change, no new Skia node (AdHost is a plain RN View overlay). PASS. Brand gate: removing a fake 'sponsor' panel moves toward PRODUCT.md's anti-reference 'busy hyper-casual ad-game UI … fake buttons'."
+  },
+  {
+   "id": "W7-04",
+   "title": "Settings sheet — the missing surface for policy, consent re-prompt and support",
+   "what": "Add /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/SettingsSheet.tsx, opened from one new HeaderButton in the HomeScreen top-right cluster (src/ui/HomeScreen.tsx:62-66 currently holds only theme '☾' and sound '♪'), never from GameScreen's header (src/ui/GameScreen.tsx header block). Contents, all of which currently have nowhere to live: Privacy policy (opens the hosted URL via RN's built-in `Linking.openURL` — grep shows zero Linking usage in src/ today, and expo-web-browser is not a dependency, so use Linking and add no dependency), 'Ad privacy choices' re-prompt calling back into W7-01/W7-02, Support e-mail (mailto:, matching the address in store/privacy-policy.md), app version + build number from expo-constants (already a dependency), Restore purchases placeholder only if W7-E4 is ever answered yes, and a Reset progress control wired to the existing SaveSystem.resetProgress() with a confirm step. Sound and theme toggles stay where they are on the Home screen.",
+   "why": "Google Play requires a reachable privacy policy and (with a CMP) a persistent way to change consent; Apple requires an in-app support path. The audit found no settings surface anywhere in src/ui/ — so today there is no place to put any of the four.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/SettingsSheet.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/HomeScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/HeaderButton.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts"
+   ],
+   "acceptance": [
+    "The sheet is reachable in exactly one tap from the menu and zero taps from the board (the board's header gains no button) — evidenced by device screenshots of the menu and of the mid-level board.",
+    "Every row's tap target is ≥44×44 pt (HeaderButton's default size=36 is below that; the sheet's rows must be sized explicitly, and the new header button uses size=44 like the existing HomeScreen ones at src/ui/HomeScreen.tsx:63-64).",
+    "'Privacy policy' opens the hosted policy URL in the system browser on a physical device (screenshot of the loaded page).",
+    "'Ad privacy choices' re-opens the CMP form on a device in EEA debug geography and the new choice is persisted across a cold start (logcat shows the new setConsent value on the next launch).",
+    "Every label and value in the sheet reaches ≥4.5:1 against p.surface in both Daylight and Ink Night (computed with the same contrast check used for the palette audit; PRODUCT.md Accessibility)."
+   ],
+   "verification": "Physical device, release-variant build: screenshots of (menu with the new button) / (open sheet, both themes) / (browser showing the policy) / (CMP form re-opened), plus a logcat line proving the re-prompt's new consent value survives a cold start. Screenshots are mandatory closing evidence because this is a new visual surface.",
+   "effort": "M",
+   "risk": "A settings entry point is the classic place brand drift starts. Constrain it: no new glyph families — the existing raw-character convention (src/ui/HeaderButton.tsx renders a Text label) stays until the icon workstream lands. Rollback: the sheet is additive and mounts only from HomeScreen; deleting the button removes the surface with no persisted state left behind (nothing new is persisted here).",
+   "depends_on": [
+    "W7-01"
+   ],
+   "brand_perf_check": "FLAG TEST: sheet is a plain RN overlay on the menu screen; it animates no arrow, excludes nothing from the static layer, adds no Skia feedback node (the 4-node ceiling is untouched), and the board is not mounted on the menu at all. PASS. Brand gate: PRODUCT.md 'Flow over menus' — mitigated by keeping the sheet off the game screen and out of the Play path; it is a destination, not a step."
+  },
+  {
+   "id": "W7-05",
+   "title": "Rewrite the privacy policy and make it single-source",
+   "what": "The policy exists twice — /Users/gentlegen/Desktop/Projects/arrows-game/store/privacy-policy.md and /Users/gentlegen/Desktop/Projects/arrows-game/docs/privacy-policy.html — byte-divergent copies of the same July 17 2026 text that will drift. Make the .md canonical, generate the .html from it in scripts/ (the repo already has this generate-from-source habit: scripts/generate-store-assets.js), and add the missing sections: GDPR lawful basis (consent for ads, legitimate interest for on-device state), the data-subject rights list with the contact route, a CCPA/CPRA 'Do Not Sell or Share My Personal Information' statement pointing at the Settings re-prompt from W7-04, a retention statement, the NAMED list of ad networks in the waterfall (today exactly one: ironSource/Unity — update it in the same PR as W7-13, never after), ATT language for iOS (gated with W7-17), and an age statement consistent with the Play 'target audience' answer chosen in W7-07. Also fix RELEASE.md, which points the reader at store/fallback/ for a feature-graphic fallback — that directory does not exist (`ls store` = feature-graphic.png, marketing/, playstore-icon-512.png, privacy-policy.md).",
+   "why": "Legal exposure. The current text asserts the app 'is not directed at children under 13' with no age screening anywhere in src/, names no legal basis, gives no rights or retention statement, and lists no CCPA opt-out — while the binary ships AD_ID plus the appset/ads-identifier dependencies from plugins/withLevelPlay.js.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/privacy-policy.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/privacy-policy.html",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/generate-privacy-policy.js",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md"
+   ],
+   "acceptance": [
+    "`node scripts/generate-privacy-policy.js && git diff --exit-code docs/privacy-policy.html` exits 0 — the HTML is provably generated from the .md, so the two cannot silently diverge again.",
+    "The rendered policy contains all of: a named lawful basis per purpose, the rights list, a retention statement, an explicit CCPA opt-out route naming the in-app Settings path, the named vendor list matching exactly the adapters present in the build audited in W7-06, and a 'last updated' date later than 2026-07-17.",
+    "The children/age wording is identical in meaning to the Play Console 'Target audience and content' answer recorded in W7-07 (checked side by side, both pasted into docs/data-safety.md).",
+    "The hosted URL returns the new text: `curl -sS <policy URL> | grep -c 'Do Not Sell'` ≥ 1."
+   ],
+   "verification": "Run the generator and the git diff check; then `curl -sSI` + `curl -sS | grep` against the live hosted URL after publishing (RELEASE.md step 2 hosts /docs via GitHub Pages). Curling the live URL is what closes it, because the Play Console and the app both link the hosted copy, not the repo file — a correct repo file with a stale hosted page is the actual exposure.",
+   "effort": "S",
+   "risk": "Legal text drafted by engineers. This is the one step where the owner should have the final text reviewed by someone qualified — flagged in W7-E2. No code risk; no rollback needed beyond a revert.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: no runtime code changes at all. PASS. Brand gates: none (documents only)."
+  },
+  {
+   "id": "W7-06",
+   "title": "Reconcile the Play Data safety form against what the binary actually does",
+   "what": "Produce /Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md holding (a) the exact Data safety answers, (b) the evidence for each answer taken from the built artifact, not from config. Evidence to collect from a production .aab: the merged AndroidManifest (permissions actually present — today android/app/src/main/AndroidManifest.xml shows com.google.android.gms.permission.AD_ID, INTERNET, VIBRATE), the manifest-merger report, and the resolved dependency list showing what plugins/withLevelPlay.js injected (play-services-appset:16.0.2, play-services-ads-identifier:18.0.1, play-services-basement:18.3.0) plus every ironSource/Unity adapter pulled transitively. Then correct RELEASE.md's Data safety section, which currently pre-answers the form from memory of the SDK rather than from the binary.",
+   "why": "Play now cross-checks the Data safety declaration against the binary; a mismatch between a declared 'no location' and an SDK that derives coarse location from IP, or an undeclared identifier library, is an enforcement item — legal/listing exposure, not optimisation.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/plugins/withLevelPlay.js"
+   ],
+   "acceptance": [
+    "docs/data-safety.md contains the literal output of `aapt2 dump permissions <app>.aab`-equivalent (or `bundletool dump manifest`) and of `./gradlew :app:dependencies --configuration releaseRuntimeClasspath`, both dated, both from the same build that was uploaded.",
+    "Every data type declared 'collected' in the form is traceable to a named dependency or permission in that output, and every ads/identifier dependency in that output is covered by a declared data type — the mapping is written out line by line, no unmapped entries in either direction.",
+    "The vendor list in the privacy policy (W7-05) equals the adapter list in that dependency dump."
+   ],
+   "verification": "Build the production bundle (`npx eas build -p android --profile production`), download the .aab, run `bundletool dump manifest` and the Gradle dependency report against the same commit, and paste both into docs/data-safety.md. This reads the artifact rather than app.json/withLevelPlay.js — the project scar is 'verified config instead of the built runtime', and Play's cross-check is against the artifact too.",
+   "effort": "S",
+   "risk": "None to runtime. The risk is doing it from source rather than the artifact, which reproduces the exact failure mode this step exists to prevent.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: documentation and build inspection only, no runtime code. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-07",
+   "title": "Make the age story consistent across binary, policy and console",
+   "what": "Decide once and record: target audience 13+ (RELEASE.md already recommends this to avoid the families programme). Then make three artefacts agree — `LevelPlayPrivacySettings.setCOPPA(false)` in src/ui/consent.ts from W7-01, the children paragraph in store/privacy-policy.md from W7-05, and the Play 'Target audience and content' + content-rating questionnaire answers, recorded in docs/data-safety.md. If the owner instead wants under-13 reach, the whole ad stack changes (COPPA true, no AD_ID, families-policy-compliant ad SDK) — that is a different product, escalated in W7-E3 rather than planned here.",
+   "why": "The current policy asserts non-direction at under-13s with no age screening and no COPPA flag set anywhere in code; the three surfaces are currently unlinked and can drift apart at any release.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/privacy-policy.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md"
+   ],
+   "acceptance": [
+    "logcat from the W7-01 device run shows setCOPPA(false) on every cold start where consent is resolved.",
+    "docs/data-safety.md contains the console answers verbatim next to the policy paragraph and the code call, all three stating the same age posture.",
+    "No age-gate UI is added (13+ target audience does not require one), and this is stated explicitly in docs/data-safety.md so a future reader does not 'fix' it."
+   ],
+   "verification": "The same physical-device logcat capture as W7-01 (grep setCOPPA), plus a side-by-side paste in docs/data-safety.md. The logcat line is what proves the flag reaches the SDK; the console answers cannot be verified from the repo at all and are owner-attested with a dated screenshot of the console page.",
+   "effort": "S",
+   "risk": "Declaring 13+ while the store listing art or copy reads as child-directed invites a Play review reclassification. Have W7-15's copy reviewed against this decision.",
+   "depends_on": [
+    "W7-01",
+    "W7-05"
+   ],
+   "brand_perf_check": "FLAG TEST: no motion. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-08",
+   "title": "Prove target API 36 from the uploaded artifact, not from the toolchain default",
+   "what": "Play requires target API 36 by 2026-08-31 (already past). android/app/build.gradle:94 reads `targetSdkVersion rootProject.ext.targetSdkVersion`, which comes from Expo's root-project plugin, and node_modules/expo-modules-core/android/ExpoModulesCorePlugin.gradle:69 defaults it to 36 — and a previous local build's lint model (node_modules/expo/android/build/intermediates/.../release.xml) records targetSdkVersion=\"36.0\". That is a strong inference, not proof about the bundle you upload. Confirm from the artifact and, if it ever disagrees, pin it explicitly via the existing expo-build-properties block in app.json.",
+   "why": "A missed target-API bar blocks the upload outright — a shipping blocker whose cost of checking is minutes.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/android/app/build.gradle",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md"
+   ],
+   "acceptance": [
+    "`bundletool dump manifest --bundle=<production .aab> | grep targetSdkVersion` prints 36 (or higher), and the output is pasted into docs/data-safety.md with the build id and date."
+   ],
+   "verification": "bundletool against the exact .aab produced by the production EAS profile. This reads the shipped artifact; the gradle line and node_modules default are config, and this project's memory records 'verified config instead of runtime value' as a repeat failure.",
+   "effort": "S",
+   "risk": "None. If it reads below 36, add `android.targetSdkVersion: 36` to the expo-build-properties entry in app.json and re-verify the same way.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: no motion, no runtime code. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-09",
+   "title": "Store-account declarations: DSA trader status and the console-side compliance set",
+   "what": "Non-code, owner-only, but a listing-removal condition on both stores: complete the EU DSA trader/non-trader declaration in Play Console and App Store Connect, the Play 'Ads' declaration (yes, contains ads), the content-rating questionnaire, target audience (from W7-07), the account-level contact details, and the data-deletion answer (no accounts → device-local, matching W7-05's retention statement). Record what was answered, and when, in docs/data-safety.md so the next release is a diff rather than a re-derivation.",
+   "why": "Legal/listing exposure, and the only item on this list that can remove an already-live listing without touching the binary.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md"
+   ],
+   "acceptance": [
+    "docs/data-safety.md contains, for each declaration, the answer given and the date, with a dated console screenshot filed alongside.",
+    "The declared trader status is consistent between Play and App Store Connect (relevant now for Play; recorded now so the iOS submission inherits it)."
+   ],
+   "verification": "Dated screenshots of each console page, filed in the repo or the owner's records; nothing in this step is verifiable from the codebase, and the brief says so rather than pretending otherwise.",
+   "effort": "S",
+   "risk": "Answering 'non-trader' while monetising can itself be a misdeclaration. This is a legal-status question about the owner, not a technical one — W7-E2 covers getting it reviewed.",
+   "depends_on": [
+    "W7-07"
+   ],
+   "brand_perf_check": "FLAG TEST: no code. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-10",
+   "title": "Link the EAS project (app.json has no extra.eas.projectId while eas.json sets appVersionSource: remote)",
+   "what": "eas.json line 3-4 sets `\"appVersionSource\": \"remote\"` and the production profile sets `autoIncrement: true`, but app.json has no `extra.eas.projectId` — so the remote version source has no project to read from and any non-interactive build will stop to prompt or fail. Run `eas init`, commit the app.json change (RELEASE.md step 1 already describes this but it was never done), and record the resulting versionCode source of truth: Play currently shows versionCode 6 (app.json android.versionCode: 6, commit bb63913 'release: versionCode 6') while remote autoIncrement will take over the numbering — reconcile these two before the next upload or the build will produce a versionCode Play rejects as already used.",
+   "why": "Platform/release blocker; also the exact mismatch that produces a mysterious duplicate-versionCode rejection at upload time.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/eas.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md"
+   ],
+   "acceptance": [
+    "`npx eas-cli project:info` prints a project id matching app.json's extra.eas.projectId.",
+    "A production build started non-interactively (`npx eas-cli build -p android --profile production --non-interactive`) reaches the queued state without prompting.",
+    "The versionCode of the produced .aab is > 6 (read with bundletool dump manifest), and that number is recorded in RELEASE.md as the new source of truth."
+   ],
+   "verification": "The two CLI commands plus bundletool on the resulting artifact. The non-interactive build is the check that matters: it reproduces the CI/automation condition where a missing projectId actually bites, which an interactive build hides by prompting.",
+   "effort": "S",
+   "risk": "Remote version source takes numbering out of app.json; if someone later hand-edits android.versionCode it will be ignored, which is confusing. Note it in RELEASE.md at the same time.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: no motion, no runtime code. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-11",
+   "title": "Interstitial pacing: persist the counter, add a wall-clock cooldown, a session cap and a new-player grace",
+   "what": "src/ui/ads.tsx:255 `let finishedGames = 0` is a module-level in-memory counter, so it resets on every cold start; a player who leaves between levels — the session shape PRODUCT.md describes — effectively never sees an interstitial. Replace it with a small policy object in a new src/ui/adPolicy.ts exposing pure, unit-testable functions over an explicit input record `{ finishedGames, lastImpressionEpochSec, impressionsThisSession, totalSolved, nowEpochSec }` returning a boolean, so the decision is testable under the existing node-env ts-jest setup (jest.config.js testMatch is **/__tests__/**/*.test.ts). Wire four rules: (1) the every-N-finished-games counter, now persisted; (2) a wall-clock cooldown since the last impression; (3) a per-session impression cap; (4) a new-player grace keyed off the ALREADY-PERSISTED SaveSystem.totalSolved so no extra key is needed for it. Also fix the ordering bug this exposes: src/ui/ads.tsx:269 returns before checking readiness but src/ui/ads.tsx:274 resets the counter only on the native path, while the fake path at :288 resets unconditionally — after W7-03 removes the fake path from production, make the reset happen exactly once, only when an ad actually displayed.",
+   "why": "Revenue (the counter reset is lost inventory) AND retention: Li et al. KDD 2021 (14,615 vs 14,687 users) establishes that early-session friction dominates churn for players in their first days, which is what the grace period protects. The specific pacing numbers are NOT specified here — see RISK.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/adPolicy.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/adPolicy.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ads.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts"
+   ],
+   "acceptance": [
+    "Cold-start persistence, the original failure: finish one level, force-stop the app, relaunch, finish a second level — an interstitial is shown at the point the policy says it is due. Evidenced by logcat showing the policy inputs and the LevelPlay display callback across the two processes. Today this sequence shows nothing, ever.",
+    "The cooldown holds across a cold start too: immediately after an impression, force-stop, relaunch, and finish enough levels to satisfy the counter — no ad until the wall-clock cooldown has elapsed (verified by two runs, one inside and one outside the window, with the device clock untouched).",
+    "Unit tests in src/ui/__tests__/adPolicy.test.ts cover each rule independently plus the boundary at exactly the cooldown value and exactly the grace threshold, using injected `nowEpochSec` (no timer mocking, no Date.now in the pure function).",
+    "With W7-03 in place and no ad available, the counter is NOT consumed: two consecutive due-but-unfilled 'Next level' taps followed by a filled one still show exactly one ad."
+   ],
+   "verification": "Physical-device release build, logcat trace of the policy inputs/outputs across a force-stop boundary (`adb shell am force-stop com.danteb.arrows`), plus `npm test` for the pure policy. The device run across a force-stop is what exercises the original failing path — the whole defect is that process death resets the counter, which no unit test on the current in-memory variable can observe.",
+   "effort": "M",
+   "risk": "PERSISTED-STATE MIGRATION NOTE: two new int keys — arrows_ad_games_finished (small int) and arrows_ad_last_impression (epoch SECONDS; ~1.79e9 today, inside int32 until 2038, so the INT-ONLY store needs no widening). Both must be appended to the frozen PersistenceKeys in src/core/saveSystem.ts or they never hydrate (src/ui/storage.ts multiGets exactly that array), and the exact-array assertion at src/ui/__tests__/storage.test.ts:36-46 must be updated in the same commit. Wipe risk: NONE, additive; absent keys read 0, which the policy must treat as 'no impression yet' (not 'impression at epoch 0 → cooldown long expired' — that is the same behaviour here, but state it in a comment so a later signed-diff change does not invert it). SaveSystem.resetProgress() should NOT clear the ad keys — a progress reset must not become a way to farm ad-free play. NUMBERS: the cooldown, session cap and grace threshold are NOT specified in this brief because no measurement exists to derive them — this project has been burned 6+ times by unmeasured targets. Ship them as named constants in src/ui/adPolicy.ts with values set by the owner as an explicit product decision (W7-E5), and tune only after W7-12 provides a baseline. Rollback: the policy module is pure and the call site is one function; reverting to the old behaviour is a one-line change, and the persisted keys can stay (harmless).",
+   "depends_on": [
+    "W7-03"
+   ],
+   "brand_perf_check": "FLAG TEST: no arrow is animated, nothing leaves the static layer, no Skia node added — the change is entirely in ad scheduling, and the interstitial is a native full-screen surface outside the React tree. PASS. Brand gate: 'no timers' in PRODUCT.md refers to gameplay timers; a wall-clock ad cooldown is invisible to the player and adds no on-screen countdown."
+  },
+  {
+   "id": "W7-12",
+   "title": "Establish an ad baseline from LevelPlay's own data before tuning anything",
+   "what": "Before changing any pacing value, capture a ≥7-day baseline from the LevelPlay dashboard for the live build: impressions/DAU, ARPDAU, rewarded fill and completion rate, and interstitial show-rate per placement, plus D1/D7 retention if the dashboard exposes it. Where dashboard granularity is insufficient, the SDK already exposes LevelPlayImpressionData (node_modules/unity-levelplay-mediation/lib/typescript/src/models/LevelPlayImpressionData.d.ts) — impression-level revenue data available WITHOUT adding an analytics SDK. Record the baseline in a dated docs/ad-baseline-<date>.md the way docs/perf-tap-forgiveness-ab-2026-09-08.md records perf runs, including the sample size (sessions and days) next to every rate.",
+   "why": "Every pacing number in W7-11 and every claim about a placement change is otherwise an invented threshold. This project's memory lists unmeasured targets in briefs as a 6×-repeated failure; this step is the measurement that a later tuning brief must cite.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/ad-baseline-2026-XX-XX.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ads.tsx"
+   ],
+   "acceptance": [
+    "The baseline document states, for each metric, the value, the date range, and the number of sessions/users it was computed over — a rate quoted without its denominator does not count.",
+    "Interstitial show-rate is reconciled against expectation: (interstitials shown) vs (levels finished × the policy's expected rate). A gap here is the direct measurement of the W7-11 cold-start defect and should shrink after it ships.",
+    "No new third-party SDK appears in the dependency dump from W7-06 as a result of this step."
+   ],
+   "verification": "Dashboard exports (CSV) filed with the document, plus — if impression-level data is used — a logcat capture showing the impression callback firing on a device. The reconciliation line is the honesty gate: this project's memory records four separate occasions where a percentile was quoted over an unverified sample count.",
+   "effort": "S",
+   "risk": "The dashboard's own attribution windows can make two metrics disagree; note discrepancies rather than picking the flattering number. No runtime risk if impression data is only logged in __DEV__.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: no motion; optional listener registration only. PASS. Brand gates: none."
+  },
+  {
+   "id": "W7-13",
+   "title": "Give the waterfall more than one demand source (revenue; drags compliance behind it)",
+   "what": "Today 'mediation' has exactly one demand source: the ironSource/Unity SDK itself — node_modules/unity-levelplay-mediation ships no third-party adapters and plugins/withLevelPlay.js injects only play-services-appset / ads-identifier / basement, no adapter artifacts. Adding networks is two-sided: (a) LevelPlay dashboard — enable the networks and set floors; (b) binary — add each adapter's Android dependency through a new config plugin alongside plugins/withLevelPlay.js (NOT by editing android/, which is gitignored and regenerated by prebuild), and each adapter's Pod for iOS later. Every adapter added also expands: the privacy-policy vendor list (W7-05), the Data safety mapping (W7-06), and — if AdMob is among them — makes a Google-certified TCF CMP a hard requirement rather than a recommendation (https://support.google.com/admanager/answer/13554116).",
+   "why": "A single-source 'waterfall' has no competition, so eCPM is whatever one network offers. This is the highest-leverage revenue item that does not touch the player experience at all.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/plugins/withLevelPlayAdapters.js",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/privacy-policy.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/data-safety.md"
+   ],
+   "acceptance": [
+    "`./gradlew :app:dependencies --configuration releaseRuntimeClasspath` on a fresh prebuild lists each intended adapter artifact — proving the config plugin actually injected them, since /android is regenerated and hand edits vanish.",
+    "The LevelPlay Test Suite (already reachable via the unwired `launchAdTestSuite()` at src/ui/ads.tsx:230 — wire it to a __DEV__-only affordance) reports every enabled network as integrated on a physical device; screenshot filed.",
+    "Post-launch, a ≥7-day window compared against the W7-12 baseline reports eCPM and ARPDAU with the impression count for each period stated next to it. Do not report a lift whose two periods have overlapping ranges or wildly different sample sizes.",
+    "The privacy policy vendor list and the Data safety mapping are updated in the SAME release as the adapters, not after."
+   ],
+   "verification": "Gradle dependency report on a clean prebuild + LevelPlay Test Suite screenshot on a device + the dashboard comparison with sample counts. The Test Suite is the network's own integration check, which is why it exercises the thing being changed; a green build only proves the artifacts resolved.",
+   "effort": "L",
+   "risk": "Each adapter is native code with its own privacy behaviour, its own proguard needs (the app.json extraProguardRules block would need extending — it currently keeps com.ironsource.**, com.unity3d.** and the AdMob surface) and its own store-declaration consequences. Adding AdMob without a certified CMP in place first is a compliance regression, so this step MUST NOT ship before W7-02. Rollback: remove the plugin entry from app.json's plugins array, prebuild, rebuild — no hand-edited native state.",
+   "depends_on": [
+    "W7-02",
+    "W7-05",
+    "W7-06",
+    "W7-12"
+   ],
+   "brand_perf_check": "FLAG TEST: no motion. PASS. Brand gates: adapters must not introduce banner or in-board formats — full-screen interstitial and rewarded only, so 'the board is sacred' holds."
+  },
+  {
+   "id": "W7-14",
+   "title": "Play listing screenshots — there are none, and Play requires at least two",
+   "what": "Capture at least 4 portrait phone screenshots from a release-variant build on a physical device: the menu (wordmark + Play + stats line), a mid-level board on a recognisable silhouette (a Heart or Cat level — the audit lists Heart@162, Cat@168), a dense SuperHard board showing the fit-to-view advantage, and the win panel. Store them under store/screenshots/ with the device and build id in the filename, and add a short capture recipe to RELEASE.md. Do NOT use the PERF_MODE path for this: src/perfMode.ts boots straight into 'game' and disables persistence/ads, so the menu and win panel are unreachable there. The existing adb capture helper in scripts/perf/android/benchmark.mjs:1400-1410 (`adb -s <serial> exec-out screencap -p`) is the mechanism to reuse; drive the game by hand.",
+   "why": "Play will not publish a listing without ≥2 portrait screenshots and the repo has zero (store/ holds only feature-graphic.png, playstore-icon-512.png and marketing/ brand art). Play policy also expects screenshots to show real gameplay — the marketing/board-*.png renders are generated boards, safe as supporting art but not a substitute.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/screenshots/",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/perf/android/benchmark.mjs"
+   ],
+   "acceptance": [
+    "≥4 PNGs at the device's native portrait resolution, each showing real in-app pixels from a release-variant build (no mockup frames, no composited copy).",
+    "At least one shows a dense board where the whole board is visible in one screen — this is the review-evidenced advantage over the incumbent (their reviews complain they cannot see the whole board), so it should be the second screenshot in listing order.",
+    "Both themes are represented (Ink Night and Daylight), since the theme toggle is a differentiator and the listing should not imply a single look.",
+    "The capture recipe in RELEASE.md names the exact adb command and states that PERF_MODE must be OFF."
+   ],
+   "verification": "The PNG files themselves, plus `adb shell getprop ro.product.model` and the build id recorded in the filenames/README so a third party can tell which build produced them. Screenshots are the deliverable here, so the artifact is the evidence.",
+   "effort": "S",
+   "risk": "Screenshots taken from a debug build can show a dev overlay or the TEST AD panel — capture only after W7-03 has landed, from a release variant.",
+   "depends_on": [
+    "W7-03"
+   ],
+   "brand_perf_check": "FLAG TEST: no code change to motion. PASS. Brand gate: no confetti/glow compositing over the captures; PRODUCT.md's anti-references apply to store art as much as to the app."
+  },
+  {
+   "id": "W7-15",
+   "title": "Two listings, two copy sets — and a title that is not the word 'Arrows'",
+   "what": "Write store/listing/play.md and store/listing/apple.md (versioned in-repo, so listing changes are reviewable like code). Play indexes the title (30), the short description (80) and the FULL description (4000) for search, so the long description should carry the search-relevant vocabulary naturally. Apple indexes roughly the app name (30) + subtitle (30) + a 100-character keyword field ≈ 160 characters total and does NOT index the description at all — so the Apple copy must front-load in the name/subtitle/keywords what the Play copy can spend paragraphs on. Fix the title: the bare word 'Arrows' competes with every arrow app on both stores; RELEASE.md already anticipates 'Arrows: Ink Night' as the fallback. The three defensible claims from the audit — infinite procedurally generated levels (the incumbent is finite and handcrafted), the whole board always visible, a distinct night/ink identity — are the copy's spine.",
+   "why": "Discoverability is the cheapest growth lever available to a solo Android-only game, and the two stores' indexing models are different enough that one copy set cannot serve both.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/listing/play.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/listing/apple.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/RELEASE.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json"
+   ],
+   "acceptance": [
+    "Every field is inside its store's character limit, and each file states the limit next to the field with the character count — checked mechanically, e.g. `awk` over the file, not by eye.",
+    "The Play title is not the standalone word 'Arrows'; if the app.json `name` field changes, the change is reflected in app.json AND the Play Console listing AND the adaptive-icon label, and a device screenshot shows the launcher label.",
+    "No claim in either file contradicts the audit: the copy must NOT say 'find the order' or imply order-dependent puzzle-solving — the audit's 50 random-greedy playthroughs across 10 levels showed every board clears in exactly arrowCount taps with zero dead ends, so PRODUCT.md's 'the puzzle is finding the order' is false as implemented and must not become a store claim.",
+    "The age/audience posture in the copy matches W7-07."
+   ],
+   "verification": "Character-count check over the two files, a launcher screenshot if the app name changes, and a line-by-line pass against the audit's factual claims list. The false-claim check matters because a store description asserting a mechanic the build does not have is both a review risk and the source of one-star 'not what it said' reviews.",
+   "effort": "S",
+   "risk": "Changing app.json's `name` changes the launcher label and, if done carelessly, the Play listing identity. It does NOT change the package (com.danteb.arrows) so installs and the LevelPlay app registration are unaffected — state that explicitly in RELEASE.md so nobody re-registers the ad units.",
+   "depends_on": [
+    "W7-07"
+   ],
+   "brand_perf_check": "FLAG TEST: no motion. PASS. Brand gate: copy must read calm/minimal — no 'CRAZY FUN!!' hyper-casual register, which is PRODUCT.md's named anti-reference."
+  },
+  {
+   "id": "W7-16",
+   "title": "Settle icon and screenshot questions with the stores' free A/B surfaces, not taste",
+   "what": "Use Play Console's store-listing experiments (free, console-side, no code, splits real store traffic and reports install-rate with significance) to test: (a) the current Higgsfield feature-graphic/icon pair versus the script-composed alternative, (b) screenshot order — dense-board-first versus menu-first. Run one variable at a time. Apple's equivalent, Product Page Optimization (up to 3 treatments, free), is available only once an iOS app is live, so it is gated behind the iOS workstream. Record each experiment's hypothesis, dates, traffic and result in docs/listing-experiments.md.",
+   "why": "The evidence brief's brand/art questions (which icon, which screenshot leads) are taste-based, and the harness rule is to escalate taste rather than guess — except where the store hands you a free, real-traffic A/B that answers it with data.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/listing-experiments.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/store/"
+   ],
+   "acceptance": [
+    "Each experiment record states the hypothesis, the single variable changed, the start/end dates, the installs per arm, and the console's own significance verdict — a winner declared without the console's significance readout does not count.",
+    "A losing variant is recorded as a loss and not quietly re-run with a different framing.",
+    "No experiment runs concurrently with another listing change (a copy edit mid-experiment invalidates it) — the document records what else shipped in each window."
+   ],
+   "verification": "Console experiment result screenshots filed with the document. Nothing here is verifiable from the repo; the brief says so rather than implying a local check exists.",
+   "effort": "S",
+   "risk": "Play experiments need enough store traffic to reach significance; with low daily visitors an experiment may never conclude. Record 'inconclusive at N installs over D days' as the outcome rather than picking the higher number — this project's memory has a scar for percentiles quoted over unreconciled sample counts.",
+   "depends_on": [
+    "W7-14",
+    "W7-15"
+   ],
+   "brand_perf_check": "FLAG TEST: no code, no motion. PASS. Brand gate: any variant tested must still satisfy PRODUCT.md's anti-references; an experiment is not a licence to test a hyper-casual treatment."
+  },
+  {
+   "id": "W7-17",
+   "title": "iOS ads prerequisites (ATT, SKAdNetwork, and a currently-false privacy manifest) — ship with the iOS workstream",
+   "what": "Three concrete gaps, all needing config plugins because .gitignore lists /ios and /android under 'generated native folders' — hand edits to ios/ are erased by the next prebuild. (1) ios/Arrows/Info.plist has no NSUserTrackingUsageDescription and no SKAdNetworkItems array; both are required for an IronSource-linked build to serve and attribute ads on iOS. (2) ios/Arrows/PrivacyInfo.xcprivacy currently declares `NSPrivacyTracking = false` and an EMPTY `NSPrivacyCollectedDataTypes` array — untrue for a binary linking IronSourceSDK 9.4.0.0 plus IronSourceAdQualitySDK (both present in ios/Pods/), and Apple validates privacy manifests at submission. (3) The ATT prompt itself needs no new dependency: unity-levelplay-mediation exports ATTrackingManager with getTrackingAuthorizationStatus/requestTrackingAuthorization (node_modules/unity-levelplay-mediation/lib/typescript/src/utils/ATTrackingManager.d.ts) — so expo-tracking-transparency is NOT required. Wire the ATT request after the GDPR consent step from W7-02 and before initAds, and only on iOS.",
+   "why": "Without these the iOS build is rejected or serves unattributed ads at gutted eCPM. It is sequenced last because iOS is not shippable regardless — the native board view has not compiled since the 2026-09-01 exit protocol change (docs/IOS_BOARD_PLAN.md).",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/plugins/withAdsPrivacyIOS.js",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/app.json",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/consent.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ads.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/ios/Arrows/PrivacyInfo.xcprivacy",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/ios/Arrows/Info.plist"
+   ],
+   "acceptance": [
+    "After `npx expo prebuild --clean -p ios`, the REGENERATED ios/Arrows/Info.plist contains NSUserTrackingUsageDescription and a non-empty SKAdNetworkItems array, and PrivacyInfo.xcprivacy declares NSPrivacyTracking true with the collected data types matching the ad SDK — proving the config plugin owns these, not a hand edit that prebuild would erase.",
+    "On an iOS device/simulator running the built app, the ATT prompt appears exactly once, AFTER the GDPR step, and the returned status is logged; a denied status still leaves the game fully playable.",
+    "The SKAdNetworkItems list matches the ad networks actually enabled in the waterfall (W7-13) — a stale list is an attribution loss, not just cosmetic."
+   ],
+   "verification": "`npx expo prebuild --clean -p ios` followed by `plutil -p ios/Arrows/Info.plist | grep -E 'SKAdNetwork|NSUserTracking'` and `plutil -p ios/Arrows/PrivacyInfo.xcprivacy`, then an on-device/simulator run with a screenshot of the ATT prompt. The prebuild --clean is essential: it is the only check that proves the plugin regenerates the values, which is exactly the failure mode a hand-edited ios/ would hide until the next CI build.",
+   "effort": "M",
+   "risk": "UNVERIFIABLE with today's tooling in one respect: the iOS app cannot be built end-to-end until the native board view compiles (docs/IOS_BOARD_PLAN.md gates A1-A5, ≥20 GB free disk), so the ATT prompt and SKAdNetwork attribution cannot be observed on a real iOS build yet. Closing that needs the iOS workstream plus a Mac with the disk headroom and an Apple developer account. Do not mark this step done on a successful prebuild alone.",
+   "depends_on": [
+    "W7-02",
+    "W7-13"
+   ],
+   "brand_perf_check": "FLAG TEST: no arrow animated, no static-layer change, no Skia node. PASS. Brand gates: ATT is a system prompt; nothing of ours is drawn."
+  }
+ ],
+ "escalations": [
+  {
+   "question": "W7-E1: Which consent management platform do we integrate — Google's UMP through a React Native wrapper, or a different Google-certified CMP with an RN SDK?",
+   "options": "(a) Google UMP via react-native-google-mobile-ads (largest community, but a big dependency that also pulls the whole AdMob SDK, and its RN 0.86.3 / new-architecture support is UNVERIFIED as of 2026-09-09); (b) a UMP-only thin wrapper such as react-native-ad-consent or react-native-google-ump (much smaller surface, both also unverified against Expo SDK 57 / newArch, and lower maintenance confidence); (c) a commercial Google-certified CMP with an RN SDK (paid, but support and TCF 2.3 maintenance are someone else's problem); (d) do not serve ads at all in EEA/UK for now — geo-gate the SDK off and keep the rest of the world.",
+   "recommendation": "Start with (b) or (a) behind GATE 0 in W7-02 — build it on a branch, run `npx expo prebuild --clean && npx expo run:android --variant release`, and let the compile decide before any integration work. LevelPlay 7.7.0+ automatically consumes GDPR consent from Google UMP and registered CMPs, so a UMP-based choice gets the mediation-side plumbing for free; our own setConsent from W7-01 stays as a belt-and-braces channel either way. Option (d) is a legitimate temporary answer if the build gate fails and revenue from EEA is small — it is far better than shipping ads there without consent — but it needs the geo determination to come from the SDK/CMP, not from a locale guess.",
+   "why_it_cannot_be_decided_here": "It turns on facts I could not verify without building: whether any of these modules compile against Expo SDK 57 / RN 0.86.3 with newArchEnabled=true, and on the owner's willingness to pay for a commercial CMP."
+  },
+  {
+   "question": "W7-E2: Do we get the privacy policy, the Data safety answers and the DSA trader declaration reviewed by someone legally qualified before the next release?",
+   "options": "(a) yes, a one-off review of the three artefacts produced by W7-05/W7-06/W7-09; (b) no, publish the engineer-drafted text and accept the risk.",
+   "recommendation": "(a), scoped tightly to those three artefacts. These are the only items in W7 whose failure mode is regulatory or listing removal rather than lost revenue, and the review is one-off rather than ongoing. If the answer is (b), at minimum do not let the policy claim anything the binary contradicts — W7-06's artifact-derived mapping is what makes that check possible.",
+   "why_it_cannot_be_decided_here": "It is a legal-risk-appetite and budget decision about the owner's own trader status and liability, not a technical one."
+  },
+  {
+   "question": "W7-E3: Do we stay 13+ target audience, or pursue under-13 reach?",
+   "options": "(a) 13+ target audience, COPPA flag false, AD_ID retained, current ad stack unchanged; (b) under-13 or mixed audience — requires COPPA true, dropping the AD_ID permission, a families-policy-compliant ad configuration, and likely a different demand mix at much lower eCPM.",
+   "recommendation": "(a). RELEASE.md already assumes it, the current SDK stack is built for it, and (b) would invalidate W7-01, W7-05, W7-06 and W7-13 simultaneously. The calm night-time positioning in PRODUCT.md is not a children's-product positioning either.",
+   "why_it_cannot_be_decided_here": "It is a product-audience decision with a revenue consequence, and it changes which compliance regime the whole workstream targets."
+  },
+  {
+   "question": "W7-E4: Do we add a single remove-ads IAP, and if so when?",
+   "options": "(a) never; (b) after the W7-12 baseline exists and ad ARPDAU is known, so the SKU can be priced against measured lifetime ad value; (c) now, alongside the compliance work.",
+   "recommendation": "(b). Block Blast's ~15M DAU at ~$1M/day on ads against ~$66k LIFETIME IAP is strong evidence that placement tuning outranks an SKU ladder at this stage. It also adds real cost here: expo-in-app-purchases/RevenueCat is a new dependency, a new store configuration, a purchase-restore surface in the Settings sheet (W7-04 leaves a slot), and a persisted entitlement in an INT-ONLY store. Not (c) — it would compete for attention with items that can get the listing removed.",
+   "why_it_cannot_be_decided_here": "It is a monetisation-strategy decision, and its timing depends on a baseline that does not exist yet."
+  },
+  {
+   "question": "W7-E5: What initial values do the interstitial cooldown, per-session cap and new-player grace take?",
+   "options": "Any set of three numbers; e.g. a cooldown in minutes, a cap of N impressions per session, and a grace of the first N levels solved (readable from the already-persisted SaveSystem.totalSolved).",
+   "recommendation": "Set them as an explicit, owner-chosen starting policy — recorded as such in src/ui/adPolicy.ts comments — and treat W7-12's baseline plus a post-change comparison as the thing that justifies any later value. I deliberately do NOT propose numbers: no measurement in this repo supports one, and this project's memory records six-plus occasions where an unmeasured threshold in a brief produced an unreachable or nonsensical target. The one directional constraint the evidence does support is that the grace should be generous for brand-new players (Li et al. KDD 2021: too-hard/high-friction early experience carries ~3× the churn hazard of too-easy for players in their first days).",
+   "why_it_cannot_be_decided_here": "There is no live measurement to derive the values from, and the trade-off between revenue and early-session friction is the owner's call."
+  }
+ ],
+ "open_verification_gaps": [
+  "W7-02's CMP module compatibility with Expo SDK 57 / RN 0.86.3 / newArchEnabled=true is UNVERIFIED. My web search returned no compatibility statement for these versions. Closing it requires a branch build: `npx expo prebuild --clean && npx expo run:android --variant release`.",
+  "No physical Android device has ever been used on this project (all perf numbers are from one API 31 emulator, per project memory). Every ad/consent acceptance criterion in W7-01, W7-02, W7-03 and W7-11 requires a real device with Play Services — the emulator's ad stack is not equivalent, and the perf harness sets animator_duration_scale=0 which is not a normal runtime. UNVERIFIABLE until a device is available.",
+  "Whether LevelPlay 9.2 requires the privacy calls strictly before init, or merely recommends it: Unity's docs state 'set the API before initializing' as best practice for 6.14.0+ and require consent before initialising the SDK, but I have not seen a hard error path for the reverse ordering. W7-01 implements the strict ordering regardless; the residual unknown is only whether the looser ordering would also work.",
+  "Whether the current live listing already has screenshots and declarations that differ from the repo. I can read the repo (store/ has zero screenshots) but not the Play Console. W7-09 and W7-16 are owner-attested by dated console screenshots and cannot be closed from here.",
+  "Whether GitHub Pages is actually serving docs/privacy-policy.html at the URL RELEASE.md predicts. Unverified — W7-05's acceptance closes it with a curl against the live URL.",
+  "targetSdkVersion 36 is INFERRED, not proven for the shipped bundle: node_modules/expo-modules-core/android/ExpoModulesCorePlugin.gradle:69 defaults it to 36 and a stale local lint model records 36.0. W7-08 closes it with bundletool against the actual .aab.",
+  "The revenue effect of W7-11 and W7-13 cannot be predicted from anything in this repo. Both must be reported as before/after windows with impression counts, never as a projected lift.",
+  "iOS end-to-end verification of ATT and SKAdNetwork (W7-17) is blocked on the iOS board-view compile (docs/IOS_BOARD_PLAN.md) and needs a Mac with ≥20 GB free plus an Apple developer account. A successful prebuild is NOT sufficient evidence."
+ ]
+}

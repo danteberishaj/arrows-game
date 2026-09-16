@@ -1,0 +1,154 @@
+{
+ "lens": "Evidence auditor. I re-ran the plan's own measurement scripts against the live repo rather than reading its numbers. W3-02's entire baseline reproduces EXACTLY (level 0: Circle 20x20, 60 arrows, 31.7% clearable, scan 142, blocked 82; level 12 Bolt 46x37, 54 arrows, 55.6%, scan 79, blocked 25; level 168 Cat 37x37, 202 arrows, 19.3%, scan 779, blocked 577; band medians 162/182/176/184) — that step is genuinely measured and I credit it. The contrast ratios in the scratchpad script also reproduce. What does NOT survive is W3-04's first-level gate, which I measured as unreachable inside its own stated parameter range; the cross-workstream persistence-key arithmetic, which is mutually contradictory in four places; and roughly a dozen acceptance criteria whose pass condition is satisfied by a change that does nothing.",
+ "kills": [
+  {
+   "step_id": "W3-04",
+   "verdict": "REWORK",
+   "reason": "MEASURED CONTRADICTION, and the two halves are in the same paragraph. The step pins A_start to \"the 21-38 arrow range\" citing its own sensitivity table (12 rows = 21 arrows / 54.4% clearable / 9 blocked; 16 rows = 38 arrows / 38.3% / 32 blocked), then sets the acceptance gate \"Level 1 of v2 has probe blockedTaps <= 5 AND clearable at t=0 >= 45%\". I re-ran the probe on Circle/Square/Heart at rows 6-16 with 5 seeds each: at 21 arrows blocked = 8.8, at 38 arrows blocked = 32.3. blockedTaps <= 5 is first reached at roughly 10-16 arrows (Circle 8 rows: 10.2 arrows, 63.6% clearable, blocked 2.5; Circle 9-10 rows: ~16 arrows, blocked 5.0-5.5, borderline). So the gate is unreachable everywhere in the range the same step names — it forces a level 1 of ~10-16 arrows, half to a fifth of A_start. I attacked this: the gate is NOT mathematically impossible, because blocked = sum (n-k)/(k+1) falls to ~5 at 25 arrows if the clearable fraction is held near 80% throughout. But W3-04 changes only board SIZE, and W3-10 — the only clearable-fraction lever in the plan — explicitly forbids itself from touching level 1 (\"it is a late-curve lever only\"). Within the plan as written there is no mechanism that reaches the gate. This is the sixth-plus instance of the project's documented pattern.",
+   "replacement": "Do not write A_start, the blockedTaps gate or the clearable gate until the W3-02 probe has been run over a candidate sweep. Run the probe at rows 6-16 across the actual v2 shape bag, publish the arrows/clearable/blocked table, and set BOTH the arrow-count target and the blocked gate from the same row of that table so they cannot contradict. If the owner wants level 1 at ~25 arrows, the honest gate is blockedTaps <= 9, not <= 5. Also state the sample basis: my figures are 5 fill-seeds per size on 3 shapes."
+  },
+  {
+   "step_id": "W3-04",
+   "verdict": "GATE-ON-DECISION",
+   "reason": "SECOND, SEPARATE PROBLEM: tau is specified as \"fit numerically\" to two constraints, and the plan never checks the fit is feasible. It is (I solved it: with A_start~15, A_end=249, A(30)=83 arrows gives tau~87, which satisfies the <=136 implied by the level-400 constraint) — so I drop the objection that the constraints are inconsistent. What survives is the consequence nobody wrote down: with A_end capped at the measured 249 and saturation by level 400, the curve is FLAT from ~level 400 to 1000 by construction, which is the exact defect (\"difficulty is flat forever\") the workstream exists to fix, and the acceptance criterion \"monotone non-decreasing\" permits flat and will not catch it.",
+   "replacement": "Add an acceptance row stating the level at which the curve is within 5% of A_end and getting the owner's explicit yes that levels beyond it are deliberately flat at the perf ceiling — or raise A_end only after W3-09 measures a higher one."
+  },
+  {
+   "step_id": "W2-12",
+   "verdict": "CUT",
+   "reason": "The acceptance is a verification that cannot fail. \"The patched samples' ALL p95 range must not sit above the HEAD samples' range with non-overlapping ranges\" — the same step cites the 2026-09-08 record showing the SAME unchanged APK measuring 11.45 ms and 37.6 ms ALL p95 on different days, and the exit phase resolving nothing under ~15 ms. With that spread, ranges will overlap for essentially any change, so the criterion passes whether the ramp costs nothing or costs 20 ms. No minimum detectable effect is stated. The step also reopens a decision that was already settled by measurement (the 64 ms PRESS_PREVIEW_DELAY_MS gate exists because drawing the preview at touch-down cost enough to warrant it) and is ranked last by its own author.",
+   "replacement": "Cut it. If it must exist, it needs a stated minimum detectable effect derived from a same-session HEAD-vs-HEAD null run (>=5 samples each), and the acceptance must be \"the observed difference is below the null run's own spread\", not \"ranges overlap\"."
+  },
+  {
+   "step_id": "W6-02",
+   "verdict": "REWORK",
+   "reason": "Same defect class as W2-12, in the step that instruments the tap path. \"Not worse than the HEAD build by more than the run-to-run spread observed in the same session across at least two samples of each build\" — two samples cannot bound a spread. The acceptance is self-widening: the noisier the session, the larger the regression it permits. A real per-tap cost on a 250-arrow board would pass.",
+   "replacement": "Fix the sample floor (>=5 alternating pairs) and reconcile every quoted p95 against window x refresh rate as the step already demands elsewhere. State the minimum detectable effect BEFORE running, and if the session's null spread exceeds it, report UNEVALUABLE rather than PASS."
+  },
+  {
+   "step_id": "W1-07",
+   "verdict": "GATE-ON-DECISION",
+   "reason": "FTUE_STALL_HINT_MS is set to \"the p75 of at least 5 first-time-player sessions\". A p75 over n=5 is the 4th-largest sample — it is an order statistic with no meaningful confidence, and this project's memory records four separate occasions of quoting a percentile over an unverified sample count. Second problem: the acceptance is honest that the flag stays OFF below 5 sessions, but 5 recruited people who have never played Arrows is a real-world dependency a solo owner may simply not be able to meet, which means the step's default outcome is 'never closes'.",
+   "replacement": "Either (a) drop the percentile framing and set the constant as an explicitly owner-chosen value recorded as unmeasured, with the flag defaulting OFF and a note that it is revisited when telemetry exists; or (b) keep the playtest but report max and median of the raw samples with n printed, never a p75."
+  },
+  {
+   "step_id": "W4-04",
+   "verdict": "REWORK",
+   "reason": "The measurement cannot answer the question it is for. The step's purpose is to confirm the daily is \"first-session completable\" for a NEW player, and its own text says the playtest is \"the owner (or a recruited player)\" and carries the caveat \"the players are not new players\". A time-to-clear median from people who wrote the game measures the mechanical floor, which the step explicitly rejects as a method one paragraph earlier when it rules out an automated sweep for exactly that reason. It also ships an acceptance whose threshold X is 'the owner's call' — undefined at authoring time, so the step is not falsifiable as written.",
+   "replacement": "Rename the claim to what the data supports: 'expert time-to-clear', and state that first-session completability is UNVERIFIED until telemetry (W6) or a real new-player session exists. Fix X before the playtest runs, not after seeing the numbers."
+  },
+  {
+   "step_id": "W0-07",
+   "verdict": "REWORK",
+   "reason": "The 'SEVEN pairs fail' count is not reproducible from the artifact it names. I ran the contrast script that exists in the session scratchpad: it reports 5 distinct failing pairs in Daylight (inkDim/surface 4.43, accentLight/surface 3.01, heartLost/surface 1.21, heartLost/bg 1.40, border/surface 1.16) and 4 in Ink Night. It classifies accentLight-on-bg 3.49:1 as a PASS against its own large-text gate — W0-07 counts it as failure #3 by reclassifying 18px bold as body text, which is a defensible call but a RECLASSIFICATION, not a measurement, and the step presents it as measured. W0-07 also omits border/surface 1.16:1 entirely, which is the failure that makes the panel edge invisible — W5-02 catches it, W0-07 does not. The two lists (7 vs 6) are both different from the script's output and from each other.",
+   "replacement": "Ship scripts/contrast-audit.mjs FIRST, with the size-class of every pair as an input the script reads, then let the step's failure list be whatever the committed script prints. State the reclassification of the LEVEL label as a judgement call in the escalation, separately from the measured ratios."
+  },
+  {
+   "step_id": "W2-07",
+   "verdict": "REWORK",
+   "reason": "Threshold compared with no allowance for the instrument's resolution — the project's own red flag, fired twice before. The acceptance is 'a W2-01 capture contains at least one frame in which the arrow is displaced OPPOSITE its head direction', but the step never bounds the anticipation's DURATION and nothing in the plan measures adb screenrecord's actual frame period on the API 31 emulator under software GPU. If the recorder lands at ~30 fps and the anticipation phase is under ~33 ms, a correctly implemented anticipation produces zero qualifying frames and the step fails a good change. The related bound — 'the anticipation's magnitude is bounded relative to the peak by an explicit assertion' — never names the fraction.",
+   "replacement": "W2-01 must publish the recorder's measured frame period, and W2-07's anticipation duration must be specified as >= 2x that period before the capture criterion is armed. Name the magnitude bound as a number (a fraction of the ~0.22-cell peak) in the brief."
+  },
+  {
+   "step_id": "W5-07",
+   "verdict": "REWORK",
+   "reason": "The gate is set exactly at the modelled boundary with zero allowance for model error. Measured worst-case per-side slack is 111 dp on 360x780; the band height is capped at 96 dp; the assertion is 'min slack >= band height + 15 dp'. 111 - 96 = 15 exactly. So the acceptance is satisfied by construction, at zero margin, using numbers the step itself says come from a script that models RN's viewport rather than from a device — and the step separately admits 'only a capture proves RN's safe-area and header actually produce the modelled viewport'. Any real-device deviation of 1 dp fails it, or worse, a band overlaps an arrow.",
+   "replacement": "Measure the real onLayout viewport on the smallest target device FIRST (this is exactly W1-01's deliverable — cite it), then set the band height from the DEVICE number with a stated margin, not from the model with a margin that happens to equal the residual."
+  },
+  {
+   "step_id": "W8-04",
+   "verdict": "REWORK",
+   "reason": "Pre-writes its gates before the measurement that is supposed to produce them. W8-03 exists specifically to replace inherited arithmetic with measured numbers and says 'the gates in W8-04 are rewritten as fractions of these measured numbers'. W8-04 then arrives already carrying 'at most 20% of the W8-03 baseline delta' and 'at most 25% of the W8-03 largest region'. 20 and 25 are invented; nothing derives them. Expressing an invented constant as a fraction of a measured one does not make it measured.",
+   "replacement": "Leave both fractions blank in the brief. After W8-03 runs, derive the gate from what a CAShapeLayer path actually costs (path bytes + layer overhead) versus the measured bitmap, and write the resulting number with the calculation next to it."
+  },
+  {
+   "step_id": "W4-01",
+   "verdict": "REWORK",
+   "reason": "Arithmetic collision with three other workstreams over the same frozen array. Current PersistenceKeys length is 8 (verified). W1-03 asserts the array is 'exactly 9'; W3-01 asserts 'ten keys'; W4-01 asserts 'exactly 19 entries' with 'the first eight byte-identical'; W6-03 asserts 'the new 9-key list'; W0-06 adds a key without stating a length. Each was written as though it were the only one landing. At most one of these acceptance criteria can pass. Worse, W4-01 and W6-03 BOTH introduce arrows_schema_version and both claim to own the migration that stamps it.",
+   "replacement": "One step (earliest, probably W0-06) owns a key registry with a single append-only list and a single length assertion; every later step adds its keys to that registry and asserts DELTA (the array contains key X, is frozen, hydrates in one multiGet) rather than absolute length. Assign arrows_schema_version to exactly one workstream."
+  },
+  {
+   "step_id": "W6-06",
+   "verdict": "REWORK",
+   "reason": "Directly conflicts with W7-01 on the same file and the same API. W6-06 creates src/ui/adPrivacy.ts, says setConsent is @deprecated in favour of setGDPRConsents, and asserts 'grep across src/ returns exactly one file containing setCOPPA, setCCPA and setGDPRConsents: src/ui/adPrivacy.ts'. W7-01 creates src/ui/consent.ts calling 'LevelPlayPrivacySettings.setCOPPA(false), setCCPA(...), and LevelPlay.setConsent(...)'. If both ship, W6-06's grep assertion fails by construction and the app has two privacy seams — the exact thing both steps exist to prevent.",
+   "replacement": "Pick one file and one API surface. Given W6-06 read the typings and found setConsent deprecated, W7-01 should be rewritten to consume W6-06's seam rather than build a second one, or W6-06 should be cut and W7-01 own it entirely."
+  },
+  {
+   "step_id": "W2-11",
+   "verdict": "REWORK",
+   "reason": "Specifies a mechanism that W5-13 explicitly rejects, for the same interaction. W2-11 says lift W2-04's flat scrim to App.tsx and 'BE HONEST... it is a luminance ramp through a flat colour, not a true content cross-fade. A true cross-fade would require both palettes rendered simultaneously — two full trees — which is rejected on cost.' W5-13 then specifies exactly that: 'render the menu body twice (outgoing palette and incoming palette) stacked, fade between them... the menu is a small tree so double-rendering it for one transition is cheap.' Both cannot ship. Neither cites the other.",
+   "replacement": "Settle it once. W5-13's cost argument is actually the stronger one for the MENU specifically (no board mounted there), and W2-11's is right for the game screen — so the honest resolution is one scrim primitive with a menu-only double-render, written in one step, with the reasoning for the split stated."
+  },
+  {
+   "step_id": "W2-02",
+   "verdict": "REWORK",
+   "reason": "Its pre-fix baseline is destroyed by W0-03, which fixes the same six withTiming sites first. W2-02's acceptance reads 'On HEAD the same capture contains zero such frames' for the blocker flash under reduce motion — that is only true of today's HEAD, not of a HEAD that has W0-03 in it. As written, W2-02 will be closed against a baseline that already passes, which is the classic 'a green result that does not exercise the original failing path'. The two steps also disagree on scope (W0-03: six sites plus curve refactor; W2-02: all 27 sites plus a lint rule).",
+   "replacement": "Merge: W0-03 ships the three effects plus the curve-function refactor; W2-02 is reduced to 'give the REMAINING 21 call sites an explicit policy and add the source-scan test', with its acceptance rebaselined against post-W0-03 HEAD and the three fixed effects moved to a regression assertion, not a pre-fix claim."
+  },
+  {
+   "step_id": "W0-01",
+   "verdict": "REWORK",
+   "reason": "Duplicates W7-03 with a different, weaker spec. W0-01 gates the simulated ad on __DEV__ only; W7-03 gates it on '__DEV__ || Platform.OS === web'. W0-01's own bundle-grep acceptance would FAIL under W7-03's spec, because Platform.OS is a runtime check that does not strip the strings from the Android bundle. Similarly W0-05 and W7-03's part (2) both make initAds retry, with different designs (bounded 3-attempt backoff vs AppState resume).",
+   "replacement": "Delete the overlapping halves from W7-03 and have it depend on W0-01/W0-05. If web needs the simulated host, it must come from a separate web-only entry point so the __DEV__ strip still holds for Android — say so explicitly, because the two specs are not compatible."
+  }
+ ],
+ "unmeasured_numbers": [
+  "W3-04 A_start \"the 21-38 arrow range\" — the range is read off a sensitivity table but the value inside it is never selected by a measurement, and the table's own blocked-tap column contradicts the step's gate (measured: 9 at 21 arrows, 32 at 38 arrows).",
+  "W3-04 \"blockedTaps <= 5\" — unreachable in the stated range; I measured the crossing at ~10-16 arrows.",
+  "W3-04 \"clearable at t=0 >= 45%\" — satisfiable, but the pairing with <=5 blocked is what breaks; no run produced the pair.",
+  "W3-04 \"within +/-15% of v1's Normal median of 153 at level 30\" — the 153 is measured, the +/-15% band is not.",
+  "W3-04 \"within 5% of A_end by level 400\" — 5% and 400 both invented; nothing measures what a returning v1 player experiences as a cliff.",
+  "W3-04 tau — named as 'fit numerically' but no step outputs the fit, and the acceptance never prints it.",
+  "W1-07 FTUE_STALL_HINT_MS = p75 of n>=5 — a p75 over 5 samples is the 4th-largest observation, not a percentile.",
+  "W1-01 \"cellPt >= 44\" — sourced to Apple HIG, acceptable; but FIT_MARGIN=0.94 and CELL=40 are read from config while the step's own text says vw/vh must come from logcat. Fine as written, listed only so the reviewer checks the logged value is actually used.",
+  "W0-02 SPLASH_MAX_MS = 4000 — the floor (>2630 ms) is derived from the file's timeline (verified: withDelay(2250) + 380 ms duration = 2630); the 1370 ms of headroom is arbitrary.",
+  "W0-04 \"'Hint unavailable' for 2 s\" and \"both controls render available within 5 s of the ad loading\" — both invented.",
+  "W0-06 GAMES_PER_INTERSTITIAL stays 2 — pre-existing and never measured; W7-12's baseline is supposed to justify it but runs later.",
+  "W2-05 the LOST delay >= BLOCKER_FLASH_MS (650) — the derivation is sound, but 650 itself has never been measured against whether a player reads the flash in that time; the derivation inherits an unmeasured constant.",
+  "W2-06 \"the difference is at least 3 recorded frames\" — a frame count with no stated recorder frame rate anywhere in W2-01's manifest requirements.",
+  "W2-06 win entrance 180 ms — sourced to DESIGN.md's band and App.tsx:63, acceptable; the loss entrance is correctly left owner-picked.",
+  "W2-07 anticipation magnitude \"bounded relative to the peak\" — the bound is never a number.",
+  "W2-08 the combo-step -> trailStrokeWidth factor — the CEILING (0.54 cell = 2 x HEAD_HALF) is correctly derived from arrowGeometry.ts, but the curve from step 1 to step 7 is unspecified, so 'visibly thicker on the eighth exit' has no target.",
+  "W2-12 the A/B pass condition — no minimum detectable effect; passes on a no-op and on a regression alike.",
+  "W4-06 STREAK_SHIELD_EARN_DAYS = 7, cap = 2 — the step admits 7 is 'a legibility choice, not a measured one'. Credited for honesty; still unmeasured.",
+  "W4-09 reminder hour 20:30, 3-consecutive-days cutoff — invented; the '2-5 pushes/week' band is external and sourced.",
+  "W4-10 N = 25 lifetime solves — the step admits it is not measured. Apple's 3/365 and Play's monthly quota ARE sourced; the 90-day self-gate is invented.",
+  "W4-03 shape-count band \"120 to 160\" against measured 135-146, and \"consecutive repeats <= 20\" against measured 4 — measured-plus-headroom, and the headroom widths are invented but disclosed. Acceptable; flagged so the reviewer knows the margin is not evidence.",
+  "W5-07 band height cap 96 dp and \"min slack >= band height + 15 dp\" — 96 and 15 both invented, and 111 - 96 = 15 exactly, so the gate is tight to zero margin against a MODELLED viewport.",
+  "W5-07 \"scale > minScale * 1.02\" fade trigger — invented.",
+  "W5-05 \"at most 3x the number of true-cell row-runs in subpath commands\", badge sizes ~20 dp and ~64 dp — invented.",
+  "W6-08 gamesPerInterstitial clamp 1..10 and the 300 s / 86400 s cache header — the clamp is invented (the floor of 1 is defended on brand grounds, the ceiling is not); the cache values are host-convention.",
+  "W6-12 the pixel-diff floor — CORRECTLY deferred to a three-set calibration with a null control. This is the model the rest of the plan should follow.",
+  "W8-04 memory gates \"<= 20% of baseline delta\" and \"<= 25% of largest region\" — invented, and written before W8-03 runs.",
+  "W8-07 \"two runs within 15%\" repeatability and \"reconciles to within 5%\" — invented instrument-sanity thresholds; harmless but state them as such.",
+  "W8-08 inherited \"<= 10 MB\" leak gate — the step correctly identifies it as unsourced and orders its replacement. Credited."
+ ],
+ "sequencing_errors": [
+  "PersistenceKeys length collision: current is 8 (verified). W1-03 asserts exactly 9, W3-01 asserts exactly 10, W4-01 asserts exactly 19, W6-03 asserts exactly 9, and W0-06 adds a key silently. At most one of these can pass. No step owns a key registry.",
+  "arrows_schema_version is created twice, by W4-01 (as SCHEMA_VERSION = 1 with its own migrate()) and by W6-03 (as SchemaVersionKey with its own migration note). Two migrations, one key.",
+  "W0-03 and W2-02 fix the same six withTiming sites for the same reduce-motion defect. W2-02's acceptance quotes a HEAD baseline that W0-03 destroys, so W2-02 as written cannot exercise the original failing path once W0 has shipped.",
+  "W0-01 and W7-03 both strip the simulated TEST AD, with incompatible specs (__DEV__ vs __DEV__ || web). W0-01's bundle-grep acceptance fails under W7-03's spec.",
+  "W0-05 and W7-03(2) both add initAds retry, with different designs (bounded 3-attempt backoff vs AppState-resume).",
+  "W0-06 and W7-11 both rewrite interstitial pacing persistence; W7-11 introduces lastImpressionEpochSec without adding it to PersistenceKeys or reconciling with the key W0-06 already added.",
+  "W0-07 and W5-02 both retune the same palette tokens and both add a contrast test, in two different files (theme.test.ts vs contrast.test.ts), with two different failure lists (7 vs 6), and only W5-02 catches border/surface 1.16:1.",
+  "W2-10 and W5-08 both add the heart-refill pop.",
+  "W2-04/W2-11 and W5-13 specify contradictory theme-transition mechanisms; W2-11 explicitly rejects the approach W5-13 specifies.",
+  "W2-08 edits ArrowsBoardView.swift (trailStrokeWidth) while W8-04 rewrites the same file's rendering path; W2-08 correctly marks iOS UNVERIFIABLE but neither step names the other.",
+  "W1 is premised on level 1 being a 60-arrow / 31.7%-clearable Circle (verified true today). W3-04 rebuilds level 1 to roughly 15-25 arrows. If W3 lands, W1-08's free-mistakes-before-first-success rule and possibly the whole T1/T2 tutorial are solving a board that no longer exists. Neither workstream references the other.",
+  "W6 (telemetry) ships after W0-W5. Every retention and difficulty claim in W1, W3 and W4 is aimed at an outcome the project cannot observe at the time it lands, and no step schedules the retrospective read once W6 exists.",
+  "W7-12's ad baseline is required to justify W7-11's pacing values but is sequenced after W0-06 has already changed pacing behaviour — the baseline will measure a build that is no longer the one being tuned.",
+  "W3-04 depends on W3-02's probe, which is correctly sequenced first — the one dependency edge the plan gets right. Cited as the model."
+ ],
+ "missing_work": [
+  "A single owner for the persistence-key registry and the frozen-array assertion, so five workstreams stop each computing the final length as if alone.",
+  "Commit the analysis scripts. W4-02, W4-03 and W0-07 cite numbers produced by files in a session scratchpad (/private/tmp/.../scratchpad/m.ts, m3.ts, m4.ts, sens.ts, contrast.mjs). The scratchpad is session-local and ephemeral. Nothing in the plan makes committing them a prerequisite for the steps that quote them, so the moment this session ends the '1480x', 'median 82 arrows', '0 collisions over 20000 days' and 'seven contrast failures' figures become unreproducible assertions.",
+  "Measure adb screenrecord's actual frame period on the API 31 emulator and put it in W2-01's manifest. Eleven acceptance criteria across W2 are stated in frame counts against an unmeasured recorder.",
+  "A dependency edge and a joint re-measurement between W1 (FTUE) and W3-04 (level-1 rebuild). Both fix 'level 1 is hostile'; nobody checks whether both together over-correct into the too-easy hazard the plan's own KDD-2021 citation names (churn 0.053 too-easy vs 0.081 matched).",
+  "A retrospective step: once W6 telemetry exists, re-read the FTUE funnel, level-1-through-5 drop-off, and hearts-left distribution against the W1/W3/W4 changes that were shipped blind. Without it every retention claim in the plan stays permanently unfalsified rather than verified.",
+  "Verification of the WEB renderer. W6-09 notes a web build is used for testing and W2-06 chooses a mechanism specifically because entering/exiting is Android/iOS-only, yet no step captures or asserts anything on web after W2's feedback-curve changes.",
+  "A stated minimum detectable effect for every perf A/B in the plan (W2-12, W6-02, W5-06, W3-09). The 2026-09-08 record is cited repeatedly as evidence that absolute gates are unevaluable, but no step converts that into a threshold anyone can fail.",
+  "W5-06's perf criterion ('no dropped-frame spike beyond the run-to-run noise of the existing benchmark') is the vaguest acceptance in the plan and will close on 'looks fine'. It needs the same paired-difference treatment as W2-12.",
+  "A decision record for what happens to the W3-02 probe's honesty bound. The probe measures search cost, and the plan is careful to say so once — but W3-04, W3-05, W3-06 and W3-10 then all use probe scanTaps as if it were difficulty. Nothing schedules the correlation against real player mistake rates that would license that."
+ ],
+ "strongest_case_the_plan_is_wrong": "The plan's own evidence discipline is uneven in a way that predicts where it will fail. Where a step was written after actually running something — W3-02 (I reproduced every landmark exactly: 60/31.7%/142/82, 54/55.6%/79/25, 202/19.3%/779/577, band medians 162/182/176/184), W5-09's GSUB parse showing Fredoka has no 'tnum', W6-12's three-set pixel-diff calibration with a null control — the acceptance criteria are sharp and a third party can fail them. Where a step was written from reasoning about what a good target would be, the number is invented and sometimes contradicts the measurement two sentences above it, which is exactly what W3-04 does. Roughly 45 of the 80-odd steps are in the second category. The structural version of the same problem: W6 builds every instrument the plan needs — telemetry, the render-proof gate, the motion-capture harness, .tsx testability — and is sequenced sixth, after the four workstreams whose entire justification is retention and difficulty. So the plan spends its largest effort blocks on changes it has explicitly no way to evaluate, then builds the evaluation apparatus afterward, and never schedules the read-back. And the single highest-risk interaction is invisible in the plan's structure: W1 and W3-04 are two independent fixes to the same defect (a hostile level 1), sequenced apart, with no dependency edge. Ship both and level 1 becomes a ~15-25 arrow board, preceded by two hand-authored tutorial boards, with mistakes free until the first success — three corrections stacked on one problem, aimed past the target, with nothing measuring the overshoot. The plan's own cited evidence says too-easy carries 0.053 churn hazard against 0.081 for matched; it is not a free direction to overshoot in."
+}

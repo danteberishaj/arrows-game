@@ -47,3 +47,6 @@ yarn-error.*
 # Encrypted keystore backup: the durable off-machine copy belongs in a password
 # manager or a private repo, not in this public one.
 credentials.backup.enc
+
+# Local build artifacts and captures (release APKs here are signed with the upload key)
+/artifacts/

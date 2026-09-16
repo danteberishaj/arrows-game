@@ -1,0 +1,458 @@
+{
+ "workstream": "W5 — ART DIRECTION",
+ "goal": "The player stops seeing a competent prototype (raw text glyphs, a placeholder dialog, a square board marooned in 442 dp of empty screen, a level that is secretly a cat and never says so) and starts seeing one authored night-ink object whose every mark — icon, panel, silhouette, counter, exit trail — is drawn in the same hand as the arrows.",
+ "non_goals": [
+  "No gameplay, difficulty, FTUE, meta, monetisation or compliance work — other workstreams own those. W5 changes only what things look like.",
+  "No new runtime dependency. Skottie ships inside @shopify/react-native-skia 2.6.2 (verified: node_modules/@shopify/react-native-skia/lib/typescript/src/renderer/components/Skottie.d.ts and skia/types/Skottie.d.ts), Skia Atlas ships in .../renderer/components/shapes/Atlas.d.ts, and react-native-svg 15.15.4 is already used for the heart pip. Nothing here needs lottie-react-native or Rive.",
+  "No change to the retained native board renderer's per-arrow node count, and no new concurrent Skia feedback node. The 2-exit-trail / 4-Skia-node ceilings stay exactly as they are.",
+  "No persisted-state change. Nothing in W5 reads or writes SaveSystem; PersistenceKeys (frozen, asserted in src/ui/__tests__/storage.test.ts:36) is untouched, so there is no migration and no wipe risk in this workstream. If a later step here ever needs to persist a preference, that step must be re-briefed with a migration note.",
+  "No glow, bloom, gradient, drop-shadow, confetti or particle sparkle. Depth comes from value steps only (PRODUCT.md anti-references).",
+  "No redesign of the arrows themselves beyond the corner fillet DESIGN.md already specifies. The arrow silhouette is the brand."
+ ],
+ "steps": [
+  {
+   "id": "W5-01",
+   "title": "Design-audit script: freeze the baseline numbers every later step is graded against",
+   "what": "Add `scripts/design-audit.ts` (run with `npx tsx scripts/design-audit.ts`, the same runner scripts/generate-promo-art.ts already uses). Three reports, all printed with the input values they came from:\n(a) CONTRAST — for both palettes in src/ui/theme.ts, the WCAG 2.1 relative-luminance ratio of every (foreground, background) pair the app actually composes. Pairs must be enumerated from real usage sites, not invented: ink/bg, inkDim/bg, inkDim/surface (GameScreen.tsx:268 panelSub, :303 Retry label), accentLight/bg (GameScreen.tsx:209 LEVEL label at fontSize 18 bold; HomeScreen.tsx:71 at 24 bold), accentLight/surface (GameScreen.tsx:308 streak line at 13), accent/surface (GameScreen.tsx:257 panel title at 24 bold), accentCore/surface and heartLost/surface (HeaderButton.tsx:36 active vs inactive glyph), heart/bg and heartLost/bg (HeartPip, GameScreen.tsx:395), border/surface (GameScreen.tsx:298 — the Retry button's ONLY boundary), surface/bg, border/bg. Each row prints the ratio and PASS/FAIL against a target chosen by role: 4.5:1 body text, 3:1 text ≥18.66px bold or ≥24px, 3:1 for a non-text element that carries state or identifies a control (WCAG 2.1 SC 1.4.11), and 'informational only' for purely decorative fills.\n(b) BOARD FILL — for a named list of reference viewports in dp, for levels 1..30, print cols×rows, the drawn board size at the fit scale from BoardView.tsx `fitToViewport` (`Math.min(vw/boardW, vh/boardH) * FIT_MARGIN`, FIT_MARGIN = 0.94, CELL = 40 at BoardView.tsx:52,59) and the resulting boardHeight/screenHeight and leftover vertical dp.\n(c) NUMERALS — parse node_modules/@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf and print (i) the OpenType features present in GSUB/GPOS and (ii) the hmtx advance width of glyphs '0'–'9' in font units.\nCommit the first run's output as the baseline block inside the script's header comment.",
+   "why": "Six palette roles are reported as failing their own DESIGN.md targets and the board is reported to fill only ~41% of screen height, but nothing in the repo can re-derive either number, so every later art change is ungradeable and every threshold in this brief would be an invented one. This project has been burned 6+ times by unmeasured targets (see the red-flag list in the working harness). I ran all three reports ad hoc while writing this brief; this step makes them re-runnable so a reviewer can reproduce them instead of trusting me.",
+   "files": [
+    "scripts/design-audit.ts",
+    "src/ui/theme.ts",
+    "src/ui/BoardView.tsx",
+    "src/ui/GameScreen.tsx",
+    "package.json"
+   ],
+   "acceptance": [
+    "`npx tsx scripts/design-audit.ts` exits 0 and prints all three reports.",
+    "The CONTRAST report reproduces, to ±0.02, the values I measured with the WCAG 2.1 relative-luminance formula in node while writing this brief: Daylight ink/bg 17.66, inkDim/bg 5.13, inkDim/surface 4.43, accentLight/bg 3.49, accentLight/surface 3.01, accent/bg 5.42, accentCore/surface 7.69, heartLost/surface 1.21, heartLost/bg 1.40, heart/bg 4.16, surface/bg 1.16, border/bg 1.34, border/surface 1.16; InkNight ink/bg 16.14, inkDim/bg 7.23, accentLight/bg 7.09, accent/bg 4.18, accent/surface 3.68, accentCore/surface 9.92, heartLost/surface 1.44, heartLost/bg 1.63, heart/bg 5.30, surface/bg 1.14, border/bg 1.32, border/surface 1.16.",
+    "The BOARD FILL report reproduces, on a 412×915 dp viewport with the game header measured at 86 dp (insets.top 24 + paddingTop 10 + 46 content + paddingBottom 6, from GameScreen.tsx:205,492): level 1 = 20×20 Circle drawn 387×387 dp = 42.3% of screen height with 442 dp of vertical dead space; level 4 = 24×16 Rectangle drawn 387×258 dp = 28.2%; levels 1–30 min 28.2% / median 42.3% / max 57.3%.",
+    "The NUMERALS report reproduces: unitsPerEm 1000; GSUB features = {liga}, GPOS features = {kern}; NO `tnum`; digit advances 0=565 1=379 2=566 3=565 4=551 5=493 6=521 7=522 8=541 9=521, i.e. not monospaced, spread 187/1000 em.",
+    "Every FAIL row names the source file and line of the usage site it graded."
+   ],
+   "verification": "Run `npx tsx scripts/design-audit.ts > /tmp/baseline.txt` on a clean checkout and diff the three sections against the values listed in acceptance. This exercises the thing being changed because the script reads the live exported `Daylight`/`InkNight` objects from src/ui/theme.ts, the live `FIT_MARGIN`/`CELL` constants from src/ui/BoardView.tsx and the actual .ttf bytes shipped in node_modules — not a transcription of them — so a later token edit moves the report. It cannot verify anything about rendering; it is a numbers gate only.",
+   "brand_perf_check": "FLAG TEST: N/A — build-time script, no runtime code, animates nothing, adds no Skia node. Brand gates: none touched.",
+   "effort": "S",
+   "risk": "Low. Risk is that the script hardcodes palette values instead of importing them, which would make it drift silently — reviewer must confirm it imports from src/ui/theme.ts. Rollback: delete the file.",
+   "depends_on": []
+  },
+  {
+   "id": "W5-02",
+   "title": "Real icon system: kill the five raw text glyphs, make the header buttons actually circular",
+   "what": "Add `src/ui/icons.tsx` exporting one react-native-svg icon per control, each a `Path` on a 24×24 viewBox taking `{ size, color }`: `IconBack` (chevron), `IconMoon`, `IconSun`, `IconSoundOn`, `IconSoundOff` (a distinct shape, not a dimmed IconSoundOn — see acceptance), `IconHint`, `IconStar`. Draw them in the arrows' own grammar: stroke-only where the arrow is stroke-only, `strokeLinecap=\"round\"`, and a stroke width of 2/24 of the icon box so it reads as the same 0.144-of-a-cell pen the board uses (src/ui/arrowGeometry.ts:26 `STROKE = 0.144`); the star and the arrowhead-derived marks are solid fills, matching the arrowhead which is a solid triangle.\nReplace: GameScreen.tsx:207 `label=\"‹\"` → `IconBack`; GameScreen.tsx:227 `label=\"💡\"` → `IconHint`; HomeScreen.tsx:64 `label={dark ? '☀' : '☾'}` → `IconSun`/`IconMoon`; HomeScreen.tsx:65 `label=\"♪\"` → `IconSoundOn`/`IconSoundOff`; GameScreen.tsx:471 `★` → `IconStar`.\nChange `HeaderButton` (src/ui/HeaderButton.tsx) to take a `children`/`icon` render prop instead of a `label: string`, and change `borderRadius: size / 3` (HeaderButton.tsx:26) to `borderRadius: size / 2`. Keep the existing pressed transform scale 0.94 and the `hitSlop={8}`; with the game header's `size = 36` default that gives a 52×52 dp touch target, which stays ≥44 dp.",
+   "why": "Audit finding: every control glyph is a raw text character, so the app inherits whatever the OS font decides. Two are outright bugs, not taste: `💡` is a colour emoji that Android paints as glaring yellow regardless of the `color` prop on HeaderButton.tsx:36 — the same class of bug the codebase already fixed once for hearts (see the comment at GameScreen.tsx:364-366: 'unlike the bare ♥ glyph, which Android paints as a red emoji regardless of the text color, so a spent pip never dimmed'). And `♪` conveys sound state by colour alone (accentCore vs heartLost), which PRODUCT.md's accessibility section forbids and which measures 1.21:1 in Daylight (W5-01 baseline) — invisible, not merely dim. DESIGN.md says the header buttons are circular twice ('one circular surface back button', 'a circular surface Hint button'); size/3 ships squircles.",
+   "files": [
+    "src/ui/icons.tsx",
+    "src/ui/HeaderButton.tsx",
+    "src/ui/GameScreen.tsx",
+    "src/ui/HomeScreen.tsx",
+    "src/ui/__tests__/icons.test.ts"
+   ],
+   "acceptance": [
+    "grep for the literal characters ‹ ☾ ☀ ♪ 💡 ★ across src/ returns zero hits.",
+    "Device screenshot of the game header in Ink Night: the hint button's glyph is `accent` violet (#7C5CF5) — no yellow pixel anywhere in the button's 36 dp circle. Verify by sampling the screenshot's pixels inside the button bounds and asserting no pixel has R>200 && G>150 && B<100.",
+    "Device screenshot of the menu with sound ON and a second with sound OFF: the two icons differ in SHAPE (a slash/muted form), not only in colour — a third party shown the OFF shot alone, cropped to the button, says 'sound is off'.",
+    "Every header button is a perfect circle: screenshot pixel check that the button's rendered corner radius equals half its height (a filled circle of diameter = size, no straight edge segment).",
+    "The star on the win panel is an SVG path filled with `palette.accent` / `palette.heartLost`, and the earned/unearned stars differ by fill colour on a Daylight screenshot as well as an Ink Night one.",
+    "A jest test asserts every exported icon's path `d` string is non-empty and contains no NaN, so a bad geometry constant fails in CI (jest is node-env and .test.ts-only, so this is the most a headless test can prove here)."
+   ],
+   "verification": "Install the dev build on emulator-5556 (`npx expo run:android`), then capture with separate adb invocations — `adb -s emulator-5556 exec-out screencap -p > header.png` — one per state: game header, menu sound-on, menu sound-off, win panel. Do NOT run this through scripts/perf/android/benchmark.mjs: that harness sets animator_duration_scale=0 (benchmark.mjs settings writes), which flips Reanimated's useReducedMotion to true and measures a different variant. Screenshots exercise the actual change because the emoji-repaint bug and the borderRadius are both pure render-time properties that no headless test in this repo can observe — jest is node-env and every .tsx file is untested.",
+   "brand_perf_check": "FLAG TEST: PASS — animates no arrow, touches no static layer, adds no Skia node (these are react-native-svg nodes in the header, outside BoardView entirely). Brand gates: PASS — line-art icons in the arrow pen, one accent, no glow, no fake buttons. Directly repairs the 'direction/state by shape never colour' rule for the sound toggle.",
+   "effort": "M",
+   "risk": "Icon shapes are taste-adjacent; a bad chevron looks worse than '‹'. Mitigate by requiring the owner's yes on the screenshot set before merge. Rollback is a clean revert — HeaderButton's API change is contained to two call sites. No flag needed; this ships or it doesn't.",
+   "depends_on": [
+    "W5-01"
+   ]
+  },
+  {
+   "id": "W5-03",
+   "title": "Fix the four palette roles that fail as information, not as decoration",
+   "what": "In src/ui/theme.ts, split the overloaded `heartLost` role and correct the two text roles that fail their target, using the values I solved for by walking each colour's HSL lightness at fixed hue and saturation until it met the target (same node solver, reported below):\n1. Add a distinct `stateOff` role for the sound-off icon and the disabled hint glyph, currently `heartLost` at 1.21:1 (Daylight) / 1.44:1 (InkNight) on surface. Solved to 3.0:1 on surface: Daylight `#8D80C6` (3.01), InkNight `#6C6398` (3.03).\n2. Add a distinct `heartSpent` role for the spent heart pip (GameScreen.tsx:395), currently `heartLost` on **bg** at 1.40 / 1.63. Solved to 3.0:1 on bg: Daylight `#988CCB` (3.02), InkNight `#635B8B` (3.02).\n3. Daylight `accentLight` #8F76F0: 3.49:1 on bg, used at fontSize 18 bold (GameScreen.tsx:209/504) which is below WCAG's 18.66px-bold large-text threshold, and 3.01:1 on surface at fontSize 13 (GameScreen.tsx:308/562). Either darken Daylight accentLight to `#7B5EED` (4.50 on bg) — but that is then 3.9:1 on surface, still failing the 13 pt streak line — or, recommended, keep accentLight for the ≥24 px uses (HomeScreen.tsx:71) and route the two small uses to `accent` (#6D4AEF: 5.42 on bg, 4.68 on surface, both pass).\n4. Daylight `inkDim` #6E6A8A on surface = 4.43:1, used for the win-panel subline (GameScreen.tsx:268) and the Retry label (GameScreen.tsx:303). Nudge to `#6D6988` (4.51) — a 1-step change, imperceptible, closes the gate.\nUpdate the DESIGN.md colour table and its 'Contrast (vs its own bg)' line, which currently claims numbers that the W5-01 baseline contradicts.",
+   "why": "Audit finding: six palette roles fail their own stated targets. All four fixed here carry information rather than decoration, so they are covered by WCAG 2.1 SC 1.4.5/1.4.11 and by PRODUCT.md's own accessibility promise ('Text and arrows meet ≥4.5:1 (body) / ≥3:1 (large)'), not by taste. `heartLost` is doing three unrelated jobs at once (spent pip, disabled glyph, sound-off state), which is why no single value can satisfy all of them — the fix is to split the role, not to pick a compromise colour.",
+   "files": [
+    "src/ui/theme.ts",
+    "src/ui/GameScreen.tsx",
+    "src/ui/HeaderButton.tsx",
+    "src/ui/HomeScreen.tsx",
+    "DESIGN.md",
+    "scripts/design-audit.ts"
+   ],
+   "acceptance": [
+    "`npx tsx scripts/design-audit.ts` reports zero FAIL rows for: stateOff/surface, heartSpent/bg, the two small accentLight usages, inkDim/surface — in BOTH palettes.",
+    "No previously-passing pair regresses: diff the CONTRAST report against the W5-01 committed baseline and confirm every other row is unchanged or improved.",
+    "Device screenshot, Daylight, mid-level with 1 heart spent: the spent pip is visibly a different, still-legible shape-and-value against white paper — a third party asked 'how many hearts are left' from the cropped screenshot answers correctly.",
+    "Device screenshot, Daylight menu with sound OFF: the muted icon is legible against the surface circle.",
+    "DESIGN.md's contrast line matches the script output rather than the old claims."
+   ],
+   "verification": "`npx tsx scripts/design-audit.ts` for the numeric gate (it reads the live exported palettes, so an edit to theme.ts moves it), plus two Daylight adb screenshots (`adb -s emulator-5556 exec-out screencap -p`) for the 'can a human read it' half, because a ratio ≥3:1 does not by itself prove the pip reads as a heart at 22 dp (HEART_SIZE, GameScreen.tsx:371). Daylight specifically: it is the default theme (App.tsx:25 `useState(false)`) and it holds the worst of the failures.",
+   "brand_perf_check": "FLAG TEST: PASS — colour tokens only, no motion, no node change. Brand gates: watch item — pushing spent-pip and sound-off toward the violet mid-range adds a third visible value to a palette PRODUCT.md wants quiet. Accepted because both are information-bearing; the reviewer must eyeball that the menu does not now read as 'colour soup'.",
+   "effort": "S",
+   "risk": "A brighter spent pip could read as 'still alive' and confuse the heart count — that is exactly what the screenshot acceptance tests. If the owner rejects the new values on taste, the fallback is to keep the ratios but express spent-ness by shape (outline heart vs filled heart), which satisfies both gates at higher effort. Rollback: revert theme.ts; no persisted state involved.",
+   "depends_on": [
+    "W5-01"
+   ]
+  },
+  {
+   "id": "W5-04",
+   "title": "Depth by value, not by glow: an elevation ramp and a real panel",
+   "what": "Introduce a three-step surface ramp in src/ui/theme.ts — `bg` (unchanged), `surface` (unchanged, header buttons), and a new `surfaceRaised` for modal panels (GameScreen.tsx:256 win/lose panel, ads.tsx panel) — plus a `scrim` token replacing the hardcoded `'rgba(0,0,0,0.45)'` at GameScreen.tsx:253 and the `hexA(p.bg, 0.86)` call. `surfaceRaised` sits one clear value step above `surface` (which today is only 1.16:1 / 1.14:1 from bg, measured in W5-01 — that is why the panel reads as a placeholder). Zero `shadowColor`, zero `elevation`, zero gradient: the depth cue is (a) the value step, (b) the scrim darkening/lightening everything behind, (c) a 1 dp hairline used ONLY where a control's boundary is its sole identifier.\nThat last case is a genuine failure, not a preference: the lose panel's Retry button (GameScreen.tsx:291-306) is `backgroundColor: 'transparent'` with `borderColor: p.border`, and border-on-surface measures **1.16:1 in both palettes** (W5-01). It is an interactive control whose only identification is that boundary, so WCAG 2.1 SC 1.4.11 requires ≥3:1. Fix it by giving the secondary button a filled `surface`-on-`surfaceRaised` treatment (identified by fill, hairline exempt) rather than by shouting the hairline up to 3:1 — see escalation E-hairline.\nExact `surfaceRaised` hexes are NOT specified here: they must be chosen so the panel-vs-scrimmed-background step is visible on a device screenshot and printed by scripts/design-audit.ts. Needs measurement first — pick candidates, screenshot both palettes, and record the chosen ratio in DESIGN.md.",
+   "why": "Audit finding: 'zero shadow/elevation anywhere; surface sits 1.16:1 from bg' and 'the win panel is a bare rounded rect that reads as a placeholder dialog'. PRODUCT.md rules out the usual depth tools (no glow, no bloom, no gradients), which leaves exactly one legitimate mechanism — value. Doing it as an explicit ramp rather than ad-hoc per-component colours is what stops the next component from inventing a fourth grey.",
+   "files": [
+    "src/ui/theme.ts",
+    "src/ui/GameScreen.tsx",
+    "src/ui/ads.tsx",
+    "scripts/design-audit.ts",
+    "DESIGN.md"
+   ],
+   "acceptance": [
+    "No `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`, `LinearGradient` or `RadialGradient` appears anywhere in src/ui/ (grep returns zero).",
+    "The literal `'rgba(0,0,0,0.45)'` no longer appears in GameScreen.tsx; the scrim comes from a palette token in both themes.",
+    "scripts/design-audit.ts prints surfaceRaised/bg and surfaceRaised/scrimmed-bg ratios, and the chosen values are recorded in DESIGN.md's colour table.",
+    "No transparent-bordered interactive control remains: grep GameScreen.tsx and ads.tsx for `backgroundColor: 'transparent'` on a Pressable returns zero, or each remaining one has a boundary measuring ≥3:1 in the audit report.",
+    "Device screenshots of the win panel and the lose panel in BOTH palettes: the panel edge is locatable without reading the text — a third party asked to trace the panel's outline on the printed screenshot does so correctly in all four shots."
+   ],
+   "verification": "Four adb screenshots (win/lose × Daylight/Ink Night) captured on emulator-5556 with separate adb invocations, plus `npx tsx scripts/design-audit.ts` for the ratios. Reaching the win panel needs a real clear: use `EXPO_PUBLIC_PERF_LEVEL_INDEX` (src/perfMode.ts, consumed at App.tsx:78) to boot a small board, then confirm from logcat that the phase actually changed to 'won' BEFORE trusting the screenshot — the Block Destroy scar was a repro whose state transition never happened and two fixes were built against a phantom. Screenshots are the only instrument here: a value step is by definition invisible to tsc and to jest.",
+   "brand_perf_check": "FLAG TEST: PASS — overlay chrome only; the board is not touched and no Skia node is added (the win/lose overlay is a plain RN View at GameScreen.tsx:248-314). Brand gates: PASS on 'no glow/gradients' by construction. Watch item: a heavier scrim over the board on the LOSE panel could read as 'busy modal'; the lose scrim is already bg-tinted at 0.86 and should stay tinted, not black.",
+   "effort": "M",
+   "risk": "A visible value step on Daylight (white paper) has very little headroom — the raised panel can only go darker, which starts to read as grey UI rather than paper. If Daylight cannot be solved by value alone, that is the escalation E-hairline decision point, not a licence to add a shadow. Rollback: revert theme.ts tokens; components fall back to `surface`.",
+   "depends_on": [
+    "W5-01",
+    "W5-03"
+   ]
+  },
+  {
+   "id": "W5-05",
+   "title": "Celebrate the silhouette: draw the shape the player just cleared, on the win panel",
+   "what": "Add `src/ui/silhouette.ts` exporting `silhouettePath(mask: boolean[][], size: number): string` — a marching-squares contour trace over the boolean mask that returns one SVG path `d` with a subpath per connected outline (outer boundaries clockwise, holes counter-clockwise so the default nonzero fill-rule punches them out; the Ring and Crescent shapes need this). The mask is already available at zero cost: `GeneratedLevel.mask` is returned by LevelGenerator.generate (src/core/levelGenerator.ts:16, :88) and reaches GameScreen through `session.level` (gameSessionLifecycle.ts:9). Do NOT emit one `<rect>` per true cell — abutting rects show antialiasing seams.\nRender it on the win panel (GameScreen.tsx, inside the `phase === 'won'` branch) as a filled `accent` silhouette at ~96 dp, above the title, with the shape name set as a real word beneath it — replacing the current treatment where `Cat` appears only inside a 12 pt run-on subtitle (GameScreen.tsx:270, styles.diffLabel/panelSub). Motion: fade + scale from 0.9 over ~180 ms, matching the existing star stagger (GameScreen.tsx:450 `withDelay(delay, withSpring(...))`), and it must respect reduced motion — pass an explicit `reduceMotion` so it does not inherit the ReduceMotion.System default that the audit found silently zeroing every feedback curve.",
+   "why": "Audit finding: '26 hand-authored silhouettes reach the player only as a text token in a 12 pt subtitle' and 'the level IS a cat, a rocket, a heart, and that is never remarked upon'. This is the single largest piece of authored content in the game and it is currently invisible. It also respects 'the board is sacred' exactly: nothing is drawn on the board, ever — the reveal happens after the board is cleared, on a panel, at the one moment the picture no longer exists on screen. That is the honest answer to the brief's tension: you cannot outline the cat while the player is solving it, but you can show them what they made once they are done.",
+   "files": [
+    "src/ui/silhouette.ts",
+    "src/ui/__tests__/silhouette.test.ts",
+    "src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "`silhouettePath` is pure and unit-tested in jest (node env, .test.ts — this is one of the few art changes with a real headless test): for a hand-written 5×5 plus-shaped mask the path closes, and rasterising the returned path back to a 5×5 grid reproduces the input mask exactly; for a mask with an interior hole (a 5×5 ring) the path contains 2 subpaths and the hole is unfilled.",
+    "Device screenshot of the win panel for the SuperHard Cat level (level index 167, the 202-arrow Cat the audit identified as level 168 in 1-based terms — confirm the shapeName from `LevelGenerator.generate(167).shapeName` before capturing): a third party shown the 96 dp badge alone, given the list of the 26 shape names in src/core/shapeLibrary.ts, picks 'Cat'.",
+    "Same test passes for Crescent and Ring (the two shapes with concavities/holes) — the hole is visibly a hole, not a filled blob.",
+    "With OS reduce-motion ON (`adb -s emulator-5556 shell settings put global animator_duration_scale 0` is NOT the right switch — use Settings > Accessibility > Remove animations, or `settings put secure accessibility_display_animation_scale 0` and confirm Reanimated's useReducedMotion reports true in logcat), the silhouette is still fully visible at its resting opacity and scale.",
+    "Zero new image assets are added to assets/."
+   ],
+   "verification": "jest for the geometry (`npx jest silhouette`), then three adb screenshots of the win panel at the Cat, Crescent and Ring levels, reached by booting with EXPO_PUBLIC_PERF_LEVEL_INDEX and clearing the board. Before trusting each screenshot, confirm from logcat that the phase transitioned to 'won' — a screenshot of a panel that never opened is the Block Destroy phantom. The jest test exercises the failing path because the whole risk in this step is contour correctness on concave/holed masks, which is exactly what it asserts; the screenshots cover the half jest cannot see (is it recognisable at 96 dp).",
+   "brand_perf_check": "FLAG TEST: PASS — the silhouette is drawn on the win overlay, after the board is empty; it animates no arrow, never enters the static layer, and adds no Skia node (react-native-svg on the overlay, like the existing HeartPip at GameScreen.tsx:392). Brand gates: PASS — 'the board is sacred' is honoured by construction; one accent colour; a flat fill, no glow, no confetti.",
+   "effort": "M",
+   "risk": "Marching squares on a 46×46 mask is trivial, but a wrong winding rule silently fills the Ring — the unit test is what catches that, so it must not be weakened to 'path is non-empty'. If the badge turns out unrecognisable at 96 dp for the thin shapes (Lightning, Crescent horns), the fallback is to size the badge by the shape's bounding box rather than fixed 96 dp. Rollback: delete the panel block; silhouette.ts is dead code with no callers.",
+   "depends_on": [
+    "W5-01"
+   ]
+  },
+  {
+   "id": "W5-06",
+   "title": "Level card: give the top dead band a composed header instead of a run-on 12 pt string",
+   "what": "Restructure the game header (GameScreen.tsx:205-233) into a deliberate card occupying the top band the board cannot use. Today it is: `LEVEL 12` at 18 bold, then one baseline row concatenating `SuperHard · Cat · ` + `74 left`, all at fontSize 12 (styles.diffLabel, GameScreen.tsx:509). Replace with a three-part composition — (1) a small `silhouettePath` badge (from W5-05, ~28 dp, `inkDim`) that shows what this level is while it is being solved WITHOUT drawing on the board, (2) the shape name and tier as a proper labelled pair, (3) the level number — with the heart row and the hint button keeping their positions per DESIGN.md ('Top-left: circular back button', 'Top-right: Hint'). Keep the `MissionLabel` memo split (GameScreen.tsx:325-339) intact: its comment documents a real RN paragraph-measurement cost, so the per-tap counter must stay in its own `<Text>` and must not be re-merged into the mission string.",
+   "why": "Audit findings: the shape name reaches the player only as a 12 pt token, and 442 dp of vertical space above/below the board is dead (W5-01 baseline, 412×915 dp). Putting the level's identity in the top band uses space the board provably cannot use — the fit scale is width-limited on every square silhouette (`Math.min(vw/boardW, vh/boardH)`, BoardView.tsx:241, and 412/800 < 829/800 for a 20×20 board), so no amount of margin tuning gives that space back to the board.",
+   "files": [
+    "src/ui/GameScreen.tsx",
+    "src/ui/silhouette.ts",
+    "src/ui/theme.ts"
+   ],
+   "acceptance": [
+    "Device screenshots at 412×915 dp and at a small-screen profile (a 360×640 dp emulator profile — name the exact AVD in the PR): the header card does not overlap the board's top edge, nothing is clipped, and the level number, shape name and tier are each independently legible.",
+    "The board's drawn height on 412×915 dp for level 1 does not decrease by more than 8 dp versus the W5-01 baseline of 387 dp — re-run scripts/design-audit.ts with the new header height and confirm.",
+    "The per-tap counter still lives in its own `<Text>` node: grep confirms `{remaining} left` is not inside the MissionLabel string.",
+    "Both palettes screenshotted; no text falls below its W5-03 contrast target (re-run the audit with any new roles)."
+   ],
+   "verification": "adb screenshots on emulator-5556 at two device profiles, plus `npx tsx scripts/design-audit.ts` re-run with the measured new header height fed into the BOARD FILL report. The board-height assertion is the load-bearing one: a taller header silently steals board area, and this project's scar list includes verifying config instead of the computed runtime value — so measure the drawn board from the screenshot's pixels, not from the constant.",
+   "brand_perf_check": "FLAG TEST: PASS — header chrome only; no arrow animated, no static-layer exclusion, no Skia node. Brand gates: watch item — DESIGN.md specifies 'centered Level N' and this makes the header a left-weighted card; that is a deliberate, minor divergence from the doc and DESIGN.md must be updated in the same PR rather than left contradicting the code.",
+   "effort": "M",
+   "risk": "A heavier header eats board area on small screens, which is the one thing this game cannot afford (the whole-board-visible advantage is the review-evidenced differentiator vs the incumbent). The ≤8 dp assertion is the guard. Rollback: revert GameScreen's header block; the badge and tokens are additive.",
+   "depends_on": [
+    "W5-01",
+    "W5-05"
+   ]
+  },
+  {
+   "id": "W5-07",
+   "title": "Bottom dead band: a quiet progress rail, and a decision about the hint button",
+   "what": "Use the bottom band (roughly half of the measured 442 dp of dead vertical space) for exactly one quiet element: a full-width hairline progress rail showing arrows cleared / total, at `inkDim` on `bg`, ~2 dp tall, animated only by width. It replaces nothing — the `{remaining} left` counter stays — but it makes the 70–260 invisible per-level state changes visible as one continuous, calm reading, which is what the audit calls out ('the {remaining} left counter changes 70-260x per level invisibly').\nDO NOT move the hint button to the bottom band as part of this step. DESIGN.md says '(No bottom button bar.)' and 'Top-right: a circular surface Hint button'; relocating it for thumb reach is a real ergonomic argument but it is a brand-gate conflict and the owner decides — see escalation E-bottombar.",
+   "why": "Audit findings: 'on a 19.5:9 phone the square board fills only ~41% of screen height — huge dead space top and bottom' (W5-01 measured 42.3% median, 28.2% worst) and 'the {remaining} left counter changes 70-260x per level invisibly'. One thin rail is the smallest possible intervention that turns dead space into intent without adding a menu or a bar.",
+   "files": [
+    "src/ui/GameScreen.tsx",
+    "src/ui/theme.ts"
+   ],
+   "acceptance": [
+    "Device screenshots at 3 points in one level (full, ~half, 1 arrow left) at 412×915 dp: the rail's filled width is monotonically increasing and its endpoints match remaining/arrowCount to within 2 dp.",
+    "The rail's animation is a width interpolation only — no opacity pulse, no colour cycling, no motion when the board is idle. Grep confirms no `withRepeat` is introduced in GameScreen.tsx.",
+    "With OS reduce-motion ON the rail still updates to the correct width (it must snap, not vanish) — the audit found every existing withTiming inherits ReduceMotion.System and collapses to k=1, so this one must pass an explicit ReduceMotion setting.",
+    "Screenshot at 360×640 dp confirms the rail does not collide with the system navigation bar (respect `insets.bottom`, which GameScreen does not currently read at all)."
+   ],
+   "verification": "Three adb screenshots per palette during one playthrough on emulator-5556, with the arrow count read from logcat at each capture so the rail's width can be checked against the real `board.count()` rather than against a guess. Reduce-motion pass captured with accessibility animation scale off, NOT via the benchmark harness (which sets animator_duration_scale=0 and measures the reduced variant by accident — that already invalidated one accepted result in this project).",
+   "brand_perf_check": "FLAG TEST: PASS — the rail is outside BoardView, animates no arrow, adds no Skia node. Brand gates: PASS on 'no bottom button bar' (a rail is not a button bar) and 'flow over menus'. Watch item: PRODUCT.md wants no pressure cues; a progress rail must not read as a timer — it must have no motion of its own between taps.",
+   "effort": "S",
+   "risk": "Any persistent bottom element risks reading as a timer, which is the one thing PRODUCT.md explicitly forbids ('no timers'). Ship behind a simple boolean in GameScreen (default ON only after the owner accepts the screenshots; default OFF in the PR) so it can be pulled without a revert. Rollback: flip the constant.",
+   "depends_on": [
+    "W5-01",
+    "W5-06"
+   ]
+  },
+  {
+   "id": "W5-08",
+   "title": "Win and loss panels: from placeholder dialog to the two moments the game has",
+   "what": "Rebuild both panels (GameScreen.tsx:248-314) on the W5-04 elevation ramp and the W5-05 silhouette. WIN: scrim, raised panel, silhouette badge, shape name, the existing star row (keep the stagger at GameScreen.tsx:421-433 and the per-star chirp), a single primary action. LOSE: the bg-tinted scrim it already has, the same panel, the '+♥ (ad)' primary and a filled — not transparent-bordered — secondary Retry (see W5-04's 1.16:1 finding). Two specific repairs beyond styling:\n(a) the panel currently appears and vanishes instantly (it is a bare conditionally-rendered View). Give it an entrance and, more importantly, an exit. Reanimated 4.5.1's `entering`/`exiting` + `LayoutAnimationConfig` is the right mechanism here (ScreenTransition is hard-wired to react-native-screens and a navigator is not warranted for 3 screens); App.tsx already uses `entering={FadeIn.duration(180)}` at App.tsx:63,75, so the pattern is established.\n(b) the heart REFILL after a successful rewarded ad (GameScreen.tsx:168-178 `onContinueWithAd` sets hearts to 1) has no animation — HeartPip only animates the loss direction (`if (prev.current && !filled)`, GameScreen.tsx:383). Make the pip pop on refill too, using the same spring.",
+   "why": "Audit findings: 'the win panel is a bare rounded rect that reads as a placeholder dialog'; 'Win/lose overlay is a plain conditionally-rendered View — appears and vanishes instantly'; 'Heart REFILL after the rewarded ad has no pop (only the loss direction animates)'. The refill one is the sharpest: the player paid attention to a 30-second ad and the reward lands with no acknowledgement at all.",
+   "files": [
+    "src/ui/GameScreen.tsx",
+    "src/ui/theme.ts"
+   ],
+   "acceptance": [
+    "Screen recording (not a still) of a clear: panel enters over ~180-220 ms and, on Next level, EXITS rather than disappearing — step through the recording's frames and confirm at least 3 intermediate frames exist between full-opacity panel and no panel.",
+    "Screen recording of a rewarded-ad continue: the refilled pip visibly pops. Frame-step and confirm the pip's rendered width exceeds its resting width in at least one frame.",
+    "No transparent-bordered button remains on either panel (see W5-04 acceptance).",
+    "With OS reduce-motion ON, both panels still appear and still disappear, and the refilled pip is at its resting size — nothing is stuck invisible. This is the specific failure mode the audit found across the feedback layer (every withTiming inherits ReduceMotion.System, so k jumps to 1) and the specific scar in the harness red-flag list about visibility-critical properties that only reach their resting value if an animation completes: mount the panel at its resting opacity and animate FROM there, or give the entrance a deterministic settle.",
+    "Panel screenshots in both palettes read as one designed object: a third party shown the win shot cannot identify any element as 'default/unstyled'."
+   ],
+   "verification": "`adb -s emulator-5556 shell screenrecord --time-limit 10 /sdcard/win.mp4` then `adb pull`, frame-stepped for the enter/exit and the pip pop; plus stills for the palettes. A recording is mandatory rather than optional here: this project has a documented scar of RN/Reanimated transform edits verified only by tsc/tests (scaleX/scaleY collapsing on Fabric; a `with*()` result used in arithmetic producing a NaN transform) — both render-invisible to every headless check. The reduce-motion pass must be captured with the OS accessibility setting, not the benchmark harness's animator_duration_scale.",
+   "brand_perf_check": "FLAG TEST: PASS — the panel is an overlay above BoardView; it animates no arrow, excludes nothing from the static layer, and adds no Skia node. Note the Reanimated 4.5.1 detail from the capability audit: FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS is ON by default, so each settled panel animation schedules a React re-render — acceptable here because the board is idle at win/lose, but it is a reason NOT to reuse this pattern during play. Brand gates: PASS — no confetti, no sparkle; celebration is carried by the silhouette and the existing stars.",
+   "effort": "M",
+   "risk": "Adding an exit animation to a conditionally-rendered overlay is the classic place to strand a view at opacity 0 or to delay the next level's mount. Guard with the reduce-motion acceptance above and by backgrounding the app DURING the panel animation (per the harness red flag) to confirm nothing is left half-animated. Rollback: revert to the plain conditional render; the token and silhouette work survives.",
+   "depends_on": [
+    "W5-04",
+    "W5-05"
+   ]
+  },
+  {
+   "id": "W5-09",
+   "title": "Typography scale, and the counter that jitters because Fredoka has no tabular figures",
+   "what": "(a) Add a named type scale (in src/ui/theme.ts alongside `Fonts`, or a new src/ui/typography.ts) — display / title / body / label / caption, each with fontSize, lineHeight, letterSpacing and family — and route every `<Text>` in GameScreen.tsx, HomeScreen.tsx and ads.tsx through it. Today the sizes are 8 unrelated ad-hoc numbers (56, 44, 34, 24, 22, 18, 16, 15, 14, 13, 12) with three different letterSpacings.\n(b) Fix the counter jitter — but NOT with `fontVariant: ['tabular-nums']`. I inspected node_modules/@expo-google-fonts/fredoka/700Bold/Fredoka_700Bold.ttf directly: its GSUB contains only `liga` and its GPOS only `kern`; there is **no `tnum` feature**, so the RN tabular-nums hint is a no-op in this font. And the digits are genuinely proportional — advances (per 1000 em) 0=565, 1=379, 2=566, 3=565, 4=551, 5=493, 6=521, 7=522, 8=541, 9=521, a 187/1000 em spread, so a '1' is 33% narrower than a '2'. The `{remaining} left` label (GameScreen.tsx:219) therefore reflows on nearly every tap. Fix by giving the numeric run a fixed-width container sized to the widest digit string for that level (arrowCount digits × the '2'/'0' advance ≈ 0.566 em) and right-aligning it, so the word 'left' never moves. Do the same for `Level N` on HomeScreen.tsx:71-73 and the header level number.",
+   "why": "Audit findings: no typography hierarchy, and 'the {remaining} left counter changes 70-260x per level invisibly'. It is worse than invisible — it is visibly unstable. This is also a red-flag case from the harness list: the obvious fix (`tabular-nums`) would have been shipped, verified by tsc, and silently done nothing, because the font has no such feature. The .ttf inspection above is the measurement that rules it out.",
+   "files": [
+    "src/ui/theme.ts",
+    "src/ui/typography.ts",
+    "src/ui/GameScreen.tsx",
+    "src/ui/HomeScreen.tsx",
+    "src/ui/ads.tsx",
+    "scripts/design-audit.ts"
+   ],
+   "acceptance": [
+    "scripts/design-audit.ts's NUMERALS report is quoted in the PR as the reason tabular-nums was not used; grep confirms `tabular-nums` appears nowhere in src/.",
+    "Two device screenshots of the same level, one at a remaining count containing only '1's (e.g. 111) and one at a count of the same digit-length containing only wide digits (e.g. 222): the x-position of the word 'left' is identical to within 1 dp in both. This is the falsifiable version of 'the counter stops jittering'.",
+    "Every fontSize in src/ui/*.tsx comes from the scale: grep for a numeric literal assigned to `fontSize` outside typography.ts returns zero (icons' viewBox numbers excluded).",
+    "No text is clipped or wrapped at 360×640 dp in either palette — screenshot both.",
+    "Contrast unchanged: re-run scripts/design-audit.ts and diff against the W5-03 state."
+   ],
+   "verification": "Two adb screenshots at controlled remaining-counts (drive the count by tapping a known small board via `adb shell input tap` — issue each tap as its own adb invocation; the Block Destroy scar was a chained `sh -c \"input tap; input keyevent HOME\"` that cancelled the very tap being measured), then compare the pixel column where 'left' starts. This exercises the original failure because the jitter IS the horizontal reflow, and only a pixel comparison between two real digit strings can show it is gone — no unit test in a node-env jest can measure text advance.",
+   "brand_perf_check": "FLAG TEST: PASS — text layout only. Perf note in the other direction: keep the MissionLabel/counter `<Text>` split from GameScreen.tsx:319-339, whose comment documents an RN attributed-string measurement cost; a fixed-width numeric container must not re-merge them. Brand gates: PASS — one family, rounded geometric sans, per DESIGN.md 'Typography'.",
+   "effort": "M",
+   "risk": "A fixed-width numeric container that is too narrow clips a 3-digit count on the biggest boards (the audit found a 202-arrow level and up to ~260 arrows on big Hard rectangles) — size it from `level.arrowCount`, not from a constant, and screenshot a ≥200-arrow level specifically. Rollback: revert; no state involved.",
+   "depends_on": [
+    "W5-01",
+    "W5-03"
+   ]
+  },
+  {
+   "id": "W5-10",
+   "title": "Ad panel labels render in Roboto because fontWeight is set without fontFamily",
+   "what": "In src/ui/ads.tsx, the inline label styles at lines 108 ('Skip'), 118 ('Claim') and 127 ('Close') set `fontWeight: '600' / '700'` with no `fontFamily`. Custom fonts on native ignore fontWeight and are selected by family name — the codebase already knows this (src/ui/theme.ts's Fonts comment: 'Custom fonts on native ignore fontWeight, so weights are separate families'). Replace each with `fontFamily: Fonts.semi` / `Fonts.bold` (and drop fontWeight), matching the panel's own title/count styles at ads.tsx:337,342,347 which already use Fonts.bold.",
+   "why": "Audit finding: 'the ad panel's labels use fontWeight without fontFamily so they render in Roboto not Fredoka'. This is a one-line-per-site bug with a documented cause already written down in this repo, and it shows on the simulated ad modal — which the compliance audit notes is compiled into and mounted in production builds and is the fallback whenever initAds() fails, so real players can see it.",
+   "files": [
+    "src/ui/ads.tsx"
+   ],
+   "acceptance": [
+    "grep for `fontWeight` in src/ui/ returns zero hits.",
+    "Device screenshot of the simulated ad modal: 'Skip', 'Claim' and 'Close' render in the same rounded geometric face as the modal's title directly above them — visually one family, no Roboto 'l' or 'a' shapes."
+   ],
+   "verification": "One adb screenshot of the fake ad modal on emulator-5556 (reachable in a dev build by tapping the hint button, which calls Ads.showRewarded at GameScreen.tsx:186). A screenshot is required rather than a diff because the whole defect is that the declared style silently does nothing on native — reading the diff proves only that the source changed.",
+   "brand_perf_check": "FLAG TEST: PASS — no motion, no board, no node. Brand gates: PASS — repairs 'default fonts, no craft', an explicit PRODUCT.md anti-reference.",
+   "effort": "S",
+   "risk": "LOW RISK because the change is three inline style objects on non-interactive Text labels inside a modal that is already fully styled around them; no layout constraint depends on the metric difference (the labels sit in pill buttons with padding). Rollback: revert three lines.",
+   "depends_on": []
+  },
+  {
+   "id": "W5-11",
+   "title": "Implement the corner fillet DESIGN.md specifies (and the code never had)",
+   "what": "DESIGN.md's Arrow spec calls for 90° bends 'rounded with a small fixed-radius corner fillet (~0.12 cell — tight, crisp turns, not wide sweeps; the legs stay straight up to the corner)'. What ships is a plain round line-join: `strokeLinejoin=\"round\"` in src/ui/arrowGeometry.ts (documented at its header: 'strokeLinejoin=\"round\" stands in for the small corner fillet (BendRadiusCells = 0.12)') and `strokeJoin = Paint.Join.ROUND` at ArrowsBoardView.kt:65. A round join rounds only the OUTER edge at radius strokeWidth/2 = 0.072 cell (STROKE = 0.144, arrowGeometry.ts:26) and leaves a hard mitre notch on the inner edge and a hard 90° centreline.\nImplement the real fillet inside `shaftPoints` (arrowGeometry.ts) by replacing each interior corner vertex with a short arc approximated as N line segments of radius 0.12 cell on the CENTRELINE, trimming both legs by 0.12 cell. Crucially, emit it as extra polyline points: the native payload format (`serializeNativeBoardGeometry`, arrowGeometry.ts:113 — point count, then x/y pairs) and both native path builders stay byte-format-identical, so no Kotlin/Swift change is needed beyond checking MAX_TRAIL_POINTS (ArrowsBoardView.kt:389 = 4098). Because `arrowCenterline` shares `shaftPoints`, hit-testing (src/ui/hitTest.ts) follows the new ink automatically — verify that, do not assume it.\nThis step must first MEASURE the cost: N segments per bend × ~60-70% of arrows bending × up to 260 arrows changes the geometry payload size and the native path build. No segment count is specified here — needs measurement first.",
+   "why": "Audit finding: 'DESIGN.md's ~0.12-cell corner fillet does not exist — it ships a plain round line-join, radius strokeWidth/2 on the outer edge only, with a hard mitre notch inside and a hard 90 degree centreline.' On a board that is 60-260 bent arrows, the join quality IS the art: DESIGN.md's own 'never a chunky or inconsistent mess even on dense boards' is a statement about exactly this detail.",
+   "files": [
+    "src/ui/arrowGeometry.ts",
+    "src/ui/__tests__/arrowGeometry.test.ts",
+    "src/ui/hitTest.ts",
+    "modules/arrows-board/android/src/main/java/com/danteb/arrows/board/ArrowsBoardView.kt",
+    "scripts/perf/android/benchmark.mjs",
+    "DESIGN.md"
+   ],
+   "acceptance": [
+    "MEASUREMENT FIRST (its own sub-deliverable, landed before the render change): print the geometry payload length in bytes and the max per-arrow point count for the 10 densest levels the audit names, before and after, at each candidate segment count. Pick the smallest N whose rendered bend is smooth at the zoomed-in cell size; record the chosen N and both payload numbers in the PR. No N is pre-approved here.",
+    "Max per-arrow point count after the change stays below ArrowsBoardView.kt's MAX_TRAIL_POINTS = 4098 with ≥4× headroom on the worst level; assert it in a jest test over levels 0..200.",
+    "A/B/A perf run with scripts/perf/android/benchmark.mjs on emulator-5556 at the densest level: paired differences only, no absolute gate (the 2026-09-08 run could not evaluate absolute gates because the host Mac was loaded, and the exit phase had ~15 ms resolution). Report the p95 delta WITH the sample count reconciled against window × expected frame rate — a percentile over an unverified sample count is not a measurement.",
+    "Device screenshot zoomed in to ~40 dp cells: every interior bend shows a continuous curve on BOTH edges — no notch on the inner edge. Compare against a pre-change screenshot of the identical level and zoom.",
+    "Device screenshot fully zoomed out on a ≥200-arrow board: strokes still read as uniform weight, with no visible thinning at bends.",
+    "Existing hit-test tests (src/ui/__tests__/hitTest.test.ts) still pass, and one new case asserts a tap on the outside of a filleted corner — the region the fillet just vacated — no longer resolves to that arrow at zero forgiveness radius."
+   ],
+   "verification": "jest for point counts and hit-testing; two zoom-matched adb screenshots (before/after, same level index, same pinch state — pin the zoom by booting with EXPO_PUBLIC_PERF_LEVEL_INDEX and not touching the board, so the fit scale is deterministic) for the visual claim; benchmark.mjs A/B/A for cost. The screenshots exercise the original defect because the notch is a sub-pixel-scale rendering artefact that no geometry assertion can see, and the perf run exercises the real risk because the change multiplies the point count on the retained native path — the one thing this codebase's architecture is built to protect.",
+   "brand_perf_check": "FLAG TEST: PASS with a caveat — no arrow is animated, nothing leaves the static layer, no Skia node is added. But this is the ONLY step in W5 that touches the retained native board's payload, so it is the only one that can regress the hard-won perf architecture; hence the mandatory A/B/A and the payload measurement. Brand gates: PASS — implements DESIGN.md as written.",
+   "effort": "L",
+   "risk": "Highest-risk step in the workstream: it touches the exact geometry that a rejected experiment (full Skia slither at 250 arrows: 65.59 ms p95 / 53.19% jank) proved is the perf boundary. Ship behind a build-time constant in arrowGeometry.ts (BEND_FILLET_CELLS = 0 restores today's behaviour exactly, since a zero-radius fillet emits the original vertex) so a regression is one constant away from being reverted, and so the before/after screenshots can be captured from the same binary.",
+   "depends_on": [
+    "W5-01"
+   ]
+  },
+  {
+   "id": "W5-12",
+   "title": "The exit trail is 80% fatter than the arrow it came from — resolve it deliberately",
+   "what": "`EXIT_TRAIL_STROKE_CELLS = 0.26` (src/ui/exitAnimationConfig.ts:46) versus the resting `STROKE = 0.144` (src/ui/arrowGeometry.ts:26) — a measured ratio of 1.806, i.e. the arrow visibly fattens by 81% the instant it starts to leave. DESIGN.md asks for arrows 'uniform in weight' and describes the exit as the arrow flowing off 'as a solid moonlit tube', not as a thicker one. Prepare TWO builds that differ only in this constant — 0.144 (uniform) and today's 0.26 — record the same level's exits in both, and let the owner pick. If uniform wins, the 'flow' reading must come from length and speed (the existing `exitTrailDurationMs` distance scaling, exitAnimationConfig.ts:35-40), not from thickness. Note the same question applies to `PRESSED_STROKE_SWELL = 1.6` (src/ui/feedbackCurves.ts:13), whose comment justifies it as needing to fully cover the static arrow underneath — that one has a functional reason and should be left alone unless the recording shows the two swells fighting each other.",
+   "why": "Audit finding: 'the exiting arrow's trail is drawn at 0.26 cell vs a 0.144 cell resting stroke, an 80% thickening.' This is precisely the class of change the harness warns about — a multiplier on a small constant in visual/feel code — so it must not be 'tuned' blind; it must be shown side by side and chosen.",
+   "files": [
+    "src/ui/exitAnimationConfig.ts",
+    "src/ui/BoardView.tsx",
+    "modules/arrows-board/android/src/main/java/com/danteb/arrows/board/ArrowsBoardView.kt",
+    "DESIGN.md"
+   ],
+   "acceptance": [
+    "Two screen recordings of the same level index, same zoom, same tap sequence, differing only in EXIT_TRAIL_STROKE_CELLS (0.144 vs 0.26), delivered to the owner side by side.",
+    "Owner picks one on the recording; the chosen value and the reason are written into exitAnimationConfig.ts's comment and DESIGN.md's Motion section.",
+    "Whichever value wins, the trail stroke is derived from a single named constant used by both the web path (BoardView.tsx:396, `EXIT_TRAIL_STROKE_CELLS * CELL`) and the native slot (`trailPaint.strokeWidth = slot.trailStrokeWidth`, ArrowsBoardView.kt:280) — no second literal anywhere.",
+    "At the chosen value, a ≥200-arrow board's exit is still legible against neighbouring arrows in the recording (a thinner trail must not disappear into the tangle) — this is the concrete failure mode of choosing 0.144."
+   ],
+   "verification": "`adb shell screenrecord` on emulator-5556 for both builds, same EXPO_PUBLIC_PERF_LEVEL_INDEX, taps issued as separate `adb shell input tap` invocations. A recording is the only admissible evidence: this is a motion/feel change and this project's rule is that math alone never closes a juice task, reinforced by the scar of transform fixes verified only by tsc.",
+   "brand_perf_check": "FLAG TEST: PASS — changes a stroke width on the existing trail; adds no concurrent trail (MAX_CONCURRENT_EXIT_TRAILS = 2 untouched), animates no additional arrow, adds no Skia node. Brand gates: the 0.144 option strengthens 'arrows uniform in weight'; the 0.26 option is the status quo. Neither adds glow.",
+   "effort": "S",
+   "risk": "Purely taste — which is why it is an owner decision, not an engineering one. The measurable risk is legibility on dense boards, covered by the last acceptance criterion. Rollback: one constant.",
+   "depends_on": [
+    "W5-01"
+   ]
+  },
+  {
+   "id": "W5-13",
+   "title": "Theme toggle: cross-fade the luminance flip instead of hard-cutting it",
+   "what": "The theme toggle (HomeScreen.tsx:64 → App.tsx:45 `toggleTheme`) instantly re-renders the whole tree with the other palette — a full-screen luminance inversion in one frame, at night, which is the exact moment PRODUCT.md positions the app for ('couch or bed, lights low'). Cross-fade it over ~200-240 ms, MENU ONLY (the toggle exists only on the menu, so the game screen and the board are never involved). Two viable mechanisms, both dependency-free: (a) render the outgoing palette's menu as a snapshot layer above the incoming one and fade it out — Skia's `makeImageSnapshotAsync` can produce it with no new dependency; or (b) drive the handful of menu colours through Reanimated shared values with `interpolateColor`, which is smaller but touches every menu component's colour plumbing. Recommend (a) if the snapshot lands cleanly, (b) as the fallback. The StatusBar style (App.tsx:60) must flip at the crossfade's midpoint, not at its start.",
+   "why": "Audit finding: 'The theme toggle is an instant full-screen luminance flip.' It is the single harshest frame in the app and it lands on the screen the brand is supposed to be quietest on.",
+   "files": [
+    "src/ui/HomeScreen.tsx",
+    "App.tsx",
+    "src/ui/theme.ts"
+   ],
+   "acceptance": [
+    "Screen recording of a Daylight→Ink Night toggle and back: frame-step and confirm at least 6 intermediate frames where neither palette is at full opacity, in both directions.",
+    "No flash of an unstyled or wrong-background frame at either end — sample the first and last 3 frames' background pixel and confirm they equal the source and destination `bg` exactly.",
+    "With OS reduce-motion ON, the toggle still completes and lands on the correct palette (it may cut) — nothing is left mid-fade. Per the harness red flag about visibility-critical properties gated on an animation callback, the palette state change must NOT be delivered by the animation's completion callback; it must be a state change with the fade purely decorative on top.",
+    "Toggle rapidly 10 times: the final palette matches the final state of the toggle (no stuck snapshot layer). Verify by screenshot after the 10th tap plus a logcat read of the darkMode value.",
+    "The game screen and BoardView are untouched: grep confirms no change under src/ui/BoardView.tsx or StaticBoardSurface*."
+   ],
+   "verification": "`adb shell screenrecord` of both directions plus the 10-tap stress, on emulator-5556, taps as separate adb invocations. The stress case is the one that matters: a snapshot-overlay crossfade's classic failure is a leaked layer, which only appears under interruption — and 'reading the diff and nodding' would never surface it.",
+   "brand_perf_check": "FLAG TEST: PASS — menu only; the board does not exist on this screen, so no arrow is animated and no Skia feedback node is added. Brand gates: PASS — a fade is not a glow. Watch item: PRODUCT.md calls the Play pill's breathing 'the one deliberate ambient motion' on the menu; a transition triggered by an explicit tap is feedback, not ambience, so it does not violate that — but nothing else on the menu may gain motion.",
+   "effort": "M",
+   "risk": "Snapshot-based crossfades can leak a stale layer or capture at the wrong moment. Ship behind a constant that falls back to today's instant flip. If iOS is ever built, note the snapshot path is UNVERIFIABLE there today (see open gaps). Rollback: flip the constant.",
+   "depends_on": [
+    "W5-03",
+    "W5-04"
+   ]
+  },
+  {
+   "id": "W5-14",
+   "title": "Paper/ink texture: a bounded spike with a kill switch, not a default",
+   "what": "Question posed by the brief: is paper/ink texture on-brand, and at what opacity? My reading of the evidence: it is DEFENSIBLE but must be strictly bounded, and it must never touch the board. PRODUCT.md's language is explicitly material — 'moonlit near-white arrows on ink-dark paper', 'black ink on white paper in Daylight' — so a paper ground is the brand's own metaphor, and grain is not in the anti-reference list (which bans glow, bloom, gradients, confetti and mismatched brights). Build it as: ONE tileable monochrome grain image, ≤256×256, applied as a repeating background on the root `bg` View of HomeScreen and GameScreen ONLY — never inside BoardView, never inside the retained native board view, never on the Skia feedback layer. The opacity is NOT specified here: needs measurement first. Produce a ladder of candidate opacities, screenshot each in both palettes on the emulator AND, when a physical device exists, on a real OLED panel at low brightness (a grain that is invisible on a desktop monitor can band badly on a phone at 10% brightness, and the reverse), and have the owner pick. Default OFF behind a constant until accepted.",
+   "why": "The brief asks whether texture is on-brand and at what opacity. The honest answer to 'at what opacity' today is: unknown, because nobody has looked at it on the target surface — and this project's scar list contains six cases of a number in a brief that was never computed from live data. So this step delivers the ladder and the measurement, not a value.",
+   "files": [
+    "assets/images/grain.png",
+    "src/ui/HomeScreen.tsx",
+    "src/ui/GameScreen.tsx",
+    "src/ui/theme.ts",
+    "PRODUCT.md",
+    "DESIGN.md"
+   ],
+   "acceptance": [
+    "The grain asset is ≤20 KB and tiles seamlessly (screenshot a 4×4 tiling and confirm no seam line is visible at 100% zoom).",
+    "Grep confirms the texture View appears nowhere under BoardView.tsx, StaticBoardSurface*.tsx, or modules/arrows-board/.",
+    "Screenshot ladder at ≥4 candidate opacities × 2 palettes, delivered to the owner; the accepted value is written into DESIGN.md with the device it was accepted on named.",
+    "A/B/A perf run at the densest level with the texture ON vs OFF: report the paired p95 delta with the sample count reconciled against window × expected frame rate, and do not report any shortfall smaller than the harness's ~15 ms exit-phase resolution.",
+    "Default state in the merged PR is OFF."
+   ],
+   "verification": "Screenshot ladder via adb on emulator-5556 for the look, benchmark.mjs A/B/A for the cost. The perf run matters because a full-screen repeating background is exactly the kind of overdraw that a retained-native-view architecture is sensitive to; the screenshots matter because grain visibility is a property of the panel, not of the code. UNVERIFIABLE today: how the grain reads on a real OLED phone at low brightness, which is the actual use case PRODUCT.md names — that needs a physical device and must stay marked open until one exists.",
+   "brand_perf_check": "FLAG TEST: PASS by construction — the texture is forbidden from the board layer, animates nothing, adds no node. Brand gates: WATCH — closest call in W5. 'Clean, calm, confident' and 'the UI disappears into the puzzle' argue for restraint; at any opacity where the grain competes with the arrows it is a violation, which is why the acceptance is an owner eyeball and the default is OFF. Flagged as escalation E-texture.",
+   "effort": "M",
+   "risk": "Texture is the fastest way to make a minimal brand look cheap, and a full-screen tiled background is a real overdraw cost on the exact screen whose perf was hard-won. Both are covered by the default-OFF constant. Rollback: flip the constant; delete the asset.",
+   "depends_on": [
+    "W5-01",
+    "W5-04"
+   ]
+  },
+  {
+   "id": "W5-15",
+   "title": "Store art: an icon audit and the phone screenshot set that does not exist",
+   "what": "(a) ICON — the app icon pipeline is already real (scripts/generate-store-assets.js composes assets/icon.png 1024, the adaptive foreground/background/monochrome, and the favicon from assets/images/mark.png, 512×512 RGBA, on #13111C). Audit rather than rebuild: confirm the monochrome layer reads at 48 dp in the Android 13 themed-icon treatment, confirm the mark survives the adaptive-icon circular mask (Android crops to ~66% of the 108 dp canvas — the visible mark is ~64% of the frame per the script's own header, which is close enough to the mask edge to need checking, not assuming), and confirm the Play listing icon in store/playstore-icon-512.png is the curated art, not a stale fallback.\n(b) SCREENSHOTS — there are none, and Play requires ≥2 portrait phone shots. Add `scripts/capture-store-shots.mjs`: boots the app on emulator-5556 at chosen level indices via EXPO_PUBLIC_PERF_LEVEL_INDEX, waits for the board, captures with `adb exec-out screencap -p`, and writes to store/screenshots/. Capture the real app, not a composite: scripts/generate-promo-art.ts renders true board geometry offline and is right for the feature graphic, but a Play *screenshot* must be what the player sees, chrome included. Shot list, 5 shots: a SuperHard silhouette level mid-solve in Ink Night (the identity shot — pick a level whose shape is unmistakable, e.g. Cat or Rocket); the same genre of board in Daylight (proves the two themes); a win panel with the silhouette badge from W5-05; a zoomed-in board showing arrow craft (this is the review-evidenced advantage over the incumbent, whose own reviews complain they cannot see the whole board); and the menu. Confirm the exact pixel/aspect requirements against the current Play Console upload page at submission time rather than baking numbers here.\n(c) app.json sets `ios.supportsTablet: true`, which drags in a 13\" iPad screenshot requirement on the Apple side while iOS is not shippable at all — see escalation E-ipad.",
+   "why": "Audit finding: 'there are no store screenshots at all', and Play needs at least two portrait shots to publish. Everything else in W5 is invisible to anyone who has not installed the game; this is the step where the art direction becomes the reason someone installs it.",
+   "files": [
+    "scripts/capture-store-shots.mjs",
+    "store/screenshots/",
+    "scripts/generate-store-assets.js",
+    "store/playstore-icon-512.png",
+    "app.json",
+    "RELEASE.md"
+   ],
+   "acceptance": [
+    "`node scripts/capture-store-shots.mjs` produces ≥5 PNGs in store/screenshots/, all portrait, all captured from a release-configuration build of the actual app.",
+    "Every screenshot post-dates W5-02, W5-05, W5-06 and W5-08 — no shot contains a raw text glyph (‹ ☾ ♪ 💡 ★) or the old bare win panel. Verify by inspecting the shots, not by trusting the run order.",
+    "The themed (monochrome) launcher icon is legible at 48 dp: screenshot the emulator launcher with themed icons enabled and confirm the mark is identifiable, not a filled blob.",
+    "The adaptive icon is not clipped: screenshot the launcher with a circular mask and confirm no part of the mark is cut.",
+    "RELEASE.md gains a 'Store art' section naming the script, the shot list and where the files go, so the owner can re-run it after any art change.",
+    "The exact Play image spec is quoted from the Console at upload time in the PR description, not from memory."
+   ],
+   "verification": "Run the capture script against emulator-5556 and open all five PNGs. Before capturing each gameplay shot, read logcat to confirm the intended level index actually loaded — a screenshot of the wrong board is the Block Destroy phantom in store-asset form, and it would ship to a store listing. Icon checks are launcher screenshots, because the adaptive-mask and themed-icon transformations happen in the launcher, not in the asset file.",
+   "brand_perf_check": "FLAG TEST: N/A — capture tooling and static assets; no runtime code changes. Brand gates: the shot list is deliberately built on the anti-references — no confetti, no fake buttons, no bright mismatched UI, and the hero shot is a real generated silhouette rather than staged art (consistent with generate-promo-art.ts's own stated principle: 'Nothing staged, nothing fake').",
+   "effort": "M",
+   "risk": "Screenshots captured before the rest of W5 lands would immortalise the current look on the store listing — hence the explicit dependency and the 'no raw glyph' acceptance check. Emulator screenshots may not match a real phone's rendering; mark that as an open gap until a device exists. Rollback: replace the PNGs.",
+   "depends_on": [
+    "W5-02",
+    "W5-05",
+    "W5-06",
+    "W5-08"
+   ]
+  }
+ ],
+ "escalations": [
+  {
+   "question": "E-wordmark: the app's 'A' is a raster PNG with baked colours and therefore cannot theme — but DESIGN.md says the A should be 'a filled accent violet triangle (▲rrows)', which is NOT what ships. Do we vectorise the existing emblem, or implement the triangle the design doc specifies?",
+   "options": "(1) Vectorise the current interlocking-arrowhead emblem into an SVG path and tint it from the palette — preserves the mark already on the Play listing icon, the feature graphic and the splash (app.json's expo-splash-screen points at assets/images/mark.png), but requires tracing a 512×512 RGBA raster and accepting whatever fidelity loss that brings. (2) Implement DESIGN.md's violet triangle as a vector A — trivially themeable, matches the written brand, but changes the wordmark's identity and desyncs it from the icon art now in store/. (3) Do both: keep the emblem for the icon/store surfaces (raster is fine there — those are fixed-background compositions) and use the triangle in-app where theming matters.",
+   "recommendation": "Option 3. The raster's only real defect is that it cannot theme, and that defect exists only in-app (Wordmark.tsx, used by HomeScreen.tsx:69 and SplashScreen.tsx:75). The store icon and feature graphic sit on a fixed Ink Night ground where a baked-colour raster is correct. Adopting the triangle in-app also closes a doc-vs-code divergence rather than opening a new one. Whichever way this goes, DESIGN.md and the code must end up saying the same thing.",
+   "why_it_cannot_be_decided_here": "It is a brand-identity call about which mark IS the brand, and the two candidates are already both live in the repo. No measurement resolves it."
+  },
+  {
+   "question": "E-bottombar: the measured dead vertical space is 442 dp on a 412×915 dp screen (median board = 42.3% of screen height). Moving the hint button into the bottom band would put the game's only assistive control in thumb reach — but DESIGN.md says '(No bottom button bar.)' and 'Top-right: a circular surface Hint button'.",
+   "options": "(1) Leave the hint top-right; use the bottom band only for the passive progress rail (W5-07). (2) Move the hint to the bottom-right as a single floating circular button — not a bar — and amend DESIGN.md. (3) Mirror it: keep the top-right hint and add nothing at the bottom.",
+   "recommendation": "Option 1 for now, and revisit only with evidence. The rule exists to stop the screen accumulating chrome, and 'flow over menus' is a load-bearing principle here. A single floating button is arguably not a 'bar', so option 2 is defensible — but the honest position is that we have no reachability data, and inventing an ergonomic threshold would repeat this project's most-repeated mistake. If the owner wants option 2, the deciding evidence is a real one-handed session on a physical device, which does not exist yet.",
+   "why_it_cannot_be_decided_here": "It contradicts an explicit written brand gate, and the counter-argument (thumb reach) is unmeasured on any device."
+  },
+  {
+   "question": "E-hairline: WCAG 2.1 SC 1.4.11 requires ≥3:1 for a boundary that is a control's only identifier. The lose panel's Retry button is transparent with a `border` outline measuring 1.16:1 on surface in BOTH palettes. Do we raise the hairline to 3:1, or re-identify the control by fill?",
+   "options": "(1) Raise `border` to meet 3:1 — solver values on the same hue: Daylight #998CCB (3.01 vs bg) / InkNight #605A92 (3.00 vs bg). Compliant, but a hairline that loud on a calm ink brand reads as generic UI and would also affect every other border use. (2) Give the secondary button a filled surface treatment so its fill identifies it and the hairline becomes decorative (and therefore exempt). (3) Introduce a separate `borderStrong` role used only on controls whose boundary is their sole identifier, leaving decorative hairlines quiet.",
+   "recommendation": "Option 2, with option 3 as the structural fallback. Filling the secondary button also fixes the deeper problem — a transparent button next to a filled primary reads as disabled — and it keeps the calm hairline that PRODUCT.md's 'the UI disappears into the puzzle' asks for. Option 1 satisfies the letter of the guideline while damaging the thing the guideline exists to protect.",
+   "why_it_cannot_be_decided_here": "It trades a measurable accessibility criterion against an explicit brand principle; both are owner-owned, and the measurement (1.16:1) only establishes that something must change, not which."
+  },
+  {
+   "question": "E-texture: is paper/ink grain on-brand, and at what opacity?",
+   "options": "(1) No texture — flat inks only, as DESIGN.md's Theme section currently says ('flat inks only'). (2) Grain on the app background only (menu + game ground), never on the board, at an opacity chosen from a screenshot ladder. (3) Grain everywhere including behind the board — rejected outright: it competes with the arrows and adds overdraw to the one screen whose perf was hard-won.",
+   "recommendation": "Option 2, defaulted OFF, decided on the screenshot ladder from W5-14 — and ideally on a real phone at low brightness, since that is the stated use case ('couch or bed, lights low') and it is exactly where grain either sells the paper metaphor or bands visibly. I lean yes at a very low opacity because PRODUCT.md's own vocabulary is material ('ink-dark paper'), and because grain is not in the anti-reference list. But I will not name an opacity: no one has looked at it on the target surface, and naming an unmeasured number here is the failure this project has repeated most.",
+   "why_it_cannot_be_decided_here": "Taste-based, and the decisive evidence (how it reads on an OLED phone at 10% brightness) requires hardware that does not exist in this setup."
+  },
+  {
+   "question": "E-ipad: app.json sets `ios.supportsTablet: true`, which obliges a 13\" iPad screenshot set on the App Store, while the iOS build is not shippable at all (the native board view has not compiled since the 2026-09-01 exit protocol change; docs/IOS_BOARD_PLAN.md tracks the work).",
+   "options": "(1) Set supportsTablet to false now — drops the iPad screenshot obligation and the iPad layout burden; the game is portrait-only anyway (app.json `orientation: 'portrait'`). (2) Keep it true and commit to producing a 13\" iPad screenshot set and an iPad-appropriate layout. (3) Keep it true and defer, accepting that iOS submission is blocked on art nobody has scheduled.",
+   "recommendation": "Option 1. There is no iPad layout, no iPad art, no iPad testing device, and no compiled iOS build — supportsTablet is currently asserting a capability that has never been observed to work. Flipping it to false costs nothing today and is trivially reversible if an iPad build is ever scheduled. Note this is an app.json change with store-listing consequences, so it belongs in the same PR as an iOS decision, not as a drive-by art edit.",
+   "why_it_cannot_be_decided_here": "It is an outward-facing platform-scope decision with store consequences, not an art decision."
+  },
+  {
+   "question": "E-trail: the exit trail is 1.806× the resting arrow stroke (0.26 vs 0.144 cell). Uniform weight, or keep the thickening?",
+   "options": "(1) Set EXIT_TRAIL_STROKE_CELLS to 0.144 so the arrow leaves at the weight it lived at — matches DESIGN.md's 'uniform in weight' and 'solid moonlit tube'. (2) Keep 0.26 because a leaving arrow should read as an event. (3) Taper: full weight at the head, resting weight at the tail — more code in both the web and native trail renderers.",
+   "recommendation": "Prepare both builds (W5-12) and pick from the side-by-side recording; my prior is option 1, because the thickening is currently un-authored (it reads as an accident, not an emphasis) and because the exit already has two other channels — length and distance-scaled speed — carrying the 'event'. But this is the definition of a feel call and math cannot close it.",
+   "why_it_cannot_be_decided_here": "Taste-based motion judgement; the harness rule is that a multiplier on a small visual constant is never accepted on reasoning alone, only on a recording the owner has seen."
+  }
+ ],
+ "open_verification_gaps": [
+  "iOS: every visual claim in W5 is UNVERIFIABLE on iOS. The native board view (modules/arrows-board/ios/ArrowsBoardView.swift) has not compiled since the 2026-09-01 exit protocol change (docs/IOS_BOARD_PLAN.md, gates A1-A5, needs ≥20 GB free disk), so W5-11's fillet, W5-12's trail and W5-13's snapshot crossfade have no iOS evidence at all. Closing tooling: a successful iOS build plus a simulator screenshot per step.",
+  "No physical device on any platform. Every screenshot and recording in this workstream comes from one API 31 Android emulator (emulator-5556, pinned in scripts/perf/android/benchmark.mjs:88,145). Panel-dependent judgements — grain visibility at low brightness (W5-14), value-step depth on an OLED (W5-04), icon legibility at 48 dp (W5-15) — are emulator-only until a phone exists. Closing tooling: one mid-range Android phone.",
+  "The benchmark harness measures the reduced-motion variant. scripts/perf/android/benchmark.mjs sets animator_duration_scale=0, which flips Reanimated's useReducedMotion to true — it has already invalidated one accepted result in this project. Every screenshot/recording acceptance in W5 must therefore be captured OUTSIDE that harness, and every reduce-motion acceptance must use the OS accessibility setting instead. Any step whose evidence was captured through benchmark.mjs is not closed.",
+  "No component-render tests exist. jest is node-env and .test.ts-only; every .tsx file in src/ui/ is untested (BoardView.tsx 1034 lines, GameScreen.tsx 567, ads.tsx 369, all untested). So no W5 step can be closed by a green suite — only silhouette.ts (W5-05) and the arrowGeometry point counts (W5-11) have genuine headless coverage. Closing tooling: react-native-testing-library plus a jsdom/native jest project, which is itself a dependency decision.",
+  "PERF_MODE boots straight into 'game' (App.tsx:24), so the splash and the menu are unmeasurable by the existing harness. W5-13's theme crossfade and W5-15's menu screenshot are therefore hand-driven captures with no automated regression guard.",
+  "W5-04's surfaceRaised hexes, W5-11's fillet segment count, and W5-14's grain opacity are deliberately NOT specified in this brief. Each is marked 'needs measurement first' with the measurement made part of the step. If any of them appears as a number in an implementation PR without the accompanying measurement output, that PR is not reviewable.",
+  "Play Store image specifications (exact pixel bounds and aspect limits for phone screenshots) are not quoted in W5-15 because I could not verify them against the live Console today. They must be read off the upload page at submission time. What is taken as given from the audit: Play requires ≥2 portrait phone screenshots and there are currently none; Apple requires a 13\" iPad set while ios.supportsTablet is true.",
+  "W5-05's 'a third party picks Cat from the badge' and W5-02's 'a third party says sound is off' are the strongest falsifiable forms I could give two recognisability claims, but they need an actual third party who has not seen this brief. If they are self-assessed by the implementer they are not evidence."
+ ]
+}

@@ -1,0 +1,269 @@
+{
+ "workstream": "W1 — THE FIRST 90 SECONDS (FTUE)",
+ "goal": "A first-time player learns \"tap fires the arrow\" and \"a blocked lane is why it failed\" by doing both on two tiny hand-authored boards before the generator is ever invoked, and reaches the real level 1 with mistakes-before-your-first-success made free — while every returning player's first launch is byte-for-byte the board they had yesterday.",
+ "non_goals": [
+  "Changing LevelGenerator.generate(0) or anything reachable from it. DESIGN.md's determinism contract is treated as immovable: no seed change, no DifficultyConfig change, no ShapeLibrary pool change. Every board in this workstream is authored text parsed by the EXISTING BoardLogic.parse / ArrowPath.tryParse (src/core/arrowPath.ts:68) — a lane that never touches the generator.",
+  "A front-loaded 'How to play' card deck, a modal, or a swipeable tutorial carousel. NN/g's 70-participant controlled test found a card deck did not improve task success (91% vs 94%) and made the app feel harder. Nothing in this workstream is dismissible-before-play text.",
+  "A tutorial overlay drawn ON the board (arrow outlines, spotlight cutouts, tile highlights, a pointing finger sprite). PRODUCT.md 'The board is sacred: no frame, no grid lines, no tile backgrounds.' All tutorial copy lives in the existing header band.",
+  "Difficulty rebalancing of real levels. The flat-forever curve is a real finding but belongs to a difficulty workstream; W1 only softens the FIRST real board via forgiveness, not via generation.",
+  "Analytics, funnel instrumentation, or an A/B framework. The repo has none (audit: zero analytics), so no step here is gated on a metric this repo cannot produce.",
+  "New animation primitives. Every motion this workstream shows is an EXISTING one (blocked bump, blocker flash, hint pulse, slither exit)."
+ ],
+ "steps": [
+  {
+   "id": "W1-01",
+   "title": "Measure the real board viewport, then derive the tutorial grid ceiling",
+   "what": "Add a temporary instrumentation build that logs BoardView's measured viewport. In /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx the fit math is fitToViewport (line 317): `const fit = Math.min(vw / boardW, vh / boardH) * FIT_MARGIN` with FIT_MARGIN = 0.94 (line 59) and CELL = 40 (line 52), so screen points per cell at fit-to-view is exactly `0.94 * min(vw/cols, vh/rows)`. vw/vh are the onLayout size of BoardView AFTER the header band and safe-area insets, which is NOT derivable from any config file. Log `e.nativeEvent.layout` from onLayout (line 285) on each target device, then publish a small table `cellPt(rows, cols)` and record the LARGEST square grid whose cellPt >= 44 (Apple HIG minimum target; Material asks 48dp — record both rows). Write the result into a new doc /Users/gentlegen/Desktop/Projects/arrows-game/docs/ftue-board-metrics-<date>.md. Also add the standing measurement script /Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/ftue-board-metrics.ts which, given rows/cols/arrow-lines, prints arrow count, initial-clearable count and %, and the per-state legal-move count for a full greedy solve — this is the script every later step cites for its numbers.",
+   "why": "Every subsequent step needs a grid size, and I refuse to invent one. This project has been burned 6+ times by unmeasured thresholds in briefs; the CLAUDE.md red flag is explicit that a brief pinning a number must name the measurement that produced it. Grounding note, measured by me with npx tsx against the real generator on 2026-09-09: level index 0 is a 20x20 board with 60 arrows and 19 of them (31.7%) clearable at the start; the mean initial-clearable fraction over levels 1-200 is 33.7% (min 19%, max 55.6%). At 20x20, the same formula gives 0.94 * min(vw/20, vh/20) — on a nominal 360x640dp board viewport that is ~16.9 pt per cell, which is why hitTest.ts:11 exists (TAP_RADIUS_PT = 22) and why a tutorial board must be far coarser than a real one.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/ftue-board-metrics.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/ftue-board-metrics-<date>.md"
+   ],
+   "acceptance": [
+    "The doc records, per device tested, the literal logged {width, height} of BoardView's layout in dp, the device model, and its screen dp size — not a computed guess.",
+    "The doc states the maximum rows and the maximum cols for which cellPt >= 44, and separately for >= 48, computed with FIT_MARGIN=0.94 and CELL=40 from the LOGGED viewport, with the formula printed next to the number.",
+    "At least two devices are covered: the API 31 emulator already used by the perf harness, and one additional device with a materially different aspect (a 19.5:9 or taller phone). If no second device exists, the doc says so and the derived ceiling is explicitly labelled emulator-only.",
+    "scripts/analysis/ftue-board-metrics.ts runs under `npx tsx` and, given the level-0 generated board, reproduces 60 arrows / 19 clearable / 31.7% — proving the script measures what it claims before any tutorial board is fed to it."
+   ],
+   "verification": "Run the instrumented debug build on device, read the logged layout via `adb logcat`, then run `npx tsx scripts/analysis/ftue-board-metrics.ts --level 0` and check it prints 60 / 19 / 31.7%. The logcat number is the only honest source for vw/vh because the value is produced by React Native layout after the header and insets, not by any constant in the repo; the level-0 self-check proves the script's clearable computation agrees with an independently produced figure (mine, above) before it is trusted for new boards.",
+   "effort": "S",
+   "risk": "Risk: the instrumentation log ships to production. Rollback/containment: the log lives behind `if (__DEV__)` and is removed in the same PR that lands W1-02; a grep for the log tag in the release bundle is part of the PR checklist. No runtime behaviour changes, no persisted state touched.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: not applicable — no motion, no board node, no arrow animated. Nothing is pulled from or added to the static layer; the 2-exit-trail and 4-Skia-node ceilings are untouched. Brand gate: no visual change ships."
+  },
+  {
+   "id": "W1-02",
+   "title": "Hand-authored tutorial boards in a lane that cannot touch the generator",
+   "what": "Add /Users/gentlegen/Desktop/Projects/arrows-game/src/core/tutorialLevels.ts exporting `TUTORIAL_BOARDS: readonly TutorialBoard[]`, where each entry is `{ id: 'T1' | 'T2', rows, cols, lines: readonly string[], hearts: 3 }` and `lines` uses the EXISTING serialized arrow format documented at src/core/arrowPath.ts:18-21 ('headRow,headCol,Dir:tailSteps'). Export `buildTutorialLevel(id): GeneratedLevel` which returns exactly the shape GameScreen already consumes — `{ board: BoardLogic.parse(rows, cols, lines), hearts, difficulty: Difficulty.Normal, arrowCount: board.count(), shapeName: '', mask: [] }`. `mask` is safe to leave empty: I grepped every .ts/.tsx under src/ui and nothing reads GeneratedLevel.mask. Export it from src/core/index.ts alongside LevelGenerator. Author T1 and T2 to these invariants: T1 — every arrow can exit at the start (100% initial clearable, so no tap can be wrong); T2 — exactly ONE arrow can exit in the initial state, and at least one arrow's head points directly at another arrow's body (a visible blocked pair). Grid sizes are capped by W1-01's cellPt >= 44 ceiling. Add /Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/tutorialLevels.test.ts asserting, computationally: every line parses (tryParse != null), no two arrows share a cell, every arrow's cells are in bounds, T1 initial-clearable == arrowCount, T2 has exactly 1 initial legal move, T2's blocked pair exists via board.blockerOf(...) != null, a greedy solve clears each board in exactly arrowCount taps, and — the load-bearing one — that importing tutorialLevels does not import LevelGenerator (assert via a module-graph check or by asserting `LevelGenerator.generate` is never called using a jest spy while building both boards).",
+   "why": "DESIGN.md makes level generation a pure deterministic function of the level index, and any change to what index 0 produces silently reboards every existing player mid-progress. Authoring the FTUE as data parsed by the pre-existing BoardLogic.parse (src/core/boardLogic.ts:126) is the only route that adds a first-run experience with a provable zero-diff on generated levels. The two board designs answer the audit finding that level 1 is a 60-arrow board where ~68% of naive taps are mistakes, and the KDD 2021 result (14,615 vs 14,687 users) that for players in their first <10 days the churn hazard is 0.053 too-easy / 0.081 matched / 0.160 too-hard — too-easy is the SAFEST of the three, so T1 is deliberately unloseable.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/tutorialLevels.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/tutorialLevels.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/index.ts"
+   ],
+   "acceptance": [
+    "`npx jest src/core/__tests__/tutorialLevels.test.ts` passes with every invariant above asserted as a separate named test, each failing if its board is edited to violate it (demonstrate by temporarily breaking one arrow line and showing the specific test fails).",
+    "`npx jest src/core/__tests__/levelGenerator.test.ts` is unchanged and passes, and a golden check asserts LevelGenerator.generate(0) still yields arrowCount 60, rows 20, cols 20, shapeName 'Circle' — the pre-change values I measured on 2026-09-09. Add this golden assertion to the generator test in this PR; it is the tripwire for the determinism contract.",
+    "T1 and T2 rows and cols are each <= the ceiling recorded in W1-01's doc, and the PR description quotes the cellPt figure for both boards from that doc.",
+    "A screenshot of each tutorial board on device shows the whole board fitting the viewport with no pinch, and the arrows reading as clean ink art at that cell size — no clipped heads, no overlapping strokes."
+   ],
+   "verification": "Run `npx jest src/core` (node env, matches jest.config.js testMatch '**/src/**/__tests__/**/*.test.ts'), plus `npx tsx scripts/analysis/ftue-board-metrics.ts --tutorial T1 --tutorial T2` and paste its clearable/legal-move table into the PR. The jest suite exercises the exact failing path this step could introduce — an authored board that is unsolvable, self-overlapping, or accidentally routed through the generator — because every invariant is computed from the same BoardLogic.canExit/blockerOf the game itself calls at runtime (src/core/boardLogic.ts:69, :80). The golden generator assertion exercises the determinism risk directly by comparing generate(0)'s output to its pre-change values. The board-legibility criterion is visual, so it closes ONLY on the device screenshots, per this project's scar from transform work verified by tsc alone.",
+   "effort": "M",
+   "risk": "Risk: an authored board that reads badly at large cell size (arrows too sparse, silhouette meaningless) — caught by the screenshot criterion, fixed by re-authoring data with no code change. Risk: someone later 'tidies' tutorialLevels to call the generator for convenience — the no-generator-import test is the guard. Rollback: the module is pure data plus a builder; deleting the route in W1-04 disables it entirely with no persisted residue. No flag needed at this layer because nothing here is reachable until W1-04 routes to it.",
+   "brand_perf_check": "FLAG TEST: PASS — no motion is added. These boards feed the same StaticBoardSurface path as any generated board; they animate no arrow that is still in the static layer and add no concurrent node. They are strictly SMALLER than any generated board (level 0 is already 60 arrows / 20x20), so both the 2-exit-trail ceiling (exitAnimationConfig.ts:43) and the 4-Skia-node ceiling are further from being stressed, not closer. Brand gate: no glow, no gradient, no confetti, no grid lines, no tile backgrounds, no level-select grid; direction still by arrow shape. PRODUCT.md 'board is sacred' respected — the tutorial changes what is ON the board, never what is drawn over it."
+  },
+  {
+   "id": "W1-03",
+   "title": "First-run flag: a new int key, plus the migration that keeps existing players out",
+   "what": "Add to /Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts a key `const FtueStageKey = 'arrows_ftue_stage'`, append it to the Object.freeze'd `PersistenceKeys` array (currently 8 entries, saveSystem.ts:39-48), and expose `get ftueStage(): number` / `setFtueStage(n: number)`. Stage values: 0 = tutorial not started, 1 = T1 cleared, 2 = T2 cleared, 3 = complete (never show again). The store interface is INT-ONLY (getInt/setInt/deleteKey, saveSystem.ts:11-15) — this feature packs into a single int and requires NO widening of the store interface and no change to the boot hydrate contract in src/ui/storage.ts beyond the key list it already iterates (storage.ts:22, `AsyncStorage.multiGet(SaveSystem.persistenceKeys)`). MIGRATION: the store has no 'has key' API, so read with a sentinel default: `store.getInt(FtueStageKey, -1) === -1` means 'never written'. Add `SaveSystem.migrateFtueStage()` which runs ONCE at boot (called from initSaveSystem in src/ui/storage.ts immediately after `SaveSystem.useStore(store)`), and when the stage is -1 writes 3 if `totalSolved > 0 || currentLevel > 0`, else writes 0. Update /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts:36-45, which asserts the exact 9-element key list; that test failing is the intended tripwire, not an obstacle to route around. Decide and implement resetProgress(): recommendation is that it ALSO deletes FtueStageKey so a full reset replays the tutorial (resetProgress is currently called only from storage.test.ts:100 and :121 — no UI reaches it).",
+   "why": "WIPE RISK, stated first as the harness requires: PersistenceKeys is frozen and is the literal argument to the single multiGet at boot (storage.ts:22). A new key NOT added to that array silently never hydrates — the flag reads as -1 on every cold start and every returning player replays the tutorial forever. That is the specific, non-obvious failure this step exists to prevent. The migration is needed because a plain default of 0 would classify every existing install as a new player. Deriving 'already onboarded' from keys that already exist means the migration needs no data the device does not already have.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/storage.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/saveSystem.test.ts"
+   ],
+   "acceptance": [
+    "storage.test.ts asserts PersistenceKeys equals exactly the 9 strings including 'arrows_ftue_stage', still frozen, still hydrated by exactly ONE multiGet call, and still never calling getAllKeys — i.e. the existing assertions at storage.test.ts:33-46 are extended, not weakened or deleted.",
+    "Migration table, each a named test with a mocked AsyncStorage.multiGet payload: (a) no keys at all -> stage becomes 0; (b) arrows_total_solved '17', no ftue key -> stage becomes 3; (c) arrows_current_level '5', totalSolved absent, no ftue key -> stage becomes 3; (d) totalSolved '0' and currentLevel '0', no ftue key -> stage becomes 0; (e) ftue key already '2' -> stage stays 2 and is NOT overwritten; (f) ftue key '3' with totalSolved 0 -> stays 3.",
+    "Migration writes at most one key and is idempotent: calling migrateFtueStage() twice produces the same stored value and the second call issues no additional AsyncStorage write (assert via the multiSet mock call count).",
+    "No existing key's read path, default, or write path changes: the diff to saveSystem.ts adds lines and modifies only the PersistenceKeys array and resetProgress."
+   ],
+   "verification": "`npx jest src/ui/__tests__/storage.test.ts src/core/__tests__/saveSystem.test.ts`, PLUS a device migration run that the unit tests cannot fake: install the CURRENT release build, play until the header shows LEVEL 3 (so arrows_current_level and arrows_total_solved are non-zero on disk), then install the W1 build OVER it without uninstalling (`adb install -r`), cold start, and confirm Play goes straight to the generated board with the correct level number and never shows a tutorial board. This over-install is the only thing that exercises the actual failing path — a real on-disk AsyncStorage written by the old key set being read by the new one — which a jest mock, by construction, cannot reproduce.",
+   "effort": "S",
+   "risk": "Risk: a mid-tutorial cold start. Handled by design — the stage is written when each tutorial board is CLEARED, so a kill during T1 resumes at T1. Risk: Android Auto Backup is already ON and unconfigured (allowBackup='true', no dataExtractionRules), so a restored backup can carry a stage of 3 onto a fresh install; that fails SAFE (a restored player skips the tutorial, matching their real history) and must be stated in the PR, not fixed here. Rollback: a build that stops calling migrateFtueStage leaves the extra int harmless; the key is additive and never read by any existing feature, so no existing save is at risk of being wiped by this change.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: not applicable — persistence only, no board node, no motion, no arrow touched. Brand gate: no user-visible surface."
+  },
+  {
+   "id": "W1-04",
+   "title": "Route the first run — and prove a returning player's launch executes none of it",
+   "what": "Add a pure decision function `ftueRoute({ stage }: { stage: number }): 'T1' | 'T2' | 'assisted' | 'normal'` in a new /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ftueRoute.ts, with an accompanying .test.ts (node env, matches the existing testMatch). In /Users/gentlegen/Desktop/Projects/arrows-game/App.tsx the Screen union is `'splash' | 'menu' | 'game'` (line 19) and onPlay simply does `setScreen('game')` (line 68). Change onPlay to consult ftueRoute(SaveSystem) and pass a `tutorialId?: 'T1' | 'T2'` prop into GameScreen. Stage 3 -> today's exact behaviour, unchanged code path. Stage 0/1/2 -> GameScreen mounts with tutorialId set. PRODUCT.md 'flow over menus' is preserved: there is no new screen, no new navigator (Reanimated's ScreenTransition needs react-native-screens and a navigator is not warranted for 3 screens), no extra tap — the first Play lands on T1 exactly the way it lands on a level today. Do NOT branch at the splash: the menu still shows first, so the wordmark and the Play pill are the same first impression for everyone.",
+   "why": "PRODUCT.md principle 3 is 'Flow over menus. Open -> Play -> resume -> next level. No level-select detour'. Any FTUE that inserts a screen violates the product's own spine. Routing inside the existing game screen also means the returning player's code path is literally the pre-change path, which is what makes 'a returning player never sees any of it' verifiable rather than hoped for.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ftueRoute.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/ftueRoute.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/App.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "ftueRoute is total over its input and covered by a test per branch, including out-of-range stages (-1, 4, NaN) which must all resolve to 'normal' — fail safe toward the existing behaviour.",
+    "With stage 3, the props GameScreen receives are identical to today's (tutorialId undefined) and the rendered header still shows 'LEVEL n' plus the mission label — verified by a device screenshot of a stage-3 install placed side by side with the same screenshot from the current release build.",
+    "PERF_MODE is unaffected: App.tsx line 24 still boots straight to 'game' with tutorialId undefined when PERF_LEVEL_INDEX is set, so the benchmark harness measures the same workload as before. Assert this in the ftueRoute test by covering the PERF_MODE short-circuit explicitly.",
+    "No new dependency is added to package.json."
+   ],
+   "verification": "`npx jest src/ui/__tests__/ftueRoute.test.ts`, then the two device runs: (1) fresh install (`adb uninstall` then install) -> Play lands on T1; (2) the over-install from W1-03's verification -> Play lands on the generated board at the saved level. Screenshot both. The pair of device runs is what exercises the real branch, because the routing input comes from hydrated on-disk state that only a real install produces; the unit test alone proves the function, not the wiring.",
+   "depends_on": [
+    "W1-02",
+    "W1-03"
+   ],
+   "effort": "S",
+   "risk": "Risk: the tutorial props leak into the PERF_MODE path and quietly change every future benchmark — mitigated by the explicit PERF_MODE test case and by re-running one existing benchmark scenario before/after and reporting the paired difference (absolute gates are not evaluable on a loaded host, per the 2026-09-08 A/B scar). Rollback: `ftueRoute` returns 'normal' unconditionally behind a single build-time constant FTUE_ENABLED; flipping it off restores today's behaviour with one line and no persisted cleanup.",
+   "brand_perf_check": "FLAG TEST: PASS — routing only; no arrow is animated, nothing is pulled from the static layer, no node count changes. Brand gate: no new screen, no menu, no level-select grid; the Open -> Play -> board flow is byte-identical in shape."
+  },
+  {
+   "id": "W1-05",
+   "title": "Tutorial mode inside GameScreen: no ads, no stats writes, no win panel, auto-advance",
+   "what": "In /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx, when `tutorialId` is set: (a) build the session from buildTutorialLevel instead of createLevelSession — extend /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/gameSessionLifecycle.ts with `createTutorialSession(id, revision): LevelSession` returning the same shape, so nothing downstream changes; (b) in onRemoved (GameScreen.tsx:109-130) skip `SaveSystem.registerSolve`, skip `SaveSystem.setCurrentLevel`, and skip `Ads.registerGameFinished` — instead call `SaveSystem.setFtueStage(1)` after T1 clears and `setFtueStage(2)` after T2; (c) skip the win/lose panel entirely for tutorial boards (the `phase !== 'playing'` block at GameScreen.tsx:248-314) and let the existing 450 ms terminal delay (beginTerminalTransition('won', 450), line 119) run straight into mounting the next tutorial board — or, after T2, into the real generated board at SaveSystem.currentLevel; (d) hide the 💡 HeaderButton (GameScreen.tsx:226-231) while tutorialId is set; (e) replace the level label + mission label block (lines 208-222) with a single line of tutorial copy at the existing levelLabel type scale (18pt, Fonts.bold, p.accentLight); hearts stay visible throughout so the player learns the UI before it matters.",
+   "why": "Three concrete audit findings converge here. (1) `Ads.showInterstitialIfDue` is reachable from the win panel's Next level (GameScreen.tsx:160) — an interstitial inside the first 90 seconds is the single worst thing this workstream could ship. (2) `SaveSystem.registerSolve` (saveSystem.ts:106) increments totalSolved AND seeds the day-streak chain; counting tutorial boards would make HomeScreen's stats line (HomeScreen.tsx:102-112) claim puzzles the player never solved. (3) The win panel's own copy is wrong for a tutorial board — it renders `Level N · shapeName · arrowCount arrows` (line 270) and a star row sized by hearts. Skipping the panel is also the PRODUCT.md 'flow over menus' answer: the first 90 seconds contains zero panel taps.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/gameSessionLifecycle.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/gameSessionLifecycle.test.ts"
+   ],
+   "acceptance": [
+    "Clearing T1 and T2 on device leaves `arrows_total_solved` at 0, `arrows_current_level` at 0, `arrows_day_streak` unwritten, and `arrows_ftue_stage` at 2 — read back from the device, not inferred from code.",
+    "No ad surface of any kind appears between app launch and the first tap on the real generated board: no interstitial, no rewarded prompt, no simulated TEST AD modal. Confirmed on a screen recording of a fresh install through to level 1.",
+    "After T1 clears, the next board appears without any panel or button press; the same after T2. The recording shows a continuous flow with no tap other than taps on arrows.",
+    "With stage 3, GameScreen's rendered header and win panel are pixel-identical to the current release for the same level — side-by-side screenshots.",
+    "The hint button is absent during T1/T2 and present on the first real board."
+   ],
+   "verification": "Screen-record a fresh install from launch to the first real board on device, then dump the saved state with `adb shell run-as com.danteb.arrows cat` on the AsyncStorage store (or read it via a __DEV__ debug print of SaveSystem values) and paste the key/value pairs into the PR. The recording exercises the original failing behaviour directly — an ad or a stats write in the first 90 seconds is only observable in a real run, since Ads.initAds and the AdHost are compiled into and mounted in production builds and the simulated TEST AD modal is the fallback whenever initAds() fails. Reading the persisted ints back is what proves registerSolve was actually skipped rather than merely appearing skipped in the diff.",
+   "depends_on": [
+    "W1-02",
+    "W1-04"
+   ],
+   "effort": "M",
+   "risk": "Risk: the tutorial branch drifts from the normal branch over time (two code paths in one component). Contained by keeping the branch to the five listed points and asserting the stage-3 render is unchanged. Risk: skipping the win panel makes the T1->T2 transition a hard cut, which the audit already names as a motion gap for level->level; accept it for now and note that the level-transition workstream will cover both. Rollback: FTUE_ENABLED off restores the single path; the ftue_stage int is inert when unread.",
+   "brand_perf_check": "FLAG TEST: PASS — no new animated node. The tutorial board mounts through the same StaticBoardSurface and reuses the existing 450 ms terminal delay and the existing exit trail; concurrency stays within MAX_CONCURRENT_EXIT_TRAILS (exitAnimationConfig.ts:43) and the 4-node Skia budget, and since a tutorial board is far smaller than a generated one the O(n) mask rebuild is cheaper than the shipped case. Brand gate: hiding the 💡 also removes a colour emoji from the first 90 seconds, which the art audit flags as glaring on Ink Night — a side benefit, not a regression."
+  },
+  {
+   "id": "W1-06",
+   "title": "The one contextual moment: the first blocked tap is free, and it is the only time words appear",
+   "what": "Teach the blocking rule exactly where NN/g permits a tutorial — at first encounter, in context. T2 is authored (W1-02) so that exactly one arrow can exit initially, which means most exploratory taps land on a blocked arrow. On the FIRST blocked tap of T2: run the full existing feedback (the bump at src/ui/BoardView.tsx:887 / StaticBoardSurface.native.tsx:308 via blockedBumpAt, and the magenta blocker flash at BoardView.tsx:842 / StaticBoardSurface.native.tsx:264 via blockerOpacityAt — the flash already lights the exact arrow in the way, boardLogic.ts:80 blockerOf), but charge NO heart. Implement as a `graceBlockedTaps` guard inside GameScreen's onBlocked (GameScreen.tsx:132-150): when tutorial grace applies, skip the `setHearts(left)` branch and still call `feedback('blocked', ...)`. Simultaneously swap the header line (W1-05e) to the rule copy for the rest of that board. Proposed copy, owner to approve verbatim: T1 idle line 'Tap an arrow.'; T2 opening line 'One can leave. Find it.'; T2 after the first blocked tap 'Its path is blocked — clear the pink one first.' Copy must name the flash colour-independently as well as by position, because PRODUCT.md forbids conveying meaning by colour alone.",
+   "why": "NN/g's controlled test rules out a card deck but grants exactly one exception: an app introducing a workflow for which users have no mental model, taught contextually at first encounter. A blocked-lane rule is that workflow, and the blocker flash is already the mechanism — the game currently performs the explanation and simultaneously punishes the player for having needed it, on a board where I measured 68.3% of arrows are un-clearable at the start. Making the first encounter free converts a punishment into a lesson without adding any new UI. It also aligns with the streak-forgiveness evidence (Duolingo's freeze-cap increase improving return rates; JMIR 2023 n=14,879 finding rigid consistency predicted WORSE persistence).",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/tapRules.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/tapRules.test.ts"
+   ],
+   "acceptance": [
+    "On T2, the first blocked tap leaves the heart row at 3 of 3 while the bump and the blocker flash both play — confirmed by a device screen recording, with the heart row visible in frame throughout.",
+    "The second blocked tap on a DIFFERENT arrow in T2 costs a heart normally (the grace is one-shot, not a mode). Confirmed in the same recording.",
+    "The existing BlockedTapLedger semantics are untouched: a repeat tap on the SAME blocked arrow still costs nothing (GameScreen.tsx:135-139 comment and blockedLedger.charge at BoardView.tsx:461). Assert with a unit test in tapRules.test.ts that grace and the ledger compose without double-refunding.",
+    "REDUCE-MOTION CASE, mandatory: with OS reduce motion ON, the header rule line still appears on the first blocked tap and is legible in a device screenshot. This is what makes the lesson survive independently of the animation.",
+    "The header line reverts to the neutral T2 line after the next successful removal, so words are transient and the board is never competing with a persistent banner."
+   ],
+   "verification": "Device screen recording of T2 played twice — once with OS reduce motion OFF, once ON (Settings > Accessibility > Remove animations) — showing the heart row across the first and second blocked taps and the header copy at each moment. A recording is the only closing evidence permitted here: this is motion plus timing plus a colour flash, and this project has a documented scar from transform/animation fixes verified only by tsc and unit tests. Reduce motion must be toggled through the OS Settings UI and NOT through the perf harness, because scripts/perf/android/benchmark.mjs sets `animator_duration_scale 0`, which flips Reanimated's useReducedMotion (BoardView.tsx:191) to true and has already invalidated one accepted result on this project.",
+   "depends_on": [
+    "W1-02",
+    "W1-05"
+   ],
+   "effort": "M",
+   "risk": "HARD DEPENDENCY, and the biggest risk in this workstream: the audit establishes that every withTiming in the feedback layer uses Reanimated's default ReduceMotion.System, so with OS reduce motion ON progress jumps to 1 and at k=1 blockerOpacityAt returns 0 (feedbackCurves.ts:25-31) and blockedBumpAt returns 0 (feedbackCurves.ts:18-22). A reduce-motion player therefore sees NO flash and NO bump — the entire visual half of this lesson is missing. That is why this step ships a static header line as the primary carrier and the animation as reinforcement. The step must NOT be called done until the reduce-motion recording is produced. Rollback: grace and copy both live behind FTUE_ENABLED; disabling restores today's blocked handling exactly.",
+   "brand_perf_check": "FLAG TEST: PASS — this step animates nothing new. It reuses the shaking node and the blocker node, which are 2 of the existing 4-node Skia budget and already excluded from / drawn over the static layer respectively (BoardView.tsx:644-651 excludes only shaking and hint; blocker draws over its static twin by design). No third concurrent node, no per-arrow node, no static-layer arrow animated. Brand gate: no glow, no confetti, no particles; magenta stays reserved for hearts and the blocked flash per PRODUCT.md principle 2; the copy is one transient line in the existing header band, so 'the board is sacred' holds. The words themselves are the one place this workstream adds text to a game that has almost none — flagged as an escalation."
+  },
+  {
+   "id": "W1-07",
+   "title": "Free stall hint — reuse the existing hint path, and measure the delay before shipping it",
+   "what": "During T1, T2 and the first real board, arm a stall timer: if N seconds elapse with no successful removal, fire the EXISTING hint (GameScreen.tsx onHint, lines 181-192) but skip `Ads.showRewarded` — call `level.board.findHint()` (boardLogic.ts:101) and set the hint state directly. The board already recentres on the hinted arrow (BoardView.tsx:294-312, a 280 ms timing on tx/ty) and pulses it (the 1600 ms hint node, BoardView.tsx:934 / StaticBoardSurface.native.tsx:348). Add a constant `FTUE_STALL_HINT_MS` in a new /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ftueConfig.ts. N IS NOT KNOWN AND MUST NOT BE INVENTED. Ship this step with the stall hint behind its own flag, DEFAULT OFF, and set N from measurement: instrument a debug build to log the elapsed time from board-mount to first successful removal, run at least 5 first-time players (people who have not played Arrows) through T1/T2/level 1, and set N to the p75 of that distribution so the hint fires for the stalled quartile and not for everyone. Record the raw samples, the sample count, and the p75 in /Users/gentlegen/Desktop/Projects/arrows-game/docs/ftue-board-metrics-<date>.md next to the number.",
+   "why": "Answers the audit finding that level 1 offers ~32% clearable arrows with no instruction, and does it with the mechanism the game already has — the hint is described in DESIGN.md and already recentres the board so the pulse is never off-screen. Making it free during the FTUE also removes the absurdity the audit found in the paid version: the ad-paid hint renders NOTHING under reduce motion, so a new player could pay an ad view for a blank result. The p75 rule exists because this project's red-flag list records four separate incidents of a brief pinning a threshold that was never computed from live data; a stall delay is precisely that kind of number.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/ftueConfig.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/ftue-board-metrics-<date>.md"
+   ],
+   "acceptance": [
+    "The doc records at least 5 first-time-player sessions, the raw time-to-first-removal per board, the sample count, and the p75 — and FTUE_STALL_HINT_MS in code equals that p75. If fewer than 5 sessions were collected, the flag stays OFF and the step is NOT closed.",
+    "With the flag ON and the timer artificially shortened for the test, the stall hint fires with zero ad calls: verified by a device run with the network disabled (airplane mode) showing the pulse appears and no ad or TEST AD modal is presented.",
+    "REDUCE-MOTION CASE: with OS reduce motion ON, the hint's 1600 ms pulse collapses (audit: hint pulse amplitude = 0 at k=1). Acceptance is therefore that the hinted arrow still ends up VISIBLY distinguished — either by the recentre alone being insufficient (in which case this step is blocked on the reduce-motion fix and says so) or by a non-animated resting accent colour on the hinted arrow. State which, with a reduce-motion device screenshot.",
+    "The stall timer resets on every successful removal and is cancelled on unmount, on the terminal transition, and on a board change — asserted by a unit test on the extracted timer logic, and by a device run where rapid successful play never triggers a hint."
+   ],
+   "verification": "Two device runs recorded on video: (1) airplane mode, deliberate inaction on T2, showing the pulse and no ad; (2) OS reduce motion ON, same scenario, screenshotted at the moment the hint fires. Plus the playtest log pasted into the doc. The airplane-mode run is what exercises the original failing path — a hint that silently routes through Ads.showRewarded would fail to appear with no network, which reading the diff cannot reveal. The reduce-motion run exercises the documented curve collapse at k=1 rather than assuming the pulse renders.",
+   "depends_on": [
+    "W1-05"
+   ],
+   "effort": "M",
+   "risk": "Risk: the p75 delay is measured on 5 people, which is a small sample and is NOT a statistically defensible threshold — state it as such in the doc and treat it as a starting value to be revisited when analytics exist, never as a validated constant. Risk: an auto-hint that fires too eagerly removes the puzzle. Contained by the default-OFF flag and by the reset-on-success rule. Rollback: one flag.",
+   "brand_perf_check": "FLAG TEST: PASS — the hint arrow is ALREADY pulled out of the static layer (BoardView.tsx:649 adds hint.arrow to excludedArrows) and is 1 of the 4 permitted Skia nodes. This step changes only WHO triggers it (a timer instead of an ad callback), so it adds no new node and animates no arrow that remains in the static layer. Cost is the existing O(n) mask rebuild on hint entry and exit — n is 60 on level 1, identical to the shipped paid-hint case, and far smaller on the tutorial boards. Brand gate: reuses DESIGN.md's specified hint pulse; no new visual language."
+  },
+  {
+   "id": "W1-08",
+   "title": "Hand-off: on the first real board, mistakes made before your first success are free",
+   "what": "After T2, the player lands on the real generated board at SaveSystem.currentLevel (index 0 for a genuinely new player — the 20x20 / 60-arrow / 19-clearable Circle I measured on 2026-09-09). While `ftueStage === 2`, apply one forgiveness rule on that board only: blocked taps that occur BEFORE the player's first successful removal on that board cost no heart; from the first successful removal onward, hearts behave exactly as they do today. When that board is cleared, write `setFtueStage(3)` — full control from then on, forever. Implement the rule alongside the W1-06 grace guard in GameScreen's onBlocked, and extract both into a small pure module (extend /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/tapRules.ts, which already owns BlockedTapLedger and isGhostTap) so the policy is unit-testable in the node jest env. The header shows the normal 'LEVEL 1' + mission label here — the tutorial copy is over.",
+   "why": "This is the direct, non-generator answer to the two hardest facts in the audit: level index 0 cannot be changed without reboarding every existing player, and on that board 68.3% of arrows cannot exit at the start. A rule ('mistakes before your first success are free') rather than a tuned number is deliberate — it needs no measurement to justify, self-scales to any board, and cannot be wrong in the way an invented heart count or an invented grace quota would be. It is the mechanism version of the KDD 2021 finding that too-hard carries 3x the churn hazard of too-easy for players in their first 10 days.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/tapRules.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/tapRules.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "Unit tests over the extracted policy: with stage 2 and zero removals so far, a blocked tap on a new arrow charges nothing; after one successful removal, the next blocked tap on a new arrow charges a heart; with stage 3, the very first blocked tap charges a heart (today's behaviour, unchanged); the BlockedTapLedger's same-arrow refund still composes with both without double-refunding.",
+    "Device run on a fresh install: tap three different blocked arrows on level 1 before removing anything — the heart row stays 3 of 3 and each tap still bumps and flashes. Then remove one arrow, tap a blocked one — a heart is spent and the pip pops. Recorded on video with the heart row in frame.",
+    "After that board is cleared, `arrows_ftue_stage` reads 3 and `arrows_current_level` reads 1 and `arrows_total_solved` reads 1 — read back from the device.",
+    "Level 2 onward behaves exactly as the current release: the first blocked tap costs a heart. Verified on device against the current release build."
+   ],
+   "verification": "`npx jest src/ui/__tests__/tapRules.test.ts` for the policy, plus the recorded device run above and a state read-back. The device run is what exercises the original failing behaviour — the audit's own repro was losing all 3 hearts in ~6 taps on level 1 having never been told the rule, so the closing evidence must be the same scenario replayed: taps on blocked arrows with the heart row visible. A unit test alone would only prove the policy function, not that GameScreen's onBlocked consults it.",
+   "depends_on": [
+    "W1-05",
+    "W1-06"
+   ],
+   "effort": "M",
+   "risk": "Risk: the grace rule leaks past level 1 (a stage that never advances to 3) and silently makes the game unlosable. Guard with the stage-3 unit case AND the level-2 device check; additionally make the rule depend on stage === 2 only, so any failure to advance the stage is visible as 'level 1 forgiving forever' rather than as a global change. Risk: a player who clears level 1 with the grace and then finds level 2 punishing — an intentional difficulty step, but it is exactly the too-hard cliff the KDD data warns about, so it is listed as an open verification gap needing playtest observation. Rollback: FTUE_ENABLED off.",
+   "brand_perf_check": "FLAG TEST: PASS — no motion added at all; this step only changes whether a heart is decremented. The bump and flash nodes are the existing ones. No arrow in the static layer is animated, no additional concurrent node. Brand gate: no new UI, no new colour, no text on the board."
+  },
+  {
+   "id": "W1-09",
+   "title": "Close the loop: fresh-install and over-install acceptance runs, plus the reduce-motion pass",
+   "what": "Produce the single acceptance artifact for the whole workstream: two screen recordings and one state dump. (1) FRESH INSTALL: `adb uninstall com.danteb.arrows` then install the W1 build, record from cold start through T1, T2 and the clear of real level 1, then dump the persisted ints. (2) OVER-INSTALL: install the current release, play to level 3, `adb install -r` the W1 build, cold start, record that Play goes straight to the generated board with the right level number and no tutorial. (3) REDUCE-MOTION PASS: repeat run (1) with OS reduce motion ON via Settings > Accessibility, screenshotting the T2 blocked moment and the stall hint. Record wall-clock time from first Play tap to the first successful removal in each run. Attach all artifacts to the PR and write a one-line entry per pattern learned into the project memory at /Users/gentlegen/.claude/projects/-Users-gentlegen-Desktop-Projects-arrows-game/memory/.",
+   "why": "CLAUDE.md rule 2: visual and feel work closes on screenshots or recordings from a user, never on math or tests. Rule 1: preview is not device. This workstream's whole claim — 'the first 90 seconds now teaches the rule' — is a claim about what a person sees, and every step above defers its visual half to this artifact. The over-install run is the only evidence that the determinism contract and the migration actually hold on a real device with real on-disk state.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/ftue-acceptance-<date>.md"
+   ],
+   "acceptance": [
+    "Fresh-install recording shows: no ad of any kind before the first real board; the player clears T1 without ever losing a heart; the T2 blocked moment shows the bump, the flash and the header rule line together; the hearts row is visible and correct throughout.",
+    "Over-install recording shows the resumed level number matching what was on screen before the update, no tutorial board, and the header identical to the pre-update screenshot.",
+    "Reduce-motion run: the header rule line is legible in the screenshot at the T2 blocked moment, and the doc states explicitly whether the flash/bump/pulse were visible or absent — if absent, this workstream is recorded as DEPENDENT on the reduce-motion fix and the dependency is named in the PR rather than glossed.",
+    "The doc names the exact device(s) and OS version for every run, and marks iOS as UNVERIFIED — the native board view has not compiled since the 2026-09-01 exit protocol change (docs/IOS_BOARD_PLAN.md), so nothing in this workstream has iOS evidence."
+   ],
+   "verification": "The artifacts themselves are the verification. They exercise the original failing behaviour because the audit's repro was a human playing level 1 on a fresh install and losing 3 hearts in ~6 taps without being told the rule — so the closing evidence is that same fresh-install run, recorded, with the heart row in frame. Do NOT use scripts/perf/android/benchmark.mjs for any part of this: it boots with PERF_MODE straight into 'game' (App.tsx:24), which makes the splash and menu unmeasurable, and it sets animator_duration_scale 0, which flips useReducedMotion to true and would silently measure the reduced-motion variant of every lesson.",
+   "depends_on": [
+    "W1-04",
+    "W1-05",
+    "W1-06",
+    "W1-07",
+    "W1-08"
+   ],
+   "effort": "M",
+   "risk": "Risk: the runs are performed by the implementer, who already knows the rules, so 'a first-time player learns the rule' is NOT established by them — only 'the rule is shown' is. Genuinely closing the learning claim needs the 5-person playtest from W1-07 and is listed as an open gap. Rollback: none needed; this step ships no code.",
+   "brand_perf_check": "FLAG TEST: not applicable — verification only, no code. Brand gate: the recordings are themselves the check that no glow, confetti, banner, or on-board overlay crept in across W1-02..W1-08; state that check explicitly in the doc."
+  }
+ ],
+ "open_verification_gaps": [
+  "Does the FTUE actually teach? Every step here proves the rule is SHOWN, not that it is LEARNED. Nothing in this repo can measure comprehension: there is no analytics, no funnel, no remote config. Closing this needs either the 5-person moderated playtest specified in W1-07 (where the observable is 'did they tap a blocked arrow again after the lesson') or an analytics workstream. Until then the claim is 'the rule is now shown contextually and the first mistakes are free', and it must be written that way.",
+  "FTUE_STALL_HINT_MS is unset until the W1-07 playtest runs. Shipping W1-07 with an invented delay would repeat the exact failure pattern recorded 6+ times on this project. The flag stays OFF until the p75 exists, and 5 samples is a starting value, not a validated threshold.",
+  "The reduce-motion collapse is a hard dependency I could not resolve inside W1. Per the audit, at k=1 blockerOpacityAt returns 0 (src/ui/feedbackCurves.ts:25-31) and blockedBumpAt returns 0 (:18-22), so a reduce-motion player gets no flash and no bump — the visual half of the W1-06 lesson. W1 mitigates with a static header line, but the animated reinforcement is UNVERIFIED for that population until the ReduceMotion.Never fix lands at src/ui/StaticBoardSurface.native.tsx:264,:308,:348 and src/ui/BoardView.tsx:842,:887,:934.",
+  "iOS is entirely UNVERIFIED. The native board view has not been compiled since the 2026-09-01 exit protocol change (docs/IOS_BOARD_PLAN.md), so no tutorial board, no cell-pt figure, and no recording in this workstream has any iOS evidence. Closing this needs the iOS board plan's gates A1-A5 and >=20 GB free disk.",
+  "The cell-pt ceiling from W1-01 will be emulator-derived unless a second physical device is available. All perf and layout numbers on this project come from one API 31 emulator; a 19.5:9 phone has a materially different board viewport (the art audit notes the square board fills only ~41% of screen height there), so a tutorial grid sized on the emulator may be over- or under-sized on a real phone. Marked UNVERIFIABLE with current tooling if no second device exists.",
+  "Whether level 2 becomes a cliff after a forgiven level 1 is unmeasured. W1-08 removes the heart cost only on the first board; the difficulty step to level 2 (95 arrows, 35.8% clearable, measured 2026-09-09) is unchanged and could reproduce the too-hard hazard one board later. Observable only in playtest or analytics.",
+  "Android Auto Backup is already ON and unconfigured (allowBackup='true', no dataExtractionRules), so arrows_ftue_stage will be backed up and restored along with everything else, uncontrolled. It fails safe (a restored stage of 3 skips the tutorial, matching the player's real history) but the behaviour is undeclared and untested; a restore-from-backup run would close it."
+ ],
+ "escalations": [
+  {
+   "question": "Approve the exact tutorial copy — this adds instructional text to a game that currently has none, which is a brand decision, not an engineering one.",
+   "options": "(a) The three lines proposed in W1-06: T1 'Tap an arrow.', T2 'One can leave. Find it.', T2-after-block 'Its path is blocked — clear the pink one first.' (b) Wordless: no copy at all, teaching carried entirely by board design plus the free stall hint. (c) Different wording of your own.",
+   "recommendation": "(a), with one amendment: replace 'the pink one' with a colour-independent phrase such as 'clear the arrow in its way' — PRODUCT.md's accessibility rule says meaning is never conveyed by colour alone, and the flash already carries the position. Option (b) is tempting for brand purity but leaves the reduce-motion player with literally nothing, since the flash and bump both collapse to zero for them.",
+   "why_it_cannot_be_decided_here": "Taste-based and brand-defining. PRODUCT.md's personality is 'clean, calm, confident — the UI disappears into the puzzle', and three lines of instructional copy is the first text this game has ever put in the header band. That is the owner's call, not a verifiable criterion."
+  },
+  {
+   "question": "How many real generated levels get the first-run assist (the free-mistakes-before-first-success rule)?",
+   "options": "(a) One — level 1 only, then full rules (what W1-08 specifies). (b) The first three levels. (c) Until the player's first perfect clear.",
+   "recommendation": "(a) One. Not because one is measured to be right, but because any larger number is an invented threshold: this repo has zero analytics, so there is no way to tell whether 1 or 3 is better, and picking 3 would be exactly the unmeasured-number pattern this project has been burned by repeatedly. Ship (a), and revisit only when an analytics workstream can measure level-1 through level-5 drop-off.",
+   "recommendation_note": "",
+   "why_it_cannot_be_decided_here": "The right answer is an empirical retention question and this codebase cannot produce the data. Choosing (b) or (c) today would mean asserting a number with no measurement behind it."
+  },
+  {
+   "question": "Should tutorial boards count toward the visible lifetime stats and the day streak?",
+   "options": "(a) No — tutorial clears write nothing but arrows_ftue_stage (what W1-05 specifies). (b) Yes — they count as solves, so a brand-new player immediately sees '2 puzzles solved' and starts a day streak on day one.",
+   "recommendation": "(a) No. HomeScreen's stats line (src/ui/HomeScreen.tsx:102-112) is hidden until the first solve and reads '1 puzzle solved' — counting a 6-arrow tutorial board as a solved puzzle makes the app's own stats lie, and SaveSystem.registerSolve (src/core/saveSystem.ts:106) also seeds the day-streak chain, so a tutorial clear would start a streak the player did not earn. The counter-argument (early-progress feedback lifts day-one engagement) is real but should be answered by the daily-content or meta workstream, not by inflating a lifetime counter.",
+   "why_it_cannot_be_decided_here": "It trades product honesty against day-one engagement and is visible to the player forever; it is a product-values call, and it also interacts with whatever the meta/daily workstream decides about streak seeding."
+  },
+  {
+   "question": "Should SaveSystem.resetProgress() also clear arrows_ftue_stage?",
+   "options": "(a) Yes — a full reset replays the tutorial. (b) No — the tutorial is a lifetime one-shot.",
+   "recommendation": "(a) Yes. resetProgress currently deletes all six progress keys and is reachable only from tests (src/ui/__tests__/storage.test.ts:100,:121), so the blast radius today is nil; but if a settings screen ever exposes it, a 'reset progress' that returns the player to level 1 WITHOUT the tutorial would recreate the exact hostile first board this workstream exists to fix.",
+   "why_it_cannot_be_decided_here": "It is a small decision with a persisted, irreversible-for-the-player effect, and it presumes a future settings surface whose semantics the owner has not defined."
+  }
+ ]
+}

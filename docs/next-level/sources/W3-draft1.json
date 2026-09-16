@@ -1,0 +1,330 @@
+{
+ "workstream": "W3 — Content and progression: difficulty curve, shape catalogue, and the determinism migration",
+ "goal": "A player's first board is small enough to survive learning the rule, boards grow measurably harder for thousands of levels instead of plateauing at level 1, and the picture-book silhouettes arrive in the first hour instead of after level 160 — without breaking the level-index determinism that resume and retry depend on.",
+ "non_goals": [
+  "FTUE / tutorial / contextual teaching of the rule — the board gets easier here, but nobody is taught the rule by this workstream",
+  "Daily challenge, streaks, notifications, store review, analytics, IAP, meta progression",
+  "Motion, art, glyphs, the reduce-motion bug, the interstitial counter bug, splash backstop",
+  "Changing the core rule (see escalation 3) — removal stays monotone, so the peel proof in LevelGenerator stays valid",
+  "iOS anything — the native board view has not compiled since 2026-09-01; every number here is Node-side generator math plus Android-side rendering",
+  "Level select / replaying an arbitrary past level — progress stays a single forward pointer"
+ ],
+ "steps": [
+  {
+   "id": "W3-01",
+   "title": "Level metrics harness, and record the v1 baseline BEFORE anything changes",
+   "what": "Add /Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/levelMetrics.ts (run via npx tsx; add an `analysis:levels` npm script). For a level-index range it prints per level: tier (Difficulties.displayName), shapeName, grid rows x cols, mask cell count, arrowCount, startLegalFrac (clearable arrows / arrows at deal time), meanLegalFrac and minLegalFrac (averaged over 3 seeded random-legal playouts of the full solve), and cellPt = min(vw/cols, vh/rows) * FIT_MARGIN for a viewport passed on the CLI (FIT_MARGIN = 0.94, BoardView.tsx:59). Aggregate modes: --per-tier (percentiles), --shape-report (frequency, first appearance, adjacent repeats), --tier-report (per-tier arrow-count band overlap), --assert-band (fail if any level's mask cells fall outside its tier's minCells..maxCells). It imports only src/core (LevelGenerator, BoardLogic, Difficulties) — no UI imports, no React. Then run it over 1..3000 on the UNMODIFIED generator and check the output into /Users/gentlegen/Desktop/Projects/arrows-game/docs/level-curve-baseline-2026-09-09.md.",
+   "why": "Every later step in W3 pins a number, and this project has been burned 6+ times by brief numbers that were never computed from live data. The only difficulty-adjacent artefact in the repo today is scripts/perf/core-benchmark.ts, which measures generation SPEED, not difficulty. The baseline must be captured before the generator changes, per the scar 'the base must be measured BEFORE the number is written'.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/levelMetrics.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/level-curve-baseline-2026-09-09.md",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/package.json"
+   ],
+   "acceptance": [
+    "Run over 1..3000 on the unmodified generator reproduces these values, which I measured today (2026-09-09) against this working tree by driving the shipping LevelGenerator/BoardLogic: arrowCount min 42, p50 92, p99 192, max 249 (at index 917); max grid dimension 46, first hit at index 11. If the script disagrees with any of these, the script is wrong.",
+    "Over levels 1..120 it reproduces: Normal n=80 median arrows 81, median meanLegalFrac 36%, median minLegalFrac 19%; Hard n=20 median arrows 123, median meanLegalFrac 32%; Super Hard n=20 median arrows 141, median meanLegalFrac 35%.",
+    "--shape-report over 1..200 reproduces: Circle 38 (19.0%), Diamond 37 (18.5%), Square 35 (17.5%), Rectangle 31 (15.5%); 29 of 199 adjacent pairs repeat the previous shape; first appearances Crown@60 then Hexagon@117 (a 57-level gap), Heart@162, Cat@168, nothing new after 168.",
+    "It reproduces the single worst outlier: index 11 (level 12) = Super Hard / Bolt, grid 46x37, 202 mask cells, 54 arrows, startLegalFrac 56%, meanLegalFrac 55% — the easiest board in the first 120 levels while labelled Super Hard.",
+    "--assert-band on the unmodified generator FAILS on at least index 11 (202 cells vs the SuperHard band of 560..720), proving the assertion has teeth before it is used as a gate."
+   ],
+   "verification": "`npx tsx scripts/analysis/levelMetrics.ts --from 1 --to 3000` and `--from 1 --to 120 --per-tier` and `--from 1 --to 200 --shape-report`; diff each against the numbers in the acceptance list. This exercises the thing being measured because it drives the SHIPPING LevelGenerator and BoardLogic through a complete solve of each board, reading live generated values — it never reads DifficultyConfig and reports it as if it were the outcome.",
+   "effort": "S",
+   "risk": "None at runtime — a dev-only script under scripts/, never imported by the app. The only real risk is a subtly wrong metric definition, which the reproduce-my-numbers acceptance is designed to catch. Rollback: delete the file.",
+   "brand_perf_check": "FLAG TEST: not applicable — no motion proposed, no arrow animated, no Skia node added, no runtime code shipped. Brand gates: none touched.",
+   "depends_on": []
+  },
+  {
+   "id": "W3-02",
+   "title": "Measure the real board viewport and the minimum legible cell size on a device",
+   "what": "Behind __DEV__, log the vw/vh that reach fitToViewport in /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx (the callback defined at :237, fed by the onLayout at :285). Capture on (a) the API 31 emulator used by scripts/perf/android/benchmark.mjs, (b) one physical Android phone, (c) the narrowest supported form factor. Record them in docs, then replace levelMetrics.ts's CLI viewport assumption with those measured constants. Separately, establish the minimum cell size at which a board is still playable: take the index-11 Bolt board (46x37, the smallest cells in the game) and one mid-size board, screenshot both at fit-to-view zoom on the physical device, and have the owner state a floor in pt.",
+   "why": "Every cellPt number I computed for this workstream used an assumed 390x520 pt viewport. CELL = 40 (BoardView.tsx:52) is a board unit, not a screen point; the on-screen size is min(vw/cols, vh/rows) * 0.94 and only the runtime layout supplies vw/vh. This project's red-flag list explicitly names 'verification that read config values instead of live/computed runtime values'. src/ui/hitTest.ts:8 already asserts in a comment that cells are 8-22 pt at fit-to-view — that claim needs confirming or correcting against a real layout before W3-06 turns it into a generator constraint.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/hitTest.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/levelMetrics.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/board-viewport-measured.md"
+   ],
+   "acceptance": [
+    "docs/board-viewport-measured.md contains vw and vh in pt for all three targets, each with the device/emulator name and API level, copied from adb logcat output — not from a stylesheet.",
+    "The hitTest.ts comment 'cells are 8-22 pt at fit-to-view' is either confirmed against those numbers or corrected in the same change.",
+    "A single MIN_LEGIBLE_CELL_PT value is recorded with the screenshot pair that justified it, and the owner has said yes to that screenshot (taste-based criterion, so it closes on an owner eyeball, not on arithmetic).",
+    "The __DEV__ log is absent from a release build (grep the release bundle or confirm the guard)."
+   ],
+   "verification": "adb logcat lines from a debug build pasted into the doc, plus two device screenshots (index-11 Bolt board and one mid-size board) at fit-to-view zoom sent to the owner. Reading BoardView.tsx cannot produce vw/vh — the values only exist at layout time, and the project has a standing scar from render-path work verified only by tsc.",
+   "effort": "S",
+   "risk": "A dev-only log that leaks into release. Mitigate with the __DEV__ guard and confirm in the release bundle. No persisted state, no rendering change.",
+   "brand_perf_check": "FLAG TEST: not applicable — a log statement and a doc, no motion, no node. Brand gates: none touched.",
+   "depends_on": [
+    "W3-01"
+   ]
+  },
+  {
+   "id": "W3-03",
+   "title": "Shape contact sheet tool, and delete the two dead ShapeDef fields",
+   "what": "Add /Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/shapeContactSheet.ts as a direct extension of the existing /Users/gentlegen/Desktop/Projects/arrows-game/scripts/generate-promo-art.ts, which already renders real generated boards to PNG with sharp using the shipping arrowArt geometry and STROKE from src/ui/arrowGeometry.ts. The sheet emits one PNG containing every shape in ShapeLibrary, each drawn twice — rasterized and arrow-filled at the smallest and largest grid its tier can produce — with the shape name, measured fill density, and the rows needed to reach 320 and 640 mask cells printed under each tile. Also remove the `simple` and `fillsGrid` fields from ShapeDef (/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts:22-35): grep across src/ and scripts/ shows both are assigned in the constructor and read nowhere else.",
+   "why": "Adding a silhouette costs 3-15 lines (a polygon() vertex list or an implicit inequality in normalised -1..1 space), but there is no way to LOOK at one — so the true authoring cost per shape today is 'write it blind, ship it, hope it reads'. That is why the catalogue stalled at 26 shapes and why 7 of them are under 31% fill. The sheet turns shape authoring from a guess into a review. The dead fields are a trap for the next author, who will reasonably assume `simple` still routes shapes to tiers (it does not — ShapeLibrary.pick switches on the difficulty argument alone, shapeLibrary.ts:300-307).",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/shapeContactSheet.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/generate-promo-art.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts"
+   ],
+   "acceptance": [
+    "The sheet renders all 26 current shapes and prints a fill density per shape that reproduces the values I measured today by rasterizing each shape at the generator's own probe size (24 rows x round(24*aspect) cols): Bolt 11.0%, Arrow 27.3%, Trophy 28.3%, Star 30.6%, Pine 30.7%, Crescent 33.5%, Rocket 35.2%, Triangle 38.2%, Mushroom 43.3%, Cat 43.4%, Fish 43.7%, Hourglass 44.3%, Crown 44.6%, X 45.1%, Diamond 45.8%, Flower 46.5%, Plus 50.0%, Ring 50.0%, Pentagon 53.5%, Butterfly 53.5%, Hexagon 59.0%, Octagon 64.6%, Circle 66.7%, Heart 75.0%, Square 100%, Rectangle 100%.",
+    "The sheet visibly shows that Square and Rectangle are the SAME silhouette — both inside() are `() => true` (shapeLibrary.ts:113-114), differing only in aspect 1 vs 1.5.",
+    "`npm test` stays green after removing the two fields, and grep for `fillsGrid` and `.simple` across src/ and scripts/ returns zero hits."
+   ],
+   "verification": "Run `npx tsx scripts/analysis/shapeContactSheet.ts`, open the PNG, and send it to the owner. The PNG is the evidence because a fill percentage in a table cannot tell you whether a 12x12 rasterized mushroom reads as a mushroom — and this project's rule is that visual work closes on an image, not on math.",
+   "effort": "S",
+   "risk": "Dev-only script plus a two-field deletion in a core class. The deletion changes the ShapeDef constructor arity, so every `new ShapeDef(...)` call site must be updated in the same commit — all 26 are in the same file. Rollback: revert the commit.",
+   "brand_perf_check": "FLAG TEST: not applicable — an offline PNG renderer and a field deletion; no arrow animates, no Skia node added. Brand gates: none touched.",
+   "depends_on": []
+  },
+  {
+   "id": "W3-04",
+   "title": "Split the shape RNG stream from the layout RNG stream",
+   "what": "In /Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts, generate() builds one `new DotNetRandom(seed(levelIndex))` (:49) and ShapeLibrary.pick takes the FIRST draw from it (:51) before targetCells (:56) and fillMask (:76). Split into two streams: a `shapeRng` seeded from a distinct mix of levelIndex used only by pick, and the existing `rng` used for targetCells and fillMask. Keep the existing FNV-style seed() for the layout stream so the layout stream's values are unchanged for a given (shape, targetCells).",
+   "why": "With one stream, ShapeLibrary.pick calls rng.next(pool.length) — so adding a single shape to any pool changes the drawn index and re-rolls the ENTIRE board for every level from index 0 onward. The catalogue can therefore never grow, and the novelty schedule and the no-repeat rule of W3-07 cannot be added, without a full content churn each time. Splitting the streams is a one-time churn that buys every future one for free. This is the enabling refactor for W3-07 and W3-11.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/levelGenerator.test.ts"
+   ],
+   "acceptance": [
+    "A new jest test generates levels 1..1000 twice — once with the real pools, once with a pool that has one extra stub shape appended — and asserts that for every level whose shapeName is unchanged, board.rows, board.cols and arrowCount are byte-identical. Today that test fails on the first level whose pool draw shifts.",
+    "The existing 'generate is deterministic by index' test still passes unchanged.",
+    "The existing 'generate picks the right shape family per tier' test still passes (until W3-07 replaces the tier-pool contract)."
+   ],
+   "verification": "`npm test src/core/__tests__/levelGenerator.test.ts`, with the new test run first against the PRE-change generator to confirm it fails there — otherwise there is no proof it exercises the coupling being removed rather than just passing on both sides.",
+   "effort": "S",
+   "risk": "This is itself a determinism break for every level (both streams re-seed), so it MUST land inside the W3-05 version bump, never before it. Rollback: revert to the single stream; the version gate keeps existing players on v1 either way.",
+   "brand_perf_check": "FLAG TEST: passes — pure generation-time change, no arrow is animated, no third concurrent exit trail or Skia node is introduced. Brand gates: none touched.",
+   "depends_on": [
+    "W3-05"
+   ]
+  },
+  {
+   "id": "W3-05",
+   "title": "Generator versioning and the determinism migration — the gate every content change lands behind",
+   "what": "Add `GENERATOR_VERSION = 2` to /Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts and keep the v1 difficulty bands and pool mapping as a frozen legacy block. Add ONE new persisted key `arrows_gen_epoch` to PersistenceKeys in /Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts:47-56 AND to the expected list in /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts:36-45. On first boot under v2, if the key is absent, set it to SaveSystem.currentLevel. LevelGenerator.generate(i) then uses v1 for i < epoch and v2 for i >= epoch. In the same change, update the three build-time consumers that this WILL break: (a) the five pinned board checksums in src/core/__tests__/levelGenerator.test.ts (levels 239, 917, 935, 3827, 5363); (b) scripts/perf/android/benchmark.mjs:38-39, `FIXED_LEVEL = 3827` with `GRID_SIZE = 39` — level 3827 is today a 39x39 Flower with 250 arrows, and the harness computes its tap coordinates from that constant, so a changed grid silently mis-taps rather than erroring; make it read the grid from the generator, or re-pin both together; (c) scripts/generate-promo-art.ts:26-33 findLevel(), which scans for the first SuperHard Heart/Crescent/Flower to build the Play Store screenshots. Finally, rewrite DESIGN.md:136 to state the contract as 'pure function of (level index, generator version), with a per-install epoch'.",
+   "why": "DESIGN.md:136 makes difficulty, shape, size and layout pure functions of the level index a hard contract for resume/retry, so every W3 content change appears to re-generate boards under existing players mid-progress. Reading the save system shows the contract is far narrower than it looks: SaveSystem.persistenceKeys is exactly eight int keys (asserted frozen in storage.test.ts:36-45) and NONE of them holds board state, so closing the app mid-level restarts that level index from scratch. 'Resume' means 're-deal level N', not 'restore my half-cleared board'. A curve change therefore cannot corrupt a save — its only real effects are a different picture at the player's current index, a possible difficulty step for a veteran, and the three build-time consumers above. The epoch key exists solely to remove the first two.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/saveSystem.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/storage.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/levelGenerator.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/perf/android/benchmark.mjs",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/generate-promo-art.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/DESIGN.md"
+   ],
+   "acceptance": [
+    "MIGRATION + WIPE RISK (required note): `arrows_gen_epoch` is an ADDITIVE int key. The store interface is int-only (getInt/setInt/deleteKey, saveSystem.ts:11-15) and an epoch is an int, so NO widening of the store interface or of the boot hydrate contract in src/ui/storage.ts:20 is needed beyond adding the key to PersistenceKeys. A key absent from PersistenceKeys silently never hydrates, which is why storage.test.ts must be updated in the same commit. If the key is ever wiped, getInt returns the 0 default and a returning player at level 400 jumps straight to the v2 curve at index 400 — which the W3-09 'no cliff at the anchor' requirement already makes benign, so the wipe failure mode is safe by construction. State this in a code comment. No checksum gate is needed: there is no multi-field record that can be half-written.",
+    "SaveSystem.persistenceKeys lists nine keys and storage.test.ts asserts all nine.",
+    "UPGRADE-INSTALL device test (this is the migration's actual failure path, so a fresh install does NOT count): install the pre-change build, play to level 20, force-stop, install the v2 build OVER it, reopen — the menu still says Level 20, the board dealt at level 20 is the v1 board, and after clearing it level 21 is a v2 board.",
+    "`npm test` green with the five checksums re-pinned and a comment naming the version bump that invalidated them.",
+    "`npm run perf:android` re-run and its numbers re-baselined in docs, recording the emulator and API level, because level 3827's board changes under v2 and the previously accepted perf envelope was measured on the old one.",
+    "The Play Store screenshots produced by generate-promo-art.ts are regenerated and the owner confirms the listing still matches what the game deals (the script's stated premise is 'nothing staged, nothing fake')."
+   ],
+   "verification": "The upgrade-install run on a physical Android device, recorded as a screen capture of the resume label and the two consecutive boards; `npm test`; `npm run perf:android` output diffed against docs/perf-tap-forgiveness-ab-2026-09-08.md's format. The upgrade install is the only thing that exercises the epoch write path — a fresh install writes epoch 0 and proves nothing about a mid-progress player.",
+   "effort": "M",
+   "risk": "The single persisted change in W3; additive and int, analysed above. The subtler risk is the perf harness: GRID_SIZE = 39 is a silent coupling — if it is left stale the harness taps empty space and reports a flattering, meaningless frame profile. Treat a benchmark run whose tap count does not reconcile against the level's arrow count as invalid, per the standing 'reconcile sample count against window x expected rate' rule. Rollback: ship GENERATOR_VERSION = 1, which restores v1 for every index regardless of the stored epoch.",
+   "brand_perf_check": "FLAG TEST: passes — versioning and persistence only; no arrow animates, no Skia node added, the two-concurrent-exit-trail and four-feedback-node ceilings are untouched. Brand gates: none touched.",
+   "depends_on": [
+    "W3-01"
+   ]
+  },
+  {
+   "id": "W3-06",
+   "title": "Replace the blanket 46-row clamp with a legibility cap, and fix the Bolt",
+   "what": "In /Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts:63-66 the grid is clamped `rows = clamp(rows, 8, 46)` then `cols = clamp(roundHalfToEven(rows * shape.aspect), 4, 46)`. Replace the magic 46 with a named MAX_GRID_DIM derived from the MIN_LEGIBLE_CELL_PT and viewport measured in W3-02, and make targetCells shape-aware: after clamping, recount the cells the silhouette actually holds at that grid, and if it lands below the tier's minCells, either re-draw a different shape from the pool or explicitly widen that shape's band. Separately fix the Bolt silhouette (shapeLibrary.ts:198-202).",
+   "why": "Measured today: fill density by shape puts Bolt at 11.0%, the lowest of all 26 (next lowest is Arrow at 27.3%). To hold 640 mask cells a Bolt needs 85 rows; the clamp gives it 46, so it tops out at ~187-202 cells — roughly 54 arrows, against the SuperHard floor of 560 cells. Concretely, index 11 (level 12) is the player's FIRST Super Hard, is labelled Super Hard in danger-magenta per the DESIGN.md header spec, and measures 46x37 grid / 202 cells / 54 arrows / 55% mean legal fraction: it is simultaneously the EASIEST board in the first 120 levels and the one with the SMALLEST cells. Thirteen of the first 200 levels hit the clamp (Bolt 3, Rocket 3, Pine 3, Trophy 2, Arrow 2); only Bolt is catastrophic — Arrow, Trophy, Star, Pine and Rocket need 46-52 rows for 640 cells, i.e. they are marginally clipped.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/levelMetrics.ts"
+   ],
+   "acceptance": [
+    "`levelMetrics --from 1 --to 3000 --assert-band` passes: no level's mask-cell count falls outside its tier's minCells..maxCells. On today's generator this assertion fails at index 11 (202 cells vs 560..720), so the pass is a real state change, not a vacuous one.",
+    "No level index in 1..3000 produces a grid whose fit-to-view cell size, computed with the W3-02 measured viewport, is below MIN_LEGIBLE_CELL_PT. For reference, at an assumed 390x520 pt viewport today's index-11 board computes to ~9.9 pt/cell — the assumption is exactly what W3-02 replaces.",
+    "Bolt specifically: state which of the three remedies was taken and why. (i) Thickening the polygon alone is NOT sufficient — reaching 560 cells at a 46x37 grid needs ~33% fill, three times its current 11.0%, at which point it is no longer a bolt. (ii) A per-shape band scaled to what the silhouette can hold at MAX_GRID_DIM. (iii) Moving Bolt to a lower band. Recommendation: (ii), with (i) applied only far enough to clear the LOWER band's floor.",
+    "Device screenshot of whatever board now occupies index 11, at fit-to-view zoom on a physical Android phone, showing the silhouette readable and individual arrowheads distinguishable. Owner confirms.",
+    "`npm test` green, including 'every shape in every pool generates a fillable, solvable board' (src/core/__tests__/levelGenerator.test.ts) which exercises thin features directly."
+   ],
+   "verification": "`npx tsx scripts/analysis/levelMetrics.ts --from 1 --to 3000 --assert-band`, run against the pre-change generator first to confirm it fails at index 11, then against the fixed one; plus the index-11 device screenshot. The band assertion exercises the failing path because it reads the mask cell count the generator actually produced after clamping, not the DifficultyConfig band it was asked for.",
+   "effort": "M",
+   "risk": "Raising MAX_GRID_DIM raises arrow counts, which grows the retained native board view's delimited geometry payload and its O(n) visibleMask rebuild. Hard ceiling from the existing perf work: today's worst case over 3000 levels is 249 arrows (index 917) and max grid dim 46 (index 11), and the accepted perf envelope was measured at level 3827 (39x39, 250 arrows). Any change that pushes past 250 arrows or past a 46 grid dimension must re-run `npm run perf:android` AND `npm run perf:core` (generation time grows with grid area) before merge. Rollback: MAX_GRID_DIM is one constant; and the whole change sits behind GENERATOR_VERSION from W3-05.",
+   "brand_perf_check": "FLAG TEST: passes — this changes static board geometry only. No arrow that lives in the static native layer is animated, no third concurrent exit trail, no fifth Skia feedback node; the excludedArrows mask-rebuild path is untouched. Brand gates: none violated — 'the board is sacred' is actively served, since the whole point is legible cells; no colour, no glow, no motion introduced.",
+   "depends_on": [
+    "W3-01",
+    "W3-02",
+    "W3-05"
+   ]
+  },
+  {
+   "id": "W3-07",
+   "title": "Rebalance the shape pools: novelty schedule, no back-to-back repeats, demote the no-picture fills",
+   "what": "Replace the tier-to-pool mapping in ShapeLibrary.pick (/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts:300-307) with a level-index-aware novelty schedule: a checked-in table giving each shape a `firstLevel` (earliest index it may appear) and a weight, with pick drawing from the shapes unlocked at that index, weighted to favour recently unlocked ones. Add a no-back-to-back rule: pick excludes the previous level's shape, which stays deterministic and stateless because the previous shape is itself a pure function of index-1 (and is cheap only because W3-04 gave the shape stream its own RNG). Demote Square/Rectangle per escalation 1.",
+   "why": "Measured over levels 1..200: Circle 19.0% + Diamond 18.5% + Square 17.5% + Rectangle 15.5% = 70.5% of the game on four shapes; Square+Rectangle = 33.0% of levels with no picture at all; 29 of 199 adjacent pairs repeat the previous shape (L2, L8, L14, L20, L26, L32, L38, L44, L50, L56...); first appearances run Circle@1 ... Crown@60, then a 57-level novelty drought to Hexagon@117, then Butterfly@120, Flower@126, X@159, Heart@162, Cat@168 and nothing new ever again. The cause is structural, not random: the tier cycle is Normal,Normal,Hard,Normal,Normal,SuperHard (difficulty.ts:33-36), so four of every six levels draw from SimplePool, which has four members — and two of those four (Square, Rectangle) are literally the same silhouette, both `() => true` at shapeLibrary.ts:113-114. PRODUCT.md sells 'a recognizable picture made of arrows'; a third of levels deliver a rectangle.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/levelGenerator.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/DESIGN.md"
+   ],
+   "acceptance": [
+    "From `levelMetrics --shape-report --from 1 --to 200`: no single shape exceeds 12% of levels (today's top is Circle at 19.0%).",
+    "Zero adjacent pairs share a shape across 1..3000 (today: 29 in the first 199 alone).",
+    "The longest gap between consecutive first-appearances across levels 1..200 is at most 12 levels (today it is 57, Crown@60 to Hexagon@117), and every shape in the library has appeared at least once by level 200 (today Cat first appears at 168 and nothing appears after it).",
+    "The share of levels whose silhouette is the whole grid (Square/Rectangle) over levels 1..200 is at most 8% (today 33.0%), and neither appears in levels 1..12.",
+    "A jest test asserts the novelty table covers every exported shape, so a shape added later cannot be silently unreachable — the same failure class as a PersistenceKey missing from the frozen list.",
+    "The existing 'generate picks the right shape family per tier' test is REPLACED, not deleted quietly: the new test asserts the novelty-schedule contract, and the commit message says the tier-pool contract was intentionally retired."
+   ],
+   "verification": "The --shape-report output over 1..200 and 1..3000, before and after, both checked into docs; plus `npm test`. The report exercises the change because it counts the shapes the shipping pick() actually returns for real level indices, rather than inspecting the pool arrays.",
+   "effort": "M",
+   "risk": "Retiring the tier-pool contract weakens an existing assertion — this is on the standing red-flag list ('a diff that quietly deletes or weakens an existing test'), so the replacement test must be strictly stronger and the retirement must be stated explicitly, not slipped in. Determinism: lands inside GENERATOR_VERSION 2 (W3-05). Rollback: the novelty table is data; restoring the three pools restores v1 behaviour.",
+   "brand_perf_check": "FLAG TEST: passes — shape selection only, no motion, no animated arrow, no new node. Brand gate CONFLICT on the Square/Rectangle demotion: DESIGN.md's 'Levels (procedural shapes)' section explicitly blesses them ('for square/rectangle the shape *is* the whole grid'), so this contradicts a written design decision and is raised as escalation 1 rather than decided here. Everything else in this step is gate-clean: no colour, no glow, no clutter, no level-select.",
+   "depends_on": [
+    "W3-04",
+    "W3-05"
+   ]
+  },
+  {
+   "id": "W3-08",
+   "title": "First-session playtest that sets the on-ramp's starting value",
+   "what": "Ship a debug-only CURVE_PREVIEW affordance that jumps to an arbitrary level index and logs, per level: total taps, blocked taps, hearts lost, and wall-clock. Recruit at least five people who have never played Arrows. Each plays levels 1..10 twice — once on the v1 curve, once on a candidate v2 ramp, order counterbalanced. Record the per-level table and check it into docs/curve-playtest-<date>.md.",
+   "why": "W3-09 needs a value for curve(0) and there is no honest source for it in this codebase. There is no analytics, no crash reporting and no remote config — SaveSystem is eight int keys — so no telemetry exists that could set it, and inventing it is exactly the failure this project has hit six-plus times. What IS known: level 1 today is a 60-arrow Circle at 33% mean legal fraction with three hearts, and Li et al. (KDD 2021, 10-day A/B, 14,615 vs 14,687 users, real tile-matching puzzle) measured churn hazard 0.160 for too-hard versus 0.053 for too-easy among players in their first ten days — three times the risk. That research says which direction to move; only a human says how far. Note this measures the BOARD, not a tutorial: NN/g's 70-participant controlled test found a front-loaded tutorial deck did not improve task success (91% readers vs 94% skippers), so teaching the rule is a separate problem and out of scope here.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/docs/curve-playtest.md"
+   ],
+   "acceptance": [
+    "docs/curve-playtest-<date>.md contains the raw per-level table for every participant on both curves — taps, blocked taps, hearts lost, time — not a summary.",
+    "A stated rule for choosing curve(0): the largest starting board at which at least four of five first-time players clear level 1 without losing all three hearts. The chosen value is written down with the table row that produced it.",
+    "The CURVE_PREVIEW affordance is absent from release builds (guarded by __DEV__ or an env flag, confirmed against a release bundle).",
+    "Until this document exists, W3-09 must not merge with a value for curve(0)."
+   ],
+   "verification": "The participant tables and the debug-build log files. No automated check can substitute: the quantity being measured is a first-time human's error rate, and this project has already observed the failure once informally (all three hearts lost in about six taps on level 1, web build) without recording the data that would let a curve be set from it.",
+   "effort": "M",
+   "risk": "Five participants is a small sample and must be labelled as such — it sets a starting value, not a proven optimum. UNVERIFIABLE by any tooling in this repo; closing it any other way requires an analytics SDK, which is a different workstream and carries its own consent obligations (there is no consent management in the app today).",
+   "brand_perf_check": "FLAG TEST: not applicable — a debug affordance and a document; no motion, no node, no arrow animated. Brand gates: the affordance must not appear in the shipped UI, which would violate 'flow over menus'.",
+   "depends_on": [
+    "W3-01"
+   ]
+  },
+  {
+   "id": "W3-09",
+   "title": "Make DifficultyConfig a function of the level index",
+   "what": "In /Users/gentlegen/Desktop/Projects/arrows-game/src/core/difficulty.ts, config() is a switch on the tier alone (:55-70) returning fixed cell bands 260-400 Normal / 420-580 Hard / 560-720 SuperHard, and never reads the level index. Change the signature to config(d: Difficulty, levelIndex: number) and derive minCells/maxCells as tierMultiplier(d) x curve(levelIndex), where curve is a checked-in table of (levelIndex -> base cells) breakpoints with linear interpolation — NOT a formula with magic constants. Update the one call site in levelGenerator.ts:48 and the test helper in levelGenerator.test.ts. Recommended family for the table: a saturating ramp from curve(0) to a plateau, plus a slow non-saturating tail so the late game keeps growing; its two free parameters come from W3-08 (the start) and the perf ceiling (the top), not from taste.",
+   "why": "Difficulty is flat forever. Measured over levels 1..3000 by driving the shipping generator: arrowCount p50 92, p99 192, max 249 — and the tier is a repeating six-level cycle that never consults the index. The evidence brief's spot values (level 1 = 60 arrows, 100 = 85, 200 = 93, 500 = 119, 1000 = 97) are consistent with that distribution: there is no trend, only variance. That targetCells is a REAL dial, not a cosmetic one, is measured: holding the shape fixed and sweeping target cells, Circle gives 40 cells -> 11 arrows / 61% mean legal fraction; 90 -> 21 / 57%; 180 -> 36 / 48%; 400 -> 89 / 34%; 720 -> 177 / 27%. Heart and Square track the same curve. So one knob moves both difficulty axes monotonically. By contrast the arrow-shape knobs are nearly inert: sweeping minLen/maxLen and the two bend chances on a fixed 22x22 Circle moves mean legal fraction only across 29-43%, and at maxLen <= 3 the bend chances are provably dead (the two-cell straight-neck rule at levelGenerator.ts:263 cannot be satisfied), which is why 'len 2-3 low bend' and 'len 2-3 high bend' produced byte-identical results. Do not try to build a curve out of arrow length or bendiness — DESIGN.md already says the same thing ('Raise difficulty with board size / shape complexity / piece count, never with bendier-or-longer arrows'), and the measurement confirms it.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/difficulty.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/levelGenerator.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/levelGenerator.test.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/DESIGN.md"
+   ],
+   "acceptance": [
+    "CURVE CONSTRAINTS that can be stated without inventing anything: (1) monotone non-decreasing in levelIndex; (2) bounded step — |curve(i+1) - curve(i)| <= 8% of curve(i), so no single level is a wall; (3) curve(0) comes from W3-08 and MUST be left unset until that document exists; (4) the plateau is anchored so that cells_v2(i) is within a stated tolerance of the v1 mean for i at and beyond the anchor index, which is what makes the epoch migration painless for veterans and makes an epoch wipe benign; (5) ceilings — arrowCount at p99.9 over 1..100000 must stay at or below 250 (the count at level 3827, where the accepted perf envelope was measured) and cellPt must stay at or above MIN_LEGIBLE_CELL_PT from W3-02.",
+    "`levelMetrics --from 1 --to 3000` shows the 12-level moving average of arrowCount strictly increasing across the ramp and still increasing between index 100 and index 1000 (today those two are indistinguishable), while levels 1..12 sit below both. The exact margins come from W3-08; merging with invented margins is the failure this project has hit six-plus times.",
+    "The 12-level moving average of meanLegalFrac decreases across the same range (today it is pinned at 31-45% at every tier and every index — Normal 36%, Hard 32%, SuperHard 35% medians over levels 1..120).",
+    "No level in 1..100000 breaches either ceiling in (5).",
+    "`npm test` green, including the difficulty-cycle test."
+   ],
+   "verification": "`npx tsx scripts/analysis/levelMetrics.ts --from 1 --to 100000 --assert-ceilings` plus the moving-average plot over 1..3000, diffed against docs/level-curve-baseline-2026-09-09.md from W3-01; then `npm run perf:android` and `npm run perf:core` re-run at the new p99.9 worst-case level, not at the old level 3827. The metrics run exercises the change because it reads arrow counts and legal fractions from boards the new config actually produced, rather than reading the new DifficultyConfig bands back out.",
+   "effort": "L",
+   "risk": "This is the change that re-generates every board, so it lands behind GENERATOR_VERSION 2 and the epoch (W3-05) or not at all. Second risk: the curve pushing arrow counts past the perf envelope — bounded by ceiling (5) and re-measured, and remember the harness sets animator_duration_scale=0, which flips Reanimated's useReducedMotion to true, so a harness run measures the reduced-motion variant (this already invalidated one accepted result on 2026-09-08). Rollback: a single CURVE_VERSION constant restores the v1 flat bands; the curve itself is data, not code.",
+   "brand_perf_check": "FLAG TEST: passes — generation-time only. No arrow in the static native layer is animated, no third concurrent exit trail, no fifth Skia feedback node, no per-arrow animated node reintroduced (the 250-arrow full-Skia slither measured 65.59 ms p95 / 53.19% jank and was rejected; nothing here goes near that path). Brand gates: none violated — no timers, no menus, no colour, no glow; DESIGN.md's own instruction to raise difficulty by size and piece count rather than arrow shape is what this step implements.",
+   "depends_on": [
+    "W3-01",
+    "W3-05",
+    "W3-06",
+    "W3-08"
+   ]
+  },
+  {
+   "id": "W3-10",
+   "title": "Stop the tier label from lying",
+   "what": "The tier word is shown at /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx:336 and /Users/gentlegen/Desktop/Projects/arrows-game/src/ui/HomeScreen.tsx:75, colour-coded ink-dim / accent / heart-magenta (HomeScreen.tsx:42-45, matching the DESIGN.md header spec). Either (a) derive the displayed tier from the level's measured metrics — an arrow-count band computed from the same curve — instead of the six-level cycle position, or (b) drop the tier word entirely and show 'Level N · <shape>'.",
+   "why": "The label predicts nothing. Measured over levels 1..120: median arrows Normal 81 / Hard 123 / Super Hard 141, but the ranges overlap almost completely — Normal 57-116, Hard 102-197, Super Hard 54-209 — and mean legal fraction is 36% / 32% / 35%, statistically indistinguishable. The worst case is index 11: 'Super Hard' in danger-magenta on a 54-arrow, 55%-legal board that is the easiest in the first 120 levels, and it is the player's first sighting of that label, arriving at level 12 — inside the ten-day window Li et al. identify as decisive for churn.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/HomeScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/difficulty.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/DESIGN.md"
+   ],
+   "acceptance": [
+    "Option (a): from `levelMetrics --tier-report --from 1 --to 3000`, each displayed tier's arrow-count band overlaps its neighbour's by at most 10% of the band width. Today the Normal and Super Hard bands overlap almost entirely.",
+    "Option (b): the tier word is gone from both screens and DESIGN.md's header and menu specs are updated in the same change, so the doc does not keep specifying a removed element.",
+    "Device screenshot of the level-12 header after the change, on a physical Android phone, sent to the owner."
+   ],
+   "verification": "The --tier-report output before and after, plus the device screenshot. The report exercises the claim because it compares the label the UI would render against the arrow counts the generator actually produced for those indices.",
+   "effort": "S",
+   "risk": "Option (b) deletes a documented UI element and one of the three uses of the heart/danger colour, so DESIGN.md must move with it. Option (a) makes the label a function of the curve, which means it changes again whenever the curve does. Rollback: trivial, presentation-only. See escalation 2.",
+   "brand_perf_check": "FLAG TEST: not applicable — a text label, no motion, no arrow animated, no node added. Brand gate: option (b) removes a specified DESIGN.md element, which is why the doc update is part of the acceptance rather than an afterthought; 'direction by shape never colour' is unaffected (this label is not an arrow).",
+   "depends_on": [
+    "W3-01",
+    "W3-09"
+   ]
+  },
+  {
+   "id": "W3-11",
+   "title": "Add silhouettes, weighted toward the ones the late curve can actually carry",
+   "what": "Author new ShapeDef entries in /Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts and register them in the W3-07 novelty table. Per-shape checklist, all now cheap because of W3-03's contact sheet: (1) fill density high enough to reach its band inside MAX_GRID_DIM — from the measured density table, anything under about 28% fill cannot reach the SuperHard band at a 46 dimension, which is exactly why Bolt (11.0%) breaks; (2) no feature narrower than two cells at the tier's smallest grid, because ShapeDef.rasterize supersamples 3x3 and keeps a cell only at 5 of 9 hits (shapeLibrary.ts:47-66), so thinner features vanish; (3) passes the existing 'every shape in every pool generates a fillable, solvable board' test. Bias the new set toward high-fill, instantly nameable silhouettes — the current library skews thin, with 7 of 26 shapes under 31% fill.",
+   "why": "Only 26 shapes exist, and after level 168 the player never sees a new one again. The catalogue is also the raw material for the late curve: a high-fill shape can carry a large cell target inside a legible grid, a thin one cannot, so 'add more shapes' and 'make the late game harder' are the same problem. The authoring cost itself is genuinely small — a shape is one constructor call with a polygon vertex list or an implicit inequality in normalised -1..1 space, 3 to 15 lines — which is why the bottleneck was never the code but the inability to see the result.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/shapeLibrary.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/analysis/shapeContactSheet.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/core/__tests__/levelGenerator.test.ts"
+   ],
+   "acceptance": [
+    "Every new shape appears on the contact sheet with its measured fill density and the rows it needs for 320 and 640 cells.",
+    "Every new shape's fill density is at or above the floor its band requires at MAX_GRID_DIM (the same assertion W3-06 added), so no new shape can repeat the Bolt failure.",
+    "Recognizability, as a bounded qualitative test: five people who are not told the shape names are shown the small-grid tiles and asked to name each; at least four of five name it correctly for each new shape. A shape that fails is reworked or dropped, not shipped.",
+    "`npm test` green, including the fill-and-solve test over all pools.",
+    "The novelty-table coverage test from W3-07 passes, proving no new shape is unreachable."
+   ],
+   "verification": "The contact-sheet PNG sent to the owner, the naming-test tally, and `npm test`. The PNG is the closing evidence because an inequality that looks like a mushroom in source can rasterize to an unrecognisable blob at 12x12 — this project's standing rule is that visual work closes on an image.",
+   "effort": "S",
+   "risk": "Low: additive data behind the generator version and the novelty table. The real risk is shipping a shape that reads as a blob, which the naming test is there to catch before merge. Rollback: remove the entry from the novelty table; the shape becomes unreachable without touching any other level.",
+   "brand_perf_check": "FLAG TEST: passes — static silhouettes; no arrow animated, no Skia node added. Brand gates: served rather than violated — more recognizable pictures is exactly PRODUCT.md's 'a recognizable picture made of arrows'; no colour, glow or clutter is introduced.",
+   "depends_on": [
+    "W3-03",
+    "W3-06",
+    "W3-07"
+   ]
+  }
+ ],
+ "escalations": [
+  {
+   "question": "Should Square and Rectangle stay in the shape pool at all?",
+   "options": "(A) Keep as-is — 33.0% of levels 1..200 are a plain filled grid. (B) Demote: keep exactly one of them (they are the same silhouette: both inside() are `() => true` at shapeLibrary.ts:113-114, differing only in aspect 1 vs 1.5), cap at <=8% of levels, never in levels 1..12. (C) Remove both entirely.",
+   "recommendation": "(B). They are one shape, not two, and they deliver no picture — PRODUCT.md's core promise is 'a recognizable picture made of arrows'. But DESIGN.md explicitly blesses them ('for square/rectangle the shape *is* the whole grid'), so removing them outright (C) contradicts a written design decision and also deletes the only 100%-fill silhouettes, which are the ones that most easily carry a large cell target inside a legible grid. Demoting keeps that capability as an occasional clean-slate level while ending the one-in-three rectangle problem. If you pick (B) or (C), DESIGN.md's Levels section must change in the same commit.",
+   "why_it_cannot_be_decided_here": "It is a brand/taste call that contradicts a written DESIGN.md decision, and the brief's rules say a step that violates a brand gate is presented as an escalation, not shipped as a step."
+  },
+  {
+   "question": "Derive the difficulty tier label from measured metrics, or remove the label?",
+   "options": "(A) Derive Normal/Hard/Super Hard from the level's arrow-count band so the word matches the board. (B) Remove the tier word from both the game header and the menu, leaving 'Level N · <shape>', and update DESIGN.md.",
+   "recommendation": "(B). The label currently predicts nothing — measured over levels 1..120 the tier bands overlap almost completely (Normal 57-116, Hard 102-197, Super Hard 54-209 arrows) and mean legal fraction is 36/32/35% — and its worst instance is a danger-magenta 'Super Hard' on the easiest board in the game at level 12. Option (A) makes the word honest but keeps a difficulty announcement in a game whose brand words are 'night, minimal, focused' and whose principle is 'the UI disappears into the puzzle'; a magenta warning label before the player has touched the board is closer to the hyper-casual anti-reference than to that. Option (B) also removes a maintenance coupling, since a derived label changes every time the curve does.",
+   "why_it_cannot_be_decided_here": "(B) deletes a documented UI element and one of three sanctioned uses of the danger colour — a brand decision, and outward-facing in that it changes what every screenshot shows."
+  },
+  {
+   "question": "Given that no tap order can ever brick a board, should a real ordering constraint be added to the rule?",
+   "options": "(A) No rule change: difficulty stays a function of arrow count, grid size and legal-move density. (B) Add an ordering constraint (e.g. arrows that must leave in pairs, an arrow that leaves a blocking mark, a locked arrow) so that some orders genuinely fail.",
+   "recommendation": "(A), for now. The finding is real and structural: removing an arrow only empties cells, so canExit is monotone and a clear lane stays clear — which means 'difficulty' here can only be raised by (i) more arrows (more taps, more chances to misread), (ii) a lower fraction of legal arrows at any moment, and (iii) smaller cells. Measurement shows (i) and (ii) are the same knob — sweeping target cells on a fixed Circle moves 40 cells/11 arrows/61% legal to 720 cells/177 arrows/27% legal monotonically — and (iii) is a hostile lever that W3-06 exists to cap. So the honest position is that Arrows is a visual-search and attention game, not an ordering puzzle, and PRODUCT.md's 'the puzzle is finding the order' is false as implemented. The reason not to fix that with (B) now is cost: the peel proof in LevelGenerator that guarantees 100% fill AND solvability by construction depends entirely on removal being monotone. Any rule that makes a move able to block a later one invalidates both guarantees at once and requires a solver in the generator. That is its own workstream, not a step in this one. What (A) needs instead is honesty: PRODUCT.md's sentence should be rewritten to describe the game that exists.",
+   "why_it_cannot_be_decided_here": "It is a change to the product's core claim and its core rule, with a generator rewrite attached — the definition of an owner decision."
+  },
+  {
+   "question": "Set the generator epoch to the player's current level, or current level + 1?",
+   "options": "(A) epoch = SaveSystem.currentLevel — the level the player is sitting on is dealt under the NEW generator. (B) epoch = currentLevel + 1 — the in-progress level stays byte-identical to what it was before the update.",
+   "recommendation": "(A). (B) only buys value if there is a half-finished board to preserve, and there is not: SaveSystem.persistenceKeys holds exactly eight int keys, none of them board state, so closing the app mid-level already restarts that level index from scratch. (B) would keep the v1 code path alive for one extra level per install and buy nothing. Worth confirming you agree the resume contract really is 're-deal level N' and not 'restore my board' — that reading is what makes the whole migration cheap, so if it is wrong, W3-05 changes shape.",
+   "why_it_cannot_be_decided_here": "It hinges on what the owner intends 'resume exactly where they left off' (PRODUCT.md) to promise. The code promises the weaker version; the product copy implies the stronger one."
+  }
+ ],
+ "open_verification_gaps": [
+  "Every number in this workstream was produced today (2026-09-09) by running the shipping src/core through `npx tsx` on this Mac, against the working tree (which has uncommitted changes to boardLogic.ts, BoardView.tsx and others). EXECUTED AND OBSERVED. That the same values hold on device is an INFERENCE — generation is pure TypeScript with no platform dependency — not something I ran on a phone.",
+  "meanLegalFrac and minLegalFrac use a random-legal-move player model (tap uniformly among arrows that can currently exit, 3 seeded playouts). That is a lower bound on how hard finding a legal move is, NOT a prediction of a human's error rate. No number here should be presented as 'the player will lose N hearts'.",
+  "All cellPt figures I quote (e.g. ~9.9 pt/cell for the index-11 Bolt board, 45.8 pt at an 8x8 grid) assume a 390x520 pt board viewport. That is my assumption, not a measurement — W3-02 exists solely to replace it. src/ui/hitTest.ts:8 independently claims 8-22 pt, which is consistent but is itself an unsourced comment.",
+  "I did not measure GENERATION TIME at larger grids. scripts/perf/core-benchmark.ts (`npm run perf:core`) exists for exactly this and must be re-run if MAX_GRID_DIM rises, since fillMask's candidate gathering is proportional to live cells.",
+  "I did not run npm test, npm run perf:android or any device build in this session. The perf ceilings I cite (250 arrows at level 3827, 46 max grid dim, the rejected 65.59 ms p95 full-Skia slither) come from the evidence brief and from constants I read in scripts/perf/android/benchmark.mjs:38-39 — READ, not executed.",
+  "scripts/perf/android/benchmark.mjs hard-codes GRID_SIZE = 39 to match level 3827's current 39x39 board and derives its tap coordinates from it. I confirmed level 3827 is 39x39 with 250 arrows today. That the harness silently mis-taps rather than erroring when the grid changes is an INFERENCE from reading cellCenterForBoard's usage, not something I reproduced — but it is cheap to prove and W3-05 should prove it before trusting any post-change benchmark.",
+  "Nothing here is verified on iOS. The native board view has not compiled since the 2026-09-01 exit protocol change (docs/IOS_BOARD_PLAN.md), so every rendering-side claim in this workstream is Android-only.",
+  "curve(0) is deliberately left UNSET. There is no telemetry in this app (no analytics, no remote config, eight int keys) and no measurement in the repo that could set it, so W3-09 must not merge until W3-08's playtest table exists. Five participants is a small sample and the resulting value is a starting point, not a proven optimum."
+ ]
+}

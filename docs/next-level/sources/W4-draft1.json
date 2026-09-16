@@ -1,0 +1,302 @@
+{
+ "workstream": "W4 — The Retention Meta (daily board, forgiving streak, shape collection, share, notifications, store review) — on a persistence layer that can hold them",
+ "goal": "A player who has cleared a level has a reason to come back tomorrow that survives closing the app: one fresh dated board a day, a streak that forgives a missed day instead of silently zeroing, a growing gallery of the 26 silhouettes they have actually solved, and one optional evening nudge — all persisted through a versioned, additive save schema that cannot wipe an existing install.",
+ "non_goals": [
+  "Energy / lives gating. Arrows already has a heart economy per board and PRODUCT.md's users are 'calm, no pressure, no timers'; a regen timer is a timer by another name and is the single most common reason calm-puzzle players uninstall. Rejected outright.",
+  "Paid streak freezes. The only streak evidence we have (Duolingo raising the freeze cap 1→2-3 improved return rates) is about forgiveness being available, not about it being sold. Selling the forgiveness converts a retention feature into a punishment with a price tag, and Block Blast's ~$66k lifetime IAP against ~$1M/day ad revenue is direct evidence that a small IAP ladder is not where this game's money is. Freezes ship free and automatic or not at all.",
+  "Leagues, PvP ladders and global leaderboards. NYT Games — 11.2B plays in 2025 — runs an entirely self-competitive meta (streaks, personal bests, badges) with no ladder, and a ladder needs a backend, accounts, moderation and a GDPR-relevant data flow this project has no consent layer for. Rejected.",
+  "Coin currencies and hint shops. Hints are already rewarded-video gated (GameScreen.onHint), which is the one ad format positively associated with retention. Inserting a currency between the player and the hint adds a shop screen, a balance display and a sink/faucet economy to a game whose third design principle is 'flow over menus'. Rejected.",
+  "Seasonal / FOMO events (limited-time boards, expiring rewards, countdown banners). Directly violates 'no timers' and 'calm' in PRODUCT.md, and the JMIR 2023 study (n=14,879) found rigid temporal pressure predicted WORSE long-term persistence. Rejected.",
+  "Level-select grids. DESIGN.md and PRODUCT.md name 'cluttered level-select grids' as an explicit anti-reference. The shape collection in W4-08 is deliberately NOT one — see that step's acceptance criteria, and escalation 3.",
+  "Cloud save / cross-device sync. Android Auto Backup is already on and undeclared (app.json has no fullBackupContent or dataExtractionRules); W4-01 makes the schema survive a restore, but building real sync needs accounts and a backend. Out of scope.",
+  "Fixing the interstitial counter bug (src/ui/ads.tsx:255 `let finishedGames = 0` is module-level and resets every cold start). It is a monetisation bug, not a retention feature — but note that W4-01's key registry reduces the fix to adding one int key, so schedule it against the ads workstream immediately after W4-01 lands.",
+  "Analytics / crash reporting. Every W4 step is product-unfalsifiable without it, and adding a network SDK is blocked on the total absence of a consent flow (LevelPlay's setConsent is never called, no UMP, no CCPA, no COPPA). See escalation 5."
+ ],
+ "steps": [
+  {
+   "id": "W4-01",
+   "title": "Versioned, additive save schema: key registry, schema version, migration, wipe-risk tests",
+   "what": "Rework src/core/saveSystem.ts so keys live in one `const Keys = { current: 'arrows_current_level', … } as const` record and `PersistenceKeys` is derived as `Object.freeze(Object.values(Keys))` instead of being hand-listed — today the list at saveSystem.ts:41-50 is maintained by hand and src/ui/storage.ts:20 hydrates ONLY that list, so any key not in it write-throughs to AsyncStorage and then reads back as its default on the next cold start (silent data loss, invisible in a single session). Add to Keys: `arrows_schema_version`; `arrows_daily_last_day`, `arrows_daily_streak`, `arrows_daily_best_streak`, `arrows_daily_total`; `arrows_streak_freezes`, `arrows_streak_freeze_day`; `arrows_shapes_seen`; `arrows_notify_state`, `arrows_notify_hour`, `arrows_notify_asked_day`; `arrows_review_count`, `arrows_review_last_day`. Add `SaveSystem.CURRENT_SCHEMA_VERSION = 1` and `SaveSystem.migrate()`, called from `initSaveSystem()` in src/ui/storage.ts:73-77 immediately AFTER `SaveSystem.useStore(store)`. Migration rules, additive-only: read the version (default 0); if 0, write 1 and write NOTHING else (every new key already reads its default, so no legacy value is touched); if the stored version is GREATER than CURRENT_SCHEMA_VERSION, do nothing at all — no delete, no version rewrite, no legacy overwrite — and log once, because Android Auto Backup is on (app.json declares no `dataExtractionRules`/`fullBackupContent`) and a restore or a staged-rollout rollback can legitimately hand a v6 install a future schema. Do NOT extend `resetProgress()` (saveSystem.ts:146-153): it is reachable only from tests today (grep confirms: no src/ui caller), and every key added to it is a new wipe vector. Also promote the private `dayNumber()` helper (saveSystem.ts:56-60) to `SaveSystem.today()` so the daily board, the streak and the notification scheduler all share one local-time day number rather than each inventing an epoch. STORE INTERFACE DECISION: do NOT widen IntStore. Every W4 feature packs into ints — the shape collection is a bitmask over a 26-shape catalogue (26 bits, max 67,108,863, well inside JS's 32-bit-signed bitwise range and inside the `String(v)` / `parseInt(v,10)` round-trip HydratedIntStore already does at storage.ts:23 and :39). Add a guard constant `MAX_SHAPE_BITS = 30` and a test asserting the catalogue never exceeds it, with the split-into-two-keys path documented in a comment. See escalation 6.",
+   "why": "The brief's hard constraint: SaveSystem is 8 frozen int keys with no schema version, so a daily record, a streak-freeze count and a collection cannot be stored at all today. It also answers this project's #1 recorded scar — an additive field once wiped saves — by making the failure mode (a key outside PersistenceKeys) structurally impossible rather than a thing to remember, and by making downgrade-after-Auto-Backup-restore an explicit no-op rather than an accidental wipe.",
+   "files": [
+    "src/core/saveSystem.ts",
+    "src/ui/storage.ts",
+    "src/ui/__tests__/storage.test.ts",
+    "src/core/__tests__/saveMigration.test.ts (new)"
+   ],
+   "acceptance": [
+    "`SaveSystem.persistenceKeys` is derived from the Keys record, is still frozen, and still hydrates in exactly ONE `AsyncStorage.multiGet` (the existing assertions at storage.test.ts:33-35 and :46 keep passing unchanged).",
+    "LEGACY INSTALL SURVIVES: with the AsyncStorage mock seeded with exactly the 8 pre-W4 keys at non-default values (e.g. current_level='137', total_solved='412', day_streak='9', last_play_day=<today>, dark_mode='1'), after `initSaveSystem()` all 8 read back with their seeded values, `multiRemove` was never called, and `arrows_schema_version` now reads 1.",
+    "DOWNGRADE IS INERT: with the mock seeded with `arrows_schema_version='99'` plus the 8 legacy keys, after `initSaveSystem()` no key is deleted, the version key is NOT rewritten (assert it is absent from every `multiSet` payload), and all 8 legacy values are intact.",
+    "NO ORPHAN KEYS: a test enumerates the Keys record and asserts every value appears in `persistenceKeys`; a second test writes each new key, constructs a FRESH HydratedIntStore over the same mock, and asserts every written value hydrates back (this is the test that would have caught the silent-never-hydrate failure).",
+    "BITMASK ROUND-TRIPS: setting bit 25 of `arrows_shapes_seen`, flushing, re-hydrating from the string the mock actually stored, and reading bit 25 back returns true; a separate assertion fails the build if the shape catalogue length exceeds MAX_SHAPE_BITS (30).",
+    "Storage.test.ts's exact-key-list assertion (lines 36-45) is updated to the new full list — deliberately: that hand-written list failing is the honesty gate that forces a developer to think about each added key."
+   ],
+   "verification": "`npx jest src/ui/__tests__/storage.test.ts src/core/__tests__/saveMigration.test.ts`. These exercise the original failing path rather than the edited unit because the legacy-survival and no-orphan tests both construct a SECOND HydratedIntStore over the same AsyncStorage mock — that second hydrate is literally the cold-start read path (storage.ts:19-26) where an unregistered key silently reverts, so a key missing from the registry fails the test instead of shipping. THEN, because a jest mock cannot exercise real AsyncStorage or Android Auto Backup: on the API 31 emulator, install the current versionCode-6 release APK, play to at least level 5 so `arrows_current_level` is non-zero, then `adb install -r` the W4-01 build over it, cold-start, and screenshot the menu — 'Level N' must read the same N. If `adb shell bmgr list transports` reports a working transport on that image, additionally run `bmgr backupnow com.danteb.arrows`, uninstall, reinstall, `bmgr restore`, and screenshot the menu again; if bmgr has no transport, record the restore path as UNVERIFIED rather than claiming it.",
+   "effort": "M",
+   "risk": "HIGHEST-BLAST-RADIUS STEP IN W4 — it touches the code path that owns every player's progress. Ships WITHOUT a flag on purpose: a half-migrated store is worse than either state, and a flag would mean two schemas in the wild. Mitigation is ordering and evidence: land W4-01 alone in its own release, verified by the over-install screenshot above, before any feature step writes a new key. ROLLBACK: the migration is additive-only and never deletes, so reverting the commit leaves the extra keys as inert orphans in AsyncStorage — an old build ignores them (it multiGets only its own 8) and no player loses progress. That property is exactly what acceptance criteria 2 and 3 assert.",
+   "brand_perf_check": "FLAG TEST: N/A — no motion, no Skia node, no arrow animated, nothing touches the static layer or the 2-trail / 4-node ceilings. Brand gates: N/A (no visual surface). Perf: adds ~13 keys to a single boot-time multiGet already reading 8; one native read, not per-key."
+  },
+  {
+   "id": "W4-02",
+   "title": "Measure the daily board's shape variety, size and human solve time before choosing its budget",
+   "what": "Commit `scripts/meta/daily-candidates.ts` (run via tsx, same pattern as scripts/perf/core-benchmark.ts) that, over 730 simulated day numbers, reports for each candidate configuration: arrowCount min/p25/p50/p75/p95/max, max grid dimension, distinct shapes drawn, back-to-back same-shape rate, and a greedy-solvability check. Candidates: (a) map the day onto an existing campaign index in each of the three tiers; (b) draw a shape from the full 26-shape catalogue at each tier's cell budget. SEPARATELY, measure the one number no script can produce: human solve time. Instrument a dev-only elapsed-seconds readout on the win panel behind the existing PERF_MODE-style flag (src/perfMode.ts), then have the owner play 6 daily-candidate boards to completion on a real phone and record wall-clock seconds and tap count per board. I ran the script's logic as a prototype already; these are EXECUTED numbers from a faithful replica of LevelGenerator.generate's sizing math (targetCells → probe density → rows/cols → fillMask), not from generate() itself, so the committed script must re-report them against the real API: existing-index dailies give only 4 distinct shapes at Normal tier (25.6% back-to-back repeats — the tier's SimplePool is Square/Rectangle/Circle/Diamond), 10 at Hard, 14 at SuperHard; a FULL-CATALOGUE draw at the Normal cell budget gives all 26 shapes, 4.5% back-to-back repeats, arrowCount p50 82 / p95 104 / max 144, max grid dimension p95 40 / max 46, and greedy-solved on all 60 spot-checked days. At the Hard budget the same draw gives p50 125 / p95 162.",
+   "why": "This project has been burned 6+ times by a brief that pinned a number nobody measured (Lucky Shelf ×4, FUTURISMA ×2 — see the global red-flag list). Naavik's constraint on daily content is that it be completable in a new player's FIRST session, which is a number in MINUTES, and no measurement in this repo relates taps to minutes. Everything downstream (W4-03's budget, W4-04's copy, W4-09's review trigger) depends on it, so it is measured first and separately.",
+   "files": [
+    "scripts/meta/daily-candidates.ts (new)",
+    "src/perfMode.ts",
+    "src/ui/GameScreen.tsx",
+    "package.json (add a `meta:daily` script entry)"
+   ],
+   "acceptance": [
+    "The committed script calls the real `LevelGenerator` API (once W4-03 exists, `generateDaily`; before that, the shape-override entry point) and prints the same statistic set for all candidate configurations over ≥730 days, deterministically (two runs produce byte-identical output).",
+    "The full-catalogue-at-Normal-budget row reproduces within ±3 arrows on p50 and p95 of the prototype figures above (p50 82, p95 104); a larger divergence means the replica was not faithful and the numbers in W4-03 must be restated from the script, not from this brief.",
+    "Greedy solvability holds for 100% of the days checked (≥365), consistent with the standing proof that removing an arrow only empties cells so `canExit` is monotone.",
+    "Human timing: 6 recorded boards with wall-clock seconds and tap counts, from one adult player on a physical Android phone, written into docs/ as a dated measurement note with the device name — median seconds-per-board is then the number W4-03 and the escalation cite. No solve-time claim appears anywhere in W4 that is not traceable to this file."
+   ],
+   "verification": "`npx tsx scripts/meta/daily-candidates.ts` twice, diffing the two outputs to prove determinism, plus the dated timing note. This exercises the thing being decided because the board a player actually gets is a pure function of the generator, so the script's distribution IS the shipped distribution — and the timing note supplies the one quantity the generator cannot: how long 82 taps take a human. Do not close this step with 'the numbers look reasonable'.",
+   "effort": "S",
+   "risk": "Low. The only shipped change is a dev-flagged text readout; it must not appear in a release build. RISK: the timing sample is n=1 player and the owner is expert at their own game, so the median will UNDERSTATE a new player's time — record that caveat in the note rather than quietly treating one expert's median as the new-player number.",
+   "brand_perf_check": "FLAG TEST: no motion proposed, no Skia node, no arrow pulled from the static layer — passes. Brand gates: the dev readout is flag-gated and never visible in a release build, so 'the board is sacred' is untouched. Perf: script runs in node, off-device."
+  },
+  {
+   "id": "W4-03",
+   "title": "Daily board: a deterministic date-seeded level drawn from all 26 silhouettes",
+   "what": "Add `src/core/dailyBoard.ts` exporting a FROZEN `DAILY_CATALOGUE: readonly ShapeDef[]` — the 26 distinct shapes, built as the deduplicated union of ShapeLibrary.SimplePool, MediumPool and ComplexPool in a FIXED, never-reordered order (its index is the shape's persistent id for W4-08's bitmask, so reordering it silently rewrites every player's collection — say so in a comment and assert the order in a test) — plus pure functions `dailyShapeIndex(day)` and `dailySeed(day)`, both deriving from the same FNV-1a-family mix the generator already uses at levelGenerator.ts:382-384. In src/core/levelGenerator.ts, extract the body of `generate()` (lines 44-87: targetCells → probe → rows/cols → rasterize → fillMask → BoardLogic) into a private `build(shape, cfg, rng)` and add `generateDaily(day: number): GeneratedLevel` that calls it with `DAILY_CATALOGUE[dailyShapeIndex(day)]`, `Difficulties.config(Difficulty.Normal)` and `new DotNetRandom(dailySeed(day))`. `generate(levelIndex)` keeps its exact current behaviour by calling the same `build`. The daily must NOT read or write `arrows_current_level` — it is a parallel board, not campaign progress. A daily loss lets the player retry the SAME board unlimited times (reuse GameScreen's existing `loadLevel(levelIndex)` retry path); the streak counts a COMPLETION, never a first-try clear.",
+   "why": "Every serious competitor in this genre ships a daily and Arrows has none, and the deterministic generator makes date-seeding nearly free. Drawing from the full catalogue rather than a tier pool is forced by measurement, not taste: W4-02 shows a tier-mapped daily yields only 4 distinct shapes with a 25.6% back-to-back repeat rate at Normal, versus 26 shapes and 4.5% repeats for a full-catalogue draw at the same cell budget — and the collection in W4-08 is worthless if the daily can only ever show four pictures. The Normal cell budget (p50 82 arrows) is the smallest that still draws a picture, which is the closest available answer to Naavik's first-session constraint, pending W4-02's timing.",
+   "files": [
+    "src/core/dailyBoard.ts (new)",
+    "src/core/levelGenerator.ts",
+    "src/core/index.ts",
+    "src/core/__tests__/dailyBoard.test.ts (new)",
+    "src/core/__tests__/levelGenerator.test.ts"
+   ],
+   "acceptance": [
+    "THE REFACTOR CHANGES NO CAMPAIGN BOARD: the existing golden assertions in src/core/__tests__/levelGenerator.test.ts ('level %i preserves its full serialized board checksum', line ~156) pass byte-for-byte UNCHANGED — no checksum constant may be edited in this step. Editing one is the tell that `build` diverged from the old `generate`.",
+    "DETERMINISM: `generateDaily(d)` called twice for the same d produces identical serialized boards; a golden checksum is recorded for at least 5 fixed day numbers so a later refactor cannot silently reshuffle history.",
+    "INDEPENDENCE: `generateDaily` reads no SaveSystem key; a test asserts `SaveSystem.currentLevel` is unchanged after generating and clearing a daily.",
+    "SOLVABILITY: greedy solve clears 100% of 365 consecutive daily boards, and every shape cell holds exactly one arrow (same mask/fill assertion the campaign test already makes).",
+    "DISTRIBUTION: over 730 days all 26 catalogue shapes appear, back-to-back same-shape rate ≤ 8%, and arrowCount p95 ≤ 115 — thresholds set from W4-02's measured 4.5% and p95 104, with headroom, NOT invented.",
+    "CATALOGUE ORDER IS PINNED: a test asserts DAILY_CATALOGUE's 26 names in exact order, so any reorder fails loudly before it corrupts saved collections."
+   ],
+   "verification": "`npx jest src/core` — the full core suite, not just the new file. It exercises the original risk because the pre-existing golden checksums were computed against the CURRENT `generate()`; if the extraction into `build` alters RNG consumption order by even one draw, those checksums break, which is precisely the failure this refactor could introduce. Additionally run `npx tsx scripts/meta/daily-candidates.ts` from W4-02 against the real `generateDaily` and confirm the printed distribution matches the acceptance thresholds.",
+   "effort": "M",
+   "risk": "The refactor is the risk: `generate()` is 1:1-ported deterministic code whose RNG call ORDER defines every existing player's board. A reordered or extra `rng.next()` silently regenerates every level in the game — a saved 'Level 137' becomes a different puzzle. The golden checksums are the net and must not be touched. ROLLBACK: `generateDaily` is additive and unreferenced by the campaign path, so reverting is a clean delete; if the checksums break, revert rather than re-baselining them.",
+   "brand_perf_check": "FLAG TEST: PASSES — no animated node added, no arrow pulled from the static layer, no change to exit trails; a daily board renders through exactly the same retained native board view as a campaign board. Perf: measured max grid dimension 46 and p95 arrowCount 104 sit at or below the campaign's existing envelope (SuperHard reaches 46 and p95 204), so the daily never enters unmeasured perf territory. Brand: 'the board is sacred' holds — the daily board is visually identical to any other board."
+  },
+  {
+   "id": "W4-04",
+   "title": "Daily entry point, done-state and persisted daily record",
+   "what": "Add a second entry on HomeScreen.tsx beneath the Play pill: a compact secondary control reading 'Today' with the day's shape name, in the same surface/border language as HeaderButton — NOT a second violet pill competing with Play. Three states, all derived from ints written in W4-01: not started, in progress, and completed-today (which shows the shape name plus a small check and is not tappable into a replay-for-streak). Wire a `mode: 'campaign' | 'daily'` prop through App.tsx's screen state into GameScreen.tsx so the daily reuses the entire existing game screen; in `onRemoved` (GameScreen.tsx:110-127) branch: campaign keeps `SaveSystem.registerSolve` + `setCurrentLevel`, daily instead calls a new `SaveSystem.registerDailyClear(perfect)` that writes `arrows_daily_last_day`, `arrows_daily_total` and defers streak math to W4-05's pure module. The win panel's subtitle (GameScreen.tsx:269-272) reads the daily's shape name and date instead of 'Level N'. NO countdown timer to the next daily, NO 'come back in 4h' copy, NO badge counting down — PRODUCT.md forbids timers. Put all state derivation in a pure `src/ui/dailyEntryState.ts` returning a discriminated union from (today, lastDailyDay, inProgress); keep the .tsx a dumb renderer, matching how tapRules.ts / hitTest.ts / exitCombo.ts are already split.",
+   "why": "Answers the audit finding that Arrows has no daily content at all while every serious competitor ships one, and NYT Games' 11.2B-play evidence that a calm, ad-free, timer-free daily with self-competition is the format that works in this genre. The pure-module split is forced by a project constraint, not preference: jest here is node-env and `testMatch` is `**/__tests__/**/*.test.ts`, so every .tsx in this repo is untested — logic left in the component is logic that cannot be verified at all.",
+   "files": [
+    "src/ui/dailyEntryState.ts (new)",
+    "src/ui/__tests__/dailyEntryState.test.ts (new)",
+    "src/ui/HomeScreen.tsx",
+    "src/ui/GameScreen.tsx",
+    "App.tsx",
+    "src/core/saveSystem.ts"
+   ],
+   "acceptance": [
+    "`dailyEntryState` unit tests cover: never played; completed today; completed yesterday but not today; day number jumping backwards (device clock moved back) — the backwards case must return 'not started', never a negative streak or a crash.",
+    "Completing the daily and cold-restarting the app shows the completed state (this is the assertion that proves W4-01's key registration actually took, since an unregistered key would read 0 and show 'not started' again).",
+    "The daily never advances `arrows_current_level`: play the daily to a clear, return to the menu, and 'Level N' is the same N as before — confirmed by a before/after menu screenshot pair.",
+    "Zero countdown or time-remaining text anywhere in the daily surface; grep for 'hours', 'until', 'resets', ':' countdown formatting returns nothing in the new code.",
+    "LAYOUT ON THE SMALLEST TARGET: on a 360×640-dp Android screen, the wordmark, Level N, Play pill, the Today control and the stats line all fit with no clipping and no overlap of the safe-area insets, and the Today control's tap target is ≥44×44 dp — falsifiable from one emulator screenshot at that size."
+   ],
+   "verification": "`npx jest src/ui/__tests__/dailyEntryState.test.ts` for the state machine, PLUS emulator screenshots on the API 31 image at 360×640 dp for each of the three entry states and the 360×640 layout check, PLUS the before/after menu screenshot pair proving the campaign level did not move. Screenshots are mandatory rather than optional here because this project has a recorded scar from visual work verified only by tsc/tests, and because the state machine passing says nothing about whether the control overlaps the Play pill.",
+   "effort": "M",
+   "risk": "Threading a `mode` prop through GameScreen touches the win/lose path that owns `registerSolve` and `setCurrentLevel` — a mis-branch would either double-count campaign progress or advance the campaign from a daily clear. The acceptance test that asserts Level N is unchanged is aimed exactly at that. ROLLBACK: gate the Today control behind a build-time `META_DAILY` constant in src/perfMode.ts style, default ON only after the screenshots land; with it off, HomeScreen renders exactly as today and GameScreen's mode is always 'campaign'.",
+   "brand_perf_check": "FLAG TEST: PASSES — the entry control lives on HomeScreen where BoardView is unmounted; no Skia node, no animated arrow, no change to the 2-trail/4-node ceilings. Brand gates: this adds a second thing to the menu, which brushes against 'flow over menus' — it is justified as ONE control, not a menu, and explicitly not a level-select grid (no level numbers, no scrollable list). 'No decorative colour soup' holds: surface + border + ink only, the violet stays on Play alone."
+  },
+  {
+   "id": "W4-05",
+   "title": "Make the day streak visible and forgiving (free automatic freezes) instead of silent and punishing",
+   "what": "Extract the streak rules from saveSystem.ts:104-127 into a pure `src/core/streak.ts` (`advanceStreak({today, lastPlayDay, streak, freezes, lastFreezeGrantDay})` → new state) and have `SaveSystem.registerSolve` / `registerDailyClear` delegate to it. Today's rules are the punishing version: the `dayStreak` getter returns 0 the moment `today - last > 1`, and `registerSolve` restarts at 1 — so one missed day silently erases an 80-day streak with no notice and no recovery. New rules: a gap of exactly 1 extends as now; a gap of 2 (one missed day) consumes one freeze and CONTINUES the streak; a larger gap, or a gap of 2 with no freeze, restarts at 1. Freezes are FREE and accrue automatically — one granted per N consecutive played days up to a small cap, never purchasable, never advertised as scarce (`arrows_streak_freezes`, `arrows_streak_freeze_day`). N and the cap are NOT specified here: they must come from the freeze-consumption rate over the owner's own play log, or, absent that, be set to the smallest values that make forgiveness reachable (grant every 5 days, cap 2) and recorded in the code as an unmeasured default with a TODO naming the measurement — do not present them as tuned. Surface the streak on HomeScreen: today's `buildStatsLine()` (HomeScreen.tsx:102-112) hides it below 2 and buries it in a 13 pt line at the bottom of the screen; move the day count into the daily control from W4-04, show it from day 1, and when a freeze is consumed show one plain line ('Streak saved — 1 freeze left'), stated as a fact, never as a warning or a countdown.",
+   "why": "Duolingo's evidence is that raising the streak-freeze cap from 1 to 2-3 significantly improved return rates, and Busuu saw +15% sessions after adding a visible streak — the current implementation has the punishment and neither the visibility nor the forgiveness. The 'shown only from 2 up, in the smallest text on the menu' finding is the audit's, and reading HomeScreen.tsx:108 confirms it (`if (days >= 2)`).",
+   "files": [
+    "src/core/streak.ts (new)",
+    "src/core/__tests__/streak.test.ts (new)",
+    "src/core/saveSystem.ts",
+    "src/ui/HomeScreen.tsx",
+    "src/ui/dailyEntryState.ts"
+   ],
+   "acceptance": [
+    "Pure-function table tests cover: gap 0 (same day, no change), gap 1 (extend), gap 2 with a freeze (streak continues, freezes decrement by exactly 1), gap 2 without a freeze (restart at 1), gap 3+ (restart at 1 regardless of freezes), first-ever play, and today < lastPlayDay (clock moved back — must not increment, must not go negative, must not consume a freeze).",
+    "MIGRATION OF A LIVE STREAK: an install carrying `arrows_day_streak=14` and `arrows_last_play_day=yesterday` reads back as a 14-day streak after W4-01's migration and extends to 15 on today's clear — the new freeze keys defaulting to 0 must not zero an existing chain.",
+    "The streak reads on the menu from day 1, not from 2.",
+    "No copy anywhere states or implies a deadline, a loss risk, or time remaining; the freeze message is past-tense and factual.",
+    "Freeze grant/cap constants carry an inline comment naming either the measurement that produced them or, explicitly, that they are unmeasured defaults awaiting one."
+   ],
+   "verification": "`npx jest src/core/__tests__/streak.test.ts` for the rules; the migration criterion is verified by seeding the AsyncStorage mock with a 14-day chain, booting through `initSaveSystem`, and asserting the value — this exercises the real failure (new keys defaulting over an old chain) rather than the new function in isolation. Menu appearance closes with one emulator screenshot per state: streak 1, streak 14, and a freeze-consumed message.",
+   "effort": "S",
+   "risk": "Streak state is the one piece of save data a player is emotionally attached to; a bug that resets it is a review-visible harm. The clock-moved-backwards case is the realistic exploit/bug vector (travel, manual clock change) and is an explicit test. ROLLBACK: `streak.ts` is pure and swappable — reverting to the old inline rules restores current behaviour without touching stored values, since the freeze keys are simply ignored.",
+   "brand_perf_check": "FLAG TEST: PASSES — no motion added at all (deliberately: a 'streak flame' or pulse would collide with DESIGN.md's 'the menu is calm — the Play pill's breathing is the one deliberate ambient motion', and any glow treatment is a named anti-reference). Perf: menu-only, board unmounted."
+  },
+  {
+   "id": "W4-06",
+   "title": "Record solved silhouettes into a 26-bit collection mask",
+   "what": "Add `src/core/collection.ts`: pure `markSeen(mask, shapeIndex)`, `hasSeen(mask, shapeIndex)`, `countSeen(mask)`, plus `shapeIndexByName(name)` resolved against W4-03's frozen `DAILY_CATALOGUE` order. On any clear — campaign or daily — set the bit for `level.shapeName` in `arrows_shapes_seen` (one int, 26 bits). Nothing is recorded for a loss: the collection is a record of what the player SOLVED, which is what makes it worth having. Add a `newlyDiscovered` boolean to the win-panel data so W4-07 can render a first-time line. Measured context for sizing the payoff, from the run in W4-02: a campaign player has seen 13/26 shapes by level 30, 20/26 by level 100 and all 26 by level 200; a daily-only player sees all 26 across a year — so the collection fills steadily rather than front-loading or starving.",
+   "why": "The 26 hand-authored silhouettes are the single richest collectible surface in the product and are currently discarded every level — the shape name reaches the player only as a token in a 12 pt subtitle (GameScreen.tsx:270). It is the brand-compatible answer to the genre's arrow-skins convention, which PRODUCT.md's 'no decorative colour soup' and DESIGN.md's 'no per-arrow colour' forbid outright.",
+   "files": [
+    "src/core/collection.ts (new)",
+    "src/core/__tests__/collection.test.ts (new)",
+    "src/core/saveSystem.ts",
+    "src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "Setting every one of the 26 bits and reading each back is exact; `countSeen` returns 26; the stored value never exceeds 2^26-1 and round-trips through `String()`/`parseInt(v,10)` (the actual serialization at storage.ts:39 and :23).",
+    "A test asserts `shapeIndexByName` resolves all 26 names emitted by the generator — run `LevelGenerator.generate(i)` for i in 0..199 plus `generateDaily(d)` for d in 0..364 and assert every returned `shapeName` maps to a valid index. An unmapped name must fail the build, because a silently unmapped shape is a bit that is never set.",
+    "A loss sets no bit.",
+    "An existing install with `arrows_shapes_seen` absent reads 0 and begins collecting from the next clear without disturbing any other key."
+   ],
+   "verification": "`npx jest src/core/__tests__/collection.test.ts`, whose name-coverage test drives the REAL generator across 565 boards rather than a fixture list — that is what makes it a check on the catalogue staying in sync rather than a restatement of it. Then on the emulator: clear one campaign level, cold-restart, and assert via the W4-08 screen (or a temporary dev readout if W4-08 has not landed) that the count incremented and survived the restart — the restart is the part the jest mock cannot prove.",
+   "effort": "S",
+   "risk": "The bit-index-to-shape binding is permanent once players have saved masks: reordering DAILY_CATALOGUE relabels everyone's collection. W4-03's pinned-order test is the guard; repeat the warning in a comment here. ROLLBACK: purely additive — reverting leaves an orphan int that nothing reads.",
+   "brand_perf_check": "FLAG TEST: PASSES — one integer write on the existing clear path; no node, no motion, nothing pulled from the static layer. Perf: a single bitwise op inside the already-existing `onRemoved` terminal branch."
+  },
+  {
+   "id": "W4-07",
+   "title": "Shape gallery: a calm wall of solved silhouettes, drawn from the mask",
+   "what": "A new screen reached from the menu (a small control near the Today entry, not a tab bar), rendering the 26 catalogue shapes as silhouettes: solved ones in `ink`, unsolved as an unfilled outline or a dimmed `heartLost` fill, with the name shown only for solved ones. Draw each silhouette by calling the existing pure `ShapeDef.rasterize(rows, cols)` (shapeLibrary.ts:48-66) at a small resolution and filling the true cells — no new art assets, no bitmaps, and it stays truthful to the actual silhouette the generator packs. RENDER AS ONE NODE, not 26: build a single path/canvas for the whole grid (Skia is already a dependency, used at StaticBoardSurface.native.tsx, and a Skia `Path` of merged rects keeps this at one native node) rather than 26 SVG or Canvas children. Tiles are NOT tappable into a level and carry no level numbers, stars or scores.",
+   "why": "Gives the collection from W4-06 a place to exist, and turns 26 discarded silhouettes into the self-competition surface NYT Games' meta is built on — badges and personal completion, not a ladder.",
+   "files": [
+    "src/ui/CollectionScreen.tsx (new)",
+    "src/ui/collectionLayout.ts (new — pure tile/grid math)",
+    "src/ui/__tests__/collectionLayout.test.ts (new)",
+    "src/ui/HomeScreen.tsx",
+    "App.tsx"
+   ],
+   "acceptance": [
+    "Every one of the 26 silhouettes is recognizable at tile size: verified by one emulator screenshot of the full grid with ALL bits set, in which a third party can name at least 20 of the 26 shapes unprompted. (Bounded-qualitative on purpose — 'looks good' is banned, and the failure mode here is real: a 16×16 raster of the Crescent or the Bolt can turn to mush.)",
+    "Solved and unsolved tiles are distinguishable WITHOUT colour (fill vs outline), satisfying PRODUCT.md's colourblind-safe rule; verified from a greyscale copy of the same screenshot.",
+    "The screen renders in both Daylight and Ink Night with no hard-coded colour — two screenshots.",
+    "At 360×640 dp all 26 tiles are reachable with no horizontal scrolling and no clipped names.",
+    "One native drawing node for the whole grid, not one per tile — confirmed by reading the component tree in the diff and stated as an inference, not a measurement, unless a frame profile is taken."
+   ],
+   "verification": "Emulator screenshots on API 31: (1) full grid all-solved, for recognizability; (2) partial grid, for the solved/unsolved distinction; (3) greyscale conversion of (2); (4) Ink Night; (5) 360×640 dp. Screenshots rather than tests are the closing evidence because the failure this step can produce — an unreadable 26th-size raster — is invisible to every headless check, and this repo has a documented scar from visual work closed on tsc alone. `npx jest src/ui/__tests__/collectionLayout.test.ts` covers only the grid arithmetic.",
+   "effort": "L",
+   "risk": "BRAND GATE COLLISION: this is a grid of tiles, and 'cluttered level-select grids' is a named anti-reference in PRODUCT.md. The mitigation (no level numbers, no scores, not tappable into play) is what makes it a gallery rather than a level select — but that is a judgement call the owner should make, not the implementer. See escalation 3, and do not build this step before it is answered. ROLLBACK: the screen is reachable from exactly one control; removing that control removes the feature with no state change (the mask keeps accruing harmlessly).",
+   "brand_perf_check": "FLAG TEST: PASSES — the collection screen mounts with BoardView UNMOUNTED, so it cannot animate an arrow in the static layer and cannot add a concurrent Skia feedback node (the 4-node ceiling applies to the board overlay, which does not exist on this screen). Brand gates: no glow/gradient/confetti; ink and heartLost only, violet reserved. The unresolved gate is the grid anti-reference above."
+  },
+  {
+   "id": "W4-08",
+   "title": "Share artifact: a text card of today's board (and an honest read of what Android can actually share)",
+   "what": "Add pure `src/ui/shareCard.ts` building a short shareable TEXT block for a completed daily: the date, the shape name, hearts remaining as filled/empty glyphs, and the streak — Wordle-shaped, no URL-shortener, no tracking parameters. Surface it as a 'Share' control on the daily win panel only (never mid-game, never on a loss). Use React Native's built-in `Share.share({ message })` — no new dependency. IMPORTANT AND VERIFIED: I read node_modules/react-native/Libraries/Share/Share.d.ts in this repo — on Android the Share API accepts only `title` and `message`; `url` is documented iOS-only. Android is the only shipping platform today, so an IMAGE share is NOT achievable with zero dependencies: a Skia `makeImageSnapshotAsync` card would still need a file write and a share-sheet module (expo-file-system + expo-sharing, two new native deps and a rebuild) to leave the app on Android. Ship the text card; treat the image card as escalation 2. The card's glyphs are a brand decision, also escalation 2: coloured emoji squares are what made Wordle's grid recognizable, and a colour emoji on Ink Night is exactly the complaint already logged against the 💡 hint glyph (GameScreen.tsx:227).",
+   "why": "Wordle's emoji grid is the best-evidenced organic growth mechanism in daily puzzles, and it is the only growth lever in this list that costs nothing per acquisition — relevant because you cannot out-live-ops Miniclip's Lessmore, and Arrows' genuinely defensible claims (infinite procedural levels, whole board always visible) need a way to travel.",
+   "files": [
+    "src/ui/shareCard.ts (new)",
+    "src/ui/__tests__/shareCard.test.ts (new)",
+    "src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "Card text is a pure function of (day, shapeName, heartsLeft, streak) with a golden-string test per state, including heartsLeft = 3 and 1.",
+    "The card contains no URL, no query parameters, and no personally identifying value — asserted by a test regex, because a share string is the one place a tracking parameter would silently ship.",
+    "Total length stays under 280 characters so it survives every messaging surface intact.",
+    "The Share control appears ONLY on the daily win panel: verified by screenshots of the campaign win panel (absent) and the daily win panel (present).",
+    "Tapping Share opens the Android system share sheet with the card text visible in the preview — one emulator screenshot of the sheet, which is the only evidence that the platform actually accepted the payload."
+   ],
+   "verification": "`npx jest src/ui/__tests__/shareCard.test.ts` for the string, plus an API 31 emulator screenshot of the open share sheet showing the card text. The screenshot is required rather than optional because a unit test proves the string, not that RN's Android Share accepted it — and Android's Share ignores fields iOS honours, which is precisely the platform difference that would otherwise ship broken.",
+   "effort": "S",
+   "risk": "Low technically. The real risk is brand: a grid of coloured emoji is exactly the 'busy hyper-casual' register PRODUCT.md rejects, while an all-ink card may not read as shareable at all. That is escalation 2 and should be answered before the copy is written. ROLLBACK: one control; removing it removes the feature.",
+   "brand_perf_check": "FLAG TEST: PASSES — no animated node; no Skia surface is created (the image path, which WOULD create a concurrent Skia surface while the board overlay is mounted, is explicitly deferred to the escalation, and if ever taken must be gated to fire only after the exit trails have finished so it never competes with the 2-trail ceiling). Brand gates: unresolved on glyph choice, escalated rather than decided."
+  },
+  {
+   "id": "W4-09",
+   "title": "One optional evening notification, asked for in context and never at first launch",
+   "what": "Add `expo-notifications` (pinned to the SDK 57 version — check https://docs.expo.dev/versions/v57.0.0/ per AGENTS.md before writing a line) and schedule at most ONE local DAILY notification at a player-chosen evening hour. Requires a native rebuild. Rules, all from the platform research: use the DAILY trigger (no server, no FCM); do NOT add SCHEDULE_EXACT_ALARM (Play scrutinises it and a calm nudge needs no second-level accuracy); on Android 13+ request POST_NOTIFICATIONS IN CONTEXT — specifically after a daily clear, never at first launch and never on the splash; one notification per day maximum, hard-capped, given that uninstall risk rises sharply at 2-5 pushes/week and gaming is the worst-performing vertical at <1% CTR. Store the opt-in as a tri-state (`arrows_notify_state`: 0 unasked / 1 granted / 2 declined), the hour, and `arrows_notify_asked_day` so a decline is never re-asked more than once per long interval. Copy is an invitation, not a threat: name today's shape, never the streak at risk. Cancel and reschedule on hour change and on opt-out; there must be exactly one scheduled notification at any time. Put the ask/cancel decision logic in a pure `src/ui/notifyPolicy.ts`.",
+   "why": "Answers the audit finding that the streak has no delivery channel at all — a streak nobody is reminded of is a number, not a habit — while respecting the measured cadence ceiling. Local scheduling means no backend, no consent-relevant data leaving the device, which matters given this project has no consent management of any kind.",
+   "files": [
+    "src/ui/notifyPolicy.ts (new)",
+    "src/ui/__tests__/notifyPolicy.test.ts (new)",
+    "src/ui/notifications.ts (new — the expo-notifications wrapper)",
+    "src/ui/GameScreen.tsx",
+    "app.json",
+    "package.json"
+   ],
+   "acceptance": [
+    "The permission prompt NEVER appears on first launch or on the splash: verified by installing fresh on the API 31 emulator, launching, and screenshotting the first two screens with no system dialog present.",
+    "The prompt appears only after a daily clear, and only once when declined: `notifyPolicy` table tests cover unasked/granted/declined × cleared/not-cleared.",
+    "Exactly one notification is scheduled at any time: after toggling the hour three times, `getAllScheduledNotificationsAsync()` returns length 1 — asserted on-device, since duplicate scheduling is the classic failure and is invisible to a unit test.",
+    "The manifest contains POST_NOTIFICATIONS and does NOT contain SCHEDULE_EXACT_ALARM — verified with `aapt dump permissions` on the built APK, not by reading app.json (config is not runtime).",
+    "A notification actually fires: on the emulator, set the scheduled hour, advance the device clock past it (`adb shell su 0 date`/emulator console), and screenshot the shade.",
+    "Copy contains no loss framing: a reviewer confirms the string names the shape and does not mention losing, breaking, or expiring."
+   ],
+   "verification": "`npx jest src/ui/__tests__/notifyPolicy.test.ts` for the policy, `aapt dump permissions` on the release APK for the manifest (reading the built artifact, not the config that was supposed to produce it — the project's standing rule to verify runtime over config), and emulator screenshots for the no-first-launch-prompt, the single-schedule count and the fired notification. The clock-advance test is what actually exercises the DAILY trigger; scheduling without observing a delivery proves only that the call did not throw.",
+   "effort": "M",
+   "risk": "Adding a native module forces a rebuild and touches autolinking — note that package.json already EXCLUDES expo-audio and expo-haptics from autolinking on both platforms for the custom arrows-feedback module, so confirm expo-notifications is not caught by any exclusion. Notification permission is also a Play-listing-visible behaviour. ROLLBACK: ship behind a `META_NOTIFICATIONS` build constant default OFF; with it off, nothing is requested and nothing is scheduled, and the dependency sits unused. iOS: unverifiable here (see gaps) — do not claim iOS behaviour.",
+   "brand_perf_check": "FLAG TEST: PASSES — no in-app motion, no board node. Brand gates: 'calm, no pressure' is the binding constraint and is enforced by the no-loss-framing acceptance criterion and the one-per-day hard cap; a streak-at-risk push would violate it and is forbidden."
+  },
+  {
+   "id": "W4-10",
+   "title": "Ask for a store review at a perfect clear, within both stores' rules",
+   "what": "Add `expo-store-review` (SDK 57 pin; native rebuild). Call `StoreReview.requestReview()` at exactly one moment: immediately after a PERFECT clear (no heart lost) that also extends a streak of at least a few days — a moment of satisfaction, per Apple's guidance. Gate it in a pure `src/ui/reviewPolicy.ts` using `arrows_review_count` and `arrows_review_last_day`: never before the player has cleared a meaningful number of levels, never twice in the same session, at most roughly monthly (Play's API is quota-limited to about that and silently no-ops beyond it), and at most 3 per year (Apple's cap). NO pre-gate: Play's In-App Review policy forbids the 'Enjoying the app? 😊/😞' funnel and forbids any 'Rate us' button, so there must be no custom UI in front of the call and no manual trigger anywhere. Always call `isAvailableAsync()`/`hasAction()` first and degrade to doing nothing.",
+   "why": "Store rating is the cheapest lever on organic conversion for a game with no UA budget, and it is the one meta feature here with hard platform rules that are easy to violate accidentally — encoding them in a pure policy module is what stops a future 'Rate us' button from appearing in a settings screen.",
+   "files": [
+    "src/ui/reviewPolicy.ts (new)",
+    "src/ui/__tests__/reviewPolicy.test.ts (new)",
+    "src/ui/GameScreen.tsx",
+    "package.json"
+   ],
+   "acceptance": [
+    "Policy tests cover: too few clears, non-perfect clear, already asked this session, asked less than the monthly interval ago, and already asked 3 times in the trailing year — each returns 'do not ask'.",
+    "There is no 'Rate us' control and no satisfaction pre-gate anywhere in the app: `grep -ri 'rate\\|review' src/` shows no user-facing string and no manual trigger.",
+    "The call is wrapped so that an unavailable API is a silent no-op, never a crash and never a visible error.",
+    "On a device with the Play Store present, the flow is triggered once at a qualifying perfect clear — screenshot of whatever the system shows, or an explicit note that Play returned nothing because of its quota, which is itself the expected outcome."
+   ],
+   "verification": "`npx jest src/ui/__tests__/reviewPolicy.test.ts` plus the grep for banned UI. On-device confirmation is INHERENTLY PARTIAL and must be reported as such: Play's In-App Review is quota-limited and shows nothing on most invocations, and expo-store-review silently does nothing in TestFlight — so the closing evidence for the trigger itself is a log line proving the policy said 'ask' and the call was made at the right moment, plus an explicit UNVERIFIED tag on whether a dialog rendered. Claiming 'the review prompt works' from a single non-appearance would be exactly the kind of confident-wrong verdict this project's harness bans.",
+   "effort": "S",
+   "risk": "Policy violation is the risk, not a crash: a pre-gate or a Rate-us button is grounds for enforcement on Play. The grep criterion is the guard. ROLLBACK: gate behind `META_REVIEW` default OFF; off means the call never happens.",
+   "brand_perf_check": "FLAG TEST: PASSES — no motion, no node, no board interaction; the call fires on the win panel after the terminal transition has already committed. Brand: no new UI at all, which is also what the platform rules require."
+  }
+ ],
+ "escalations": [
+  {
+   "question": "How big should the daily board be — Normal cell budget (measured p50 82 arrows, p95 104) or Hard (p50 125, p95 162)?",
+   "options": "(a) Normal budget: shorter, closer to Naavik's 'completable in a new player's first session', but a daily that a returning veteran finishes quickly. (b) Hard budget: a more substantial daily ritual, ~50% more taps, higher risk that a first-session player abandons it. (c) Alternate by weekday (bigger at weekends) — more variety, more machinery, and a second unmeasured parameter.",
+   "recommendation": "Normal budget (a). The KDD 2021 evidence is one-sided for new players — churn hazard 0.160 for too-hard versus 0.053 for too-easy in the first <10 days, a 3× difference — so when the size is uncertain, err small. Ship (a), then revisit only if W4-02's timing shows a median well under a few minutes.",
+   "why_it_cannot_be_decided_here": "'Completable in a first session' is a number in minutes and nothing in this repo measures taps-per-minute; W4-02 produces that measurement from the owner's own play, and how long a daily SHOULD take is a taste call about the product's ritual, not something the generator can answer."
+  },
+  {
+   "question": "What does the share card look like — Wordle-style coloured emoji, or an all-ink text card?",
+   "options": "(a) Coloured emoji grid: what actually made Wordle's artifact spread, instantly recognizable in a group chat, but it is precisely the 'busy hyper-casual, mismatched bright colours' register PRODUCT.md names as an anti-reference, and the app already has a logged complaint about one colour emoji (💡) on Ink Night. (b) Monochrome ink glyphs (■ □ ▲): on-brand and calm, unproven as a spreading artifact. (c) A rendered PNG card via Skia's makeImageSnapshotAsync — visually the strongest, but I verified from node_modules/react-native/Libraries/Share/Share.d.ts that RN's Android Share accepts only title and message, so an image share on the only shipping platform needs expo-file-system + expo-sharing, two new native dependencies and a rebuild.",
+   "recommendation": "(b) for v1. It costs nothing, ships this week with zero dependencies, and does not spend brand equity on an unproven bet. Revisit (a) or (c) only if the text card is actually being shared — which, note, you currently have no way to observe (see escalation 5).",
+   "why_it_cannot_be_decided_here": "This is a direct collision between a brand gate the owner set and the single best-evidenced growth mechanism in the genre; PRODUCT.md's anti-references are the owner's call to relax or hold, not the implementer's."
+  },
+  {
+   "question": "Does the shape gallery (W4-07) violate PRODUCT.md's 'cluttered level-select grids' anti-reference?",
+   "options": "(a) Build it as specced: a grid of 26 silhouette tiles that are NOT tappable into play, carry no level numbers and no scores — a gallery, not a navigator. (b) Drop the grid and show only a count plus the most recently discovered shape on the menu — fully gate-compliant, and a much weaker collectible. (c) Show the silhouettes one at a time on the win panel ('Butterfly — new'), with no dedicated screen at all.",
+   "recommendation": "(a), with the non-tappable / no-numbers constraints treated as hard acceptance criteria, plus (c) as the discovery moment. The anti-reference targets grids the player must NAVIGATE every session to choose a level; a gallery you visit rarely and cannot play from is a different object. But the wording is yours.",
+   "why_it_cannot_be_decided_here": "It is a judgement about the intent behind a brand gate the owner wrote, and W4-07 is the largest single effort in this workstream — building it before the gate is settled risks an L-sized rebuild."
+  },
+  {
+   "question": "Should the meta be a DAY streak at all, given the evidence against rigid daily consistency for an evening-positioned app?",
+   "options": "(a) Day streak with free freezes, as specced in W4-05. (b) A non-temporal progress ring instead ('4 of 7 puzzles this week'), which forgives structurally rather than by consuming a token. (c) Both: the streak drives the notification, the ring drives the menu display.",
+   "recommendation": "(a) with freezes. The Duolingo and Busuu evidence is about streaks specifically, the code already has a day-streak field with real values in the wild, and replacing it would discard existing player state. But note honestly that the JMIR 2023 result (n=14,879, 899,071 uses) found rigid daily temporal consistency predicted WORSE long-term persistence and that EVENING use decayed fastest — which is uncomfortable for a product positioned explicitly as 'a five-minute puzzle before sleep'.",
+   "why_it_cannot_be_decided_here": "The evidence genuinely points both ways and the resolution depends on how the owner wants the product to feel — a habit tracker or a calm thing you return to. That is identity, not engineering."
+  },
+  {
+   "question": "Ship W4 with no way to tell whether any of it worked?",
+   "options": "(a) Ship unmeasured: no analytics, accept that daily adoption, streak length and share rate are all invisible. (b) Local-only counters (ints in the same store, read off a test device with adb): zero network, zero consent exposure, but only ever describes the owner's own device — it cannot produce D1/D7. (c) Add an analytics SDK — which collides head-on with the fact that there is currently NO consent management of any kind (LevelPlay's setConsent is never called, no UMP, no GDPR/CCPA/COPPA flow) while app.json already declares AD_ID.",
+   "recommendation": "(a) plus (b). Do NOT add (c) until a consent flow exists — a second data-collecting SDK on top of an unconsented ad SDK increases an existing compliance exposure rather than adding a new one, and the consent work belongs to the compliance workstream, not to W4.",
+   "why_it_cannot_be_decided_here": "It trades product learning against legal exposure on a store the product already ships to, and the compliance gap is pre-existing and owner-visible. Flagging it plainly: every W4 step is verifiable as BUILT and none is verifiable as EFFECTIVE."
+  },
+  {
+   "question": "The brief assumed the int-only store must be widened. It does not need to be. Widen anyway, or stay int-only?",
+   "options": "(a) Stay int-only, as W4-01 specs: everything W4 needs packs into ints, including the collection (26 bits in one integer). Smallest blast radius on the code path that owns every player's progress. (b) Widen IntStore to a getString/setString pair now, while the migration is already being written — one disruption instead of two, at the cost of touching the hydrate/parse path (storage.ts:19-30) and rewriting the storage tests during the same release that migrates the schema.",
+   "recommendation": "(a). The only W4-adjacent thing that genuinely needs strings is per-level history, which no recommended feature uses; and combining a store-interface change with a schema migration in one release means that if progress goes missing you cannot tell which change did it. If strings are needed later, the schema version from W4-01 makes adding them a clean v1→v2.",
+   "why_it_cannot_be_decided_here": "It contradicts a premise stated in the workstream brief, so the owner should confirm rather than discover it — and if there is a roadmap item I cannot see that needs blob storage (cloud save, per-level history, a settings export), (b) becomes the cheaper order."
+  }
+ ],
+ "open_verification_gaps": [
+  "Human solve time for a daily board is UNMEASURED. Nothing in this repo relates taps to minutes, so 'completable in a first session' cannot be evaluated today. W4-02 closes it; until then no minutes figure appears anywhere in W4, and my arrow-count figures (p50 82, p95 104 at Normal budget) are counts, not durations.",
+  "My generator distribution numbers were EXECUTED, but against a faithful REPLICA of LevelGenerator.generate's sizing math (targetCells → probe density → rows/cols → LevelGenerator.fillMask), not against generate() itself, because no shape-override entry point exists yet. W4-02's committed script must re-report them against the real generateDaily; the ±3-arrow acceptance band is the check. Treat the numbers as provisional until that run.",
+  "iOS: NOTHING in W4 is verifiable on iOS. The native board view has not compiled since the 2026-09-01 exit-protocol change (docs/IOS_BOARD_PLAN.md), so notifications, store review, share and the collection screen are all unverified there. Do not claim iOS behaviour for any W4 step.",
+  "Physical devices: every verification method above names the API 31 Android emulator, which is the only measured environment this project has. Layout criteria at 360×640 dp are emulator-verified only; small-phone spacing and notification delivery behaviour on a real handset remain UNVERIFIED.",
+  "The emulator perf harness sets animator_duration_scale=0, which flips Reanimated's useReducedMotion to true — so any screenshot taken through that harness is of the reduced-motion variant. W4's screenshots must be taken from a normal (non-harness) launch, or be labelled as reduced-motion.",
+  "Android Auto Backup restore (W4-01 acceptance) is only testable if the emulator image exposes a working bmgr transport. Check `adb shell bmgr list transports` first; if there is none, report the restore path as UNVERIFIED rather than inferring it from the migration code.",
+  "expo-store-review's actual dialog is unobservable by design: Play quota-limits it to roughly monthly and it silently no-ops in TestFlight. W4-10 can only verify that the policy decided to ask and the call was made — whether a dialog rendered stays UNVERIFIED.",
+  "No component-render tests exist anywhere (jest is node-env with testMatch '**/__tests__/**/*.test.ts'; every .tsx is untested). That is why each step pushes logic into pure .ts modules and closes visual claims with screenshots — but it also means no automated check will ever catch a regression in the new screens' rendering.",
+  "Product effectiveness is unmeasurable with today's tooling: there is no analytics, so daily adoption, streak retention, share rate and review conversion cannot be observed. Closing this needs a consent flow first (see escalation 5), not just an SDK."
+ ]
+}

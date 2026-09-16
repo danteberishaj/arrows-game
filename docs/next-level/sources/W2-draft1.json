@@ -1,0 +1,345 @@
+{
+ "workstream": "W2 — THE REWARD LOOP (MOTION AND FEEL)",
+ "goal": "Every beat the player actually feels — finishing a level, losing a heart, running out — resolves as a piece of motion instead of a hard cut, and every one of those effects still plays when the OS has Reduce Motion on.",
+ "non_goals": [
+  "No new persisted state. Nothing in this workstream writes SaveSystem; PersistenceKeys stays frozen as asserted in src/ui/__tests__/storage.test.ts:36, so there is no migration and no wipe risk in W2.",
+  "No per-arrow animated node, ever. The static field stays a retained native view; nothing here pulls an arrow out of it that is not already pulled out (shaking, hint).",
+  "No third concurrent exit trail. MAX_CONCURRENT_EXIT_TRAILS stays 2 in all three places (exitAnimationConfig.ts:43, ArrowsBoardView.kt:391, ArrowsBoardView.swift:34).",
+  "No new dependency. Skottie, Rive, lottie, react-native-view-shot and a navigator are all out of scope for W2.",
+  "No ambient/idle motion on the board. The Play pill's breath stays the only looping animation in the app.",
+  "No FTUE, no difficulty change, no daily content, no analytics — other workstreams.",
+  "No iOS verification. modules/arrows-board/ios/ArrowsBoardView.swift has not compiled since 2026-09-01; W2 keeps it source-compatible but claims nothing about it."
+ ],
+ "steps": [
+  {
+   "id": "W2-01",
+   "title": "Make every feedback animation survive OS Reduce Motion",
+   "what": "All seven feedback timings use Reanimated's default `ReduceMotion.System`, so when the OS has reduce motion on, progress jumps straight to 1 and the effect never plays. Add `reduceMotion: ReduceMotion.Never` to the options object of each, and keep the *content* of the effect governed by the already-plumbed `reducedMotion` boolean (which the curves already honour: BoardView.tsx:891 `const d = reducedMotion ? 0 : blockedBumpAt(...)`, StaticBoardSurface.native.tsx:288, and the native `slot.reducedMotion` branch in ArrowsBoardView.kt:269). Exact sites: BoardView.tsx:842 (BlockerArrow), :887 (ShakingArrow), :934 (HintArrow), :980 (ExitTrail); StaticBoardSurface.native.tsx:264 (BlockerArrow), :308 (ShakingArrow), :348 (HintArrow). Import `ReduceMotion` from react-native-reanimated in both files. Also add the same explicit option to BoardView.tsx:310-311 (the hint recentre) but with `ReduceMotion.System` spelled out, because a viewport translation IS vestibular motion and SHOULD be suppressed — the point is that every timing states its policy rather than inheriting one. Add a short comment block in feedbackCurves.ts recording the rule: progress always runs; displacement is gated by `reducedMotion`; colour and opacity are never gated.",
+   "why": "Audit finding, verified by reading the curves: at k=1 `blockerOpacityAt` returns 0, `blockedBumpAt` returns 0, and the hint pulse term `|sin(k·4π)|·(1−0.6k)` is 0, while ShakingArrow's colour mix `1−(1−k)²` is 1 (pure ink). So a reduce-motion player gets no blocker flash, no magenta on the blocked arrow, no bump and no hint pulse — the blocker flash is the game's ONLY explanation of its core rule, and the rewarded-ad hint renders literally nothing. This also blocks W2-02: nothing else in this workstream can be measured on the harness until it is fixed.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/StaticBoardSurface.native.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/feedbackCurves.ts"
+   ],
+   "acceptance": [
+    "With `adb shell settings put global animator_duration_scale 0` set on the emulator, tapping a blocked arrow produces a visible magenta blocker arrow in a screencap taken 150 ms after the tap, and the blocker is gone in a screencap taken 750 ms after the same tap (BLOCKER_FLASH_MS is 650).",
+    "With the same setting, the tapped blocked arrow is magenta at 150 ms and back to ink at 350 ms (BLOCKED_BUMP_MS is 300), and its ink pixels have NOT moved between the 0 ms and 150 ms captures — displacement stays suppressed, colour does not.",
+    "With the same setting, a hint (rewarded flow, simulated TEST AD in a dev build) renders an accent-coloured arrow whose stroke width differs between captures at 100 ms and 200 ms.",
+    "With animator_duration_scale back at 1, all four effects are unchanged from today: the same screencap set matches a pre-change baseline set captured on the pre-fix APK.",
+    "`grep -c 'withTiming' src/ui/BoardView.tsx src/ui/StaticBoardSurface.native.tsx` equals the count of `reduceMotion:` occurrences in the same files — no timing left inheriting the default."
+   ],
+   "verification": "On AVD `fleet_floor_api31` (API 31, port 5556, `-gpu host`), for each of the four effects run the deterministic triple `adb shell input tap <x> <y>` → `sleep <t>` → `adb exec-out screencap -p > frame_<t>.png`, at the t values named in the acceptance rows, once with `animator_duration_scale 0` and once with it at 1. This exercises the original failing path because the *pre-fix* run of the identical procedure at animator_duration_scale 0 is the repro: it produces frames with no magenta anywhere, which is exactly the bug. Capture that pre-fix frame set FIRST on the current APK and keep it as the before artifact. `adb exec-out screencap` after a fixed sleep is frame-exact and deterministic, unlike screenrecord, so a specific phase of a 300 ms animation can be pinned. `npm test` is NOT evidence here: jest is node-env and testMatch is `*.test.ts` only (jest.config.js), so no .tsx in this repo is executed by any test.",
+   "effort": "S",
+   "risk": "Low mechanical risk; the change is additive options on existing calls. The real risk is scope creep into changing the curves themselves — do not. Rollback is a revert of one commit; no state, no payload, no native code touched. UNVERIFIABLE today: whether Android's `animator_duration_scale 0` is the same signal a real user's accessibility toggle sets — Reanimated documents it as the Android source for `useReducedMotion`, but this has only been observed through the harness, never on a physical device with the accessibility setting itself.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: PASS. Animates no arrow that is still in the static layer (shaking and hint are already in `excludedArrows`, BoardView.tsx:646-651), and adds zero Skia nodes — the four-node ceiling (pressed/blocker/shaking/hint) is untouched. Brand gate: PASS — restores existing behaviour, adds no glow, gradient or particle."
+  },
+  {
+   "id": "W2-02",
+   "title": "Make the perf harness measure real motion instead of the reduced-motion variant",
+   "what": "`scripts/perf/android/benchmark.mjs:351-353` sets `window_animation_scale`, `transition_animation_scale` and `animator_duration_scale` to 0. The third flips Reanimated's `useReducedMotion()` to true, which BoardView.tsx:191 reads and hands to `setNativeExitAnimation({... reducedMotion })` (BoardView.tsx:394) → serialized (nativeExitAnimation.ts) → ArrowsBoardView.kt:269 `val travelled = if (slot.reducedMotion) 0f else ...`. Every 'exit' phase number this project has ever recorded therefore measured a dash that does not move, only fades. Add a build-time escape: `PERF_FULL_MOTION` in src/perfMode.ts (`PERF_MODE && process.env.EXPO_PUBLIC_PERF_FULL_MOTION === '1'`), consumed in BoardView.tsx as `const systemReducedMotion = useReducedMotion(); const reducedMotion = PERF_FULL_MOTION ? false : systemReducedMotion;` (hook still called unconditionally). Thread `EXPO_PUBLIC_PERF_FULL_MOTION` through the env block at benchmark.mjs:377-397 behind a new `--full-motion` flag, and record it in `benchmarkConfiguration` so the output JSON says which variant was measured. Then re-baseline the 'exit' and 'blocked' phases with the flag on, and print the sample reconciliation (`frames observed` vs `runs × frames-per-run`) next to every percentile.",
+   "why": "Every later step in W2 that touches motion needs a perf number, and today the instrument measures the wrong thing. This is already recorded as a known trap in project memory (\"harness exit runs measure the fade-only variant\") but there is no way to turn it off. Without this step, any claim that W2 motion did or did not regress the frame budget is unfalsifiable.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/perfMode.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/perf/android/benchmark.mjs"
+   ],
+   "acceptance": [
+    "A run with `--full-motion` writes `fullMotion: true` into the output JSON's configuration block; a run without it writes false, and the default is false so existing baselines stay comparable.",
+    "With `--full-motion`, a screencap taken 90 ms after an exit tap on level 3827 shows the bead dash displaced from the arrow's own centreline; without the flag, the same capture shows it at the origin. This is the proof the flag actually reaches the native draw and not merely the JSON.",
+    "The exit-phase report prints observed frame count alongside `runs × expected frames per run` (memory records 120 frames = 10 runs × 12) and the run is discarded if they disagree by more than one frame per run.",
+    "A first honest travelling-slither baseline exists for exit p95/p99/jank at level 3827 with 250 arrows, captured on a Mac with 1-minute load average below 2.0 and Avast/ANECompilerService idle (recorded in the run metadata), so absolute gates are evaluable rather than only paired differences."
+   ],
+   "verification": "`npm run perf:android -- --feedback --full-motion --label exit-fullmotion --output docs/perf-fullmotion-<date>.json` on AVD fleet_floor_api31, paired A/B/A against the same APK without the flag, plus the two screencaps named above. The screencap pair is what exercises the original defect: it shows the dash moving in one configuration and stationary in the other, which is precisely the behaviour difference that silently invalidated the old numbers. Do not quote an exit delta smaller than ~15 ms from a single run — the 2026-09-08 A/B measured that as the instrument's resolution on this host (docs/perf-tap-forgiveness-ab-2026-09-08.md).",
+   "effort": "M",
+   "risk": "The flag is PERF_MODE-gated, so `EXPO_PUBLIC_PERF_FULL_MOTION` is inlined as absent in every release build and the production path is unchanged; verify that by grepping the release bundle for the string. Risk of confusion if someone compares a full-motion run against an old non-flag baseline — mitigated by the configuration field being mandatory in the output. Rollback: delete the flag; the default branch is the current behaviour.",
+   "depends_on": [
+    "W2-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — instrumentation only, no rendering change in any shipped build. Brand gate: N/A (no player-visible change)."
+  },
+  {
+   "id": "W2-03",
+   "title": "Level → level transition: dip to the destination background instead of a hard cut",
+   "what": "`loadLevel` (GameScreen.tsx:95-107) replaces the session synchronously; BoardView's `useLayoutEffect` keyed on `board` (BoardView.tsx:251-283) then wipes feedback state and refits, and the native view re-parses geometry. Nothing fades. Add a transition owned by GameScreen: one `Animated.View` sibling of the board, `StyleSheet.absoluteFill`, `backgroundColor: palette.bg`, `pointerEvents:'none'`, driven by a single shared value — fade 0→1 over ~140 ms, call `loadLevel` from the completion (via `scheduleOnRN`) while the scrim is fully opaque, then fade 1→0 over ~200 ms. Route BOTH `onNextLevel` (after the awaited interstitial resolves) and the Retry press (GameScreen.tsx:301) through it. Explicitly declare `reduceMotion: ReduceMotion.System` on these two timings: a full-screen luminance change is exactly the kind of motion a reduce-motion user opted out of, and with it suppressed the scrim snaps on/off and the swap still happens under cover. Do NOT animate opacity on the board wrapper itself: an alpha < 1 on the `Animated.View` that hosts `ArrowsBoardView` forces an offscreen compositing layer for the whole 250-arrow custom `onDraw` every frame of the fade, which is a new and unmeasured cost; a flat opaque rect over it is a plain colour blend. The scrim also hides the synchronous `LevelGenerator.generate` hitch inside `createLevelSession`.",
+   "why": "DESIGN.md's Motion section specs a level→level cross-fade (~160-220 ms) that the port never built; App.tsx:56 claims screens cross-fade but only `entering={FadeIn.duration(180)}` exists on the two screen branches (App.tsx:63, :75) — that is a fade-in of the incoming screen with no outgoing fade, and level→level has nothing at all. This is the highest-frequency defect in W2: it fires once per cleared level, roughly every two minutes, forever. It also masks a real measured hitch: `LevelGenerator.generate` costs 6.5-9.4 ms for the 20×20 level-1 circle, 31.5 ms cold / 11.5 ms warm-median for the 37×37 202-arrow Cat at level 168, and 44.5 ms cold / 16.3 ms warm-median for the 39×39 250-arrow level 3828 — measured by me on this Mac with `npx tsx` on desktop node 20, n=20 for the warm figures. On-device Hermes will be slower; that number is UNMEASURED and this step does not need it, because covering the swap makes the hitch invisible either way.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/gameSessionLifecycle.ts"
+   ],
+   "acceptance": [
+    "Pressing 'Next level' on a cleared level never shows the new board's arrows appearing over the old board's: in a frame-by-frame extraction of a screen recording of the transition, there is no frame containing arrows from both levels, and there is at least one fully-flat frame in the destination bg colour.",
+    "The transition's total wall time from the Next press (or from the interstitial dismissal, whichever is later) to the new board being fully visible is between 300 and 400 ms, measured from the recording's frame timestamps.",
+    "Retry on the out-of-hearts panel takes the same path — same acceptance as above.",
+    "With `animator_duration_scale 0`, the swap still completes and the new level is playable; the scrim may snap rather than fade, but no frame shows two levels' arrows and the screen never stays covered.",
+    "Input stays locked for the whole transition: an `adb shell input tap` on a board cell delivered mid-transition removes no arrow (the arrow count label is unchanged after the transition settles).",
+    "No frame-budget regression: paired A/B on the harness with `--full-motion` shows the ALL p95 of the after build inside the before build's range across two alternating samples."
+   ],
+   "verification": "`adb shell screenrecord --time-limit 8 --bit-rate 8000000 /sdcard/t.mp4` around a scripted Next press, `adb pull`, then `ffmpeg -i t.mp4 -vf fps=60 frame_%03d.png` and inspect frames — this exercises the change because the defect IS the absence of intermediate frames, which only a frame-by-frame extraction can prove or disprove. Emulator screenrecord can drop frames, so pair it with the deterministic `input tap` → `sleep` → `exec-out screencap` probe at t = 70 ms (mid fade-out), 160 ms (should be flat destination bg) and 400 ms (new board visible). Perf: `npm run perf:android -- --feedback --full-motion` A/B/A per W2-02, quoting paired differences only unless the host is quiet.",
+   "effort": "M",
+   "risk": "Highest-risk step in W2. Three failure modes to guard: (1) the interstitial resolves while the scrim is animating — sequence the scrim strictly AFTER the awaited `Ads.showInterstitialIfDue()` in `onNextLevel` (GameScreen.tsx:158-164), never concurrently; (2) leaving the scrim mounted opaque if the completion callback never fires — this repo has a scar for exactly that (SplashScreen.tsx:47-49 has no backstop), so the scrim MUST have a JS `setTimeout` backstop that force-clears it, and the timer must be cleared in the same effect that disposes `TerminalTransitionGuard` (GameScreen.tsx:78); (3) leaving the scrim capturing touches — `pointerEvents:'none'` is mandatory. Ships behind a module constant `LEVEL_TRANSITION_ENABLED` in gameSessionLifecycle.ts so it can be turned off in one line without reverting.",
+   "depends_on": [
+    "W2-02"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS. Animates no arrow at all — it animates the opacity of a sibling solid-colour View. Adds zero Skia nodes and zero exit trails; the four-node feedback ceiling and the 2-trail cap are untouched. Brand gate: PASS — a flat theme-colour dissolve, no gradient, no glow, no particle; 'flow over menus' is exactly what it serves. Note it is NOT a true cross-fade of two boards, which is what DESIGN.md's wording implies; W2-11 corrects the doc to describe what ships."
+  },
+  {
+   "id": "W2-04",
+   "title": "Win and lose panels enter and leave instead of appearing and vanishing",
+   "what": "The terminal overlay is a plain conditionally-rendered `View` (GameScreen.tsx:248-314): it pops into existence at full opacity and is destroyed instantly. Give it motion in two layers, so the scrim and the panel do not move as one slab: wrap the overlay branch in `<LayoutAnimationConfig skipEntering={false}>`, put `entering={FadeIn.duration(D_scrim)}` / `exiting={FadeOut.duration(160)}` on the scrim `View`, and `entering={FadeInDown.springify()...}` or an explicit shared-value scale 0.94→1 + opacity on the inner `styles.panel` View, delayed ~60 ms behind the scrim. Keep the existing star stagger (GameScreen.tsx:450, `withDelay(250 + i*170, withSpring(...))`) — its 250 ms head start already assumes the panel is up, so the panel's entrance must complete inside that 250 ms. Declare `ReduceMotion.System` on the panel's transform so a reduce-motion player gets the opacity change without the slide, and `ReduceMotion.Never` on the opacity itself so the panel never simply teleports.",
+   "why": "Audit finding: this is the harshest visual moment in the app and it happens twice per level in the worst case. DESIGN.md's Motion section already specs it ('a dark night scrim fades in and the title pops'), and the port shipped the scrim and the title with no fade and no pop.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "On a win, a frame extracted 40 ms after the panel first appears shows the scrim at a visibly lower alpha than a frame at 200 ms (measurable as mean luminance of the board region across the two PNGs), and the panel's bounding box is smaller at 40 ms than at 200 ms.",
+    "The panel is fully settled before the first star begins its spring — the first star is not visible in a frame captured at 240 ms after panel appearance and is visible at 500 ms.",
+    "Dismissing the panel (Next level / Retry) plays an exit: at least one frame exists in which the panel is partially transparent, i.e. the dismissal is not a single-frame unmount.",
+    "Leaving to the menu mid-panel (the '‹' HeaderButton, GameScreen.tsx:207) does not hang, double-fire, or leave a ghost overlay: the menu is fully rendered within 400 ms and no panel pixels remain.",
+    "With `animator_duration_scale 0`, the panel still appears and disappears correctly and is fully interactive; no button becomes unreachable.",
+    "On the web preview (`npm run web`) the panel still appears and dismisses correctly, even if it does so without animation."
+   ],
+   "verification": "Screen recording of a full win and a full loss on the emulator, extracted at 60 fps with ffmpeg, plus the deterministic `sleep`+`exec-out screencap` probe at the t values in the acceptance rows. The recording is what exercises the change because the defect is a missing set of intermediate frames. The 'leave to menu mid-panel' row must be run by hand on the emulator — it is the interaction most likely to break, since an `exiting` animation on a child of a tree that App.tsx unmounts wholesale is exactly where Reanimated layout animations misbehave. Web behaviour is checked in the browser preview and reported separately; a web observation does NOT stand as evidence for the native path (different renderer entirely — SVG vs Skia).",
+   "effort": "M",
+   "risk": "Reanimated 4.5.1 layout animations are documented for Android/iOS; react-native-web 0.21 support in THIS project is unverified, so the step must degrade to a plain conditional render on web rather than crash — assert that in the acceptance. The overlay is nested inside App.tsx's `entering={FadeIn.duration(180)}` wrapper (App.tsx:75), so nested layout animations are in play; if the panel's entrance visibly fights the screen fade on a cold entry into a finished level, wrap the screen branch in `<LayoutAnimationConfig skipEntering>`. Second risk: an `exiting` scrim that still swallows touches would soft-lock the game — the exiting scrim must set `pointerEvents:'none'` for its whole exit. Rollback: remove the entering/exiting props; the conditional render underneath is unchanged.",
+   "depends_on": [
+    "W2-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — no arrow animates, no Skia node is added, no exit trail is spawned. The board is not even mounted-visible under a won panel's scrim. Brand gate: PASS — opacity and a 6% scale, no glow, no confetti; DESIGN.md already asks for the title to pop."
+  },
+  {
+   "id": "W2-05",
+   "title": "Make the loss slower than the win, and stop the panel from cutting off the blocker flash",
+   "what": "Today `beginTerminalTransition('won', 450)` (GameScreen.tsx:119) and `beginTerminalTransition('lost', 350)` (GameScreen.tsx:147) — the loss, the heavier event, arrives 100 ms EARLIER than the win. Worse, the loss delay of 350 ms is shorter than `BLOCKER_FLASH_MS` (650, feedbackCurves.ts:10), so on the fatal third mistake the overlay (86%-opaque bg, GameScreen.tsx:253) drops over the blocker while it is still explaining why the move failed — the player's last frame of teaching is the one that gets covered. Replace the two magic numbers with named constants derived from the effects they must outlive: `WIN_PANEL_DELAY_MS = 450` (unchanged; the longest exit is EXIT_TRAIL_MAX_DURATION_MS = 320, so the board is already empty) and `LOSE_PANEL_DELAY_MS = BLOCKER_FLASH_MS` (650), imported from feedbackCurves.ts so the relationship cannot silently drift. Pair it with W2-04 by giving the lose scrim a longer entrance than the win scrim (e.g. win scrim 180 ms, lose scrim 320 ms) — same constants file, one comment explaining that the loss reads slower because it is the moment the player needs to absorb.",
+   "why": "Two audit findings in one place: the loss is faster than the win (backwards — weight should read as slowness), and the blocker flash is the only in-game explanation of the core rule, so truncating it on the fatal mistake is the worst possible moment to truncate it. Neither number here is invented: 650 IS `BLOCKER_FLASH_MS`, already shipped and already tested (src/ui/__tests__/feedbackCurves.test.ts asserts `blockerOpacityAt(1)` ≈ 0).",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/feedbackCurves.ts"
+   ],
+   "acceptance": [
+    "On the fatal third mistake, a screencap 600 ms after the tap shows the magenta blocker arrow with NO panel over it; a screencap at 800 ms shows the panel. (Pre-fix, the 600 ms capture shows the panel already up — that is the repro.)",
+    "The lose panel's scrim reaches full opacity later than the win panel's, measured as mean-luminance-vs-time curves extracted from two recordings; the lose curve's time-to-90% is at least 100 ms greater.",
+    "No literal delay numbers remain at GameScreen.tsx:119 and :147 — both read from named constants, and `LOSE_PANEL_DELAY_MS` is defined in terms of `BLOCKER_FLASH_MS`.",
+    "The extra 300 ms of unlocked-looking board does not admit a stray tap: `terminalTransition.isPending` already gates `onRemoved`/`onBlocked` (GameScreen.tsx:111, :133) and `locked` is passed to BoardView (GameScreen.tsx:241) — confirm with an `adb shell input tap` on a clearable arrow delivered 500 ms after the fatal tap; the arrow must still be on the board when the panel appears."
+   ],
+   "verification": "Deterministic emulator probe: drain three hearts with three taps on known blocked arrows (the harness's own validation cells for level 3827 are (35,19), (31,14), (30,21) — reuse them), then `sleep 0.6` → `exec-out screencap` and `sleep 0.8` → `exec-out screencap`. This exercises the original failing behaviour directly: the defect is a specific frame at 600 ms, and the probe photographs that exact frame before and after. Run the identical probe on the pre-fix APK first and keep both PNGs.",
+   "effort": "S",
+   "risk": "Low. The only behavioural consequence is 300 extra ms of locked board before the lose panel; if that reads as a hang rather than a beat, halve it to `BLOCKER_FLASH_MS * 0.6` — but that is a taste call, so capture the recording and get an owner eyeball rather than tuning it silently. Rollback: two constants. Does not touch persistence, native code, or the payload.",
+   "depends_on": [
+    "W2-04"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — changes two setTimeout delays and two scrim durations; animates no arrow, adds no node. Brand gate: PASS — makes the calm brand calmer at the moment it matters."
+  },
+  {
+   "id": "W2-06",
+   "title": "Overlapping action on the blocked bump: let the magenta outlive the lunge",
+   "what": "Both bump renderers inline the same colour curve, `eased = 1 − (1 − k)²`, then `interpolateColor(eased, [0,1], [heart, ink])` — BoardView.tsx:896-900 (web SVG) and StaticBoardSurface.native.tsx:314-317 (Skia). I computed the shipped timing exactly: `blockedBumpAt` peaks at k = 0.3195 (that is 96 ms into the 300 ms window) at 0.2227 cells, while the colour at that same instant is already 53.7% of the way to ink; by k = 0.7, displacement is still 45% of its peak but the colour is 91% resolved. The magenta is therefore finished before the motion is. Extract a new pure worklet `blockedInkMixAt(k)` into feedbackCurves.ts that holds full magenta through the displacement peak and resolves exactly as the arrow comes to rest — e.g. 0 for k ≤ 0.32, then a smoothstep of (k − 0.32) / 0.68 — and use it from BOTH renderers in place of the inlined expression. Export `BLOCKED_BUMP_PEAK_K = 0.3195` alongside it with a comment naming the analytic solution (tan(πt) = π/2) so the two constants cannot drift apart. Add a case to src/ui/__tests__/feedbackCurves.test.ts asserting: mix(0) = 0, mix at BLOCKED_BUMP_PEAK_K = 0, mix(1) = 1, monotone non-decreasing, and — the load-bearing one — mix(0.7) < 0.75, which the current curve (0.91) fails.",
+   "why": "Named in the brief as 'overlapping action so the magenta does not resolve before the motion does', and the numbers above confirm it is real rather than felt. Correction to the brief: `blockedBumpAt` reaches TWO renderers, not three — the Kotlin and Swift board views draw only the static field and the exit slither; the bump is a Skia overlay node on native and an SVG node on web. So one function body fixes both, and no native payload changes.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/feedbackCurves.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/StaticBoardSurface.native.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/feedbackCurves.test.ts"
+   ],
+   "acceptance": [
+    "`npm test` passes with the new `blockedInkMixAt` cases, AND the new `mix(0.7) < 0.75` assertion is shown to FAIL when run against the old inlined curve — record that failing run, otherwise the test does not prove it covers the changed behaviour.",
+    "On the emulator, a screencap 96 ms after tapping a blocked arrow (the displacement peak) shows the arrow at full `heart` magenta — sample the arrow's ink pixels and confirm they are within a small delta of #F0468C (Ink Night) / #E4327D (Daylight). Pre-fix, the same capture shows a colour roughly halfway to ink; that difference is the acceptance.",
+    "A screencap at 210 ms (k = 0.7) shows the arrow still visibly magenta-tinted rather than near-ink.",
+    "At 340 ms (past BLOCKED_BUMP_MS + the 40 ms cleanup margin, BoardView.tsx:440) the arrow is plain ink and the Skia node is gone.",
+    "The web SVG renderer and the native Skia renderer produce the same colour at the same t: compare the sampled pixel colour at 96 ms from an emulator screencap and from a browser screenshot of the web preview."
+   ],
+   "verification": "Two independent probes because there are two renderers. Native: `input tap` on a known blocked arrow → `sleep 0.096 / 0.210 / 0.340` → `exec-out screencap`, then read the pixel colour at the arrow's centreline with `sharp` (already a devDependency). Web: `npm run web`, click the same arrow, capture at the same offsets. Colour sampling at a pinned time offset is what exercises the change, because the defect is 'the right colour at the wrong time' — a still with no timestamp would prove nothing. `npm test` alone is explicitly NOT sufficient evidence: it verifies the curve's shape, not that either renderer calls it.",
+   "effort": "S",
+   "risk": "The existing test asserts the bump never recoils past rest (`expect(d).toBeGreaterThanOrEqual(0)`); this step must not weaken it — that assertion stays and the new cases are added beside it. Guard against the classic trap here: changing the colour curve changes nothing perceptible if the tester only looks at a still at t = 0 or t = 300, where old and new agree. Rollback: one exported function, two call sites.",
+   "depends_on": [
+    "W2-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS. The shaking arrow is ALREADY excluded from the static layer (BoardView.tsx:646-651 adds it to `excludedArrows`) and is one of the four permitted Skia nodes; this changes the colour it is drawn in, adds no node and rebuilds no mask beyond what already happens. Brand gate: PASS — 'direction by shape never colour' is unaffected; magenta stays the fail colour, per DESIGN.md."
+  },
+  {
+   "id": "W2-07",
+   "title": "Measure whether the blocked bump is legible at fit zoom, BEFORE anyone touches its amplitude",
+   "what": "Do not add anticipation to `blockedBumpAt`, and do not scale `BLOCKED_BUMP_AMPLITUDE_CELLS` (feedbackCurves.ts:16). First produce the missing measurement. Computed from the shipped constants (`CELL = 40`, `FIT_MARGIN = 0.94`, `STROKE = 0.144`, peak = 0.2227 cells) and the board sizes I generated (level 1 = 20×20, level 3 = 37×37, level 168 = 37×37, level 3828 = 39×39), on a 393 pt-wide viewport the peak displacement is about 4.1 pt on a 20-wide board and about 2.1 pt on a 39-wide one, against a stroke of 2.66 pt / 1.36 pt — so the bump is roughly 1.55× its own stroke width at every zoom, but only ~2 pt of absolute travel on a dense board. That ratio is fine; the absolute size may not be. Deliverable of this step is evidence, not a code change: a slow-motion capture (a per-frame `screencap` ladder at 16 ms intervals across the 300 ms window, on both a 20-wide and a 39-wide board, at fit zoom and at max zoom) plus a measured pixel displacement of the arrow's ink at peak, and an owner yes/no on whether it reads. Only if the answer is no does a follow-up step change the amplitude — and then as an absolute on-screen floor (`max(0.5 cell, N pt / scale)`), never as a multiplier on the cell constant.",
+   "why": "The brief proposes 'anticipation inside the existing 300 ms budget'. Anticipation is a pull-back of some fraction of the peak; at 25% that is ~0.5 pt on a dense board — roughly one physical pixel at 2.75 density, i.e. invisible. This is the exact 'multiplier on a small constant in visual/feel code ships invisible' failure this project has been burned by, and the exact 'a numeric threshold that was never computed from live data' failure it has been burned by six times. The honest move is to measure the thing first and let the owner's eye set the target.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/feedbackCurves.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/scripts/perf/android/benchmark.mjs"
+   ],
+   "acceptance": [
+    "A capture ladder exists for four conditions (20-wide board and 39-wide board, each at fit zoom and at max zoom), each with frames at 0, 32, 96, 160, 224 and 300 ms after the tap.",
+    "The measured peak displacement of the arrow's ink, in device pixels, is reported for each condition, alongside the arrow's rendered stroke width in the same units and the computed prediction above — and the observed and predicted values are reconciled, with any disagreement explained rather than averaged away.",
+    "The owner gives a recorded yes/no per condition on whether the bump reads as a deliberate lunge.",
+    "If the answer is no for any condition, the follow-up brief states the target as an absolute on-screen displacement in points with the capture that produced it, and does NOT express it as a multiple of the current constant."
+   ],
+   "verification": "A shell loop of `input tap` → `sleep <t>` → `exec-out screencap` per frame offset (each tap is a fresh trial; a single animation cannot be sampled repeatedly), then per-frame ink-centroid extraction with `sharp`. This exercises the question directly because the question IS 'how many pixels does it move', which only a pixel measurement can answer; a recording alone gives no scale. Note the tap must land on an already-charged blocked arrow after the first charge, or use a fresh arrow per trial and accept the heart cost — three trials per condition maximum before the level ends, so script the level reload.",
+   "effort": "S",
+   "risk": "The risk this step exists to prevent: someone 'adds anticipation', ships an invisible change, and closes the task on a code diff. If the owner's verdict is that the bump reads fine, the correct outcome is to change nothing and record that — a no-op is a legitimate result here. UNVERIFIABLE with today's tooling: perceptual legibility on a real phone screen at arm's length; the emulator's rendering on a Mac display is a proxy, and this gap closes only with a physical device.",
+   "depends_on": [
+    "W2-02"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — measurement only, no runtime change. Brand gate: N/A."
+  },
+  {
+   "id": "W2-08",
+   "title": "Hold the empty board after the final arrow leaves",
+   "what": "The last arrow of a level currently exits like any other and the win panel is already scheduled 450 ms later (GameScreen.tsx:119), so the board sits empty for 450 ms minus that exit's duration — as little as 130 ms after a 320 ms slither, and the player never gets to see the shape they just cleared. Make the hold explicit and independent of the exit's length: change `onRemoved(cleared: boolean)` to `onRemoved(cleared: boolean, exitDurationMs: number)` (BoardView.tsx:91 and the call at :424, where the duration is already in scope as the value passed to `setNativeExitAnimation`/`exitTrailDurationMs`), and in GameScreen schedule the win panel at `exitDurationMs + EMPTY_BOARD_HOLD_MS` instead of a flat 450. Explicitly REJECT the brief's other half — giving the last arrow a longer slither. `exitTrailDurationMs` (exitAnimationConfig.ts:44-52) exists specifically to make perceived exit speed identical at every level and zoom, and its own comment records the bug it fixed; slowing one exit re-introduces exactly that inconsistency at the most-watched moment. The hold delivers the same beat without breaking the invariant.",
+   "why": "Audit finding 'no ceremony for finishing a level', and the brief's 'hold the empty board'. The number is not invented: the hold is defined relative to a value the code already computes, and `EMPTY_BOARD_HOLD_MS` itself is the one taste knob — set by the owner from three recordings (see escalation), not by a guess in this brief.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/exitAnimationConfig.ts"
+   ],
+   "acceptance": [
+    "Clearing a level on a board where the final exit is short and one where it is long both produce the same measured empty-board hold (final trail fully gone → first panel pixel), within one frame at 60 fps. Pre-fix, those two holds differ by up to ~140 ms — that difference is the repro.",
+    "The final exit's on-screen speed is unchanged from every other exit on the same board: the travelled distance per frame, extracted from a recording, matches a non-final exit on the same level within measurement noise.",
+    "`EXIT_TRAIL_MAX_DURATION_MS` (320) and the native validators (`MIN_EXIT_DURATION_MS`/`MAX_EXIT_DURATION_MS` = 160/1000 in ArrowsBoardView.kt:393-394 and the `(160...1000)` guard at ArrowsBoardView.swift:97) are unchanged — this step must not widen the accepted duration range.",
+    "Input remains locked for the whole hold (`terminalTransition.isPending`), verified with a tap delivered mid-hold that removes nothing.",
+    "On a reduce-motion device the hold still happens — it is a pause, not an animation, so it must not be suppressed."
+   ],
+   "verification": "Screen recording of two cleared levels chosen so their final exits differ in length (a 20-wide board at fit zoom versus a 39-wide board zoomed in), extracted at 60 fps; measure trail-gone → panel-visible frame counts. That is what exercises the change: the defect is a hold whose length varies with an unrelated quantity, which is only observable by comparing two clears. Levels 1 (20×20, 60 arrows) and 3828 (39×39, 250 arrows) are convenient and reachable via `EXPO_PUBLIC_PERF_LEVEL`.",
+   "effort": "M",
+   "risk": "Changing `onRemoved`'s signature touches the BoardView↔GameScreen contract; `onRemoved` is also called on the web slither branch (BoardView.tsx:399-423) where the duration is likewise in scope, so both branches must pass it and the `animationKind === 'none'` diagnostic branch must pass 0. Second risk: the win panel now arrives later, which pushes back `Ads.registerGameFinished()`? It does not — that fires synchronously in `onRemoved` (GameScreen.tsx:123), unchanged. Rollback: revert to a constant delay; the signature change is additive and harmless if the second argument is ignored.",
+   "depends_on": [
+    "W2-04",
+    "W2-05"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — no new trail (the 2-slot cap is untouched, and this reuses the exit that already fired), no arrow animated, no Skia node added. Deliberately rejects the 'longer final slither' variant partly on FLAG-TEST-adjacent grounds: a longer slither is still one trail, so it passes the flag test, but it breaks the speed invariant, which is why it is rejected. Brand gate: PASS — a still, empty board is the calmest possible ceremony and 'the board is sacred' argues for showing it."
+  },
+  {
+   "id": "W2-09",
+   "title": "Give the heart refill the pop the heart loss already has",
+   "what": "`HeartPip` (GameScreen.tsx:373-401) animates one direction only: `if (prev.current && !filled) { k.value = 1.35; k.value = withSpring(1, {damping: 9, stiffness: 240}); }`. The rewarded-ad continue path (`onContinueWithAd`, GameScreen.tsx:168-178) sets hearts back to 1, and that pip simply re-fills at full size with no motion — the player pays with an ad view and gets no acknowledgement. Add the mirrored branch: when `!prev.current && filled`, run the same spring from a slightly smaller overshoot with a short delay so it reads as a gift rather than a rebound, and colour the transition by letting the SVG fill change land with the spring. Declare `ReduceMotion.System` on the spring (a pure decoration) so a reduce-motion player still sees the pip fill, just without the bounce.",
+   "why": "Audit finding: 'Heart REFILL after the rewarded ad has no pop (only the loss direction animates).' Rewarded video is the one ad format the research associates positively with retention and it is the format already shipped; the reward landing invisibly is the cheapest possible thing to fix in this workstream.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx"
+   ],
+   "acceptance": [
+    "After completing the rewarded continue flow, a screencap 60 ms after the panel dismisses shows the refilled pip larger than its resting size, and a screencap at 400 ms shows it at resting size — pre-fix, both captures are identical.",
+    "The loss pop is byte-for-byte unchanged: the same capture pair around a heart loss matches a pre-change baseline.",
+    "Level start does not fire the pop: entering a new level renders three full pips with no animation (the `prev` ref must be seeded to the mounted `filled` value, exactly as the loss branch relies on today).",
+    "With `animator_duration_scale 0` the pip still refills; it simply appears at resting size."
+   ],
+   "verification": "On the emulator, drain three hearts, take the rewarded continue (dev builds fall back to the simulated TEST AD modal in src/ui/ads.tsx, so this is reachable without live fill), then the two timed `exec-out screencap` probes. This exercises the original behaviour because the defect is the absence of any visible difference between those two frames — photographing both is the direct test. The 'level start does not fire' row must be checked too: the naive implementation pops all three pips on every level load, which would be a new bug rather than a fix.",
+   "effort": "S",
+   "risk": "Very low, one branch in one component. The one trap is the `prev` ref on remount — `HeartPips` is keyed by index and `HeartPip` is `React.memo`'d, so a level change that re-creates pips could fire the new branch spuriously; the acceptance row above is there to catch exactly that. Rollback: delete the branch.",
+   "depends_on": [
+    "W2-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — the header, not the board; no arrow, no Skia node, no trail. Brand gate: PASS — the same spring the loss already uses, so it adds no new visual vocabulary."
+  },
+  {
+   "id": "W2-10",
+   "title": "Cross-dissolve the theme toggle instead of flipping the whole screen's luminance",
+   "what": "`toggleTheme` (App.tsx:45-50) swaps `paletteFor(dark)` synchronously, so every colour in the app — including `expo-status-bar`'s `style` at App.tsx:60 — inverts in a single frame. The toggle lives only on the menu (HomeScreen.tsx:64), so no board is on screen and this is cheap: add a full-screen `Animated.View` in App.tsx, `pointerEvents:'none'`, whose backgroundColor is the DESTINATION palette's `bg`; fade it 0→1 over ~120 ms, flip `dark` (and `SaveSystem.darkMode`) at the completion, then fade 1→0 over ~140 ms. Same mechanism as W2-03 — reuse the component rather than writing a second one. Per AGENTS.md, read https://docs.expo.dev/versions/v57.0.0/ for `expo-status-bar` before changing when its `style` prop flips; the status bar should change under the opaque scrim, not before it.",
+   "why": "Audit finding: 'the theme toggle is an instant full-screen luminance flip.' In a product positioned for a lights-low in-bed session, a full-screen white flash on the Ink Night → Daylight direction is the single most physically unpleasant moment in the app.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/App.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/HomeScreen.tsx"
+   ],
+   "acceptance": [
+    "A 60 fps extraction of the Ink Night → Daylight toggle contains no frame in which part of the screen is dark and part is light — the transition passes through at least one flat frame.",
+    "Total transition wall time is between 220 and 320 ms, measured from frame timestamps.",
+    "`SaveSystem.darkMode` is written exactly once per toggle, and a kill-and-relaunch after the toggle restores the new theme (persistence path unchanged — this step must not alter what is written, only when).",
+    "With `animator_duration_scale 0` the toggle still works and still persists; it may snap.",
+    "Double-tapping the toggle rapidly cannot leave the scrim stuck opaque or the persisted value out of sync with the rendered palette."
+   ],
+   "verification": "`adb shell screenrecord` around a scripted double toggle, extracted with ffmpeg; plus `adb shell am force-stop com.danteb.arrows` then relaunch to confirm persistence. The frame extraction is what exercises the defect, since 'instant flip' means precisely 'zero intermediate frames'. The rapid-double-tap row must be run by hand — it is the one that finds the stuck scrim.",
+   "effort": "S",
+   "risk": "Same stuck-scrim family as W2-03, so it needs the same JS timeout backstop and `pointerEvents:'none'`. Lowest-value step in W2 (menu-only, once per player session at most) — schedule it last among the shipping steps, or drop it if the transition component from W2-03 does not generalise cleanly. Rollback: remove the scrim; `toggleTheme` reverts to its current body.",
+   "depends_on": [
+    "W2-03"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — no board is mounted on the menu; nothing animates an arrow and no Skia node exists on this screen. Brand gate: PASS — a flat colour dissolve between two brand backgrounds; no gradient (a gradient here would violate PRODUCT.md's 'no bloom, no gradients' line, so the dissolve must be a solid fill at varying alpha, never a colour ramp)."
+  },
+  {
+   "id": "W2-11",
+   "title": "Rewrite DESIGN.md's Motion section to describe what ships, with an honest budget",
+   "what": "Three concrete corrections plus a new budget. (1) 'every effect ... eases out' is WRONG for the exit slither, which correctly ACCELERATES outward — `k*k` in all three implementations (BoardView.tsx:992 and :1000, ArrowsBoardView.kt:269, and the Swift equivalent). Fix the doc, not the code: an object leaving the frame should accelerate. (2) The stated '≈60-280 ms' budget is exceeded by at least six shipped effects, not four: blocked bump 300 ms, exit slither up to 320 ms (EXIT_TRAIL_MAX_DURATION_MS), blocker flash 650 ms, hint pulse 1600 ms (doc says ~1.1 s), the menu Play breath at 1100 ms per half-cycle, and the splash's 850 ms draw. (3) Several specced effects do not exist: the level→level cross-fade (W2-03 ships a dip, not a cross-fade — describe the dip), the 'Solved!'/'Perfect!' toast (grep returns zero hits), the blocked 'horizontal shake + scale swell' (shipped as a directional lunge with no scale change), and the '~0.12 cell corner fillet' (shipped as a plain round line-join). Replace the single budget line with five named bands, each justified by the shipped value that defines it: RESPONSE — tied to the finger, ≤120 ms and must appear within one frame (press preview, heart pip); CONSEQUENCE — the result of a committed move, 160-320 ms (exit slither, blocked bump); EXPLANATION — teaching why, 400-900 ms (blocker flash 650, hint recentre 280 + pulse); TRANSITION — masks work, ≤260 ms per leg; CEREMONY — at most once per level (panel entrance ≤300 ms plus the empty-board hold); AMBIENT — menu only, never the board. Add the reduce-motion rule from W2-01 as a doc-level contract: progress always runs, displacement is gated, colour and opacity never are.",
+   "why": "The brief explicitly asks for the doc to be fixed where the doc is wrong, and every later motion brief will be written against this section. A budget that four-to-six shipped effects already violate is a budget nobody can use as a gate; bands with stated roles are enforceable.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/DESIGN.md"
+   ],
+   "acceptance": [
+    "Every duration quoted in the new Motion section resolves to a constant that exists in the codebase, and the constant's file and name are cited inline — a reviewer can grep each one.",
+    "No effect named in the section is absent from the code, and no shipped effect in src/ui is absent from the section. Check both directions by listing every `withTiming`/`withSpring`/`withRepeat` call in src/ui and App.tsx against the section.",
+    "The exit slither is described as accelerating, with the `k*k` term named.",
+    "Each of the five bands states which shipped effect defines its bound, and the two bands with no shipped precedent (TRANSITION, CEREMONY) are marked as provisional pending the W2-03 and W2-08 recordings.",
+    "The reduce-motion contract is stated once, in the section, in the same words as the comment added to feedbackCurves.ts by W2-01."
+   ],
+   "verification": "A grep audit run as the review itself: `grep -nE 'withTiming|withSpring|withRepeat|withDelay|withDecay' src/ui/*.ts src/ui/*.tsx App.tsx` and reconcile every hit against the doc, both directions, with the reconciliation pasted into the review. This exercises the defect because the defect is a mismatch between two lists, and only enumerating both lists can prove it closed. Documentation-only — no runtime verification applies, and none should be claimed.",
+   "effort": "S",
+   "risk": "LOW RISK because it is a documentation change with no runtime effect; the diff touches only DESIGN.md. The one real hazard is writing an aspirational budget again — hence the acceptance rule that every bound cite a shipped constant, and that the two bands without precedent be labelled provisional rather than given invented numbers.",
+   "depends_on": [
+    "W2-03",
+    "W2-08"
+   ],
+   "brand_perf_check": "FLAG TEST: N/A — no code. Brand gate: the rewritten section must restate PRODUCT.md's gates (no glow, no bloom, no gradients, no confetti, no particles-as-sparkle, no ambient board motion) rather than weaken them."
+  },
+  {
+   "id": "W2-12",
+   "title": "DEFERRED — visual combo escalation (the brief's premise about this one is false)",
+   "what": "CORRECTION FIRST: the brief states that ExitCombo.step 'already reaches the native trail payload as a number'. It does not. `nextExitCombo` is called in GameScreen.onRemoved (GameScreen.tsx:113-115) and its step is passed ONLY to `feedback('exit', soundOn, combo.step)` — the audio/haptic path. `serializeNativeExitAnimation` (src/ui/nativeExitAnimation.ts) emits exactly ten header fields and none is the combo step, and `EXIT_HEADER_TOKEN_COUNT = 10` is asserted in ArrowsBoardView.kt:392 and as `headerCount = 10` in ArrowsBoardView.swift. Worse, the ordering is wrong for it: BoardView builds and dispatches the exit animation (BoardView.tsx:384-398) BEFORE it calls `onRemoved`, which is where the step is computed. Shipping visual escalation therefore requires (a) moving `nextExitCombo` into BoardView or passing a step-getter down, (b) adding an eleventh field to the payload, (c) bumping the header count and the token-count guard in Kotlin AND Swift, (d) updating src/ui/__tests__/nativeExitAnimation.test.ts, and (e) modulating a parameter of the EXISTING trail — stroke width and/or fade start — never spawning a second one. Recommendation: DO NOT BUILD THIS YET. Quantified reason: `EXIT_TRAIL_STROKE_CELLS` is 0.26 of a cell; escalating it to 0.34 is +0.08 cell, which on the computed fit-zoom cell sizes is +1.5 pt on a 20-wide board and +0.76 pt on a 39-wide one — about two physical pixels at 2.75 density. That is the invisible-change failure mode again, bought with a cross-language payload change to a module that has not compiled on iOS since 2026-09-01.",
+   "why": "Listed in the brief as a W2 candidate; my job is to validate and re-order it, and it validates badly on both premises (the plumbing does not exist) and payoff (the visible delta is sub-pixel-ish on dense boards). The audio ladder it would visualise already works and is the part players will notice.",
+   "files": [
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/exitCombo.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/nativeExitAnimation.ts",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/BoardView.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/GameScreen.tsx",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/modules/arrows-board/android/src/main/java/com/danteb/arrows/board/ArrowsBoardView.kt",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/modules/arrows-board/ios/ArrowsBoardView.swift",
+    "/Users/gentlegen/Desktop/Projects/arrows-game/src/ui/__tests__/nativeExitAnimation.test.ts"
+   ],
+   "acceptance": [
+    "Gate before any implementation: a capture ladder (same method as W2-07) shows that a candidate escalation is distinguishable at step 0 versus step 7 on BOTH a 20-wide and a 39-wide board, judged by an owner from the frames. If it is not distinguishable on the dense board, the step is closed as not-worth-building and that verdict is recorded.",
+    "If built: `EXIT_HEADER_TOKEN_COUNT` in Kotlin, `headerCount` in Swift, and the serializer's field list all change together in one commit, and nativeExitAnimation.test.ts asserts the new field count and rejects an old-format string.",
+    "If built: a malformed or old-format payload is still rejected rather than partially drawn — the existing fail-closed guards (ArrowsBoardView.kt:159-176) keep their behaviour, verified with a deliberately truncated payload.",
+    "If built: no third trail ever exists — `MAX_CONCURRENT_EXIT_TRAILS`, `MAX_CONCURRENT_EXITS` (Kotlin) and the Swift `(0..<2)` slot array all stay at 2, and a burst of five rapid taps produces at most two simultaneous trails in a frame extraction."
+   ],
+   "verification": "The gate capture ladder first (per-frame `exec-out screencap` at 16 ms intervals through a chained sequence of eight taps inside the 1200 ms EXIT_COMBO_WINDOW_MS, on both board sizes) — this is what exercises the question, because the question is whether a human can tell step 0 from step 7, and only side-by-side frames answer it. Only if that passes does implementation start, and then the perf A/B per W2-02. iOS: UNVERIFIABLE today — ArrowsBoardView.swift has not been compiled since 2026-09-01 and the payload guard would go untested there; the step must not be marked done on an Android-only result.",
+   "effort": "M",
+   "risk": "A payload-format change is the highest-blast-radius change in W2: a mismatch between the JS serializer and either native parser silently disables all exit animation (both parsers `return` on a token-count mismatch, so the failure is a silent no-op rather than a crash — the worst kind). Ships behind `EXIT_COMBO_ESCALATES` (exitCombo.ts:12) extended to gate the visual as well as the audio, default OFF for the visual. Rollback: the flag, plus a revert; but the native parsers must accept the old format for one release or an OTA JS update against an older native binary would kill exits.",
+   "depends_on": [
+    "W2-02",
+    "W2-07"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS ONLY in the modulate-the-existing-trail form — it animates no arrow in the static layer and adds no node, because the escalation changes parameters of a trail that already fires. The obvious alternative (a second trail, a spark, a ripple at the exit point) FAILS the flag test by adding a third concurrent node and is rejected. Brand gate: stroke thickening is legal; anything reading as a glow, spark or particle violates PRODUCT.md and is out."
+  }
+ ],
+ "escalations": [
+  {
+   "question": "How long should the empty board be held after the final arrow leaves (EMPTY_BOARD_HOLD_MS in W2-08)?",
+   "options": "250 ms (barely a beat, keeps the level cadence tight) / 350 ms / 500 ms (a clear 'look at what you made' pause, but adds ~0.4 s to every level's turnaround, and at ~2 min per level that is a real tax on session pacing)",
+   "recommendation": "350 ms, chosen by comparing three screen recordings of the same clear at 250 / 350 / 500 and picking one — not by argument. I will not put a number in the implementation brief until that comparison exists, because this project has been burned six-plus times by unmeasured numbers in briefs.",
+   "why_it_cannot_be_decided_here": "Purely taste-based, and it trades ceremony against session pace — a product judgement, not an engineering one. No measurement can settle it."
+  },
+  {
+   "question": "DESIGN.md specs a 'Solved!' / 'Perfect!' toast that was never built. Build it, or delete it from the doc?",
+   "options": "(a) Delete from DESIGN.md and let the win panel carry the message — W2-04 already gives that panel an entrance. (b) Build the toast as a separate pre-panel beat, which means two ceremonies for one event and pushes the win sequence past 1 s.",
+   "recommendation": "(a) Delete it. The win panel already prints 'Cleared!', the star row, the level/shape/arrow-count line and the perfect-streak line; a toast before it would say the same thing twice and would fight the empty-board hold from W2-08 for the same 400 ms. If the 'Perfect!' distinction matters, it belongs as a state of the existing panel title, not a second surface.",
+   "why_it_cannot_be_decided_here": "It changes the shape of the win moment the product promises, and DESIGN.md is the owner's document."
+  },
+  {
+   "question": "Should the level transition (W2-03) be a dip to the destination background, or a true cross-fade between the outgoing and incoming boards?",
+   "options": "(a) Dip to flat destination bg — one solid-colour rect, no board alpha, hides the LevelGenerator hitch (measured 6.5-44 ms on desktop node; on-device cost unmeasured). (b) True cross-fade — requires alpha < 1 on the view hosting ArrowsBoardView, which forces offscreen compositing of the whole 250-arrow custom onDraw for every frame of the fade, an unmeasured new cost on the exact hot path the retained-native-view architecture exists to protect.",
+   "recommendation": "(a) Dip. It is cheaper, it hides the generation hitch (a cross-fade would show the hitch as a stutter mid-blend), and it cannot regress the board's draw path. DESIGN.md's wording says 'cross-fade'; W2-11 corrects the doc to describe what ships rather than the reverse.",
+   "why_it_cannot_be_decided_here": "It is a visible difference in how the game feels between levels, and the doc currently promises the other one. If the owner wants the true cross-fade, option (b) needs its own measurement step before anyone writes it."
+  },
+  {
+   "question": "Screen shake on a blocked tap — decided and REJECTED, confirm or overrule.",
+   "options": "Ship a screen shake / do not.",
+   "recommendation": "Do not, and I am recording this as decided rather than open. Three independent reasons: (1) PRODUCT.md's gates — 'the board is sacred', calm ink, no busy hyper-casual feedback — and the research the brief supplies says do not shake on failure; (2) the existing blocked feedback is diegetic and teaches the rule (the arrow lunges into the lane it cannot enter, and W2-06 makes the magenta outlive that lunge), whereas a screen shake teaches nothing and is generic; (3) implementation cost is real and the brief's own warning is correct — tx/ty are written by the pan gesture's onUpdate, by withDecay on fling, by clampPos, and by the hint recentre at BoardView.tsx:310-311, so a shake writing them would be clobbered mid-fling; doing it properly means adding a separate shake offset composed into three transform sites (StaticBoardSurface.native.tsx's boardTransformStyle, the Skia boardTransform in the same file, and the SVG transform string at BoardView.tsx:763) and keeping the native view and the Skia overlay in lockstep or the feedback visibly detaches from the board.",
+   "why_it_cannot_be_decided_here": "It is not genuinely open in my judgement, but it is an explicit brand call the brief asked me to make, so the owner should see the verdict and the reasoning rather than find it absent."
+  }
+ ],
+ "open_verification_gaps": [
+  "NO COMPONENT TESTS EXIST. jest.config.js is node-env with testMatch `**/src/**/__tests__/**/*.test.ts` — every .tsx in this repo is untested and untestable by the current suite. Ten of the twelve steps here change .tsx files, so `npm test` is not evidence for any of them; all closing evidence must be device capture. Only W2-06's curve extraction is partly closable by jest, and even then only the curve's shape, not that either renderer calls it.",
+  "THE HARNESS MEASURES THE WRONG MOTION until W2-02 lands. benchmark.mjs:353 sets animator_duration_scale 0, which flips Reanimated useReducedMotion to true, which zeroes `travelled` in ArrowsBoardView.kt:269 — every 'exit' phase number this project has recorded describes a stationary dash fading out. Already in project memory as a known trap; W2-02 is the first step to give it an off switch.",
+  "NO PHYSICAL DEVICE ON ANY PLATFORM. Every number is one API 31 emulator with the Mac's GPU. Perceptual questions in W2-07 (does a ~2 pt lunge read at arm's length on a phone screen) cannot be closed by an emulator at all.",
+  "EXIT-PHASE RESOLUTION IS ~15 ms on a loaded host (docs/perf-tap-forgiveness-ab-2026-09-08.md: identical APKs gave 21.0 and 36.1 ms p95 over 120 frames each). No W2 step may quote an exit delta smaller than that from one run, and absolute gates (p95 ≤ 20 ms) are unevaluable unless the run metadata records a quiet machine.",
+  "LEVEL-GENERATION COST ON DEVICE IS UNMEASURED. I measured 6.5-9.4 ms (level 1, 20×20/60 arrows), 31.5 ms cold / 11.5 ms warm-median (level 168, 37×37/202 arrows) and 44.5 ms cold / 16.3 ms warm-median (level 3828, 39×39/250 arrows) with npx tsx on desktop node 20 — EXECUTED AND OBSERVED, but on a Mac, not on Hermes on a phone. W2-03 is designed so the number does not matter (the scrim covers the hitch), but nobody should quote these figures as device costs.",
+  "REANIMATED FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS IS ON BY DEFAULT in 4.5.1, so every settled feedback animation schedules a React re-render on a screen with a large tree. W2 adds settled animations (panel entrance, scrim, heart refill). The per-settle cost has never been measured in this project — INFERRED FROM READING the brief's capability note, not observed. Worth one targeted measurement if the W2-03/W2-04 A/B shows anything unexpected.",
+  "WEB IS UNVERIFIED FOR LAYOUT ANIMATIONS. react-native-web 0.21.2 + Reanimated 4.5.1 entering/exiting support has never been exercised in this project. W2-04 must degrade gracefully; any web observation is separate evidence and never stands in for the native Skia path.",
+  "iOS IS UNVERIFIABLE. modules/arrows-board/ios/ArrowsBoardView.swift has not compiled since the 2026-09-01 exit-protocol change (docs/IOS_BOARD_PLAN.md; needs ≥20 GB free disk). W2-12 in particular cannot be closed on iOS, and its silent-failure mode (a token-count mismatch makes both parsers `return`, disabling exits with no crash) would go undetected there.",
+  "THE REDUCE-MOTION SIGNAL ITSELF IS ASSUMED. Every W2-01 acceptance row uses `adb shell settings put global animator_duration_scale 0` as a stand-in for a user's accessibility toggle. Reanimated documents that as the Android source for useReducedMotion, but this project has only ever observed it through the harness — never through the OS accessibility setting on a real device."
+ ]
+}

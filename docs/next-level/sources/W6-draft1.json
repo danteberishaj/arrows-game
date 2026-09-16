@@ -1,0 +1,418 @@
+{
+ "workstream": "W6 — Instrumentation and verification infrastructure",
+ "goal": "Nothing changes for the player in W6 itself; what changes is that every later workstream can prove its claim — the game reports a small, typed, consented event stream, crashes surface with a stack, ad pacing and the ad kill switch move out of the APK, .tsx files become testable, and the Android harness can record a phase and prove an effect actually rendered before quoting a number for it.",
+ "non_goals": [
+  "Building a dashboard, warehouse or query layer — W6 delivers the event stream and one raw-event dump, not analysis UI.",
+  "Adding a Consent Management Platform (Google UMP) or any EEA ad-consent flow — that is its own workstream; W6 only creates the single seam it will plug into and escalates the exposure.",
+  "iOS ATT, NSUserTrackingUsageDescription, SKAdNetworkItems — blocked behind docs/IOS_BOARD_PLAN.md; W6 does not touch them.",
+  "Changing DEFAULT_PHASES or any existing measured phase in scripts/perf/android/benchmark.mjs — every historical number must stay comparable.",
+  "Any gameplay, difficulty, art, motion or FTUE change. W6 adds no arrow, no animation and no screen.",
+  "Physical-device or iOS measurement. W6 makes the gap explicit and escalates it; it does not close it.",
+  "A/B assignment beyond a deterministic bucket property on events — no experiment scheduler, no server-side targeting.",
+  "Adopting a third-party crash SDK (Sentry / Crashlytics). W6 ships the zero-dependency phase and escalates the decision."
+ ],
+ "steps": [
+  {
+   "id": "W6-01",
+   "title": "Typed event schema and a pluggable, no-op-by-default sink",
+   "what": "New directory src/telemetry/. (a) src/telemetry/events.ts: a frozen schema table `EventSchema` mapping each event name to its exact allowed property keys and value types, plus the TypeScript union `TelemetryEvent`. Events, chosen so each one closes a specific unfalsifiable question in W1/W3/W4: `app_open` {cold, sessionIndex, appVersion, installDay, bucket}; `first_run` {}; `screen_view` {screen: 'splash'|'menu'|'game'}; `level_start` {levelIndex, arrowCount, difficulty, shapeName, heartsMax, mode:'campaign'}; `level_end` {levelIndex, outcome:'cleared'|'out_of_hearts'|'abandoned', taps, tapsExit, tapsBlocked, tapsGhost, tapsMiss, blockedDistinctArrows, heartsLeft, heartsMax, durationMs, hintsUsed, continuesUsed}; `heart_lost` {levelIndex, heartsLeft, tapIndex, remainingArrows}; `session_end` {durationMs, levelsStarted, levelsCleared, lastLevelIndex}; `ad_request` {format:'interstitial'|'rewarded', placement:'between_levels'|'continue'|'hint'}; `ad_result` {format, placement, outcome:'shown'|'not_ready'|'no_fill'|'display_failed'|'dismissed', waitMs}; `ad_reward` {placement:'continue'|'hint', earned}; `error` {kind:'js_fatal'|'js_nonfatal', name, messageHash, screen}. Every event carries an envelope {name, ts, seq, installId, sessionId, bucket, appVersion, schemaVersion}. (b) src/telemetry/telemetry.ts: `Telemetry.emit(name, props)`, `Telemetry.useSink(sink)`, and a default sink that does nothing. emit() validates against EventSchema in __DEV__ only and drops (never throws) an unknown event in release. (c) A hard rule encoded as a test: no property may be a free-form string sourced from user input, no property may be a device identifier (no GAID, no IDFA, no IP), and `messageHash` is a 32-bit hash of the error message, never the message. Derived metrics this schema must be able to answer, stated in the file header so a reviewer can check them off: install→first-clear funnel (first_run → level_start levelIndex 0 → level_end outcome cleared), taps per level, hearts lost per level, level index at churn (max lastLevelIndex in a user's final session), hearts-left-on-clear distribution, session length, ad fill vs no-fill.",
+   "why": "Audit finding ZERO META: SaveSystem is 8 int keys, there is no analytics of any kind, so every acceptance criterion in W1 (FTUE), W3 (difficulty curve) and W4 (daily/streak) is currently unfalsifiable. The research note that hearts-left-on-clear carries more signal than completion rate is why `heartsLeft` and `heartsMax` are on level_end rather than a boolean 'perfect'. Li et al. KDD 2021 needs perceived-difficulty proxies per level for new players, which is what taps/blocked/heartsLeft per levelIndex provide.",
+   "files": [
+    "src/telemetry/events.ts",
+    "src/telemetry/telemetry.ts",
+    "src/telemetry/__tests__/telemetry.test.ts"
+   ],
+   "acceptance": [
+    "`npx jest src/telemetry` passes a test that enumerates EventSchema and asserts the exact 11 event names and, for each, the exact property key set listed in WHAT — the test fails if a property is added, renamed or removed without updating the table.",
+    "A test asserts `Object.isFrozen(EventSchema)` and that every schema entry is frozen, mirroring the existing PersistenceKeys pattern in src/core/saveSystem.ts:41.",
+    "A test asserts that with the default sink installed, 100 emit() calls perform zero AsyncStorage calls and zero fetch calls (both mocked and asserted not-called) and return undefined.",
+    "A test asserts emit() with an unknown event name and with a malformed property object does not throw when __DEV__ is false, and does throw in __DEV__.",
+    "A test asserts the error-event helper stores a 32-bit hash and that the original message string does not appear anywhere in the emitted object (JSON.stringify does not contain it)."
+   ],
+   "verification": "`npx jest src/telemetry` on this repo's existing node/ts-jest project (jest.config.js: preset ts-jest, testEnvironment node, testMatch **/src/**/__tests__/**/*.test.ts — this file matches without any config change). These tests exercise the thing being changed because the schema table IS the deliverable: the assertion enumerates it rather than reading it, so a drift between the table and the union fails the run. Note explicitly in the PR: these tests prove the schema's shape and the no-op default, and prove nothing about whether the right events fire from the game — that is W6-02.",
+   "effort": "S",
+   "risk": "Low. No runtime behavior changes (default sink is a no-op) and nothing is persisted or sent. Rollback: delete src/telemetry/; no other file imports it yet. The real risk is schema churn later — mitigated by the frozen table plus `schemaVersion` in the envelope, so a consumer can reject events it does not understand.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: PASS — no arrow is animated, no Skia node is added, the static layer is untouched; this step renders nothing. Brand gates: no UI at all, so no gate applies."
+  },
+  {
+   "id": "W6-02",
+   "title": "Emit from the real call sites, aggregated per level so a 250-arrow board costs no per-tap work",
+   "what": "Wire Telemetry.emit into the existing control flow. (a) src/ui/BoardView.tsx: add one optional prop `onTapOutcome?: (outcome: 'exit'|'blocked'|'ghost'|'miss') => void` and call it from handleTap (currently src/ui/BoardView.tsx:355, which already distinguishes every one of these outcomes — see the existing onRemoved call at :424 and onBlocked at :459). The callback must do nothing but increment plain number fields on a ref in GameScreen: no object allocation, no array push, no string concatenation, no persistence, no network on the tap path. (b) src/ui/GameScreen.tsx: emit `level_start` in loadLevel (:96) and for the initial session; accumulate tap counters, hintsUsed (onHint, :180) and continuesUsed (onContinueWithAd, :168) in refs; emit `heart_lost` inside onBlocked (:144-146) where the heart is already decremented; emit `level_end` at the three real exits — cleared (onRemoved's terminal branch, :122), out_of_hearts (onBlocked's terminal branch, :148), and abandoned (the onHome press at :207 and component unmount). (c) src/ui/ads.tsx: emit `ad_request`/`ad_result`/`ad_reward` inside showInterstitialIfDue (:268) and showRewarded (:296), covering every existing early-return — the `!isAdReady()` return at :273 is `not_ready`, the showAd().catch at :277/:302 is `display_failed`, the fake-ad path is tagged so it is filterable. (d) App.tsx: emit `app_open` and `screen_view` on the three setScreen transitions (:61-84). (e) All emission is a no-op while PERF_MODE is true (App.tsx:22-24 already gates persistence and ads the same way) so benchmark numbers stay comparable to history.",
+   "why": "Audit findings: the interstitial counter bug (src/ui/ads.tsx:255 finishedGames is module-level and resets on cold start) and the ad-reachability gap (a loss never shows an interstitial) are both invisible today because nothing reports ad_request/ad_result. FTUE IS ABSENT AND HOSTILE claims level 1 is ~68% likely to punish a naive tap — tapsBlocked/tapsMiss on levelIndex 0 is the measurement that makes that claim, and W1's fix to it, falsifiable. The per-level aggregation is dictated by the PERF ARCHITECTURE finding: a board can hold 250 arrows and the tap path already runs through scheduleOnRN (src/ui/BoardView.tsx:542), so anything more than an integer increment per tap is a regression path.",
+   "files": [
+    "src/ui/BoardView.tsx",
+    "src/ui/GameScreen.tsx",
+    "src/ui/ads.tsx",
+    "App.tsx",
+    "src/telemetry/telemetry.ts",
+    "src/ui/__tests__/telemetryCallSites.test.ts"
+   ],
+   "acceptance": [
+    "A scripted level driven through a memory sink produces exactly one level_start and exactly one level_end, and level_end.taps equals the number of taps issued and equals tapsExit + tapsBlocked + tapsGhost + tapsMiss.",
+    "Losing all hearts produces exactly `heartsMax` heart_lost events and one level_end with outcome 'out_of_hearts' and heartsLeft 0; clearing a board produces one level_end with outcome 'cleared' and heartsLeft equal to the hearts remaining.",
+    "Pressing home mid-level produces one level_end with outcome 'abandoned' and no level_start for a level that was never entered.",
+    "Every early return in showInterstitialIfDue and showRewarded emits exactly one ad_result — asserted by a test that drives all five outcomes through stubbed LevelPlay objects, so the count of ad_request events equals the count of ad_result events.",
+    "Paired Android A/B against the immediately preceding commit, same emulator session, alternating builds: the `blocked` and `exit` phase p95 of the instrumented build is not worse than the HEAD build by more than the run-to-run spread observed in the same session across at least two samples of each build, and the reconciliation (frames observed vs window × 60 fps) is printed beside every quoted percentile.",
+    "With PERF_MODE on, a memory sink receives zero events."
+   ],
+   "verification": "(1) `npx jest src/ui/__tests__/telemetryCallSites.test.ts` — the test drives the real BoardLogic and the real GameScreen callbacks through a memory sink, so it exercises the same branches the game takes, not a mock of them. (2) `npm run perf:android -- --feedback --label w6-02-after --output docs/w6-02-after.json` alternated with a HEAD build in ONE emulator session, at least two samples each, following the exact A/B/A protocol recorded in docs/perf-tap-forgiveness-ab-2026-09-08.md; that protocol is the right instrument here because the `blocked` and `exit` phases are the only ones that traverse the newly instrumented tap path. Absolute gates must NOT be quoted unless the host Mac load average is under 2 with no scanner running — the 2026-09-08 record shows the same unchanged APK measuring 11.45 ms and 37.6 ms p95 on different days.",
+   "effort": "M",
+   "risk": "The genuine risk is per-tap cost on a 250-arrow board, and the second risk is a double-counted or missing level_end on the terminal-transition path, which is guarded by TerminalTransitionGuard (src/ui/gameSessionLifecycle.ts:29) — emit level_end only from inside the branch that TerminalTransitionGuard.begin() accepted, or the guard's own double-fire protection is bypassed. Rollback: Telemetry.useSink(noopSink) disables everything downstream, and the emit calls themselves are removable in one revert; no persisted state, no UI.",
+   "depends_on": [
+    "W6-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — no arrow leaves the static layer, no excludedArrows mask rebuild is triggered, no Skia node is added, the concurrent-exit-trail ceiling of 2 (src/ui/exitAnimationConfig.ts:43, ArrowsBoardView.kt:391, ArrowsBoardView.swift:34) is untouched. The step adds JS work only, which is why the A/B above is an acceptance criterion rather than an optional check. Brand gates: no visible change."
+  },
+  {
+   "id": "W6-03",
+   "title": "A separate persisted telemetry namespace, an install id, and the first schema-version key",
+   "what": "(a) SaveSystem's store is int-only (src/core/saveSystem.ts:12-16 IntStore = getInt/setInt/deleteKey) and its PersistenceKeys list is frozen and asserted verbatim in src/ui/__tests__/storage.test.ts:36-45. An install id (a UUID) and an event queue do NOT pack into ints, so do NOT widen IntStore. Instead create src/telemetry/store.ts owning its own AsyncStorage keys under the prefix `arrows_tel_`: `arrows_tel_install_id` (a locally generated random id, never derived from any device identifier), `arrows_tel_queue` (a JSON array, hard-capped — see acceptance), `arrows_tel_seq`, `arrows_tel_schema`. These keys are deliberately NOT added to SaveSystem.persistenceKeys, so the frozen-keys assertion at storage.test.ts:36 keeps passing unchanged and SaveSystem.resetProgress() (:146) does not delete them. (b) Separately, DO add one int key to SaveSystem: `arrows_schema_version` (constant SchemaVersionKey), appended to PersistenceKeys, with the assertion in src/ui/__tests__/storage.test.ts updated to the new 9-key list. (c) Write the migration note in the file header: the change is purely additive; src/ui/storage.ts hydrate() (:18-30) multiGets exactly SaveSystem.persistenceKeys and skips any key whose value is null or unparseable, so an existing install hydrates with the key absent and reads default 0, which the code must interpret as 'pre-versioning install' and then stamp to 1. There is no checksum gate and no all-or-nothing hydrate, so no existing key can be wiped by this addition — state that explicitly with the line reference. A key added but NOT listed in PersistenceKeys silently never hydrates; that is why (b) touches both files. (d) Android Auto Backup is already on and unconfigured (android/app/src/main/AndroidManifest.xml, application android:allowBackup=\"true\", no fullBackupContent and no dataExtractionRules), so an install id will be restored onto a new device and merge two installs into one. Decide and implement one of: exclude the `arrows_tel_` prefix via dataExtractionRules/fullBackupContent, or accept and document the merge. See escalations.",
+   "why": "Audit finding ZERO META (no schema version key, int-only store) plus the standing project rule that persisted-state changes need a migration and wipe-risk note first. The Android Auto Backup finding is from the capability audit: backup is already happening, unconfigured and undeclared, so any identifier added now inherits that behavior silently.",
+   "files": [
+    "src/telemetry/store.ts",
+    "src/core/saveSystem.ts",
+    "src/ui/storage.ts",
+    "src/ui/__tests__/storage.test.ts",
+    "src/telemetry/__tests__/store.test.ts",
+    "android/app/src/main/AndroidManifest.xml",
+    "app.json"
+   ],
+   "acceptance": [
+    "src/ui/__tests__/storage.test.ts asserts the 9-key PersistenceKeys list including 'arrows_schema_version', still asserts Object.isFrozen, and still asserts getAllKeys was never called.",
+    "A test simulates an existing install (multiGet returns the 8 legacy keys with values, no schema key) and asserts every legacy value survives hydration unchanged and the schema version reads 0 then is stamped to 1 — i.e. proves no wipe.",
+    "A test asserts SaveSystem.resetProgress() does not delete any `arrows_tel_` key.",
+    "The queue is capped: a test writes 10,000 events and asserts the persisted array never exceeds the cap (drop-oldest) and that the serialized payload stays under a stated byte ceiling.",
+    "The install id is asserted to be locally generated: a test asserts it is not read from any native module and that two fresh stores produce different ids.",
+    "A documented, reviewer-checkable decision on Android Auto Backup: either the manifest/app.json diff shows the `arrows_tel_` prefix excluded, or docs/ carries a one-paragraph note saying the merge is accepted and why."
+   ],
+   "verification": "`npx jest src/ui/__tests__/storage.test.ts src/telemetry/__tests__/store.test.ts`. The storage test is the right instrument because it mocks @react-native-async-storage/async-storage at the module boundary and asserts the exact argument passed to multiGet — which is precisely the mechanism by which an unlisted key would silently never hydrate. For the backup decision, the closing evidence is an `adb shell bmgr backupnow com.danteb.arrows` followed by a wipe-and-restore on the emulator, with the install id read back before and after; UNVERIFIED until that is run, because a manifest rule that never matches is the classic silent failure.",
+   "effort": "S",
+   "risk": "This is the one step in W6 that touches persisted state. The wipe risk is argued to be nil above and must be proven by the hydration test, not asserted. Second risk: forgetting the test update at storage.test.ts:36 makes the suite red — that is intended, it is the honesty gate. Rollback: removing the schema key requires removing it from PersistenceKeys too; an install that already stamped version 1 simply keeps an orphan key, which hydrate() ignores.",
+   "depends_on": [
+    "W6-01"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — nothing renders. Brand gates: none apply. Perf note: the queue write must not happen on the tap path (W6-02 keeps counters in refs); the only writes are at level_end and session_end."
+  },
+  {
+   "id": "W6-04",
+   "title": "Transport: batched, anonymous, first-party ingest with an AppState flush",
+   "what": "src/telemetry/sink.http.ts: a sink that appends to the W6-03 queue and flushes by POSTing a batch to a first-party HTTPS endpoint. Flush triggers: (1) AppState change to 'background'/'inactive', (2) session_end, (3) next cold start for anything left in the queue. There is currently no AppState usage anywhere in src/ (grep returns 0), so this is the first — and the known trap applies: JS timers do not fire while Android has the app paused, so the flush must be initiated synchronously from the AppState listener and anything not sent must survive in the queue for the next launch rather than being relied on to complete. Failure policy: one retry, then leave the batch queued; never block a screen transition; never throw into the render tree. Payload carries only the W6-01 envelope and properties — no advertising id, no IP sent by the client. Per the host's billing shape: this is one POST per session, not per event; the endpoint must not fan out to a function per event.",
+   "why": "Audit finding: no analytics, no crash reporting, no remote config. The batching and the AppState-not-timer rule come directly from the recorded scar that a JS-timer-driven settle never fires while Android has the app paused.",
+   "files": [
+    "src/telemetry/sink.http.ts",
+    "src/telemetry/telemetry.ts",
+    "App.tsx",
+    "src/telemetry/__tests__/sink.http.test.ts"
+   ],
+   "acceptance": [
+    "A test asserts N emitted events produce exactly one fetch call on flush, not N.",
+    "A test asserts a rejected fetch leaves the queue intact (nothing lost) and that a second flush retries exactly once before giving up.",
+    "A test asserts the flush is registered on an AppState 'change' listener and is invoked synchronously from that listener, not from a setTimeout/setInterval.",
+    "A test asserts a queue persisted from a previous run is flushed on the next initTelemetry() call.",
+    "A test asserts the serialized body contains none of: 'advertisingId', 'gaid', 'idfa', 'ip', and no property outside EventSchema.",
+    "Endpoint-side, asserted by reading the deployed response headers with `curl -sI`: the ingest route returns 204 with no cacheable body, and the client-visible response carries no Set-Cookie."
+   ],
+   "verification": "`npx jest src/telemetry/__tests__/sink.http.test.ts` with fetch and AppState mocked — this exercises the failing path that matters (backgrounded app, dropped network) rather than only the happy path. Plus one emulator run: cold start the release build, play one level, press Home, and read `adb logcat` for the flush marker and the server's access log for exactly one POST; that is the check that proves the AppState wiring works on a real Android lifecycle, which no jest mock can prove. Mark the emulator half VERIFIED only once run; device and iOS remain UNVERIFIED.",
+   "effort": "M",
+   "risk": "Two real risks: (1) sending anything before W6-05 ships makes the published privacy policy false, so W6-05 must land in the SAME release — this is a release-blocking dependency, not a soft one; (2) a flush on a slow network delaying app background. Rollback: remote-config key `telemetryEnabled` (W6-08) kills it without a Play review cycle, and Telemetry.useSink(noopSink) kills it at build time.",
+   "depends_on": [
+    "W6-02",
+    "W6-03"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — nothing renders. Brand gates: none apply, no UI. Perf: one POST per session; no work on the tap path."
+  },
+  {
+   "id": "W6-05",
+   "title": "Privacy policy and Play Data safety updated in the same release as the first byte sent",
+   "what": "store/privacy-policy.md line 14 currently reads that the app 'has no accounts, no sign-in, and collects no personal information itself'. That sentence becomes false the moment W6-04 sends anything, so this step edits it and adds an 'Analytics' section naming exactly: app version, OS version, device model, an anonymous app-generated install identifier, and gameplay events (levels started/cleared, taps, hearts, ad outcomes); who processes it (us, first-party); retention period; and how to request deletion (the install id is resettable and the contact address at line 48 handles requests). Regenerate docs/privacy-policy.html from the markdown so the hosted copy matches. Then update the Play Console Data safety form to match line-by-line: 'App activity → App interactions' collected, not shared, not required; 'Device or other IDs' collected (Play counts an app-generated per-install identifier as a device/other ID), not shared; encrypted in transit; user can request deletion. The endpoint must not store client IP addresses — derive country at the edge and drop the IP — because storing or linking IP would additionally require declaring approximate location; make 'IP is never written to storage' an explicit property of the endpoint, not an assumption.",
+   "why": "Compliance, and a specific factual contradiction the audit surfaced: the shipped policy promises no accounts and no collection, and app.json already declares AD_ID. A Data safety form that disagrees with the policy is a listing-removal condition. The EU DSA trader-status requirement is also a listing-removal condition on both stores and should be confirmed in the same pass.",
+   "files": [
+    "store/privacy-policy.md",
+    "docs/privacy-policy.html",
+    "docs/data-safety-checklist.md"
+   ],
+   "acceptance": [
+    "The diff shows the 'collects no personal information itself' sentence replaced, and an Analytics section listing exactly the five data categories in WHAT — a reviewer can check the list against EventSchema and find no category in one that is absent from the other.",
+    "docs/data-safety-checklist.md contains a two-column table, policy claim vs Data safety answer, with every row matching; a third party can read the live policy URL and the Play console form side by side and find no row that disagrees.",
+    "`curl -sI` on the deployed privacy-policy URL returns 200 and the page body contains the new 'Last updated' date.",
+    "A stated, checked answer on EU DSA trader status for this listing (declared / not required, with the console screenshot)."
+   ],
+   "verification": "Read the live policy URL and the Play Console Data safety form side by side against docs/data-safety-checklist.md and confirm every row matches; attach the console screenshot. This exercises the actual failure mode — a policy and a form that drift apart — which no code test can catch. The EventSchema-vs-policy cross-check must be done by enumerating src/telemetry/events.ts, not by memory.",
+   "effort": "S",
+   "risk": "Shipping W6-04 without this is a policy violation with listing-removal consequences, which is why the dependency is release-blocking. Rollback: the remote kill switch `telemetryEnabled=false` (W6-08) stops collection immediately without a store submission, which is the only fast remedy available and is the reason W6-08 should land before or with W6-04.",
+   "depends_on": [
+    "W6-04"
+   ],
+   "brand_perf_check": "FLAG TEST: N/A — documentation and store metadata only. Brand gates: none apply."
+  },
+  {
+   "id": "W6-06",
+   "title": "One privacy seam in the ad layer: COPPA/CCPA/GDPR calls exist and are called from a single place",
+   "what": "src/ui/ads.tsx currently never calls any privacy API. The installed SDK does expose them: node_modules/unity-levelplay-mediation/src/models/LevelPlayPrivacySettings.ts exports setGDPRConsents(map), setCCPA(bool) and setCOPPA(bool), and LevelPlay.setConsent(bool) exists but is marked @deprecated in favour of setGDPRConsents. Create src/ui/adPrivacy.ts holding every privacy call in one function `applyAdPrivacy(state)`, invoked from initAds() (src/ui/ads.tsx:154) BEFORE LevelPlay.init (:174) where the SDK requires it. Ship it with the decisions the owner can actually make today: setCOPPA(false) (the policy at store/privacy-policy.md:36-39 already states the app is not directed at children under 13, so this is consistent, not new), and a single `consentState` argument that today is a compiled constant and tomorrow is fed by a CMP. Also register LevelPlay.addImpressionDataListener and map it to an `ad_impression` event ONLY if the owner accepts the extra data category in W6-05 — otherwise leave it unregistered and say so in a comment. Do NOT invent an EEA consent flow here.",
+   "why": "Audit finding COMPLIANCE EXPOSURE: setConsent is never called, there is no GDPR flow, no CCPA, no COPPA flag and no UMP. This step does not fix the exposure — a CMP is a separate workstream — it removes the excuse that there is nowhere to put the answer, and it makes the gap a one-file change instead of a search.",
+   "files": [
+    "src/ui/adPrivacy.ts",
+    "src/ui/ads.tsx",
+    "src/ui/__tests__/adPrivacy.test.ts"
+   ],
+   "acceptance": [
+    "A test with a stubbed LevelPlay module asserts applyAdPrivacy is called before LevelPlay.init and that setCOPPA was called exactly once with false.",
+    "A test asserts that when the SDK module is absent (the Expo Go / web path that initAds already handles at src/ui/ads.tsx:155-156 and the catch at :231), applyAdPrivacy is a no-op and initAds still resolves — the simulated ad path must not regress.",
+    "grep across src/ returns exactly one file containing 'setCOPPA', 'setCCPA' and 'setGDPRConsents': src/ui/adPrivacy.ts.",
+    "A comment block in src/ui/adPrivacy.ts names, in one place, what a CMP must supply for EEA users, so the follow-up workstream has a contract rather than a search."
+   ],
+   "verification": "`npx jest src/ui/__tests__/adPrivacy.test.ts` (stubs the native module the same way the existing ad path is already guarded) plus one dev-build run on the emulator with `adb logcat` showing the privacy calls logged before the init-success callback — ordering is the whole point of the change and only a real init sequence proves it. UNVERIFIED on iOS: the native board view has not compiled since 2026-09-01, so no iOS build exists to run this in.",
+   "effort": "S",
+   "risk": "Calling a privacy API with a wrong value can reduce eCPM (e.g. COPPA true would restrict every network). Mitigated by the single-file seam plus the explicit test on the value. Rollback: applyAdPrivacy becomes a no-op body, one line.",
+   "depends_on": [
+    "W6-05"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — nothing renders. Brand gates: none apply."
+  },
+  {
+   "id": "W6-07",
+   "title": "Crash reporting phase A: native crashes via Play vitals, JS crashes via a persisted error event",
+   "what": "Two halves, neither adding a dependency. (a) Native: the hand-written Kotlin/Swift views (modules/arrows-board/android/.../ArrowsBoardView.kt, 397 lines; ArrowsBoardView.swift, 369; modules/arrows-feedback/.../ArrowsFeedbackModule.kt, 266) crash as ordinary native/JVM exceptions, which Google Play Console vitals already captures with a symbolicated stack for an AAB whose R8 mapping was uploaded. Confirm the mapping actually reaches Play for the `production` EAS profile (eas.json builds an app-bundle) rather than assuming it. Add docs/crash-reporting.md recording where to look and what is and is not covered. (b) JS: install a global handler via ErrorUtils.setGlobalHandler in App.tsx that emits an `error` event with kind 'js_fatal', the error name, a 32-bit hash of the message (never the message), and the current screen — then delegates to the previous handler so behavior is unchanged. Because an unhandled JS error in a release build takes the process down and AsyncStorage is async, the event cannot be guaranteed to reach the network in that instant; the design is persist-to-queue and send on the NEXT cold start, which W6-04's cold-start flush already does. Say that limitation in the file header rather than implying crash delivery is reliable.",
+   "why": "Audit finding ZERO META: no crash reporting at all, against a codebase with 1,435 lines of hand-written native drawing code and a documented history of render-invisible native failures (scaleX/scaleY collapse on Fabric, a with*() result used in arithmetic producing NaN). Play vitals is free, needs no SDK and no privacy-policy change, so it is the correct first move; a third-party SDK is escalated, not assumed.",
+   "files": [
+    "App.tsx",
+    "src/telemetry/crash.ts",
+    "docs/crash-reporting.md",
+    "src/telemetry/__tests__/crash.test.ts"
+   ],
+   "acceptance": [
+    "A test asserts the previous global handler is still invoked after ours (no swallowed crash) and that our handler never throws.",
+    "A test asserts the emitted error event contains no raw message string.",
+    "On the emulator: trigger a deliberate JS throw behind a dev-only flag, force-stop, cold start, and observe the `error` event in the outgoing batch — proving the persist-then-send-next-launch path, which is the only path that works for a fatal.",
+    "On the emulator: trigger a deliberate native throw in ArrowsBoardView.kt behind a build-time flag and confirm `adb logcat` shows a stack naming ArrowsBoardView.kt and a line number under a release (R8-minified, enableMinifyInReleaseBuilds is true in app.json) build with the mapping applied — this is what proves symbolication works, not the fact that Play has a vitals tab.",
+    "docs/crash-reporting.md states explicitly what is NOT covered: JS errors that kill the process before the queue write lands, anything on iOS (no shippable iOS build), and ANRs, which Play reports but which carry no app-side context."
+   ],
+   "verification": "Two emulator runs as described in acceptance, each with the exact adb command recorded in docs/crash-reporting.md. The native half must be run on a release-minified build, because a debug build proves nothing about whether the shipped mapping symbolicates — that is the exact failure this step exists to rule out.",
+   "effort": "M",
+   "risk": "A global error handler that throws, or that fails to delegate, converts a recoverable error into a silent hang — hence both are acceptance criteria. Deliberately crashing builds must never be uploaded to any Play track; keep the flag build-time and default off. Rollback: remove the setGlobalHandler call.",
+   "depends_on": [
+    "W6-03"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — nothing renders. Brand gates: none apply."
+  },
+  {
+   "id": "W6-08",
+   "title": "Remote config and an ad kill switch, so tuning pacing stops costing a Play review cycle",
+   "what": "Today src/ui/ads.tsx:38 `const GAMES_PER_INTERSTITIAL = 2` is a build-time constant read at src/ui/ads.tsx:269, and src/ui/ads.tsx:255 `let finishedGames = 0` is in-memory. New src/config/remoteConfig.ts: fetch one small static JSON from the same origin that hosts the privacy policy, once per cold start, with a short timeout; cache the last good value under an `arrows_tel_`-style prefixed AsyncStorage key; every consumer reads through a getter that clamps to a compiled-in default. Keys: `configVersion`, `adsEnabled`, `interstitialsEnabled`, `rewardedEnabled`, `gamesPerInterstitial` (clamped 1..10, default 2 = today's shipped value), `telemetryEnabled`, `telemetrySampleRate` (0..1). Change ads.tsx to read `RemoteConfig.gamesPerInterstitial` at the call site inside showInterstitialIfDue rather than capturing it at module load. Add a deterministic `bucket` = hash(installId) mod N, exposed on the W6-01 envelope, so a config-driven change can be evaluated against events instead of vibes. Hosting shape, because the host bills edge requests: a STATIC file, not a function — one edge request per cold start, no invocation and no duration billed — served with `Cache-Control: public, max-age=300, stale-while-revalidate=86400`. Play policy line to state in the file header: config VALUES only; downloading executable code or JS bundles through this channel would violate the Device and Network Abuse policy.",
+   "why": "Audit findings: GAMES_PER_INTERSTITIAL is build-time so tuning ad load costs a full review cycle; the interstitial counter resets on every cold start; there is no way to turn ads off if a mediation misconfiguration starts showing something wrong; and there is no A/B capability, which is what makes W3's difficulty-curve decision and W4's daily/streak decision unfalsifiable. The kill switch is also the only fast remedy if W6-04/W6-05 ever disagree.",
+   "files": [
+    "src/config/remoteConfig.ts",
+    "src/ui/ads.tsx",
+    "src/telemetry/telemetry.ts",
+    "App.tsx",
+    "src/config/__tests__/remoteConfig.test.ts",
+    "docs/remote-config.md"
+   ],
+   "acceptance": [
+    "A test feeds hostile payloads — null, [], a string, {gamesPerInterstitial: 0}, {gamesPerInterstitial: 1e9}, {gamesPerInterstitial: 'x'}, NaN, an unknown extra key, and a 1 MB body — and asserts every getter returns a value inside its documented range and the app never throws. A remote config must not be able to brick the app.",
+    "A test asserts that with fetch rejecting, the getters return the compiled defaults, and that with a cached value present the cached value is used.",
+    "A test asserts showInterstitialIfDue reads gamesPerInterstitial at call time: changing the config between two calls changes the pacing without a reload.",
+    "Emulator, before/after: publish `adsEnabled:false`, cold start twice, and observe zero interstitial and zero rewarded presentations plus a logcat line showing the fetched config — then republish true and observe them return. Both directions must be shown; one direction proves nothing.",
+    "`curl -sI` on the deployed config URL shows the exact Cache-Control header above and, on a second request, a CDN cache HIT — asserted against the real URL the app fetches, not against a config file's source pattern.",
+    "docs/remote-config.md lists every key, its default, its clamp, and the one-line consequence of each being wrong."
+   ],
+   "verification": "`npx jest src/config` for the hostile-payload and clamp behavior, plus the two-direction emulator flip described above with adb logcat as the observation. The emulator flip is the right instrument because it exercises the actual fetch-parse-clamp-consume chain in a release build; the jest tests alone would only prove the parser. `curl -sI` closes the caching claim by observation rather than by reading a config file, which is the documented common silent failure.",
+   "effort": "M",
+   "risk": "A remote config is a remote way to break the app — mitigated by compiled defaults, clamps and the hostile-payload test, which are acceptance criteria rather than good intentions. Second risk: a config fetch delaying first paint; it must be fire-and-forget with defaults available immediately. Rollback: delete the URL constant and the getters fall back to compiled defaults permanently.",
+   "depends_on": [
+    "W6-03"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — nothing renders and no animation is introduced. Brand gates: gamesPerInterstitial is clamped at a floor of 1 so no config value can produce an ad after every level in violation of the calm positioning; note that the clamp's *upper* bound is a taste decision the owner should confirm."
+  },
+  {
+   "id": "W6-09",
+   "title": "Make .tsx testable: a second jest project so component tests exist without disturbing the core suite",
+   "what": "jest.config.js today is a single ts-jest/node project with testMatch '**/src/**/__tests__/**/*.test.ts', so all 9 existing suites are .ts and every .tsx file in src/ui is untested. Convert jest.config.js to `projects: [...]`: project 'core' keeps the existing preset, environment and testMatch VERBATIM so no existing test changes behavior; project 'ui' uses the jest-expo preset with testMatch '**/src/**/__tests__/**/*.test.tsx'. Add devDependencies jest-expo, @testing-library/react-native, and react-test-renderer pinned to the installed React (19.2.3). Ship exactly two first tests, both pinning behavior that already has a defect story rather than testing the new code's own scaffolding: (1) GameScreen mounts, receives a scripted sequence of onTapOutcome/onRemoved/onBlocked callbacks, and emits exactly the level_start/level_end pair with the counts from W6-02 — a real assertion about the component tree, not the pure helper; (2) AdHost (src/ui/ads.tsx:60) renders nothing when no request is pending and resolves the pending promise with false when unmounted mid-request, which is the 'no host mounted behaves like no fill' contract at :52. Write in the config header, so nobody is misled later, that component-render tests cannot verify visuals, layout, or Reanimated/Skia output — this project's scar is transform fixes verified only by tsc — and that motion closes only through W6-12/W6-13.",
+   "why": "Audit finding: jest is node-env and .test.ts only, so every .tsx is untested. The two-project split is required because the perf harness's own suites (scripts/perf/android/*.test.mjs, soak-plan.test.ts) run on node:test and the existing src suites run on ts-jest; changing the single preset to jest-expo would re-transform all 9 existing suites at once, which is exactly the broad-refactor-inside-a-narrow-change pattern to avoid.",
+   "files": [
+    "jest.config.js",
+    "package.json",
+    "src/ui/__tests__/GameScreen.test.tsx",
+    "src/ui/__tests__/AdHost.test.tsx"
+   ],
+   "acceptance": [
+    "`npm test` runs both projects and reports the 9 pre-existing suites with the same pass count as on the parent commit — a reviewer compares the two outputs, so a silently skipped suite is caught.",
+    "The two new .tsx tests pass and each asserts something about rendered component behavior, not about a pure function that could have been tested in the core project.",
+    "package.json pins react-test-renderer to a version matching react 19.2.3; if that trio does not resolve against Expo 57 / RN 0.86.3, the step's outcome is a written finding naming the resolution failure and the fallback taken — not a silent downgrade of any other dependency.",
+    "jest.config.js header states the visual-verification limitation in one sentence."
+   ],
+   "verification": "`npm test` on the parent commit and on this commit, diffing the suite/pass counts — this is the check that proves the existing core suite was not disturbed, which reading the config cannot prove. Then `npx jest --selectProjects ui` to show the new tests running in isolation. UNVERIFIED from this planning pass: jest-expo / @testing-library/react-native compatibility with Expo 57 + RN 0.86.3 + React 19.2.3 was not installed or resolved here, so the first task of this step is to install and run, and to report the actual resolution rather than assume it.",
+   "effort": "M",
+   "risk": "Adding jest-expo can pull a transitive React or metro version that conflicts with the pinned RN 0.86.3; that is why the acceptance criterion forbids silently downgrading anything else. Rollback: revert jest.config.js to the single-project form and remove the two .tsx files; the core suite is untouched by construction.",
+   "depends_on": [
+    "W6-02"
+   ],
+   "brand_perf_check": "FLAG TEST: N/A — test infrastructure, ships no runtime code. Brand gates: none apply."
+  },
+  {
+   "id": "W6-10",
+   "title": "Let the harness boot into splash and menu instead of only the game",
+   "what": "src/perfMode.ts exposes PERF_LEVEL_INDEX/PERF_MODE from EXPO_PUBLIC_PERF_LEVEL, and App.tsx:22-24 hardcodes `useState(PERF_MODE)` for ready and `PERF_MODE ? 'game' : 'splash'`, so a benchmark build can never display the splash or the menu. Add EXPO_PUBLIC_PERF_SCREEN with values 'splash' | 'menu' | 'game', defaulting to 'game' so every existing recorded number remains comparable; export PERF_SCREEN from src/perfMode.ts and use it for the initial screen state. In scripts/perf/android/benchmark.mjs, pass the variable through the build env alongside the existing EXPO_PUBLIC_PERF_* variables (the block at :380-397) and record its value in the result JSON's configuration block, so a number can never be quoted without knowing which screen it measured. Add opt-in phases 'splash' and 'menu' to VALID_PHASES but explicitly NOT to DEFAULT_PHASES, so the ALL aggregate keeps its historical meaning.",
+   "why": "Audit finding MEASUREMENT CEILING: PERF_MODE boots straight into 'game', so splash and menu are unmeasurable — which means W5's splash backstop and any menu motion work would ship with no perf evidence at all, and the splash's missing timer/AppState backstop (src/ui/SplashScreen.tsx:47-56, onDone fired only from a Reanimated completion callback) cannot even be observed under the harness.",
+   "files": [
+    "src/perfMode.ts",
+    "App.tsx",
+    "scripts/perf/android/benchmark.mjs"
+   ],
+   "acceptance": [
+    "With EXPO_PUBLIC_PERF_SCREEN unset, a built APK behaves exactly as today (boots to 'game'); asserted by running the existing single-level workload unchanged and getting a validateWorkload pass.",
+    "With it set to 'splash', the harness observes the splash in the accessibility dump and then reaches the menu; with 'menu', the menu is the first screen.",
+    "DEFAULT_PHASES in scripts/perf/android/benchmark.mjs is byte-identical to the parent commit — a reviewer greps the diff for it.",
+    "Every result JSON written after this change contains the perfScreen value in its configuration block, including when the variable was unset."
+   ],
+   "verification": "Run `npm run perf:android -- --feedback --label baseline-after-perfscreen --output docs/tmp.json` with the variable unset and confirm validateWorkload still passes and the phase list is unchanged from a pre-change run — this proves the default path is untouched, which is the only way the historical numbers stay usable. Then a build with EXPO_PUBLIC_PERF_SCREEN=splash and a `uiautomator dump` showing the splash tree, which proves the new path actually reaches the screen rather than falling through to the game.",
+   "effort": "S",
+   "risk": "The real risk is silently changing the default and invalidating every recorded number — hence the byte-identical DEFAULT_PHASES criterion and the unset-variable regression run. Rollback: one env variable and one ternary.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: PASS — the change selects which existing screen mounts; it adds no animation and no node. Brand gates: none apply."
+  },
+  {
+   "id": "W6-11",
+   "title": "Record animator_duration_scale in every result, and make it settable",
+   "what": "scripts/perf/android/benchmark.mjs:353 sets `settings put global animator_duration_scale 0` inside validateDevice, which flips Reanimated's useReducedMotion to true — so every harness run to date measured the reduced-motion variant of the feedback layer, and this already invalidated one accepted result. Add `--motion-scale <0|1>` defaulting to 0 (unchanged behavior). After applying it, read the value back with `settings get global animator_duration_scale` and write the READ-BACK value — not the requested one — into the result JSON's environment block as `animatorDurationScale`, next to the existing refreshRateHz/gpuRenderer fields. When the value is 0 and --feedback is on, also write a machine-readable `reducedMotionVariantMeasured: true` and print a warning line, so no future report can quote a feedback number without disclosing which variant it measured.",
+   "why": "Directly recorded scar: the harness sets animator_duration_scale=0, which flips Reanimated useReducedMotion to true, and it already invalidated one accepted result. Also the REDUCE-MOTION BUG finding — every withTiming in the feedback layer uses the default ReduceMotion.System, so at k=1 blockerOpacityAt returns 0 and blockedBumpAt returns 0 (src/ui/feedbackCurves.ts) and the flash, bump and hint pulse do not render. Until the scale is recorded and settable, no one can tell a fixed effect from an effect the harness suppressed.",
+   "files": [
+    "scripts/perf/android/benchmark.mjs",
+    "docs/perf-harness.md"
+   ],
+   "acceptance": [
+    "Two result JSONs produced from the SAME saved APK via --skip-build, one at --motion-scale 0 and one at 1, both containing `animatorDurationScale` equal to the value read back from the device, and the 0 run additionally containing `reducedMotionVariantMeasured: true`.",
+    "The read-back value is used even when the `settings put` silently fails — asserted by temporarily pointing the setter at a bogus key and confirming the recorded value reflects the device, not the request.",
+    "A run with no --motion-scale flag produces animatorDurationScale 0, matching every historical run, so old and new results stay comparable.",
+    "docs/perf-harness.md states in one sentence that a feedback number measured at scale 0 describes the reduced-motion variant and may not be quoted as the shipped experience."
+   ],
+   "verification": "Two `npm run perf:android -- --skip-build --apk <saved>.apk` runs on emulator-5556 / AVD fleet_floor_api31 / API 31, differing only in --motion-scale, then diff the two environment blocks. This exercises the original failure because the scar was precisely a number recorded without knowing this value; reading it back from the device rather than trusting the write is what makes the record trustworthy.",
+   "effort": "S",
+   "risk": "Running at scale 1 makes phase durations longer and less stable, so mixing scale-1 and scale-0 numbers in one comparison is a new way to be wrong — the recorded field is what lets a reviewer catch it. Rollback: remove the flag; the default path is byte-equivalent to today.",
+   "depends_on": [],
+   "brand_perf_check": "FLAG TEST: N/A — harness only, ships no app code. Brand gates: none apply."
+  },
+  {
+   "id": "W6-12",
+   "title": "Measure the pixel-difference floor before any effect-rendered assertion is armed",
+   "what": "Before the harness can assert 'the effect actually rendered', the threshold has to come from data. Add scripts/perf/android/pixel-diff.mjs: capture two `adb exec-out screencap -p` frames, crop both to the board rectangle returned by findBoardBounds (scripts/perf/android/benchmark.mjs:463, which locates the `perf-board` node and already accounts for the nav-bar clipping) MINUS the header strip, and report the fraction of pixels whose channel delta exceeds a stated per-channel tolerance. Crop deliberately so the window contains only the board — the recorded scar is a pixel-scan window that contained something other than the thing being measured. Then run three calibration sets of 10 samples each on the pinned emulator: (A) idle board, no input — the noise floor, including any emulator dithering; (B) `--diagnostic-empty-board` (the flag already exists at benchmark.mjs:114) with the same input, i.e. an input that provably draws nothing; (C) a blocked tap at --motion-scale 1, i.e. an effect known to be visible. Publish all three distributions — min, median, max, n — in docs/perf-pixel-diff-calibration.md, and derive the floor from the observed separation between A/B and C. If A/B and C do not separate, the honest outcome is 'this instrument cannot prove rendering' and W6-13 does not get built.",
+   "why": "The project has been burned repeatedly by a threshold in a brief that was never computed from live data, and the standing rule is that a brief pinning a number must name the measurement script that produced it. This step IS that measurement script, and it is separate from W6-13 precisely so the number cannot be invented inside the feature that consumes it.",
+   "files": [
+    "scripts/perf/android/pixel-diff.mjs",
+    "scripts/perf/android/pixel-diff.test.mjs",
+    "docs/perf-pixel-diff-calibration.md"
+   ],
+   "acceptance": [
+    "docs/perf-pixel-diff-calibration.md contains three distributions with n=10 each, the exact commands, the APK sha256 (validateApk at benchmark.mjs:435 already computes one), the emulator/AVD/API, and the read-back animatorDurationScale for every set.",
+    "The proposed floor is stated as a function of the measured A/B maximum plus a margin justified by the observed spread — no bare constant, and the document says what the floor would have to be to also pass set B, demonstrating it does not.",
+    "A unit test (node:test, matching the existing scripts/perf/android/*.test.mjs style) feeds two synthetic PNGs with a known number of differing pixels and asserts the reported fraction is exact.",
+    "The crop rectangle is asserted to exclude the header: a test or an annotated screenshot shows the '{remaining} left' counter and the heart pips outside the window, since that counter changes on every removal and would otherwise register as 'the effect rendered'."
+   ],
+   "verification": "Run the three calibration sets on emulator-5556 / fleet_floor_api31 / API 31 and publish the raw per-sample numbers, not just summaries. The empty-board set (B) is the load-bearing control: it is an input that provably draws no arrow, so if B's diff fraction reaches C's, the instrument is measuring something other than the effect and the whole approach is rejected. Reconcile every sample count against the number of captures attempted and print it beside each distribution.",
+   "effort": "M",
+   "risk": "The most likely honest outcome is that a software-GPU emulator's frame-to-frame noise swamps a thin ink stroke's delta, in which case this returns a negative result and W6-13's assertion must not be built on it. That outcome is a success for the review system, not a failure of the step. Rollback: the script is standalone and consumed by nothing until W6-13.",
+   "depends_on": [
+    "W6-11"
+   ],
+   "brand_perf_check": "FLAG TEST: N/A — harness only. Brand gates: none apply."
+  },
+  {
+   "id": "W6-13",
+   "title": "Phase recording, and an effect-rendered gate that runs before any number for a new effect is quoted",
+   "what": "Two additions to scripts/perf/android/benchmark.mjs. (a) `--record <dir>`: run `adb shell screenrecord` for the duration of a named phase and `adb pull` the mp4, so motion work can be closed with a recording instead of a claim. Because screenrecord itself steals frames on a software-GPU emulator, a recorded run must never be a source of perf numbers: when --record is set, force runs=1 and stamp `perfNumbersInvalid: true` at the top level of the result JSON, and refuse to emit phase percentiles at all. The existing `--screenshot` (benchmark.mjs:257, captureScreenshot at :1400, invoked at :1479) stays as-is — it is a single static screencap taken at startReady and is not motion evidence. (b) `assertPhaseRendered(phase)`: using the W6-12 script and its published floor, capture a pre-phase frame and a mid-phase frame and fail the run when the changed-pixel fraction is below the floor. Wire it so that a phase measuring a NEW effect must pass this gate before its numbers are written — a benchmark that reports a cheap number for an effect that never drew is the failure mode this exists to prevent. Gate it behind an explicit `--assert-rendered <phase>` flag so existing runs are unchanged, and record in the result JSON whether the assertion ran, passed, and with what measured fraction and floor.",
+   "why": "Audit finding MEASUREMENT CEILING: there is no visual capture comparison of any kind, so motion and visual work cannot be closed at all, and the project's rule is that a motion fix closes only with a sim/device screenshot or recording. The 'prove the effect rendered before quoting its cost' requirement comes from the recorded Block Destroy scar, where a reproduction's expected state transition was never confirmed and two fixes were built against a phantom.",
+   "files": [
+    "scripts/perf/android/benchmark.mjs",
+    "scripts/perf/android/pixel-diff.mjs",
+    "docs/perf-harness.md"
+   ],
+   "acceptance": [
+    "A `--record` run produces a playable mp4 covering the named phase, and its result JSON contains perfNumbersInvalid: true and NO phase percentiles — asserted by grepping the JSON for the percentile keys and finding none.",
+    "A `--assert-rendered blocked` run at --motion-scale 1 passes; the SAME command at --motion-scale 0 fails, because the reduce-motion path collapses blockerOpacityAt and blockedBumpAt to 0 at k=1 (src/ui/feedbackCurves.ts) and therefore draws nothing. This pair is the proof that the gate detects a real non-rendering, not just noise.",
+    "A `--assert-rendered` run against a build with `--diagnostic-empty-board` fails.",
+    "A run with neither new flag produces a result JSON whose schema and values are indistinguishable from a parent-commit run of the same APK, aside from the fields added in W6-10 and W6-11.",
+    "docs/perf-harness.md gains a rule: a number for a newly added visual effect may not be reported unless the same session includes a passing --assert-rendered run for that phase, and the recording or screenshot is attached."
+   ],
+   "verification": "The scale-1-passes / scale-0-fails pair on the pinned emulator with the same APK is the whole verification: it reproduces a KNOWN non-rendering condition (the reduce-motion collapse, which the audit established by computing the curves) and shows the gate catching it, which is the closest available thing to confirming the pre-fix failure before trusting the instrument. If that pair does not separate, the gate is not trustworthy and must not be armed regardless of what W6-12 measured.",
+   "effort": "L",
+   "risk": "A gate that produces false failures will be disabled by the first person it annoys, which is worse than no gate; hence it is opt-in per phase and its measured fraction and floor are always recorded so a failure can be read rather than guessed at. screenrecord on a saturated emulator may drop frames or truncate — the mp4 is evidence of what drew, never of timing. Rollback: both flags are additive and default off.",
+   "depends_on": [
+    "W6-12"
+   ],
+   "brand_perf_check": "FLAG TEST: PASS — the harness renders nothing of its own; it observes the app. It adds no Skia node and pulls no arrow from the static layer. Brand gates: none apply."
+  },
+  {
+   "id": "W6-14",
+   "title": "iOS capture path — specified now, blocked on the iOS board view compiling",
+   "what": "scripts/perf/ios/capture.mjs: boot a named iOS Simulator with `xcrun simctl boot`, install and launch the app, and expose `screenshot` (`xcrun simctl io <udid> screenshot`) and `recordVideo` (`xcrun simctl io <udid> recordVideo`) plus the same pixel-diff crop logic as W6-12 so a visual claim can be closed on iOS at all. This step is BLOCKED and must not be started before the iOS native board view compiles: modules/arrows-board/ios/ArrowsBoardView.swift (369 lines) has not been built since the 2026-09-01 exit-protocol change, and docs/IOS_BOARD_PLAN.md's gates A1-A5 (replace draw(_:) with two retained CAShapeLayers wrapped in CATransaction.setDisableActions(true)) plus its >=20 GB free-disk requirement are the prerequisites. Do not fold this into another step and do not let an iOS claim be closed by an Android screenshot.",
+   "why": "Audit finding iOS IS NOT SHIPPABLE and MEASUREMENT CEILING: no iOS anything, no physical device on any platform. Naming the capture path now means the iOS workstream inherits a verification method instead of inventing one at the end; a simulator is not a device, and this step says so rather than implying otherwise.",
+   "files": [
+    "scripts/perf/ios/capture.mjs",
+    "docs/perf-harness.md",
+    "docs/IOS_BOARD_PLAN.md"
+   ],
+   "acceptance": [
+    "A screenshot and a short recording of the running game on a named iOS Simulator, both attached, with the simulator model and iOS version recorded.",
+    "The pixel-diff crop is calibrated on iOS with its own three-set measurement (idle / provably-nothing-drawn / known-visible), published separately — the Android floor from W6-12 does not transfer and must not be reused.",
+    "docs/perf-harness.md states that a simulator capture is NOT device evidence: gesture handling, GPU behavior and thermal behavior all differ, so anything gesture- or perf-related stays UNVERIFIED until a device run."
+   ],
+   "verification": "Run the script against a booted simulator after the IOS_BOARD_PLAN gates pass, and attach both artifacts. This is UNVERIFIABLE with today's tooling until the iOS build exists — no iOS build has been produced since 2026-09-01 — and closing it requires an Xcode toolchain plus the plan's >=20 GB free disk; that is the tooling gap, stated rather than papered over.",
+   "effort": "L",
+   "risk": "Blocked by an external prerequisite; starting it early wastes the effort and, worse, tempts someone to close an iOS visual claim with an Android artifact. Rollback: the script is standalone.",
+   "depends_on": [
+    "W6-13"
+   ],
+   "brand_perf_check": "FLAG TEST: N/A — harness only. Brand gates: none apply."
+  }
+ ],
+ "escalations": [
+  {
+   "question": "Analytics transport: a first-party HTTPS endpoint we own, or a third-party analytics SDK (Firebase / Amplitude / Aptabase-style)?",
+   "options": "(a) First-party static-hosted ingest endpoint, batched POST, no SDK, no native dependency, no device identifier. (b) A third-party analytics SDK with a config plugin and a native dependency. (c) Ship nothing and keep every later workstream's numbers unfalsifiable.",
+   "recommendation": "(a). It adds zero native dependencies to a project whose native build is already fragile (the iOS board view has not compiled since 2026-09-01), it keeps the privacy policy honest with a minimal edit rather than adding a third-party processor and its own disclosure chain, it needs no extra Play Data safety categories beyond app activity and an app-generated ID, and it bills as a handful of edge requests rather than a function invocation per event. The cost is that you build the query layer yourself — but W6 explicitly does not include a dashboard either way, and the first month's questions (FTUE funnel, hearts-left distribution, taps per level) are answerable from raw batches.",
+   "why_it_cannot_be_decided_here": "It commits the owner to running and paying for an endpoint, to a retention policy stated in a public privacy policy, and to a data-processing role under GDPR — an outward-facing, hard-to-reverse commitment. It also depends on whether the owner wants any third party in the data path at all, which is a values call, not a technical one."
+  },
+  {
+   "question": "EEA and UK ad consent: there is no CMP, no GDPR flow, no CCPA signal and no UMP anywhere in the app, while app.json already declares AD_ID. Ship analytics on top of that, or fix consent first?",
+   "options": "(a) Ship W6's analytics now (no advertising ID, no cross-app identifier) and treat ad consent as its own next workstream. (b) Block all of W6's transport until a CMP ships. (c) Geo-restrict the Play listing away from the EEA until a CMP ships.",
+   "recommendation": "(a) plus starting the CMP workstream immediately, with (c) as the fallback if the CMP slips. W6-06 puts every privacy call behind one function so the CMP is a one-file wiring job rather than a search, and W6-08's kill switch can stop collection within minutes without a review cycle. But be explicit: the existing ad exposure is unchanged by W6 and is already live — serving personalised ads to EEA users with no consent signal is the pre-existing risk, and analytics is the smaller of the two problems.",
+   "why_it_cannot_be_decided_here": "It is a legal exposure question on a shipped, revenue-bearing listing, and the remedies (geo-restriction, delayed release) trade revenue against risk. I am not able to give a legal opinion, and the right answer depends on how much EEA traffic the listing actually has — which is itself unmeasured today."
+  },
+  {
+   "question": "Crash reporting phase B: adopt a third-party crash SDK (Sentry / Crashlytics) after W6-07's zero-dependency phase, or stay on Play vitals plus persisted JS error events?",
+   "options": "(a) Stay on phase A indefinitely. (b) Adopt @sentry/react-native once its Expo 57 config plugin is verified. (c) Adopt Firebase Crashlytics.",
+   "recommendation": "(a) until the iOS board view compiles, then reassess. Phase A already covers native Kotlin crashes with symbolicated stacks for free and gives JS fatals on the next cold start; the marginal gain from an SDK is breadcrumbs, release health and non-fatals. The marginal cost is a native dependency, another privacy disclosure, and another way for the native build to break in a project that currently cannot build for iOS at all. Revisit when there is a second platform and real crash volume to justify it.",
+   "why_it_cannot_be_decided_here": "It adds a third-party processor to the privacy policy and the Data safety form (an outward-facing commitment), and the compatibility of any of these SDKs with Expo 57 / RN 0.86.3 was not verified in this pass — a recommendation to adopt one would be an unverified claim."
+  },
+  {
+   "question": "No physical device exists on any platform, and every perf number in the project comes from one API 31 emulator on a host whose load has already made absolute gates unevaluable once. Buy or borrow a device?",
+   "options": "(a) Acquire one mid-range Android device and re-run the pinned workload on it to establish a device baseline. (b) Keep emulator-only and label every number accordingly forever. (c) Use a cloud device farm for periodic runs.",
+   "recommendation": "(a), one mid-range Android handset, and re-run the exact pinned single-level workload on it before any further perf gate is written. The emulator's software GPU is the single largest unknown in every number this project has recorded — including the 2026-09-01 reference the current gate is based on — and W6-13's whole render-proof approach may behave differently on real hardware. A device also unblocks the gesture-handling checks that synthetic events cannot exercise.",
+   "why_it_cannot_be_decided_here": "It is a spend and a hardware choice (which chipset/GPU class represents the audience) that only the owner can make, and the right pick depends on the actual install base — which, fittingly, is unmeasured until W6 ships."
+  },
+  {
+   "question": "Should the anonymous install id be excluded from Android Auto Backup?",
+   "options": "(a) Exclude the `arrows_tel_` prefix via dataExtractionRules/fullBackupContent, so a restored device counts as a new install. (b) Leave backup as-is and accept that a restore merges two device-installs under one id. (c) Turn Auto Backup off entirely.",
+   "recommendation": "(a). Android Auto Backup is already on and unconfigured (android/app/src/main/AndroidManifest.xml declares allowBackup=\"true\" with no fullBackupContent and no dataExtractionRules), so today it silently backs up everything the app writes. Excluding only the telemetry prefix keeps game progress restorable — which is a player-facing benefit worth having — while keeping install counts honest. Do NOT choose (c): it would silently delete the cloud save players currently get.",
+   "why_it_cannot_be_decided_here": "It changes restore behavior for existing installs, which is player-facing and hard to reverse cleanly, and (c) in particular would remove a benefit players already have without them knowing. It also interacts with whatever the owner intends for cloud save later."
+  },
+  {
+   "question": "Where does an analytics opt-out live, given there is no settings screen and the brand gate says 'flow over menus'?",
+   "options": "(a) No in-app opt-out; the privacy policy explains the resettable install id and the contact address. (b) A single line in a settings entry point that a later workstream adds. (c) A first-run consent prompt.",
+   "recommendation": "(b), deferred — ship W6 with (a) and add the toggle when a settings surface exists, rather than inventing a menu now. (c) is the wrong answer for this game specifically: the FTUE research says a front-loaded interruption makes the app feel harder, and a consent dialog before the player has seen an arrow is exactly that. Note the dependency: if the EEA consent escalation resolves toward needing analytics consent, (b) stops being deferrable.",
+   "why_it_cannot_be_decided_here": "It is a brand and UX call against an explicit product gate ('flow over menus', 'no cluttered menus'), and it may be forced by the legal answer to the EEA question above — two independent owner decisions collide here."
+  }
+ ],
+ "open_verification_gaps": [
+  "jest-expo / @testing-library/react-native / react-test-renderer compatibility with Expo 57 + RN 0.86.3 + React 19.2.3 was NOT verified — none of these are installed in node_modules today. W6-09's first action is to install and run; if resolution fails, the finding must be reported rather than worked around by downgrading a pinned dependency.",
+  "Whether the R8 mapping actually reaches Play Console for the `production` EAS profile was not checked; W6-07's native-symbolication acceptance criterion is the check, and until it runs, 'Play vitals gives us symbolicated native stacks' is an inference from how AAB uploads normally work, not an observation of this project.",
+  "Whether frame-to-frame pixel noise on this software-GPU emulator is small enough to separate 'a thin ink stroke drew' from 'nothing drew' is unknown. W6-12 exists to measure it and may return a negative result, in which case W6-13's gate must not be built. No number for this floor exists yet and none may be quoted.",
+  "screenrecord's own frame cost on emulator-5556 has never been measured; W6-13 handles this by refusing to emit percentiles from a recorded run rather than by correcting for it.",
+  "Every perf claim in W6 remains emulator-only (one API 31 AVD, software GPU, on a host that has already shown a 3x swing on an unchanged APK between 2026-09-01 and 2026-09-08). No physical Android device, no iOS device, no iOS simulator run — W6-14 is blocked on the iOS board view compiling at all.",
+  "The Android Auto Backup behavior of the new `arrows_tel_` keys is inferred from the manifest (allowBackup=\"true\", no dataExtractionRules) and not observed; W6-03's bmgr backup/restore run is what would close it. A backup rule whose pattern never matches is the classic silent failure and must be observed, not read.",
+  "The claim that the harness's animator_duration_scale=0 flips Reanimated's useReducedMotion is carried from the project's recorded scar and the computed reduce-motion curves, not re-derived here. W6-13's scale-1-passes / scale-0-fails pair is what would confirm it end-to-end on a real build; until that pair runs, it is a strong inference.",
+  "The perf impact of W6-02's per-tap counter increments on a 250-arrow board is unmeasured; its A/B is an acceptance criterion, not a completed check. Note that the A/B can only yield paired differences unless the host Mac is quiet — the 2026-09-08 record shows absolute gates were unevaluable under load.",
+  "No claim is made that W6's events are sufficient for W1/W3/W4 — only that the derived metrics listed in W6-01 are computable from them. Whether those metrics actually resolve each workstream's decision should be checked by writing the decision rule BEFORE the data arrives, or the schema will be quietly re-litigated after the fact."
+ ]
+}
