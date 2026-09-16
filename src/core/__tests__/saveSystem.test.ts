@@ -219,3 +219,68 @@ describe('P-01 reset lock', () => {
     });
   });
 });
+
+describe('W0-05 interstitial pacing counter', () => {
+  /** An IntStore over a map it does not own, so a second instance sees the same "disk". */
+  class SharedMapStore implements IntStore {
+    constructor(private readonly disk: Map<string, number>) {}
+    getInt(key: string, defaultValue: number): number {
+      const v = this.disk.get(key);
+      return v === undefined ? defaultValue : v;
+    }
+    setInt(key: string, value: number): void {
+      this.disk.set(key, value);
+    }
+    deleteKey(key: string): void {
+      this.disk.delete(key);
+    }
+  }
+
+  test('an absent counter reads 0', () => {
+    expect(SaveSystem.finishedGames).toBe(0);
+  });
+
+  test('setFinishedGames writes arrows_finished_games and the getter reads it back', () => {
+    SaveSystem.setFinishedGames(1);
+    expect(store.map.get('arrows_finished_games')).toBe(1);
+    expect(SaveSystem.finishedGames).toBe(1);
+    SaveSystem.setFinishedGames(0);
+    expect(SaveSystem.finishedGames).toBe(0);
+  });
+
+  test('a counter written through one store is read back by a fresh store instance over the same backing map (process death)', () => {
+    const disk = new Map<string, number>();
+    SaveSystem.useStore(new SharedMapStore(disk));
+    SaveSystem.setFinishedGames(SaveSystem.finishedGames + 1);
+
+    SaveSystem.useStore(new SharedMapStore(disk)); // new process, same disk
+    expect(SaveSystem.finishedGames).toBe(1);
+
+    SaveSystem.setFinishedGames(SaveSystem.finishedGames + 1);
+    SaveSystem.useStore(new SharedMapStore(disk));
+    expect(SaveSystem.finishedGames).toBe(2);
+  });
+
+  test('a corrupt stored counter reads as a non-negative integer', () => {
+    store.setInt('arrows_finished_games', -4);
+    expect(SaveSystem.finishedGames).toBe(0);
+    store.setInt('arrows_finished_games', 2.5);
+    expect(SaveSystem.finishedGames).toBe(2);
+    store.setInt('arrows_finished_games', NaN);
+    expect(SaveSystem.finishedGames).toBe(0);
+  });
+
+  test('setFinishedGames never stores a negative or non-integer value', () => {
+    SaveSystem.setFinishedGames(-1);
+    expect(store.map.get('arrows_finished_games')).toBe(0);
+    SaveSystem.setFinishedGames(3.7);
+    expect(store.map.get('arrows_finished_games')).toBe(3);
+  });
+
+  test('resetProgress does not touch the counter (a progress reset must not skip ads)', () => {
+    SaveSystem.setFinishedGames(1);
+    SaveSystem.resetProgress();
+    expect(SaveSystem.finishedGames).toBe(1);
+    expect(store.deleted).not.toContain('arrows_finished_games');
+  });
+});

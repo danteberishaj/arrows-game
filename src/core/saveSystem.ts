@@ -148,6 +148,14 @@ function dayNumber(t: Date): number {
   return Math.floor((local - epoch) / 86400000);
 }
 
+/**
+ * A stored count as a non-negative integer (not finite = 0). Core stays free of
+ * UI imports, so this mirrors src/ui/adPacing.ts sanitizeCounter for numbers.
+ */
+function nonNegativeInt(v: number): number {
+  return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
+}
+
 export const SaveSystem = {
   /** Complete, immutable list of persistence keys owned by the save system. */
   get persistenceKeys(): readonly string[] {
@@ -215,6 +223,21 @@ export const SaveSystem = {
 
   setCurrentLevel(index: number): void {
     store.setInt(Keys.currentLevel, Math.max(0, index));
+  },
+
+  // ---- Interstitial pacing (W0-05) --------------------------------------
+
+  /**
+   * Finished games since the last displayed interstitial, read as a
+   * non-negative integer (absent or corrupt = 0). Not part of resetProgress():
+   * a progress reset must not become a way to skip ads.
+   */
+  get finishedGames(): number {
+    return nonNegativeInt(store.getInt(Keys.finishedGames, 0));
+  },
+
+  setFinishedGames(n: number): void {
+    store.setInt(Keys.finishedGames, nonNegativeInt(n));
   },
 
   // ---- Lifetime stats --------------------------------------------------

@@ -7,7 +7,9 @@ import type {
   LevelPlayRewardedAd,
   LevelPlayRewardedAdListener,
 } from 'unity-levelplay-mediation';
+import { SaveSystem } from '../core/saveSystem';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
+import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
 import { Fonts, Palette } from './theme';
 
@@ -42,7 +44,10 @@ const INTERSTITIAL_AD_UNIT = 'tme2lh9p1pkvk1bl';
 const REWARDED_AD_UNIT = 'smim4g4z79173hcw';
 // ============================================================================
 
-/** Show an interstitial once this many games have finished (win or loss). */
+/**
+ * Show an interstitial once this many games have finished (win or loss).
+ * Inherited from the shipped build, never measured; W0-05 does not change it.
+ */
 const GAMES_PER_INTERSTITIAL = 2;
 
 /** Delay before re-requesting an ad whose load failed (the shipped 15 s retry). */
@@ -58,16 +63,18 @@ function adLog(...args: unknown[]): void {
 interface FakeAdRequest {
   kind: 'rewarded' | 'interstitial';
   resolve: (earned: boolean) => void;
+  /** Called once the simulated ad is actually on screen. */
+  onDisplayed?: () => void;
 }
 
 let fakeAdListener: ((req: FakeAdRequest) => void) | null = null;
 
-function showFakeAd(kind: FakeAdRequest['kind']): Promise<boolean> {
+function showFakeAd(kind: FakeAdRequest['kind'], onDisplayed?: () => void): Promise<boolean> {
   // Release builds never simulate an ad: no fill, nothing granted. `__DEV__` is
   // a build-time constant, so Metro drops the simulated path from the bundle.
   if (!__DEV__) return Promise.resolve(false);
   return new Promise((resolve) => {
-    if (fakeAdListener) fakeAdListener({ kind, resolve });
+    if (fakeAdListener) fakeAdListener({ kind, resolve, onDisplayed });
     else resolve(false); // no host mounted: behave like "no fill"
   });
 }
@@ -98,6 +105,7 @@ export function AdHost({ palette }: { palette: Palette }) {
 
   useEffect(() => {
     if (!req) return;
+    req.onDisplayed?.(); // the modal is committed: the simulated ad has opened
     timer.current = setInterval(() => setLeft((s) => Math.max(0, s - 1)), 1000);
     return () => {
       if (timer.current) clearInterval(timer.current);
@@ -255,7 +263,8 @@ async function initLevelPlayOnce(): Promise<void> {
   const interListener: LevelPlayInterstitialAdListener = {
     onAdLoaded: () => {},
     onAdLoadFailed: () => reloadInterstitial(),
-    onAdDisplayed: () => {},
+    // The only place the pacing counter resets: an interstitial really displayed.
+    onAdDisplayed: () => markInterstitialDisplayed(),
     onAdClosed: () => {
       onInterstitialClosed?.();
       onInterstitialClosed = null;
@@ -357,12 +366,23 @@ export async function launchAdTestSuite(): Promise<void> {
 
 // ---- Public API ---------------------------------------------------------
 
-let finishedGames = 0;
+// The pacing counter is persisted (SaveSystem, `arrows_finished_games`), so a
+// cold start does not reset it. It resets only when an interstitial was
+// displayed; a skipped, unavailable or failed show keeps it, and the next
+// finished game's "Next level" tries again.
+
+function finishedGames(): number {
+  return sanitizeCounter(SaveSystem.finishedGames);
+}
+
+function markInterstitialDisplayed(): void {
+  SaveSystem.setFinishedGames(afterDisplayed());
+}
 
 export const Ads = {
   /** Counts a finished game (a win or a loss both count) toward the pacing. */
   registerGameFinished(): void {
-    finishedGames++;
+    SaveSystem.setFinishedGames(finishedGames() + 1);
   },
 
   /**
@@ -371,12 +391,12 @@ export const Ads = {
    * Skips silently when not due or nothing is ready.
    */
   async showInterstitialIfDue(): Promise<void> {
-    if (finishedGames < GAMES_PER_INTERSTITIAL) return;
+    if (!isInterstitialDue(finishedGames(), GAMES_PER_INTERSTITIAL)) return;
 
     if (nativeAvailable()) {
       try {
         if (!(await lpInterstitial!.isAdReady())) return; // not ready: skip, don't reset
-        finishedGames = 0;
+        // No reset here: onAdDisplayed resets, so a failed show keeps the count.
         await new Promise<void>((resolve) => {
           onInterstitialClosed = resolve;
           lpInterstitial!.showAd().catch(() => {
@@ -393,8 +413,8 @@ export const Ads = {
     // No native ad: a release build shows nothing, so it must not touch the
     // pacing counter (only a displayed ad may reset it).
     if (!__DEV__) return;
-    finishedGames = 0;
-    await showFakeAd('interstitial');
+    // Development host: resets when the simulated ad opens, not if no host is mounted.
+    await showFakeAd('interstitial', markInterstitialDisplayed);
   },
 
   /**

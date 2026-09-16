@@ -91,6 +91,19 @@ test('uses defaults for missing or malformed hydrated values', async () => {
   expect(storage.getAllKeys).not.toHaveBeenCalled();
 });
 
+test('W0-05: a hydrated interstitial counter of "1" reads back as 1 after initSaveSystem()', async () => {
+  jest.clearAllMocks();
+  storage.multiGet.mockResolvedValue([
+    ['arrows_schema_version', '1'],
+    ['arrows_finished_games', '1'],
+  ]);
+
+  await initSaveSystem();
+
+  expect(SaveSystem.finishedGames).toBe(1);
+  expect(storage.multiGet).toHaveBeenCalledTimes(1);
+});
+
 test('falls back to in-memory defaults when hydration fails', async () => {
   jest.clearAllMocks();
   storage.multiGet.mockRejectedValue(new Error('persistence unavailable'));
