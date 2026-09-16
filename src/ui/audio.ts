@@ -1,22 +1,33 @@
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import { SaveSystem } from '../core';
+import { EXIT_COMBO_STEPS } from './exitCombo';
 
 /**
- * Plays the game's three sound effects (whoosh on a successful exit, a low
- * buzzy thud on a blocked tap, a C-E-G-C arpeggio on a win). The clips are
- * synthesized by scripts/generate-sfx.js — the same synths as the Unity
- * AudioManager — so nothing here is a recording. Honours SaveSystem.soundOn.
+ * Expo Audio fallback (web and Expo Go; installed builds use the native
+ * ArrowsFeedback module). Plays the exit pop at the combo's pitch step, a low
+ * thud on a blocked tap, a kalimba arpeggio on a win and a chirp per star.
+ * The clips are synthesized by scripts/generate-sfx.js, so nothing here is a
+ * recording. Honours SaveSystem.soundOn.
  */
 const sources = {
-  success: require('../../assets/audio/whoosh.wav'),
+  pop0: require('../../assets/audio/pop0.wav'),
+  pop1: require('../../assets/audio/pop1.wav'),
+  pop2: require('../../assets/audio/pop2.wav'),
+  pop3: require('../../assets/audio/pop3.wav'),
+  pop4: require('../../assets/audio/pop4.wav'),
+  pop5: require('../../assets/audio/pop5.wav'),
+  pop6: require('../../assets/audio/pop6.wav'),
+  pop7: require('../../assets/audio/pop7.wav'),
   fail: require('../../assets/audio/fail.wav'),
   win: require('../../assets/audio/win.wav'),
   star: require('../../assets/audio/star.wav'),
 } as const;
 
-const players = new Map<keyof typeof sources, AudioPlayer>();
+type SourceName = keyof typeof sources;
 
-function play(name: keyof typeof sources): void {
+const players = new Map<SourceName, AudioPlayer>();
+
+function play(name: SourceName): void {
   if (!SaveSystem.soundOn) return;
   try {
     let p = players.get(name);
@@ -31,8 +42,13 @@ function play(name: keyof typeof sources): void {
   }
 }
 
+function popName(step: number): SourceName {
+  const clamped = Math.max(0, Math.min(EXIT_COMBO_STEPS - 1, Math.trunc(step)));
+  return `pop${clamped}` as SourceName;
+}
+
 export const Sfx = {
-  playSuccess: () => play('success'),
+  playSuccess: (step = 0) => play(popName(step)),
   playFail: () => play('fail'),
   playWin: () => play('win'),
   playStar: () => play('star'),

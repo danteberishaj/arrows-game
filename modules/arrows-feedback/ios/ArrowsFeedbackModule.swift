@@ -3,20 +3,24 @@ import ExpoModulesCore
 import UIKit
 
 /**
- Low-overhead playback for the four short game effects.
+ Low-overhead playback for the game's short effects.
 
- The module owns at most one AVAudioPlayer per effect. Repeating an effect
- restarts that player instead of allocating a new playback object. All audio
- and haptic state is confined to the main queue because UIKit feedback
- generators require main-thread access.
+ The module owns at most one AVAudioPlayer per clip: eight exit pops (one per
+ consecutive-tap pitch step, pre-rendered because AVAudioPlayer's rate is a
+ pitch-preserving time stretch) plus the blocked, cleared and star clips.
+ Repeating a clip restarts its player instead of allocating a new playback
+ object; different pop steps overlap naturally. All audio and haptic state is
+ confined to the main queue because UIKit feedback generators require
+ main-thread access.
  */
 public final class ArrowsFeedbackModule: Module {
-  private var exitPlayer: AVAudioPlayer?
-  private var blockedPlayer: AVAudioPlayer?
-  private var clearedPlayer: AVAudioPlayer?
-  private var starPlayer: AVAudioPlayer?
+  private static let popSteps = 8
+  private static let clipNames: [String] =
+    (0..<popSteps).map { "pop\($0)" } + ["fail", "win", "star"]
 
-  private var exitHaptic: UISelectionFeedbackGenerator?
+  private var players: [String: AVAudioPlayer] = [:]
+
+  private var exitHaptic: UIImpactFeedbackGenerator?
   private var resultHaptic: UINotificationFeedbackGenerator?
 
   private var wantsPreparedAudio = false
@@ -42,9 +46,9 @@ public final class ArrowsFeedbackModule: Module {
       }
     }
 
-    Function("feedback") { (event: String, soundOn: Bool) in
+    Function("feedback") { (event: String, soundOn: Bool, step: Int) in
       self.performOnMain { [weak self] in
-        self?.performFeedback(event: event, soundOn: soundOn)
+        self?.performFeedback(event: event, soundOn: soundOn, step: step)
       }
     }
 
@@ -97,23 +101,29 @@ public final class ArrowsFeedbackModule: Module {
     releaseResources()
   }
 
-  private func performFeedback(event: String, soundOn: Bool) {
+  private func performFeedback(event: String, soundOn: Bool, step: Int) {
     assert(Thread.isMainThread)
     guard !moduleIsDestroyed, appIsForeground else {
       return
     }
 
+    let clampedStep = max(0, min(Self.popSteps - 1, step))
     wantsPreparedHaptics = true
     prepareHapticsIfNeeded()
     if soundOn {
       wantsPreparedAudio = true
       prepareAudioIfNeeded()
-      player(for: event)?.restart()
+      if let player = player(for: event, step: clampedStep) {
+        // Up to -1.4 dB of random level so a 250-tap level never sounds like
+        // one sample on repeat (Android adds a small rate jitter too).
+        player.volume = event == "exit" ? Float(0.85 + 0.15 * Double.random(in: 0...1)) : 1
+        player.restart()
+      }
     } else if wantsPreparedAudio || audioIsPrepared {
       wantsPreparedAudio = false
       releaseAudioResources()
     }
-    performHaptic(for: event)
+    performHaptic(for: event, step: clampedStep)
   }
 
   private func enterForeground() {
@@ -153,10 +163,11 @@ public final class ArrowsFeedbackModule: Module {
     configureSharedAudioSession()
 
     let resourceBundle = feedbackResourceBundle()
-    exitPlayer = makePlayer(fileName: "whoosh", resourceBundle: resourceBundle)
-    blockedPlayer = makePlayer(fileName: "fail", resourceBundle: resourceBundle)
-    clearedPlayer = makePlayer(fileName: "win", resourceBundle: resourceBundle)
-    starPlayer = makePlayer(fileName: "star", resourceBundle: resourceBundle)
+    for name in Self.clipNames {
+      if let player = makePlayer(fileName: name, resourceBundle: resourceBundle) {
+        players[name] = player
+      }
+    }
 
     // Missing or corrupt decorative audio must not cause repeated allocation
     // attempts on every tap. A lifecycle or media-service reset retries it.
@@ -169,9 +180,12 @@ public final class ArrowsFeedbackModule: Module {
       return
     }
 
-    let selectionGenerator = UISelectionFeedbackGenerator()
-    selectionGenerator.prepare()
-    exitHaptic = selectionGenerator
+    // A selection tick is for a value passing a detent. An arrow leaving the
+    // board is a commit, which is a light impact; its intensity climbs with
+    // the consecutive-tap step alongside the pop's pitch.
+    let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+    impactGenerator.prepare()
+    exitHaptic = impactGenerator
 
     let notificationGenerator = UINotificationFeedbackGenerator()
     notificationGenerator.prepare()
@@ -223,25 +237,30 @@ public final class ArrowsFeedbackModule: Module {
     return nil
   }
 
-  private func player(for event: String) -> AVAudioPlayer? {
+  private func player(for event: String, step: Int) -> AVAudioPlayer? {
     switch event {
     case "exit":
-      return exitPlayer
+      return players["pop\(step)"]
     case "blocked":
-      return blockedPlayer
+      return players["fail"]
     case "cleared":
-      return clearedPlayer
+      return players["win"]
     case "star":
-      return starPlayer
+      return players["star"]
     default:
       return nil
     }
   }
 
-  private func performHaptic(for event: String) {
+  private func performHaptic(for event: String, step: Int) {
     switch event {
     case "exit":
-      exitHaptic?.selectionChanged()
+      let intensity = 0.6 + 0.4 * CGFloat(step) / CGFloat(max(1, Self.popSteps - 1))
+      exitHaptic?.impactOccurred(intensity: intensity)
+      exitHaptic?.prepare()
+    case "nudge":
+      // Already-charged blocked arrow: a soft acknowledgement, no thud.
+      exitHaptic?.impactOccurred(intensity: 0.45)
       exitHaptic?.prepare()
     case "blocked":
       resultHaptic?.notificationOccurred(.error)
@@ -267,14 +286,10 @@ public final class ArrowsFeedbackModule: Module {
 
   private func releaseAudioResources() {
     assert(Thread.isMainThread)
-    stop(exitPlayer)
-    stop(blockedPlayer)
-    stop(clearedPlayer)
-    stop(starPlayer)
-    exitPlayer = nil
-    blockedPlayer = nil
-    clearedPlayer = nil
-    starPlayer = nil
+    for player in players.values {
+      stop(player)
+    }
+    players.removeAll()
     audioIsPrepared = false
   }
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Generates the game's sound effects as small mono 16-bit WAV files in
- * assets/audio/. Ports the synthesizers from the Unity AudioManager.cs
- * (short sine blips with exponential decay, a band-passed noise whoosh, and
- * a C-E-G-C win arpeggio) so the RN build sounds identical without shipping
- * recordings.
+ * assets/audio/ (Android reads them as uncompressed assets) and mirrors them
+ * into modules/arrows-feedback/ios/Resources/ (the iOS resource bundle), so
+ * both platforms play byte-identical clips. Ports the Unity AudioManager.cs
+ * synths (sine blips with exponential decay, a C-E-G-C win arpeggio) and
+ * adds the exit "pop": a ladder of eight pitch steps for consecutive taps.
  *
  * Run once (or after tweaking): node scripts/generate-sfx.js
  */
@@ -92,31 +93,51 @@ function makeFail() {
   return data;
 }
 
-// Band-passed noise whose filter sweeps up and back while the envelope decays.
-// Smoother than v1: longer, deeper band (180 -> 650 Hz), softer attack and a
-// lower final low-pass — a brush of air, not a hiss.
-function makeWhoosh() {
-  const duration = 0.42;
+// The exit pop, one per successful tap. Replaces the Unity whoosh, which was
+// 420 ms of band-passed noise centred at 445 Hz peaking at -20.6 dBFS: it
+// took 99 ms to reach full level (the arrow was a third of the way off the
+// board by then), sat 14 dB below the blocked thud, and lived in a band phone
+// speakers barely reproduce. A pop is what the genre converged on: a 2 ms
+// noise click for contact, a short tonal body with a downward bend (the
+// bubble shape), and a faint air tail so it still reads as "flew away".
+//
+// `semitones` shifts the whole clip; consecutive taps climb EXIT_POP_LADDER
+// (major pentatonic, so any two adjacent steps sound consonant together).
+// Pre-rendered rather than pitch-shifted at runtime because AVAudioPlayer's
+// rate is a pitch-preserving time stretch and cannot do this.
+const EXIT_POP_LADDER = [0, 2, 4, 7, 9, 12, 14, 16];
+const EXIT_POP_PEAK_DB = -6; // matches the blocked thud so reward >= punishment
+
+function makePop(semitones, seed) {
+  const duration = 0.16;
   const samples = Math.ceil(RATE * duration);
   const data = new Float64Array(samples);
-  const rng = dotnetRandom(1234); // fixed seed => same clip every run
-  let lp1 = 0, lp2 = 0, smooth = 0, smooth2 = 0;
-  const aSmooth = 1 - Math.exp((-2 * Math.PI * 700) / RATE);
+  const rng = dotnetRandom(seed); // fixed seed per step => same clip every run
+  const k = Math.pow(2, semitones / 12);
+  let phase = 0, lp = 0;
   for (let i = 0; i < samples; i++) {
-    const t = i / samples; // 0..1 through the clip
+    const t = i / RATE;
+    // Body: 1100 -> 650 Hz bend over the first 60 ms, then holds; fast decay.
+    const f = lerp(1100, 650, smoothStep(0, 1, t / 0.06)) * k;
+    phase += (2 * Math.PI * f) / RATE;
+    const bodyEnv = Math.exp(-t * 28) * smoothStep(0, 1, Math.min(1, t / 0.0015));
+    const body = (Math.sin(phase) + 0.18 * Math.sin(2 * phase)) * bodyEnv * 0.55;
+    // Transient: ~2 ms of low-passed noise at the very start is the "tock".
     const noise = rng() * 2 - 1;
-    const sweep = Math.sin(t * Math.PI);
-    const f = lerp(180, 650, sweep);
-    const a1 = 1 - Math.exp((-2 * Math.PI * f) / RATE);
-    const a2 = 1 - Math.exp((-2 * Math.PI * (f * 0.45)) / RATE);
-    lp1 += a1 * (noise - lp1);
-    lp2 += a2 * (noise - lp2);
-    // Two smoothing poles in series: rounds the top end right off.
-    smooth += aSmooth * (lp1 - lp2 - smooth);
-    smooth2 += aSmooth * (smooth - smooth2);
-    const env = smoothStep(0, 1, Math.min(1, t / 0.3)) * Math.exp(-2.2 * t);
-    data[i] = smooth2 * env * 1.6;
+    lp += 0.22 * (noise - lp);
+    const click = lp * Math.exp(-t * 900) * 0.9;
+    // Air tail: quiet, dark, 50 ms — the departure, not a hiss.
+    const tail = lp * Math.exp(-t * 26) * smoothStep(0, 1, t / 0.01) * 0.05;
+    data[i] = body + click + tail;
   }
+  return normalizePeak(data, EXIT_POP_PEAK_DB);
+}
+
+function normalizePeak(data, peakDb) {
+  let peak = 0;
+  for (const v of data) peak = Math.max(peak, Math.abs(v));
+  const gain = peak > 0 ? Math.pow(10, peakDb / 20) / peak : 1;
+  for (let i = 0; i < data.length; i++) data[i] *= gain;
   return data;
 }
 
@@ -164,9 +185,23 @@ function makeStar() {
   return data;
 }
 
-const outDir = path.join(__dirname, '..', 'assets', 'audio');
-fs.mkdirSync(outDir, { recursive: true });
-writeWav(path.join(outDir, 'whoosh.wav'), makeWhoosh());
-writeWav(path.join(outDir, 'fail.wav'), makeFail());
-writeWav(path.join(outDir, 'win.wav'), makeWin());
-writeWav(path.join(outDir, 'star.wav'), makeStar());
+const outDirs = [
+  path.join(__dirname, '..', 'assets', 'audio'),
+  path.join(__dirname, '..', 'modules', 'arrows-feedback', 'ios', 'Resources'),
+];
+const clips = {
+  'fail.wav': makeFail(),
+  'win.wav': makeWin(),
+  'star.wav': makeStar(),
+};
+EXIT_POP_LADDER.forEach((semitones, step) => {
+  clips[`pop${step}.wav`] = makePop(semitones, 1234 + step);
+});
+for (const outDir of outDirs) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const stale = path.join(outDir, 'whoosh.wav');
+  if (fs.existsSync(stale)) fs.unlinkSync(stale);
+  for (const [name, samples] of Object.entries(clips)) {
+    writeWav(path.join(outDir, name), samples);
+  }
+}

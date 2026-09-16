@@ -8,14 +8,18 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlin.random.Random
 
 /**
- * Low-overhead playback for four tiny local game effects.
+ * Low-overhead playback for the game's short local effects.
  *
  * A single SoundPool replaces one ExoPlayer + MediaSession per effect. Sounds
- * load before gameplay, different effects may overlap, and replaying the same
- * effect restarts its previous stream. Haptics use the Activity's native view
- * feedback path instead of allocating a Promise-backed Vibrator request.
+ * load before gameplay. Exit pops are allowed to overlap (a fast player taps
+ * every ~300 ms and each pop is 160 ms) and get a little random pitch and
+ * level so no two consecutive exits are identical; the other effects restart
+ * their previous stream. Haptics use the Activity's native view feedback path
+ * instead of allocating a Promise-backed Vibrator request, so they follow the
+ * user's system touch-feedback setting.
  */
 class ArrowsFeedbackModule : Module() {
   private val lock = Any()
@@ -39,10 +43,10 @@ class ArrowsFeedbackModule : Module() {
       releaseSoundPool(permanent = false)
     }
 
-    Function("feedback") { event: String, soundOn: Boolean ->
+    Function("feedback") { event: String, soundOn: Boolean, step: Int ->
       if (soundOn) {
         prepareSoundPool()
-        soundName(event)?.let(::playSound)
+        soundName(event, step)?.let(::playSound)
       }
       hapticConstant(event)?.let(::performHaptic)
     }
@@ -68,7 +72,7 @@ class ArrowsFeedbackModule : Module() {
       if (destroyed || soundPool != null) return
       val pool = try {
         SoundPool.Builder()
-          .setMaxStreams(4)
+          .setMaxStreams(6)
           .setAudioAttributes(
             AudioAttributes.Builder()
               .setUsage(AudioAttributes.USAGE_GAME)
@@ -149,9 +153,14 @@ class ArrowsFeedbackModule : Module() {
 
   /** Must be called while holding [lock]. */
   private fun playLoadedSoundLocked(name: String, pool: SoundPool, sampleId: Int) {
+    val isPop = name.startsWith(POP_PREFIX)
     try {
-      streamsByName[name]?.takeIf { it != 0 }?.let(pool::stop)
-      val streamId = pool.play(sampleId, 1f, 1f, 1, 0, 1f)
+      if (!isPop) streamsByName[name]?.takeIf { it != 0 }?.let(pool::stop)
+      // +/-3% rate (about half a semitone) and up to -1.4 dB of level keep a
+      // 250-tap level from sounding like one sample on repeat.
+      val volume = if (isPop) 0.85f + 0.15f * random.nextFloat() else 1f
+      val rate = if (isPop) 0.97f + 0.06f * random.nextFloat() else 1f
+      val streamId = pool.play(sampleId, volume, volume, 1, 0, rate)
       if (streamId != 0) streamsByName[name] = streamId
     } catch (_: RuntimeException) {
       streamsByName.remove(name)
@@ -213,16 +222,23 @@ class ArrowsFeedbackModule : Module() {
     }
   }
 
-  private fun soundName(event: String): String? = when (event) {
-    "exit" -> "success"
+  private fun soundName(event: String, step: Int): String? = when (event) {
+    "exit" -> POP_PREFIX + step.coerceIn(0, POP_STEPS - 1)
     "blocked" -> "fail"
     "cleared" -> "win"
     "star" -> "star"
     else -> null
   }
 
+  // CLOCK_TICK resolves to EFFECT_TEXTURE_TICK, the platform's weakest effect
+  // (meant for scroll textures, documented as imperceptible on some devices).
+  // CONTEXT_CLICK resolves to EFFECT_TICK: a light, crisp tap, the Android
+  // equivalent of a light impact, which is what "the arrow committed" wants.
   private fun hapticConstant(event: String): Int? = when (event) {
-    "exit" -> HapticFeedbackConstants.CLOCK_TICK
+    "exit" -> HapticFeedbackConstants.CONTEXT_CLICK
+    // A blocked arrow tapped again after its heart was paid: acknowledge the
+    // touch with the lightest crisp tick and no sound.
+    "nudge" -> HapticFeedbackConstants.CONTEXT_CLICK
     "blocked" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       HapticFeedbackConstants.REJECT
     } else {
@@ -236,9 +252,12 @@ class ArrowsFeedbackModule : Module() {
     else -> null
   }
 
+  private val random = Random(System.nanoTime())
+
   private companion object {
-    val SOUND_FILES = listOf(
-      "success" to "whoosh.wav",
+    const val POP_PREFIX = "pop"
+    const val POP_STEPS = 8
+    val SOUND_FILES = (0 until POP_STEPS).map { "$POP_PREFIX$it" to "$POP_PREFIX$it.wav" } + listOf(
       "fail" to "fail.wav",
       "win" to "win.wav",
       "star" to "star.wav",

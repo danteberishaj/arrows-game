@@ -13,6 +13,10 @@ export const Haptic = {
   exit(): void {
     if (on) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   },
+  /** A free re-tap on an already-charged blocked arrow: the softest tick. */
+  nudge(): void {
+    if (on) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
+  },
   blocked(): void {
     if (on) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
   },

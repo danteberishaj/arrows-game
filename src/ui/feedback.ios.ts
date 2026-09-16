@@ -24,10 +24,10 @@ export function releaseFeedback(): void {
 }
 
 /** One synchronous native call per gameplay beat; no Promise allocation. */
-export function feedback(event: FeedbackEvent, soundOn: boolean): void {
+export function feedback(event: FeedbackEvent, soundOn: boolean, step = 0): void {
   if (ArrowsFeedback) {
     try {
-      ArrowsFeedback.feedback(event, soundOn);
+      ArrowsFeedback.feedback(event, soundOn, step);
     } catch {
       // Do not fall through to a second audio stack after a native failure.
     }
@@ -38,7 +38,7 @@ export function feedback(event: FeedbackEvent, soundOn: boolean): void {
   // without evaluating Expo Audio in installed builds.
   try {
     const fallback = require('./feedbackFallback') as typeof import('./feedbackFallback');
-    fallback.feedback(event, soundOn);
+    fallback.feedback(event, soundOn, step);
   } catch {
     // Feedback remains decorative when an optional fallback is unavailable.
   }

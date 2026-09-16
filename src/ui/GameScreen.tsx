@@ -21,6 +21,7 @@ import {
   prepareFeedback,
   releaseFeedback,
 } from './feedback';
+import { nextExitCombo, type ExitCombo } from './exitCombo';
 import { HeaderButton } from './HeaderButton';
 import {
   createLevelSession,
@@ -65,6 +66,7 @@ export function GameScreen({
   const [adBusy, setAdBusy] = useState(false);
   const hintId = useRef(1);
   const heartsRef = useRef(hearts);
+  const exitCombo = useRef<ExitCombo | null>(null);
   const terminalTransitionRef = useRef<TerminalTransitionGuard | null>(null);
   if (terminalTransitionRef.current === null) {
     terminalTransitionRef.current = new TerminalTransitionGuard();
@@ -99,6 +101,7 @@ export function GameScreen({
     heartsRef.current = next.level.hearts;
     setHearts(next.level.hearts);
     setRemaining(next.level.arrowCount);
+    exitCombo.current = null;
     setPhase('playing');
     setHint(null);
   }, [terminalTransition]);
@@ -107,7 +110,9 @@ export function GameScreen({
     (cleared: boolean) => {
       if (terminalTransition.isPending) return;
       if (feedbackEnabled) {
-        feedback('exit', SaveSystem.soundOn);
+        const combo = nextExitCombo(exitCombo.current, Date.now());
+        exitCombo.current = combo;
+        feedback('exit', SaveSystem.soundOn, combo.step);
       }
       setRemaining(level.board.count());
       if (!cleared) return;
@@ -124,8 +129,15 @@ export function GameScreen({
     [benchmarkMode, beginTerminalTransition, feedbackEnabled, level, levelIndex, terminalTransition],
   );
 
-  const onBlocked = useCallback(() => {
+  const onBlocked = useCallback((costsHeart: boolean) => {
     if (terminalTransition.isPending) return;
+    exitCombo.current = null;
+    if (!costsHeart) {
+      // Same blocked arrow again: it bumps and the blocker flashes, but the
+      // heart was already paid. A soft tick instead of the thud.
+      if (feedbackEnabled) feedback('nudge', SaveSystem.soundOn);
+      return;
+    }
     if (feedbackEnabled) {
       feedback('blocked', SaveSystem.soundOn);
     }
