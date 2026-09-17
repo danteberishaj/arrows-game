@@ -215,16 +215,21 @@ export async function stepContext(adbExecutable, serial) {
 }
 
 /**
- * Every scripted tap goes through ArrowsWorkload (32 ms sleep between DOWN and UP;
- * measured DOWN->UP eventTime 35-40 ms, docs/perf-capture-calibration.md), below
- * PRESS_PREVIEW_DELAY_MS = 64, so no press preview is drawn.
+ * Scripted taps hold below PRESS_PREVIEW_DELAY_MS = 64, so no press preview is drawn:
+ * `input tap` 0 ms, ArrowsWorkload tap-sequence (the `won` solve) 35-40 ms
+ * (docs/perf-capture-calibration.md).
  */
 export async function runStep(context, step) {
   const bench = await import('./benchmark.mjs');
   const plan = bench.createSingleLevelPlan();
+  // Single taps use `adb shell input tap`: DOWN->UP eventTime 0 ms and the command returns in
+  // ~15-25 ms. ArrowsWorkload holds 35-40 ms but its JVM needs ~0.9 s to exit after the UP,
+  // which would put everything that follows the tap a second late.
   const tap = (row, col) => {
     const point = bench.cellCenter(context.bounds, row, col, plan.rows, plan.cols);
-    return bench.invokeGestureDriver(context, ['tap', String(point.x), String(point.y)]);
+    const before = Date.now();
+    adb(context.adbExecutable, context.serial, ['shell', 'input', 'tap', String(point.x), String(point.y)]);
+    return { injector: 'input tap', point, hostMs: Date.now() - before };
   };
   if (step === 'blocked') return { step, cells: [[35, 19]], timing: tap(35, 19) };
   if (step === 'exit') {

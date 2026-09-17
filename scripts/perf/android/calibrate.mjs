@@ -33,13 +33,14 @@ import {
   startScreenRecord,
   tryCapture,
 } from './device.mjs';
-import { decodePng, diffImages, directionVector, displacementAlong, resolveRegion } from './pixel-diff.mjs';
+import { decodePng, diffImages, exitMotion, resolveRegion } from './pixel-diff.mjs';
 
 export const BLOCKER_FLASH_MS = 650; // src/ui/feedbackCurves.ts BLOCKER_FLASH_MS
 const MAGENTA_MIN_PIXELS = 40; // OWNER-PICKED STARTING VALUE: onset = first frame with this many flash pixels
 export const MID_PHASE_DELAY_S = 0.15; // OWNER-PICKED STARTING VALUE: tap-up -> mid-phase screencap
 export const MENU_PAIR_GAP_S = 0.5; // OWNER-PICKED STARTING VALUE: idle menu pre -> post screencap
-export const EXIT_SECOND_FRAME_OFFSET_MS = 60; // OWNER-PICKED STARTING VALUE: onset -> second exit frame
+export const EXIT_SECOND_FRAME_OFFSET_MS = 60; // OWNER-PICKED STARTING VALUE: first trail frame -> second
+export const EXIT_FOOTPRINT_DILATE_PX = 2; // OWNER-PICKED STARTING VALUE: footprint dilation, recording px
 export const SAMPLE_SETTLE_MS = 2500; // OWNER-PICKED STARTING VALUE: launch -> first frame of a sample
 
 function log(message) {
@@ -228,10 +229,20 @@ async function blockedPairs(session, options) {
     const point = bench.cellCenter(context.bounds, 35, 19, plan.rows, plan.cols);
     const pre = `/data/local/tmp/cal-pre.png`;
     const mid = `/data/local/tmp/cal-mid.png`;
-    const input = options.set === 'A'
-      ? 'true' // set A: no input at all
-      : `CLASSPATH=${context.remoteJar} app_process /system/bin com.arrows.perf.ArrowsWorkload tap ${point.x} ${point.y} >/dev/null`;
-    session.shell(`screencap -p ${pre}; ${input}; sleep ${MID_PHASE_DELAY_S}; screencap -p ${mid}`);
+    // `input tap` (DOWN->UP 0 ms, returns in ~15-25 ms). ArrowsWorkload's JVM takes ~0.9 s
+    // to exit after its UP, which would push the "mid-phase" frame past the 650 ms flash.
+    const input = options.set === 'A' ? 'true' : `input tap ${point.x} ${point.y}`; // set A: no input
+    const stamps = session.shell(
+      `t0=$(date +%s%N); screencap -p ${pre}; t1=$(date +%s%N); ${input}; t2=$(date +%s%N); ` +
+      `sleep ${MID_PHASE_DELAY_S}; t3=$(date +%s%N); screencap -p ${mid}; t4=$(date +%s%N); ` +
+      'echo $t0 $t1 $t2 $t3 $t4',
+    ).split(/\s+/).map(Number);
+    const timingMs = {
+      preScreencap: (stamps[1] - stamps[0]) / 1e6,
+      input: (stamps[2] - stamps[1]) / 1e6,
+      inputEndToMidScreencapStart: (stamps[3] - stamps[2]) / 1e6,
+      midScreencap: (stamps[4] - stamps[3]) / 1e6,
+    };
     const prePath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-pre.png`);
     const midPath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-mid.png`);
     session.pull(pre, prePath);
@@ -245,6 +256,7 @@ async function blockedPairs(session, options) {
       motion,
       boardBounds: context.bounds,
       headerBottom,
+      timingMs,
       boardFraction: board.fraction,
       boardChanged: board.changed,
       boardTotal: board.total,
@@ -276,7 +288,8 @@ async function menuPairs(session, options) {
   // by 3% of each side plus 8 px antialiasing (OWNER-PICKED STARTING VALUE).
   session.launch(0);
   const xml = dumpUiXml(session.adb, session.serial);
-  const pill = boundsOf(xml, (tag) => /text="Play"/.test(tag));
+  // The pill is the clickable Pressable (content-desc "Play"), not its inner Text node.
+  const pill = boundsOf(xml, (tag) => /content-desc="Play"/.test(tag) && /clickable="true"/.test(tag));
   if (!pill) throw new Error('Play pill not found in the menu dump');
   const growX = Math.ceil((pill.right - pill.left) * 0.03) + 8;
   const growY = Math.ceil((pill.bottom - pill.top) * 0.03) + 8;
@@ -322,38 +335,27 @@ async function menuPairs(session, options) {
 
 const DIRECTION_NAMES = ['up', 'down', 'left', 'right']; // src/core/direction.ts enum order
 
-/**
- * One exit sample from a recording: pre frame = frame 0 (before the tap); onset = first later frame
- * whose board-region fraction vs pre exceeds `onsetFloor`; second = first frame at least
- * EXIT_SECOND_FRAME_OFFSET_MS after onset. Displacement = centroid travel along the exit direction,
- * in recording px.
- */
-export async function analyseExitRecording(framesDir, times, { rectFor, direction, onsetFloor }) {
+/** Decodes a split recording and runs pixel-diff's exitMotion on it (board region). */
+export async function analyseExitRecording(framesDir, times, { rectFor, direction }) {
   const files = readdirSync(framesDir).filter((f) => f.endsWith('.png')).sort();
   if (files.length !== times.length) throw new Error(`frames ${files.length} != pts ${times.length}`);
-  const pre = await decodePng(join(framesDir, files[0]));
-  const rect = rectFor(pre);
-  const perFrame = [];
-  let onset = null;
-  let second = null;
-  for (let index = 1; index < files.length; index += 1) {
-    const image = await decodePng(join(framesDir, files[index]));
-    const diff = diffImages(pre, image, { rect });
-    perFrame.push({ index, t: times[index], fraction: diff.fraction, centroid: diff.centroid });
-    if (onset === null && diff.fraction > onsetFloor) onset = perFrame.at(-1);
-    else if (onset !== null && second === null && (times[index] - onset.t) * 1000 >= EXIT_SECOND_FRAME_OFFSET_MS) {
-      second = perFrame.at(-1);
-    }
+  const frames = [];
+  for (const file of files) frames.push(await decodePng(join(framesDir, file)));
+  const rect = rectFor(frames[0]);
+  if (frames.length < 3) {
+    // Nothing changed on screen: the recorder emitted only its first (and maybe last) frame.
+    return { frames: frames.length, rect, footprintPixels: 0, first: null, second: null, displacementPx: 0, maxChangedFraction: 0, perFrame: [] };
   }
-  const vector = directionVector(direction);
   return {
-    frames: files.length,
+    frames: frames.length,
     rect,
-    onset,
-    second,
-    onsetFraction: onset?.fraction ?? 0,
-    displacementPx: onset && second ? displacementAlong(onset.centroid, second.centroid, vector) : 0,
-    perFrame,
+    ...exitMotion(frames, times, {
+      rect,
+      direction,
+      dilatePx: EXIT_FOOTPRINT_DILATE_PX,
+      secondFrameOffsetMs: EXIT_SECOND_FRAME_OFFSET_MS,
+      trailCountFloor: 0,
+    }),
   };
 }
 
@@ -381,15 +383,13 @@ async function exitRecordings(session, options) {
     const analysis = await analyseExitRecording(framesDir, times, {
       rectFor: (image) => resolveRegion('board', image, { board: context.bounds, headerBottom, scale }),
       direction: DIRECTION_NAMES[tap.dir],
-      onsetFloor: 0,
     });
     rmSync(framesDir, { recursive: true, force: true });
-    delete analysis.perFrame;
     samples.push({ i, motion, step, direction: DIRECTION_NAMES[tap.dir], recording: mp4, frameTimesS: times, ...analysis });
-    log(`exit set ${options.set} scale ${options.motionScale} #${i}: onset fraction ${analysis.onsetFraction}, displacement ${analysis.displacementPx} px`);
+    log(`exit set ${options.set} scale ${options.motionScale} #${i}: frames ${analysis.frames}, max changed ${analysis.maxChangedFraction}, trail ${analysis.first?.trailPixels ?? 0} px, displacement ${analysis.displacementPx} px`);
     if (i !== 1 && i !== n) rmSync(mp4);
   }
-  return { subcommand: 'exit-recordings', set: options.set, motionScale: options.motionScale, secondFrameOffsetMs: EXIT_SECOND_FRAME_OFFSET_MS, samples };
+  return { subcommand: 'exit-recordings', set: options.set, motionScale: options.motionScale, secondFrameOffsetMs: EXIT_SECOND_FRAME_OFFSET_MS, footprintDilatePx: EXIT_FOOTPRINT_DILATE_PX, samples };
 }
 
 async function main() {

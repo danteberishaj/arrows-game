@@ -118,6 +118,100 @@ export function displacementAlong(c1, c2, vector) {
   return (c2.x - c1.x) * vector.x + (c2.y - c1.y) * vector.y;
 }
 
+/**
+ * Exit motion (P-02 Stage E). frames[0] is the pre-phase frame, frames.at(-1) the settled frame after
+ * the exit. The FOOTPRINT is every pixel that differs between those two (the removed arrow), dilated
+ * by `dilatePx`. TRAIL pixels of a frame differ from the pre frame and lie outside the footprint,
+ * i.e. ink drawn where no arrow was. A stationary fade stays inside the footprint and has none.
+ *
+ * first  = first frame with more than `trailCountFloor` trail pixels;
+ * second = first later frame at least `secondFrameOffsetMs` after `first` that also has trail pixels;
+ * displacementPx = travel of the trail centroid from first to second along `direction` (0 if either
+ * is missing). maxChangedFraction is the plain changed-pixel fraction vs pre, printed so the
+ * alpha-fade trap (pixels change, nothing moves) is visible.
+ */
+export function exitMotion(frames, times, {
+  rect,
+  direction,
+  dilatePx = 2,
+  secondFrameOffsetMs = 60,
+  trailCountFloor = 0,
+  tolerance = DEFAULT_TOLERANCE,
+}) {
+  if (frames.length !== times.length) throw new Error(`frames ${frames.length} != times ${times.length}`);
+  const pre = frames[0];
+  const settled = frames.at(-1);
+  const { width, height } = pre;
+  const differs = (a, b, i) =>
+    Math.max(
+      Math.abs(a.data[i] - b.data[i]),
+      Math.abs(a.data[i + 1] - b.data[i + 1]),
+      Math.abs(a.data[i + 2] - b.data[i + 2]),
+    ) > tolerance;
+  const footprint = new Uint8Array(width * height);
+  let footprintCount = 0;
+  for (let y = rect.top; y < rect.bottom; y += 1) {
+    for (let x = rect.left; x < rect.right; x += 1) {
+      if (!differs(pre, settled, (y * width + x) * 3)) continue;
+      footprintCount += 1;
+      for (let dy = -dilatePx; dy <= dilatePx; dy += 1) {
+        for (let dx = -dilatePx; dx <= dilatePx; dx += 1) {
+          const yy = y + dy;
+          const xx = x + dx;
+          if (yy >= 0 && yy < height && xx >= 0 && xx < width) footprint[yy * width + xx] = 1;
+        }
+      }
+    }
+  }
+  const total = (rect.right - rect.left) * (rect.bottom - rect.top);
+  const perFrame = [];
+  let maxChangedFraction = 0;
+  for (let index = 1; index < frames.length - 1; index += 1) {
+    const image = frames[index];
+    let changed = 0;
+    let trail = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (let y = rect.top; y < rect.bottom; y += 1) {
+      for (let x = rect.left; x < rect.right; x += 1) {
+        const p = y * width + x;
+        if (!differs(pre, image, p * 3)) continue;
+        changed += 1;
+        if (footprint[p]) continue;
+        trail += 1;
+        sumX += x + 0.5;
+        sumY += y + 0.5;
+      }
+    }
+    const fraction = total === 0 ? 0 : changed / total;
+    maxChangedFraction = Math.max(maxChangedFraction, fraction);
+    perFrame.push({
+      index,
+      t: times[index],
+      changedFraction: fraction,
+      trailPixels: trail,
+      trailCentroid: trail === 0 ? null : { x: sumX / trail, y: sumY / trail },
+    });
+  }
+  const first = perFrame.find((f) => f.trailPixels > trailCountFloor) ?? null;
+  const second = first === null
+    ? null
+    : perFrame.find((f) =>
+      f.index > first.index &&
+      f.trailPixels > trailCountFloor &&
+      (f.t - first.t) * 1000 >= secondFrameOffsetMs - 1e-6) ?? null;
+  return {
+    footprintPixels: footprintCount,
+    first,
+    second,
+    displacementPx: first && second
+      ? displacementAlong(first.trailCentroid, second.trailCentroid, directionVector(direction))
+      : 0,
+    maxChangedFraction,
+    perFrame,
+  };
+}
+
 function parseCli(argv) {
   const options = { files: [], region: 'screen', masks: [], tolerance: DEFAULT_TOLERANCE, scale: 1 };
   for (let index = 0; index < argv.length; index += 1) {

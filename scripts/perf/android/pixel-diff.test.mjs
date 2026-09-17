@@ -6,6 +6,7 @@ import {
   diffImages,
   directionVector,
   displacementAlong,
+  exitMotion,
   parseMask,
   resolveRegion,
 } from './pixel-diff.mjs';
@@ -107,4 +108,64 @@ test('the centroid of changed pixels and its displacement along an exit directio
   // No changed pixels: no centroid, and no displacement can be claimed.
   assert.equal(diffImages(a, a, { rect, tolerance: 24 }).centroid, null);
   assert.equal(displacementAlong(null, c2, directionVector('up')), 0);
+});
+
+// ---- exit motion: centroid of trail pixels (changed vs pre, outside the settled footprint)
+
+function frame(width, height, paint) {
+  const data = Buffer.alloc(width * height * 3, 255);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (paint(x, y)) data.set([20, 20, 30], (y * width + x) * 3);
+    }
+  }
+  return { width, height, data };
+}
+
+test('exit motion: a dash that travels past the removed arrow moves the trail centroid along the exit', () => {
+  const w = 20;
+  const h = 60;
+  const arrow = (x, y) => x >= 9 && x < 11 && y >= 40 && y < 50; // vertical arrow, exits up
+  const pre = frame(w, h, arrow);
+  const settled = frame(w, h, () => false); // arrow gone
+  const dashAt = (top) => frame(w, h, (x, y) => x >= 9 && x < 11 && y >= top && y < top + 4);
+  const frames = [pre, dashAt(42), dashAt(34), dashAt(26), dashAt(18), dashAt(10), settled];
+  const times = [0, 0.1, 0.12, 0.14, 0.16, 0.18, 0.3];
+  const result = exitMotion(frames, times, {
+    rect: { left: 0, top: 0, right: w, bottom: h },
+    direction: 'up',
+    dilatePx: 1,
+    secondFrameOffsetMs: 40,
+    trailCountFloor: 0,
+  });
+  // Frame 1 (dash inside the footprint) has no trail pixels. First trail frame: dash rows 34..37
+  // minus the dilated footprint (rows >= 39) -> centroid y 36; +40 ms -> dash rows 18..21 -> y 20.
+  assert.equal(result.first.index, 2);
+  assert.equal(result.second.index, 4);
+  assert.equal(result.displacementPx, 16);
+  assert.ok(result.maxChangedFraction > 0);
+});
+
+test('exit motion: a stationary fade inside the footprint yields no trail and no displacement', () => {
+  const w = 20;
+  const h = 60;
+  const arrow = (x, y) => x >= 9 && x < 11 && y >= 40 && y < 50;
+  const pre = frame(w, h, arrow);
+  const fading = (level) => {
+    const f = frame(w, h, () => false);
+    for (let y = 40; y < 50; y += 1) for (let x = 9; x < 11; x += 1) f.data.set([level, level, level], (y * w + x) * 3);
+    return f;
+  };
+  const frames = [pre, fading(120), fading(180), fading(230), frame(w, h, () => false)];
+  const result = exitMotion(frames, [0, 0.1, 0.15, 0.2, 0.4], {
+    rect: { left: 0, top: 0, right: w, bottom: h },
+    direction: 'up',
+    dilatePx: 1,
+    secondFrameOffsetMs: 40,
+    trailCountFloor: 0,
+  });
+  assert.equal(result.first, null);
+  assert.equal(result.displacementPx, 0);
+  // Pixels DID change: the alpha-fade trap a changed-pixel gate alone would pass.
+  assert.ok(result.maxChangedFraction > 0);
 });
