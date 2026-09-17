@@ -11,7 +11,10 @@ import { EventName, EventProps, EventSchema, EnvelopedEvent, FieldSpec } from '.
 export type TelemetrySink = (event: EnvelopedEvent) => void;
 
 /** The default sink: does nothing. `emit` special-cases this sink to skip
- * all envelope construction, so it never allocates. */
+ * envelope construction, so it never allocates for a well-formed event —
+ * except that with `validate: true` it still runs `checkEvent` first, so an
+ * unknown event name or malformed props throw even before any sink is
+ * installed (fix round 1: this used to skip validation too). */
 export const noopSink: TelemetrySink = () => {};
 
 /** A bounded in-memory sink for dev-only consumers (a future `__DEV__`
@@ -119,9 +122,22 @@ export const Telemetry = {
   },
 
   emit<N extends EventName>(name: N, props: EventProps<N>): void {
-    // Never allocates when disabled or when the sink is noopSink: bail
-    // before building the envelope or touching the schema.
-    if (config.disabled || currentSink === noopSink) {
+    // `disabled` always short-circuits before anything else: it means "no
+    // telemetry, full stop," including validation.
+    if (config.disabled) {
+      return;
+    }
+    // Fix round 1 (task review): this used to also bail out whenever
+    // `currentSink === noopSink`, *before* `checkEvent` ran. That meant
+    // `validate: true` silently no-op'd instead of throwing for any call
+    // made before `Telemetry.useSink()` was ever invoked (e.g. at app
+    // boot) — defeating the exact dev-time safety net `validate: true`
+    // exists for. `validate: true` must see every call, sink or no sink,
+    // so only skip the check when we are NOT validating; that keeps the
+    // "never allocates for noopSink" behaviour for the common case
+    // (validate off, e.g. non-dev builds) while still throwing on a bad
+    // event as soon as validation is turned on.
+    if (currentSink === noopSink && !config.validate) {
       return;
     }
     const check = checkEvent(name, props as unknown as Record<string, unknown>);
@@ -130,6 +146,12 @@ export const Telemetry = {
         throw new Error(`Telemetry: ${check.reason}`);
       }
       return; // dropped silently
+    }
+    if (currentSink === noopSink) {
+      // Validated fine, but there's still nowhere to send it: skip
+      // building the envelope (no allocation) — same "never allocates for
+      // noopSink" contract as before, just no longer skipping validation.
+      return;
     }
 
     seq += 1;

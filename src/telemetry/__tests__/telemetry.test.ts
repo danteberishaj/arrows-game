@@ -179,6 +179,54 @@ describe('Telemetry.emit validation', () => {
   });
 });
 
+describe('Telemetry.emit validation with the default sink still installed (fix round 1)', () => {
+  // Regression for a task-review finding: emit()'s fast path used to bail
+  // out whenever `currentSink === noopSink`, before `checkEvent` ran — so
+  // `validate: true` silently dropped bad events instead of throwing until
+  // *something* called `Telemetry.useSink()`. These tests deliberately do
+  // NOT call `useSink` first, unlike every other validation test in this
+  // file, so they exercise the exact gap the finding described.
+  afterEach(() => {
+    Telemetry.useSink(noopSink);
+    Telemetry.configure({ validate: false, disabled: false });
+  });
+
+  test('validate: true throws on an unknown event name even before any sink is installed', () => {
+    Telemetry.configure({ validate: true, disabled: false });
+    expect(() =>
+      Telemetry.emit('not_a_real_event' as unknown as EventName, {} as never)
+    ).toThrow();
+  });
+
+  test('validate: true throws on a malformed property object even before any sink is installed', () => {
+    Telemetry.configure({ validate: true, disabled: false });
+    expect(() =>
+      Telemetry.emit('screen_view', { screen: 'not-a-real-screen' } as never)
+    ).toThrow();
+  });
+
+  test('validate: false still drops silently (no sink installed, no throw)', () => {
+    Telemetry.configure({ validate: false, disabled: false });
+    expect(() =>
+      Telemetry.emit('not_a_real_event' as unknown as EventName, {} as never)
+    ).not.toThrow();
+  });
+
+  test('disabled: true still wins over validate: true (no throw, no sink call)', () => {
+    Telemetry.configure({ validate: true, disabled: true });
+    expect(() =>
+      Telemetry.emit('not_a_real_event' as unknown as EventName, {} as never)
+    ).not.toThrow();
+  });
+
+  test('a well-formed event with no sink installed does not throw and does not allocate a call', () => {
+    Telemetry.configure({ validate: true, disabled: false });
+    // currentSink is still noopSink here — nothing to call, but it must not
+    // throw either, since the event itself is valid.
+    expect(() => Telemetry.emit('screen_view', { screen: 'menu' })).not.toThrow();
+  });
+});
+
 describe('createMemorySink', () => {
   test('keeps at most `cap` events, dropping the oldest', () => {
     const sink = createMemorySink(2);
