@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildInputDriver, resolveAndroidSdkRoot } from './build-uiautomator.mjs';
 import {
@@ -62,6 +62,10 @@ const EXIT_ANIMATION_DURATION_MS = parseExitAnimationDuration(
   process.env.EXPO_PUBLIC_PERF_EXIT_DURATION_MS,
 );
 const STEADY_STATE_SKIP_SAMPLES = 10;
+// Idle window measured by the opt-in screen phases. The splash's scripted
+// fade-out ends at 2630 ms (SplashScreen.tsx); the menu window spans more than
+// one 1100 ms Play-pill breath. OWNER-PICKED STARTING VALUE.
+const SCREEN_PHASE_WINDOW_MS = Object.freeze({ splash: 3000, menu: 1500 }); // OWNER-PICKED STARTING VALUE
 const SOAK_PERFORMANCE_BUDGETS = Object.freeze({
   uiFrameP95Ms: 20,
   uiFrameP99Ms: 34,
@@ -69,8 +73,18 @@ const SOAK_PERFORMANCE_BUDGETS = Object.freeze({
   worstLevelUiFrameP95Ms: 34,
 });
 const GESTURE_PHASES = new Set(['zoomIn', 'panHorizontal', 'panVertical', 'zoomOut']);
-const DEFAULT_PHASES = [...GESTURE_PHASES, 'blocked', 'exit'];
-const VALID_PHASES = new Set(DEFAULT_PHASES);
+export const DEFAULT_PHASES = [...GESTURE_PHASES, 'blocked', 'exit'];
+// Opt-in screen phases (P-02 Stage A). They need a build whose
+// EXPO_PUBLIC_PERF_SCREEN names the same screen and are never in the defaults.
+const SCREEN_PHASES = new Set(['splash', 'menu']);
+export const VALID_PHASES = new Set([...DEFAULT_PHASES, ...SCREEN_PHASES]);
+const PERF_SCREENS = new Set(['splash', 'menu', 'game']);
+
+function parsePerfScreen(raw) {
+  if (raw === undefined) return 'game';
+  if (PERF_SCREENS.has(raw)) return raw;
+  throw new Error(`EXPO_PUBLIC_PERF_SCREEN must be splash, menu or game (got ${JSON.stringify(raw)})`);
+}
 
 function parseExitAnimationDuration(value) {
   const duration = Number(value ?? 180);
@@ -83,8 +97,11 @@ function log(message) {
   process.stderr.write(`[perf:android] ${message}\n`);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv, env = process.env) {
+  const perfScreen = parsePerfScreen(env.EXPO_PUBLIC_PERF_SCREEN);
+  let phasesGiven = false;
   const options = {
+    perfScreen,
     serial: 'emulator-5556',
     avd: 'fleet_floor_api31',
     api: 31,
@@ -118,6 +135,7 @@ function parseArgs(argv) {
       const value = argv[++index];
       if (value === undefined) throw new Error(`${option} requires a value`);
       options[VALUE_OPTIONS[option]] = value;
+      if (option === '--phases') phasesGiven = true;
     } else {
       throw new Error(`Unknown option: ${option}`);
     }
@@ -149,8 +167,23 @@ function parseArgs(argv) {
   if (typeof options.phases === 'string') {
     options.phases = options.phases.split(',').map((phase) => phase.trim()).filter(Boolean);
   }
+  // A splash or menu build cannot reach the board phases' starting state, so
+  // without --phases it measures its own screen.
+  if (!phasesGiven && options.perfScreen !== 'game') options.phases = [options.perfScreen];
   if (options.phases.length === 0 || options.phases.some((phase) => !VALID_PHASES.has(phase))) {
-    throw new Error(`--phases must contain only: ${DEFAULT_PHASES.join(',')}`);
+    throw new Error(`--phases must contain only: ${[...VALID_PHASES].join(',')}`);
+  }
+  for (const phase of options.phases) {
+    const needed = SCREEN_PHASES.has(phase) ? phase : 'game';
+    if (options.perfScreen !== needed) {
+      throw new Error(
+        `phase ${phase} needs a build with EXPO_PUBLIC_PERF_SCREEN=${needed} ` +
+        `(this run: ${options.perfScreen})`,
+      );
+    }
+  }
+  if (options.soakLevels !== null && options.perfScreen !== 'game') {
+    throw new Error('--soak-levels needs a build with EXPO_PUBLIC_PERF_SCREEN=game');
   }
   if (new Set(options.phases).size !== options.phases.length) {
     throw new Error('--phases must not contain duplicates');
@@ -164,9 +197,12 @@ function parseArgs(argv) {
   return options;
 }
 
-function benchmarkConfiguration(options) {
+export function benchmarkConfiguration(options) {
   if (options.skipBuild) {
     return {
+      // Caller-supplied APK: the screen is the one the caller built with; the
+      // run checks it on the device before measuring (validateScreen).
+      perfScreen: options.perfScreen,
       configurationVerifiedFromFreshBuild: false,
       nativePrebuildRecreated: false,
       productionRenderer: null,
@@ -202,6 +238,7 @@ function benchmarkConfiguration(options) {
     !exitTrailsDisabled &&
     EXIT_ANIMATION_DURATION_MS === 180;
   return {
+    perfScreen: options.perfScreen,
     configurationVerifiedFromFreshBuild: true,
     nativePrebuildRecreated: !options.skipPrebuild,
     productionRenderer,
@@ -362,17 +399,16 @@ function validateDevice(sdkRoot, options) {
   return adbExecutable;
 }
 
-function buildRelease(options) {
-  const apk = options.apk ?? join(
-    PROJECT_ROOT,
-    'android/app/build/outputs/apk/release/app-release.apk',
-  );
-  if (options.skipBuild) return apk;
-
+/**
+ * Environment for a PERF build. Metro inlines EXPO_PUBLIC_* values, so every
+ * benchmark switch is explicit and an earlier variant cannot leak into a later
+ * build through task state. Exported so a JS-only repack uses the same values.
+ */
+export function perfBuildEnv(options, env = process.env) {
   const nodeBin = dirname(process.execPath);
-  const buildEnv = {
-    ...process.env,
-    PATH: `${nodeBin}:${process.env.PATH ?? ''}`,
+  return {
+    ...env,
+    PATH: `${nodeBin}:${env.PATH ?? ''}`,
     CI: '1',
     ARROWS_PERF_BUILD: '1',
     // A soak warms up on the immediately preceding level, then advances into
@@ -380,22 +416,31 @@ function buildRelease(options) {
     EXPO_PUBLIC_PERF_LEVEL: String(
       options.soakLevels === null ? options.level : options.level - 1,
     ),
-    // Metro inlines EXPO_PUBLIC_* values. Keep every benchmark switch explicit
-    // so an earlier variant cannot leak into a later build through task state.
     EXPO_PUBLIC_PERF_EMPTY_BOARD:
       options.diagnosticEmptyBoard ||
-      (options.soakLevels === null && process.env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1') ? '1' : '0',
+      (options.soakLevels === null && env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1') ? '1' : '0',
     EXPO_PUBLIC_PERF_OPAQUE_SURFACE:
-      options.soakLevels === null && process.env.EXPO_PUBLIC_PERF_OPAQUE_SURFACE === '1' ? '1' : '0',
+      options.soakLevels === null && env.EXPO_PUBLIC_PERF_OPAQUE_SURFACE === '1' ? '1' : '0',
     EXPO_PUBLIC_PERF_NO_EXIT_TRAILS:
       options.diagnosticNoExitTrails ||
-      (options.soakLevels === null && process.env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1')
+      (options.soakLevels === null && env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1')
         ? '1'
         : '0',
     EXPO_PUBLIC_PERF_EXIT_DURATION_MS:
       String(EXIT_ANIMATION_DURATION_MS),
     EXPO_PUBLIC_PERF_FEEDBACK: options.feedback ? '1' : '0',
+    EXPO_PUBLIC_PERF_SCREEN: options.perfScreen,
   };
+}
+
+function buildRelease(options) {
+  const apk = options.apk ?? join(
+    PROJECT_ROOT,
+    'android/app/build/outputs/apk/release/app-release.apk',
+  );
+  if (options.skipBuild) return apk;
+
+  const buildEnv = perfBuildEnv(options, process.env);
   if (!options.skipPrebuild) {
     runBuild(process.execPath, [
       join(PROJECT_ROOT, 'node_modules/expo/bin/cli'),
@@ -731,6 +776,73 @@ function startReady(context) {
   return bounds;
 }
 
+/** Launches a PERF build whose first screen is not the board. */
+function startScreen(context, screen) {
+  if (screen === 'game') return startReady(context);
+  adb(context.adbExecutable, context.serial, ['shell', 'am', 'force-stop', APPLICATION_ID]);
+  adb(context.adbExecutable, context.serial, [
+    'shell', 'am', 'start', '-W', '-n', context.activity,
+  ], { timeout: 30_000 });
+  if (screen === 'menu') {
+    waitForUiText(context, 'text="Play"');
+    delay(300); // 180 ms menu entrance fade
+  }
+  return null;
+}
+
+/**
+ * Checks on the device that a splash or menu PERF build really opens on that
+ * screen, the counterpart of validateWorkload for the board.
+ */
+function validateScreen(context, screen) {
+  log(`validating the ${screen} screen`);
+  startScreen(context, screen);
+  const firstXml = dumpUi(context);
+  if (/perf-board/.test(firstXml)) throw new Error(`${screen} build opened on the board`);
+  if (screen === 'menu') {
+    if (!firstXml.includes('text="Play"')) throw new Error('menu build did not show Play');
+    return { firstDumpShowedPlay: true };
+  }
+  // The splash hands over to the menu by itself (SPLASH_MAX_MS backstop).
+  const splashVisibleAtFirstDump = !firstXml.includes('text="Play"');
+  waitForUiText(context, 'text="Play"');
+  return { splashVisibleAtFirstDump, handedOverToMenu: true };
+}
+
+function measureScreenPhase(context, phase) {
+  startScreen(context, phase);
+  const surfaceLayers = resolveSurfaceLayers(context);
+  for (const layer of new Set([surfaceLayers.root, surfaceLayers.board])) {
+    surfaceFlinger(context, '--latency-clear', layer);
+  }
+  adb(context.adbExecutable, context.serial, [
+    'shell', 'dumpsys', 'gfxinfo', APPLICATION_ID, 'reset',
+  ]);
+  const windowMs = SCREEN_PHASE_WINDOW_MS[phase];
+  delay(windowMs);
+  const driverTiming = { kind: `${phase}-idle-window`, durationMs: windowMs };
+  const gfxInfo = adb(context.adbExecutable, context.serial, [
+    'shell', 'dumpsys', 'gfxinfo', APPLICATION_ID, 'framestats',
+  ]);
+  const memInfo = adb(context.adbExecutable, context.serial, [
+    'shell', 'dumpsys', 'meminfo', APPLICATION_ID,
+  ]);
+  const surfaces = Object.fromEntries(
+    Object.entries({ root: surfaceLayers.root, board: surfaceLayers.board }).map(([key, layer]) => [
+      key,
+      { layer, ...parseSurfaceFlingerLatency(surfaceFlinger(context, '--latency', layer)) },
+    ]),
+  );
+  if (phase === 'splash') waitForUiText(context, 'text="Play"');
+  return {
+    frames: parseGfxInfoFrames(gfxInfo),
+    surfaceLayers,
+    surfaces,
+    driverTiming,
+    pssKb: parseTotalPssKb(memInfo),
+  };
+}
+
 function resolveSurfaceLayers(context) {
   const layers = adb(context.adbExecutable, context.serial, [
     'shell', 'dumpsys', 'SurfaceFlinger', '--list',
@@ -769,6 +881,7 @@ function summarizeOptionalGfxFrames(frames) {
 }
 
 function measurePhase(context, phase, levelPlan) {
+  if (SCREEN_PHASES.has(phase)) return measureScreenPhase(context, phase);
   const bounds = startReady(context);
   prepareWorkload(context, phase, bounds, levelPlan);
   const surfaceLayers = resolveSurfaceLayers(context);
@@ -1398,7 +1511,7 @@ function runSoakBenchmark(context, options, plan, baseResult, configuration) {
 }
 
 function captureScreenshot(context, outputPath) {
-  startReady(context);
+  startScreen(context, context.perfScreen);
   const result = spawnSync(context.adbExecutable, [
     '-s', context.serial, 'exec-out', 'screencap', '-p',
   ], { encoding: null, timeout: 30_000, maxBuffer: 32 * 1024 * 1024 });
@@ -1465,9 +1578,10 @@ async function main() {
       serial: options.serial,
       activity: resolveActivity(adbExecutable, options.serial),
       remoteJar,
+      perfScreen: options.perfScreen,
       displayHeight: physicalDisplayHeight(adbExecutable, options.serial),
     };
-    startReady(context);
+    startScreen(context, options.perfScreen);
     const installedSurfaceLayers = resolveSurfaceLayers(context);
     const installedSurfaceKind = installedSurfaceLayers.surfaceView ? 'surfaceView' : 'rootWindow';
     if (options.expectSurface && installedSurfaceKind !== options.expectSurface) {
@@ -1475,7 +1589,8 @@ async function main() {
         `Expected ${options.expectSurface}, but installed APK uses ${installedSurfaceKind}`,
       );
     }
-    if (singleLevelPlan !== null) validateWorkload(context, singleLevelPlan);
+    if (options.perfScreen !== 'game') validateScreen(context, options.perfScreen);
+    else if (singleLevelPlan !== null) validateWorkload(context, singleLevelPlan);
     if (options.screenshot) captureScreenshot(context, options.screenshot);
 
     if (soakPlan !== null) {
@@ -1506,6 +1621,11 @@ async function main() {
     for (let warmup = 1; warmup <= options.warmups; warmup += 1) {
       log(`warmup ${warmup}/${options.warmups}`);
       for (const phase of options.phases) {
+        if (SCREEN_PHASES.has(phase)) {
+          startScreen(context, phase);
+          delay(SCREEN_PHASE_WINDOW_MS[phase]);
+          continue;
+        }
         const bounds = startReady(context);
         prepareWorkload(context, phase, bounds, singleLevelPlan);
         runWorkload(context, phase, bounds, singleLevelPlan);
@@ -1621,7 +1741,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack ?? error.message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    process.stderr.write(`${error.stack ?? error.message}\n`);
+    process.exitCode = 1;
+  });
+}

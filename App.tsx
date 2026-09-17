@@ -9,7 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { initRemoteConfig } from './src/config/remoteConfig';
 import { SaveSystem } from './src/core/saveSystem';
-import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE } from './src/perfMode';
+import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE, PERF_SCREEN } from './src/perfMode';
 import { AdHost, adInitController, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -25,7 +25,8 @@ export default function App() {
   const [fontsLoaded, fontError] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
   // A font-load error must not leave a blank screen: fall back to the platform font.
   const fontsReady = fontsLoaded || fontError != null;
-  const [screen, setScreen] = useState<Screen>(PERF_MODE ? 'game' : 'splash');
+  // A PERF build opens on EXPO_PUBLIC_PERF_SCREEN (default game, P-02 Stage A).
+  const [screen, setScreen] = useState<Screen>(PERF_MODE ? PERF_SCREEN : 'splash');
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
 

@@ -18,3 +18,21 @@ export const PERF_MODE = PERF_LEVEL_INDEX !== null;
  */
 export const PERF_FEEDBACK =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_FEEDBACK === '1';
+
+export type PerfScreen = 'splash' | 'menu' | 'game';
+
+/**
+ * EXPO_PUBLIC_PERF_SCREEN picks the screen a PERF build boots into (P-02
+ * Stage A). Unset means `game`, the only screen PERF builds showed before.
+ * An unknown value throws: a capture of the wrong screen is worse than none.
+ */
+export function parsePerfScreen(raw: string | undefined): PerfScreen {
+  if (raw === undefined) return 'game';
+  if (raw === 'splash' || raw === 'menu' || raw === 'game') return raw;
+  throw new Error(`EXPO_PUBLIC_PERF_SCREEN must be splash, menu or game (got ${JSON.stringify(raw)})`);
+}
+
+/** Initial screen of a PERF build. Non-PERF builds never read the variable. */
+export const PERF_SCREEN: PerfScreen = PERF_MODE
+  ? parsePerfScreen(process.env.EXPO_PUBLIC_PERF_SCREEN)
+  : 'game';
