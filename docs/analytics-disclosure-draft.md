@@ -24,19 +24,29 @@ rewrite it now, and not a claim that the sentence is already wrong.
 
 Draft language (W7-05 owns the actual wording and placement):
 
-> **Analytics.** The app sends anonymous gameplay analytics — which levels
+> **Analytics.** The app sends pseudonymous gameplay analytics — which levels
 > are started and finished, taps and misses within a level, hearts lost,
 > session length, and which ads were shown, not shown, or blocked — to our
 > own server. This is different from the advertising data described above:
 > it is not shared with any ad network, and it is processed by us
 > (first party), not by a third party.
 >
+> Every event also carries a timestamp and a per-app-launch sequence number
+> (so we can put a device's events back in order), and — on every event
+> except the first one sent on a given app launch — the same session index
+> and analytics cohort bucket described below. These are part of every
+> event's envelope, not gameplay data themselves.
+>
 > Each event carries a per-install id generated on your device, not the
 > Google Advertising ID. This id lets us tell "the same install played
-> twice" from "two different installs" without identifying you personally.
-> If you restore this app's data to a new device (for example, an Android
-> phone upgrade using Auto Backup), that new device keeps the same install
-> id — restoring does not create a new one.
+> twice" from "two different installs." It is linked to a random id
+> generated on your device, not to your name, account, email or advertising
+> id — but it is a persistent, app-generated identifier, not an anonymous
+> one: every event from your device is joined to the same id until you
+> uninstall (or ask us to delete it, below). If you restore this app's data
+> to a new device (for example, an Android phone upgrade using Auto
+> Backup), that new device keeps the same install id — restoring does not
+> create a new one.
 >
 > We keep raw analytics events for **180 days**, then delete them.
 > Aggregated, non-per-install statistics derived from them may be kept
@@ -58,70 +68,75 @@ for the install id (see the note under the table — the install id is
 deliberately **not** an `EventSchema` field; `TelemetryEnvelope` excludes it
 by design, per `events.ts:148-149` and `docs/telemetry-identity.md`, W6-05).
 
-Every row: **Collected = Yes**, **Shared = No** (first-party processor, no
-third party ever receives these events), **Optional = No** (the app has no
-analytics opt-out UI yet — consent UI is W7-03, out of scope here; this is
-listed as an open question below), **Purpose = Analytics**, unless a row's
-cell says otherwise.
+Every row below has the same value in each of the four required columns
+(**Collected = Yes**; **Shared = No** — first-party processor, no third
+party ever receives these events; **Optional = No** — the app has no
+analytics opt-out UI yet, consent UI is W7-03, out of scope here, and this
+is listed as an open question below; **Purpose = Analytics**) except where a
+row's own cell says otherwise. The columns are given per row, not asserted
+once in prose, so the table stands on its own for a reviewer who reads only
+the table.
 
-| Event | Field | Data safety category | Purpose |
-|---|---|---|---|
-| `app_open` | `cold` | App activity → App interactions | Analytics |
-| `app_open` | `sessionIndex` | App activity → App interactions | Analytics |
-| `app_open` | `appVersion` | App info and performance → Diagnostics | Analytics |
-| `app_open` | `bucket` | App activity → App interactions | Analytics |
-| `screen_view` | `screen` | App activity → App interactions | Analytics |
-| `level_start` | `levelIndex` | App activity → App interactions | Analytics |
-| `level_start` | `arrowCount` | App activity → App interactions | Analytics |
-| `level_start` | `shapeName` | App activity → App interactions | Analytics |
-| `level_start` | `heartsMax` | App activity → App interactions | Analytics |
-| `level_start` | `mode` | App activity → App interactions | Analytics |
-| `level_end` | `levelIndex` | App activity → App interactions | Analytics |
-| `level_end` | `mode` | App activity → App interactions | Analytics |
-| `level_end` | `outcome` | App activity → App interactions | Analytics |
-| `level_end` | `taps` | App activity → App interactions | Analytics |
-| `level_end` | `tapsExit` | App activity → App interactions | Analytics |
-| `level_end` | `tapsBlocked` | App activity → App interactions | Analytics |
-| `level_end` | `tapsGhost` | App activity → App interactions | Analytics |
-| `level_end` | `tapsMiss` | App activity → App interactions | Analytics |
-| `level_end` | `heartsLost` | App activity → App interactions | Analytics |
-| `level_end` | `heartsLeft` | App activity → App interactions | Analytics |
-| `level_end` | `heartsMax` | App activity → App interactions | Analytics |
-| `level_end` | `durationMs` | App activity → App interactions | Analytics |
-| `level_end` | `hintsUsed` | App activity → App interactions | Analytics |
-| `level_end` | `continuesUsed` | App activity → App interactions | Analytics |
-| `session_end` | `durationMs` | App activity → App interactions | Analytics |
-| `session_end` | `levelsStarted` | App activity → App interactions | Analytics |
-| `session_end` | `levelsCleared` | App activity → App interactions | Analytics |
-| `session_end` | `lastLevelIndex` | App activity → App interactions | Analytics |
-| `ad_request` | `format` | App activity → App interactions | Analytics |
-| `ad_request` | `placement` | App activity → App interactions | Analytics |
-| `ad_result` | `format` | App activity → App interactions | Analytics |
-| `ad_result` | `placement` | App activity → App interactions | Analytics |
-| `ad_result` | `outcome` | App activity → App interactions | Analytics |
-| `ad_reward` | `placement` | App activity → App interactions | Analytics |
-| `ad_reward` | `earned` | App activity → App interactions | Analytics |
-| `error` | `kind` | App info and performance → Crash logs | Analytics |
-| `error` | `nameMessageHash` | App info and performance → Crash logs | Analytics |
-| `error` | `screen` | App info and performance → Crash logs | Analytics |
-| `error` | `count` | App info and performance → Crash logs | Analytics |
+| Event | Field | Data safety category | Collected | Shared | Optional | Purpose |
+|---|---|---|---|---|---|---|
+| `app_open` | `cold` | App activity → App interactions | Yes | No | No | Analytics |
+| `app_open` | `sessionIndex` | App activity → App interactions | Yes | No | No | Analytics |
+| `app_open` | `appVersion` | App info and performance → Diagnostics | Yes | No | No | Analytics |
+| `app_open` | `bucket` | App activity → App interactions | Yes | No | No | Analytics |
+| `screen_view` | `screen` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_start` | `levelIndex` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_start` | `arrowCount` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_start` | `shapeName` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_start` | `heartsMax` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_start` | `mode` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `levelIndex` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `mode` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `outcome` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `taps` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `tapsExit` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `tapsBlocked` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `tapsGhost` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `tapsMiss` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `heartsLost` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `heartsLeft` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `heartsMax` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `durationMs` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `hintsUsed` | App activity → App interactions | Yes | No | No | Analytics |
+| `level_end` | `continuesUsed` | App activity → App interactions | Yes | No | No | Analytics |
+| `session_end` | `durationMs` | App activity → App interactions | Yes | No | No | Analytics |
+| `session_end` | `levelsStarted` | App activity → App interactions | Yes | No | No | Analytics |
+| `session_end` | `levelsCleared` | App activity → App interactions | Yes | No | No | Analytics |
+| `session_end` | `lastLevelIndex` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_request` | `format` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_request` | `placement` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_result` | `format` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_result` | `placement` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_result` | `outcome` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_reward` | `placement` | App activity → App interactions | Yes | No | No | Analytics |
+| `ad_reward` | `earned` | App activity → App interactions | Yes | No | No | Analytics |
+| `error` | `kind` | App info and performance → Crash logs | Yes | No | No | Analytics |
+| `error` | `nameMessageHash` | App info and performance → Crash logs | Yes | No | No | Analytics |
+| `error` | `screen` | App info and performance → Crash logs | Yes | No | No | Analytics |
+| `error` | `count` | App info and performance → Crash logs | Yes | No | No | Analytics |
 
 That is 39 rows, one per `EventSchema` field. `TelemetryEnvelope`'s own
 fields (`name`, `ts`, `seq`, `sessionIndex`, `bucket`, `schemaVersion`,
 present on every event) are not `EventSchema` fields either (same exclusion
-as the install id) and are not individually listed; `ts` and `schemaVersion`
-carry no category of their own — a timestamp and a version number are
-metadata about the record, not collected user data — and are noted here for
-completeness rather than given a row.
+as the install id), so they are not given a table row here — but they are
+not left unlisted anywhere: §1's policy text now names `ts` and `seq`
+explicitly, and names `sessionIndex`/`bucket` as envelope fields present on
+every event other than the first `app_open` of a launch (where they are
+already `EventSchema` fields in the table above, at the `app_open` rows).
+`name` and `schemaVersion` carry no category of their own — an event-name
+tag and a version number are metadata about the record shape, not collected
+user data — and are noted here for completeness.
 
 The one row the brief asks for beyond `EventSchema` itself:
 
-| Field | Data safety category | Purpose |
-|---|---|---|
-| Install id (transport-attached; `identity.ts`, not an `EventSchema` field) | Device or other IDs | Analytics |
+| Field | Data safety category | Collected | Shared | Optional | Purpose |
+|---|---|---|---|---|---|
+| Install id (transport-attached; `identity.ts`, not an `EventSchema` field) | Device or other IDs | Yes (attached only when the W6-14 transport sends) | No | No (same open question as above) | Analytics |
 
-For this row: **Collected = Yes** (attached only when the W6-14 transport
-sends). **Shared = No.** **Optional = No** (same open question as above).
 Restoring the app's data (Auto Backup) carries this id to a new device
 rather than resetting it (`docs/telemetry-identity.md`) — that is a fact
 about the id's lifetime, not a new collection event, but it is worth the
@@ -211,3 +226,18 @@ them:
    belongs in the rewritten policy and whether "access logs" is precise
    enough language for Play's form, or whether it needs to name the hosting
    platform.
+8. **Whether the install id is "personal data" under GDPR.** §1 now calls it
+   pseudonymous rather than anonymous, because every event is joined to a
+   persistent, app-generated id that survives a device-swap restore — that
+   is the standard description of a pseudonym, not an anonymous identifier,
+   and Article 4(1)/Recital 26 GDPR treat pseudonymous data as personal data
+   when it *can* be linked back to a natural person by someone (not
+   necessarily by us). This document does not decide that question — it is
+   INFERRED legal characterisation, not executed — but flags it explicitly
+   because an "anonymous" claim in the published policy that is not true
+   under GDPR would itself be a disclosure error, which is the exact kind of
+   mistake this task exists to prevent before W7-05 adapts this text. If the
+   reviewer concludes the install id is personal data under GDPR, §1's
+   retention (open question 1), the deletion-request line, and any EEA-
+   specific lawful-basis/consent wording all need reviewing together, not
+   just the "anonymous"/"pseudonymous" word choice.

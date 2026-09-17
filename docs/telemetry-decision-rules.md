@@ -59,13 +59,13 @@ using this row.
 
 | | |
 |---|---|
-| **Event fields used** | `app_open.cold`; `TelemetryEnvelope.sessionIndex`; `level_end.levelIndex`; `level_end.outcome` |
+| **Event fields used** | `app_open.cold`; `TelemetryEnvelope.sessionIndex`; `level_start.levelIndex`; `level_end.levelIndex`; `level_end.outcome` |
 | **Join key** | install id (transport-attached, not an `EventSchema` field) |
-| **Computation** | For each install, find its first-ever `app_open` (`cold === true` and `TelemetryEnvelope.sessionIndex === 1`). Numerator = count of those installs whose event stream in that same session-index-1 session also contains a `level_end` with `levelIndex === 0` and `outcome === 'cleared'`. Denominator = count of installs with such a first `app_open` in the window. |
-| **Minimum sample size** | 200 qualifying first-`app_open` installs in the window. `// OWNER-PICKED STARTING VALUE` |
+| **Computation** | For each install, find its first-ever `app_open` (`cold === true` and `TelemetryEnvelope.sessionIndex === 1`). **Exclude** any such install whose first `level_start` in that same session has `levelIndex > 0` — see the non-inference below for why this exclusion is required, not optional. Numerator = count of the remaining installs whose event stream in that session also contains a `level_end` with `levelIndex === 0` and `outcome === 'cleared'`. Denominator = count of the remaining installs with such a first `app_open` in the window. |
+| **Minimum sample size** | 200 qualifying first-`app_open` installs in the window, after the exclusion above. `// OWNER-PICKED STARTING VALUE` |
 | **Time window** | Trailing 14 days. `// OWNER-PICKED STARTING VALUE` |
 | **Action for each result** | Report the measured fraction, plus the level-0 outcome breakdown (`cleared` / `out_of_hearts` / `abandoned`) as counts, to the owner. This row does not set a pass/fail threshold (non-goal) — it exists so the owner compares the measured fraction against their own bar instead of guessing at it. |
-| **What it cannot tell** | Why a non-clearing install failed (one misread vs many); whether an install that eventually cleared level 0 struggled first, since this only checks whether a `cleared` `level_end` exists in that session, not how it was reached; distinct devices are slightly undercounted for a player who upgrades phones before ever completing level 0 (Auto Backup restore note, above). |
+| **What it cannot tell** | **Existing installs updating into a build that ships this schema are not distinguishable from fresh installs by `app_open` alone**: `arrows_tel_session_count` is a new key that defaults to 0 for every install (`src/core/saveSystem.ts:291`), and `nextSessionIndex` returns `count + 1` (`src/telemetry/identity.ts:67-70`), so a veteran's first launch after the update also reports `cold === true, sessionIndex === 1`. Left unhandled, that install sits in the denominator as "the tutorial did not teach" while never having played level 0 in that session at all — and at launch, updaters can outnumber fresh installs in the 14-day window. The `level_start.levelIndex > 0` exclusion above is the computable proxy for "this is a veteran, not a fresh install," using only fields already in the schema; it is a proxy, not a certainty (a fresh install that force-quits before its first `level_start` and only ever plays a non-zero level in that session — not possible through the normal tutorial flow, but not schema-excluded either — would also be excluded, undercounting fresh installs by a presumably small amount). Beyond that: why a non-clearing install failed (one misread vs many); whether an install that eventually cleared level 0 struggled first, since this only checks whether a `cleared` `level_end` exists in that session, not how it was reached; distinct devices are slightly undercounted for a player who upgrades phones before ever completing level 0 (Auto Backup restore note, above). |
 
 **Dropped sub-metric (pre-flight finding F36, binding).** The brief's other
 W1 metric — "level-0 `tapsBlocked` before the first `tapsExit`" — cannot be
@@ -107,15 +107,27 @@ this row should be revisited.
 
 ### Row 4 — W4: does the daily bring players back?
 
+**Note on the brief's wording ("`sessionIndex` ≥ 2 on later days").** Fix round 1 replaced the
+literal `sessionIndex ≥ 2` reading below with a calendar-date check on `ts` (see Computation). The
+literal reading has two problems that the calendar-date check avoids: (1) it introduces a `2` that
+is not a sample size or window and so is not markable `// OWNER-PICKED STARTING VALUE` in the way
+the acceptance criterion expects those numbers to be — it would be an unlabelled, unmotivated
+number; and (2) a player who clears the daily in session `k` and reopens once, the next calendar
+day, in session `k+1` (a `sessionIndex` delta of exactly 1) would fail a strict "`sessionIndex` ≥ 2
+higher" test and be counted as not returning, which is the actual return behavior the row exists to
+measure. "On later days" is read as the operative requirement; "`sessionIndex` ≥ 2" is read as the
+brief's informal way of saying "at least one more cold start," which the `ts`-based check captures
+without an extra offset.
+
 | | |
 |---|---|
 | **Event fields used** | `level_end.mode`; `level_end.outcome`; `TelemetryEnvelope.sessionIndex`; `TelemetryEnvelope.ts` |
 | **Join key** | install id (transport-attached, not an `EventSchema` field) |
-| **Computation** | Split installs into two cohorts over the window: cohort A cleared at least one `level_end{mode: 'daily', outcome: 'cleared'}`; cohort B never did. For each install in each cohort, find the calendar date (derived from `TelemetryEnvelope.ts`, not from `sessionIndex` — see below) of its daily clear (cohort A) or of a matching reference session (cohort B), and check whether that install has any event with `sessionIndex` at least 2 higher, recorded on a later calendar date. Compare the two cohorts' return fractions. |
+| **Computation** | Split installs into two cohorts over the window: cohort A cleared at least one `level_end{mode: 'daily', outcome: 'cleared'}`; cohort B never did. **Anchor date, defined precisely for both cohorts:** the calendar date (derived from `TelemetryEnvelope.ts`, never from `sessionIndex`) of the install's first qualifying `level_end` in the window — for cohort A that is its first `level_end{mode:'daily', outcome:'cleared'}`; for cohort B (which by definition has no such event) it is the install's first `level_end` of any `mode`/`outcome` in the window, so both cohorts anchor on "a session where the install actually played a level to completion," not on app-open alone. **Return check:** an install "returns" if it emits at least one event of any kind whose `ts` falls on a later calendar date than its anchor date, within the look-forward window. This is checked directly off `ts`; no `sessionIndex` offset is used, which makes "at least one cold start on a later day" implicit without picking an arbitrary session-count threshold. Compare the two cohorts' return fractions. |
 | **Minimum sample size** | 300 installs per cohort in the window. `// OWNER-PICKED STARTING VALUE` |
 | **Time window** | Trailing 14 days for cohort assignment; a 7-day look-forward for the "did they come back" check. `// OWNER-PICKED STARTING VALUE` |
 | **Action for each result** | Report both cohorts' return fractions to the owner; this row does not set the margin that counts as "the daily works" (non-goal) — that is a threshold decision. |
-| **What it cannot tell** | Causation: a player already inclined to return more may also be more likely to play the daily, so a higher cohort-A fraction is correlational, not proof the daily caused the return. `sessionIndex` counts cold starts, not calendar days — two cold starts on the same day both increment it, so "sessionIndex ≥ 2 higher" is not by itself "came back on a later day"; the calendar-date check on `TelemetryEnvelope.ts` is required and is part of the computation above, not optional. Per the Auto Backup note, a device-swap install keeps its `sessionIndex` history, so a restored install's "return" is not distinguishable from the original device's — this cannot inflate cohort A vs B differently, since restore is independent of daily-clearing, but it is still a source of noise this row cannot separate out. |
+| **What it cannot tell** | Causation: a player already inclined to return more may also be more likely to play the daily, so a higher cohort-A fraction is correlational, not proof the daily caused the return. `sessionIndex` counts cold starts, not calendar days, which is exactly why the return check above uses `ts` and calendar dates exclusively rather than any `sessionIndex` comparison — a player who clears the daily in session k and reopens once, the next calendar day, in session k+1 is counted as returning, because the check is "a later calendar date," not "sessionIndex ≥ 2 higher" (an earlier draft of this row used that offset; it undercounted anyone who only opens the app once a day). Per the Auto Backup note, a device-swap install keeps its `sessionIndex`/`ts` history, so a restored install's "return" is not distinguishable from the original device's — this cannot inflate cohort A vs B differently, since restore is independent of daily-clearing, but it is still a source of noise this row cannot separate out. |
 
 ### Row 5 — Ads: shown vs not-ready vs killed per placement
 
@@ -137,6 +149,7 @@ Every field named above, grepped directly in `src/telemetry/events.ts`:
 | `app_open.cold` | yes — line 57 |
 | `TelemetryEnvelope.sessionIndex` | yes — line 153 |
 | `TelemetryEnvelope.ts` | yes — line 151 |
+| `level_start.levelIndex` | yes — line 66 |
 | `level_end.levelIndex` | yes — line 73 |
 | `level_end.outcome` | yes — line 75 |
 | `level_end.taps` | yes — line 76 |
