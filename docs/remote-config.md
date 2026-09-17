@@ -76,6 +76,19 @@ A perf-harness build (`EXPO_PUBLIC_PERF_LEVEL` set) never makes the request.
   Otherwise it starts on the next timed or app-active init retry, or on the next cold start.
 - The measured time from publish to device is W6-03's to record here, against the real host.
 
+## Observed on the Android emulator (W6-02, local server, not the real host)
+
+- **Release builds block cleartext.** A release build fetching `http://localhost:8787/…` failed with
+  `CLEARTEXT communication to localhost not permitted by network security policy`. The real URL
+  must be HTTPS. The W6-02 flip used a diagnostic build with a temporary, uncommitted
+  `usesCleartextTraffic` manifest edit.
+- **The Android request is revalidated.** From the second cold start on, the local server logged
+  `304` for the app's request, and the app still read the full body (its version was compared and
+  ignored). So React Native's Android networking keeps an HTTP cache and sends a conditional request.
+  W6-03's headers (`max-age=0, must-revalidate`) therefore still cost one request per cold start.
+  The response to that request is small (INFERRED from the local server log, not measured on the
+  real CDN).
+
 ## Recovery and rollback
 
 - **Stuck kill** (for example the host was deleted after a kill was published): devices keep the
