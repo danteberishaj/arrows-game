@@ -1,5 +1,6 @@
 import { BoardLogic } from '../boardLogic';
 import { Difficulties, Difficulty } from '../difficulty';
+import { DotNetRandom } from '../dotnetRandom';
 import { LevelGenerator } from '../levelGenerator';
 import { ShapeLibrary } from '../shapeLibrary';
 
@@ -157,4 +158,136 @@ test.each([
   const level = LevelGenerator.generate(index);
   const lines = level.board.arrows().map((arrow) => arrow.toLine());
   expect(checksumLines(lines)).toBe(expected);
+});
+
+// ---- W3-02: wide fill/solve net + whole-corpus fingerprint ----------------
+//
+// The five golden checksums above only cover Crown, Heart, Crescent, Flower
+// and Butterfly boards. An edit to any other shape (Bolt, Square, any
+// Normal-pool shape, ...) would change a real player's board at that level
+// and still pass every test above it. The tests below widen the net to the
+// whole early corpus and every shape at every clamp-relevant size, so ANY v1
+// output drift fails loudly.
+
+const V1_CORPUS_SIZE = 300;
+
+test('v1 corpus fingerprint: levels 0-299 serialize identically forever', () => {
+  // One checksum over shapeName, rows, cols and every arrow's serialized line,
+  // for every level a player at 1..300 can be dealt. Reuses checksumLines
+  // (defined above) so it hashes exactly like the golden per-level checksums.
+  const lines: string[] = [];
+  for (let i = 0; i < V1_CORPUS_SIZE; i++) {
+    const lvl = LevelGenerator.generate(i);
+    lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
+    for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
+  }
+  // Computed EXECUTED on commit da93dcd (pre-W3, before any W3 code change),
+  // directly against that commit's source in an isolated worktree, and cross-
+  // checked identical on the current HEAD (the only diff between da93dcd and
+  // HEAD in the core module is the additive, output-inert `targetCells` field
+  // — see W3-02.md). v1 is frozen; never re-pin this value.
+  expect(checksumLines(lines)).toBe('d01abbd8');
+});
+
+/**
+ * Fills, bounds/overlap-checks and greedily solves `count` consecutive level
+ * indices for the given generator version, in ONE pass per level: the same
+ * greedy loop that clears the board also counts the removals, so there is no
+ * second O(n^2) scan just to get a count.
+ */
+function sweep(version: number, count: number): void {
+  if (version !== 1) throw new Error(`sweep: generator version ${version} is not wired up yet`);
+
+  for (let i = 0; i < count; i++) {
+    const lvl = LevelGenerator.generate(i);
+    const board = lvl.board;
+
+    for (let r = 0; r < board.rows; r++) {
+      for (let c = 0; c < board.cols; c++) {
+        if (!board.isEmpty(r, c) !== lvl.mask[r][c]) {
+          throw new Error(`v${version} level ${i} (${lvl.shapeName}): fill != mask at ${r},${c}`);
+        }
+      }
+    }
+
+    const seen = new Set<string>();
+    for (const a of board.arrows()) {
+      for (const cell of a.cells) {
+        if (!board.inBounds(cell.r, cell.c)) {
+          throw new Error(`v${version} level ${i} (${lvl.shapeName}): cell out of bounds at ${cell.r},${cell.c}`);
+        }
+        const key = `${cell.r},${cell.c}`;
+        if (seen.has(key)) throw new Error(`v${version} level ${i} (${lvl.shapeName}): arrows overlap at ${key}`);
+        seen.add(key);
+      }
+    }
+
+    let removals = 0;
+    let progress = true;
+    while (progress && !board.isCleared()) {
+      progress = false;
+      for (const a of [...board.arrows()]) {
+        if (board.tryRemove(a)) {
+          removals++;
+          progress = true;
+          break;
+        }
+      }
+    }
+    if (!board.isCleared()) {
+      throw new Error(`v${version} level ${i} (${lvl.shapeName}): dead end, ${removals}/${lvl.arrowCount} removed`);
+    }
+    if (removals !== lvl.arrowCount) {
+      throw new Error(
+        `v${version} level ${i} (${lvl.shapeName}): solved in ${removals} removals, expected ${lvl.arrowCount}`,
+      );
+    }
+  }
+}
+
+test('sweep: 300 consecutive v1 levels fill exactly, never overlap and greedy-solve to empty', () => {
+  sweep(1, V1_CORPUS_SIZE);
+});
+
+// Mirrors levelGenerator.ts's own board-sizing math (roundHalfToEven + the
+// 4..46 clamp) rather than the coarser Math.round approximation the existing
+// "every shape in every pool" test above uses, so `cols` here is exactly what
+// a real generated board would use at that `rows`.
+function roundHalfToEven(v: number): number {
+  const floor = Math.floor(v);
+  const diff = v - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () => {
+  // 46 is the upper rows clamp at levelGenerator.ts:65. 12 and 24 sample a
+  // small and mid-size board so thin features (crescent horns, bolt tips,
+  // crown valleys) are exercised well below and at the existing 24-row test.
+  const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
+  const cfg = Difficulties.config(Difficulty.Normal);
+
+  for (const rows of [12, 24, 46]) {
+    for (const shape of all) {
+      const cols = clamp(roundHalfToEven(rows * shape.aspect), 4, 46);
+      const mask = shape.rasterize(rows, cols);
+      const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(1234));
+
+      const board = new BoardLogic(rows, cols);
+      for (const a of arrows) board.add(a);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (!board.isEmpty(r, c) !== mask[r][c]) {
+            throw new Error(`${shape.name} rows=${rows}: fill != mask at ${r},${c}`);
+          }
+        }
+      }
+      if (!solveGreedy(board)) throw new Error(`${shape.name} rows=${rows}: not solvable`);
+    }
+  }
 });
