@@ -27,7 +27,7 @@ Level rows for displayed levels 1-1 (index 0-0)
 
 | level | index | tier | shape | rows×cols | mask cells | arrows | targetCells | clearable@0 | clearable% | scanTaps | blockedTaps | minClearable | worst n/k | bend% | meanLen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0 | Normal | Circle | 20×20 | 264 | 60 | 266 | 19 | 31.7% | 142 | 82 | 1 | 39/10 | 66.7% | 4.40 |
+| 1 | 0 | Normal | Circle | 20×20 | 264 | 60 | 266 | 19 | 31.7% | 142 | 82 | 2 | 39/10 | 66.7% | 4.40 |
 ```
 
 Matches W1.md's independently-executed header exactly: 60 arrows, 19
@@ -42,7 +42,7 @@ Level rows for displayed levels 12-12 (index 11-11)
 
 | level | index | tier | shape | rows×cols | mask cells | arrows | targetCells | clearable@0 | clearable% | scanTaps | blockedTaps | minClearable | worst n/k | bend% | meanLen |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 12 | 11 | Super Hard | Bolt | 46×37 | 202 | 54 | 560 | 30 | 55.6% | 79 | 25 | 1 | 53/29 | 53.7% | 3.74 |
+| 12 | 11 | Super Hard | Bolt | 46×37 | 202 | 54 | 560 | 30 | 55.6% | 79 | 25 | 2 | 53/29 | 53.7% | 3.74 |
 ```
 
 Matches the brief's Context exactly: Super Hard/Bolt, 46×37, 54 arrows,
@@ -415,8 +415,11 @@ since the mode exists and is exercised here for the first time.
   reverse-engineered: `worst n/k` is the (n, k) pair with the largest
   n/k ratio seen during the walk (the single worst-case look-count state);
   `minClearable` is the smallest number of simultaneously clearable arrows
-  seen at any state. Both are informational columns, not load-bearing for
-  any later task's acceptance criteria as of this writing.
+  seen at any state **with more than one arrow remaining** (see "Fix round
+  1" below — the original v1 definition included the trivial n=1 final
+  state and was constant by construction). Both are informational columns,
+  not load-bearing for any later task's acceptance criteria as of this
+  writing.
 - **`--tier-report`'s pairwise overlap.** Not given explicit target values
   either; implemented as the overlapping arrow-count integer range between
   each pair of tiers (see above), which is enough to answer the tier
@@ -435,3 +438,50 @@ since the mode exists and is exercised here for the first time.
 - `npx tsc --noEmit`: clean.
 - `git status --porcelain`: clean apart from this doc itself at the time of
   the code commit.
+
+## Fix round 1 (task-review finding, 2026-09-17)
+
+**Finding:** `minClearable` (`difficulty-probe.ts:240`) took the minimum `k`
+over every walk state, including the walk's last state, which always has
+`n=1, k=1` (the final arrow must be clearable or the walk's own
+reconciliation check would already have thrown). So `minClearable` was `1`
+for every level by construction — not a measurement. EXECUTED reproduction
+of the finding, before the fix, at commit `14b20e2` (this task's own code
+commit): `npx tsx scripts/analysis/difficulty-probe.ts --version 1 --levels
+1-1000 --json`, histogram of `minClearable` over the 1000 rows = `{"1":
+1000}`.
+
+**Fix:** exclude the degenerate `n=1` state from the minimum — `minClearable`
+is now the fewest simultaneously-clearable arrows seen at any state with
+`n > 1`, i.e. the tightest real bottleneck a uniform-sampling player would
+have faced before the forced last pick. `worst n/k` needed no change: it
+takes the *largest* n/k ratio, and the trivial n=1,k=1 state (ratio 1) is
+never the maximum, so it was never degenerate (EXECUTED: worstK==1 on only
+6 of the same 1000 levels).
+
+EXECUTED after the fix, same command:
+`npx tsx scripts/analysis/difficulty-probe.ts --version 1 --levels 1-1000
+--json` → histogram `{"1": 88, "2": 912}`. The column now varies.
+
+Landmark rows re-run (EXECUTED, same three commands as "Landmark levels"
+above, only the `minClearable` column changes):
+
+| level | before | after |
+|---|---|---|
+| 1 | 1 | 2 |
+| 12 | 1 | 2 |
+| 168 | 1 | 1 (unchanged — level 168 genuinely has a state with `n>1, k=1`) |
+
+**Covering tests:** none exist for this script (per the brief's Verification
+section 3, "TDD: none for a measurement script"; unchanged by this fix — no
+jest suite imports `scripts/analysis/`). Verification is the same
+exact-reproduction method the brief specifies: re-running the probe and
+reading its output, done above. Gates re-run after the fix: `npx tsc
+--noEmit` clean; `npx jest src/core` 4 suites / 90 tests pass; `npx jest`
+(full suite) 23 suites / 501 tests pass — both unchanged from before the fix,
+since the fix touches only `difficulty-probe.ts`, which no jest suite
+collects.
+
+No other finding in this round required a code or doc change beyond what is
+described above — see `docs/next-level/reports/W3-01.md`'s "Fix round 1"
+section for the disposition of all four findings.

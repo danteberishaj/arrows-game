@@ -74,7 +74,7 @@ interface LevelRow {
   clearablePct: number;
   scanTaps: number;
   blockedTaps: number;
-  minClearable: number;
+  minClearable: number; // min k over states with n > 1; see buildRow's comment
   worstN: number;
   worstK: number;
   bendRate: number; // 0..1, share of arrows with >= 1 direction change
@@ -237,7 +237,17 @@ function buildRow(index: number, viewport: Viewport | null): LevelRow {
       }
     }
     if (removals === 0) clearableAtDeal = k;
-    if (k < minClearable) minClearable = k;
+    // Every walk's LAST state has exactly n=1, k=1 by construction (the
+    // final arrow must be clearable or the walk would have thrown above),
+    // so a min-over-all-states definition is 1 for every level — not a
+    // measurement (fix round 1, task-review finding on scripts/analysis/
+    // difficulty-probe.ts:240: EXECUTED --levels 1-1000 --json gave the
+    // histogram {1: 1000}). Excluding that degenerate n=1 state lets the
+    // column vary: it is the fewest simultaneously-clearable arrows seen at
+    // any state that still has more than one arrow left, i.e. the tightest
+    // real bottleneck a uniform-sampling player would have faced before the
+    // forced last pick.
+    if (n > 1 && k < minClearable) minClearable = k;
     const ratio = k > 0 ? n / k : Infinity;
     if (ratio > worstRatio) { worstRatio = ratio; worstN = n; worstK = k; }
 
@@ -274,6 +284,8 @@ function buildRow(index: number, viewport: Viewport | null): LevelRow {
     clearablePct: (clearableAtDeal / arrowCount) * 100,
     scanTaps,
     blockedTaps,
+    // Infinity only if arrowCount <= 1 (no state ever had n > 1); not hit by
+    // any level in the committed baseline ranges (min arrowCount is 47).
     minClearable: minClearable === Infinity ? 0 : minClearable,
     worstN,
     worstK,
