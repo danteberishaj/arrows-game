@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -85,6 +85,62 @@ const PRESS_PREVIEW_DELAY_MS = 64;
 const RUBBER_BAND_C = 0.55;
 const PERF_NO_EXIT_TRAILS =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_NO_EXIT_TRAILS === '1';
+
+/**
+ * W6-01 measurement hook: times every rebuild of the native visibility mask
+ * and logs `[mask] …` summary lines (docs/perf-mask-rebuild-2026-09-17.md).
+ * Expo inlines EXPO_PUBLIC_* at build time, so a build without the variable
+ * sees `undefined === '1'`, and the minifier drops the timed branch and its
+ * log text (checked by grepping an `expo export` bundle for `[mask]`).
+ */
+const PERF_MASK_TIMING = process.env.EXPO_PUBLIC_PERF_MASK_TIMING === '1';
+const MASK_TIMING_LOG_EVERY = 50;
+/**
+ * A PERF run force-stops the app between samples, so the board never
+ * unmounts and a blocked-tap sample makes only 3 rebuilds. Log once the
+ * rebuilds have been quiet this long: after both rebuilds of a blocked tap
+ * (300 + 40 ms apart) and after the harness's 540 ms frame window.
+ */
+const MASK_TIMING_QUIET_LOG_MS = 750; // OWNER-PICKED STARTING VALUE
+const maskTimingAllMs: number[] = [];
+let maskTimingUnloggedMs: number[] = [];
+let maskTimingClockStepMs = Infinity;
+let maskTimingQuietTimer: ReturnType<typeof setTimeout> | null = null;
+
+function logMaskTiming(reason: 'every-50' | 'quiet' | 'unmount'): void {
+  if (maskTimingUnloggedMs.length === 0) return;
+  const sorted = [...maskTimingAllMs].sort((a, b) => a - b);
+  const at = (p: number) => sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)];
+  const ms = (value: number | undefined) => value === undefined ? 'none' : value.toFixed(4);
+  console.log(
+    `[mask] n=${sorted.length} min=${ms(sorted[0])} ` +
+    `minNonZero=${ms(sorted.find((value) => value > 0))} median=${ms(at(0.5))} ` +
+    `p95=${ms(at(0.95))} max=${ms(sorted[sorted.length - 1])} ` +
+    `clockStep=${maskTimingClockStepMs.toFixed(6)} reason=${reason} ` +
+    `new=${maskTimingUnloggedMs.map((value) => value.toFixed(4)).join(',')}`,
+  );
+  maskTimingUnloggedMs = [];
+}
+
+function timeMaskBuild(build: () => string): string {
+  const start = performance.now();
+  const mask = build();
+  const elapsedMs = performance.now() - start;
+  maskTimingAllMs.push(elapsedMs);
+  maskTimingUnloggedMs.push(elapsedMs);
+  // Timer floor: the smallest step this clock can report.
+  const probe = performance.now();
+  let next = performance.now();
+  while (next === probe) next = performance.now();
+  maskTimingClockStepMs = Math.min(maskTimingClockStepMs, next - probe);
+  if (maskTimingAllMs.length % MASK_TIMING_LOG_EVERY === 0) logMaskTiming('every-50');
+  if (maskTimingQuietTimer !== null) clearTimeout(maskTimingQuietTimer);
+  maskTimingQuietTimer = setTimeout(() => {
+    maskTimingQuietTimer = null;
+    logMaskTiming('quiet');
+  }, MASK_TIMING_QUIET_LOG_MS);
+  return mask;
+}
 
 export interface BoardViewProps {
   board: BoardLogic;
@@ -663,9 +719,17 @@ function BoardContent(props: {
     [arrowArtCache],
   );
   const nativeVisibilityMask = useMemo(
-    () => arrowArtCache.visibilityMask(arrows, excludedArrows),
+    PERF_MASK_TIMING
+      ? () => timeMaskBuild(() => arrowArtCache.visibilityMask(arrows, excludedArrows))
+      : () => arrowArtCache.visibilityMask(arrows, excludedArrows),
     [arrows, arrowArtCache, arrowCount, excludedArrows],
   );
+  if (PERF_MASK_TIMING) {
+    // PERF_MASK_TIMING is a build-time constant, so the hook order never
+    // changes within one bundle.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => () => logMaskTiming('unmount'), []);
+  }
   const hasDynamicLayer =
     shaking !== null ||
     hint !== null ||

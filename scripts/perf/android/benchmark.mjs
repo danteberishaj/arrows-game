@@ -119,6 +119,8 @@ export function parseArgs(argv, env = process.env) {
   let phasesGiven = false;
   const options = {
     perfScreen,
+    // W6-01: build-time JS timer around the native visibility-mask memo.
+    perfMaskTiming: env.EXPO_PUBLIC_PERF_MASK_TIMING === '1',
     serial: 'emulator-5556',
     avd: 'fleet_floor_api31',
     api: 31,
@@ -254,6 +256,9 @@ export function benchmarkConfiguration(options) {
       // Caller-supplied APK: the screen is the one the caller built with; the
       // run checks it on the device before measuring (validateScreen).
       perfScreen: options.perfScreen,
+      // The caller's value; whether the APK really has the timer shows in
+      // logcat `[mask]` lines (docs/perf-mask-rebuild-2026-09-17.md).
+      perfMaskTiming: options.perfMaskTiming,
       configurationVerifiedFromFreshBuild: false,
       nativePrebuildRecreated: false,
       productionRenderer: null,
@@ -290,6 +295,7 @@ export function benchmarkConfiguration(options) {
     EXIT_ANIMATION_DURATION_MS === 180;
   return {
     perfScreen: options.perfScreen,
+    perfMaskTiming: options.perfMaskTiming,
     configurationVerifiedFromFreshBuild: true,
     nativePrebuildRecreated: !options.skipPrebuild,
     productionRenderer,
@@ -452,6 +458,7 @@ export function perfBuildEnv(options, env = process.env) {
       String(EXIT_ANIMATION_DURATION_MS),
     EXPO_PUBLIC_PERF_FEEDBACK: options.feedback ? '1' : '0',
     EXPO_PUBLIC_PERF_SCREEN: options.perfScreen,
+    EXPO_PUBLIC_PERF_MASK_TIMING: options.perfMaskTiming ? '1' : '0',
   };
 }
 

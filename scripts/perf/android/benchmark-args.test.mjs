@@ -65,6 +65,23 @@ test('benchmarkConfiguration records perfScreen for fresh builds and caller APKs
   );
 });
 
+test('EXPO_PUBLIC_PERF_MASK_TIMING is forwarded explicitly and recorded (W6-01)', () => {
+  const off = parseArgs([], {});
+  const on = parseArgs([], { EXPO_PUBLIC_PERF_MASK_TIMING: '1' });
+  // Explicit '0' when unset: a value left in the caller's shell cannot leak in.
+  assert.equal(perfBuildEnv(off, {}).EXPO_PUBLIC_PERF_MASK_TIMING, '0');
+  assert.equal(perfBuildEnv(off, { EXPO_PUBLIC_PERF_MASK_TIMING: '1' }).EXPO_PUBLIC_PERF_MASK_TIMING, '0');
+  assert.equal(perfBuildEnv(on, {}).EXPO_PUBLIC_PERF_MASK_TIMING, '1');
+  assert.equal(benchmarkConfiguration(off).perfMaskTiming, false);
+  assert.equal(benchmarkConfiguration(on).perfMaskTiming, true);
+  assert.equal(
+    benchmarkConfiguration(parseArgs(['--skip-build'], { EXPO_PUBLIC_PERF_MASK_TIMING: '1' })).perfMaskTiming,
+    true,
+  );
+  // Only the value '1' turns the timer on, matching the app's own check.
+  assert.equal(parseArgs([], { EXPO_PUBLIC_PERF_MASK_TIMING: 'true' }).perfMaskTiming, false);
+});
+
 test('--motion-scale defaults to 0 so historical runs stay comparable, and accepts only 0 or 1', () => {
   assert.equal(parseArgs([], {}).motionScale, 0);
   assert.equal(parseArgs(['--motion-scale', '1'], {}).motionScale, 1);
