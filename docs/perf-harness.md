@@ -97,7 +97,8 @@ Both stamp `environment.motionDiagnostic`. Never quote a number from such a run.
   for each phase `ran`, `passed`, the measured values and the floor. A failing check sets exit code 3.
   Evidence files go to `artifacts/captures/<label>/`.
 - **`blocked`:** board-region changed pixels, pre-phase screencap vs a screencap ~160 ms after an
-  `input tap` on cell (35,19), must be **> 12 px**.
+  `input tap` on cell (35,19), must be **> 28 px** (fitted on two cells, held out on a third; see the
+  calibration doc for the limits of that claim).
 - **`exit`:** in a 2 s recording, the centroid of trail pixels (drawn outside the removed arrow's
   footprint) must travel **> 1 recording px** along the arrow's exit direction. The trail floor is
   36 px. The plain changed-pixel fraction is reported next to it, because a stationary fade changes

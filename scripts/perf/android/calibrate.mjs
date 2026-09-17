@@ -4,7 +4,7 @@
 //
 //   node scripts/perf/android/calibrate.mjs recorder --apk <perf.apk> [--n 5] --out <dir>
 //   node scripts/perf/android/calibrate.mjs idle     --apk <perf.apk> --out <dir>
-//   node scripts/perf/android/calibrate.mjs blocked-pairs --apk <apk> --set A|B|B0|C --motion-scale 0|1 [--n 10] --out <dir>
+//   node scripts/perf/android/calibrate.mjs blocked-pairs --apk <apk> --set A|B|B0|C --motion-scale 0|1 [--n 10] [--cell row,col] --out <dir>
 //   node scripts/perf/android/calibrate.mjs menu-pairs --apk <menu.apk> --motion-scale 0|1 [--n 10] --out <dir>
 //   node scripts/perf/android/calibrate.mjs exit-recordings --apk <apk> --set A|B|B0|C --motion-scale 0|1 [--n 10] --out <dir>
 //
@@ -47,9 +47,28 @@ function log(message) {
   process.stderr.write(`[calibrate] ${message}\n`);
 }
 
-function parseCli(argv) {
+/** The blocked cell the Stage E gate taps (benchmark.mjs runAssertRendered). Other cells are held-out checks. */
+export const DEFAULT_BLOCKED_CELL = [35, 19];
+
+function parseCell(text) {
+  const match = /^(\d+),(\d+)$/.exec(text ?? '');
+  if (!match) throw new Error(`--cell <row,col> expects two non-negative integers, got ${text}`);
+  return [Number(match[1]), Number(match[2])];
+}
+
+export function parseCalibrateArgs(argv) {
   const [command, ...rest] = argv;
-  const options = { command, n: null, apk: null, set: null, motionScale: null, out: null, serial: 'emulator-5556' };
+  const options = {
+    command,
+    n: null,
+    apk: null,
+    set: null,
+    motionScale: null,
+    out: null,
+    serial: 'emulator-5556',
+    cell: DEFAULT_BLOCKED_CELL,
+    cellExplicit: false,
+  };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     const value = () => {
@@ -63,7 +82,10 @@ function parseCli(argv) {
     else if (arg === '--motion-scale') options.motionScale = parseMotionScale(value());
     else if (arg === '--out') options.out = resolve(value());
     else if (arg === '--serial') options.serial = value();
-    else throw new Error(`Unknown option: ${arg}`);
+    else if (arg === '--cell') {
+      options.cell = parseCell(rest[++index]);
+      options.cellExplicit = true;
+    } else throw new Error(`Unknown option: ${arg}`);
   }
   if (!options.out) throw new Error('--out <dir> is required');
   return options;
@@ -226,9 +248,11 @@ async function blockedPairs(session, options) {
   for (let i = 1; i <= n; i += 1) {
     const motion = session.launch(options.motionScale);
     const { context, headerBottom } = await boardGeometry(session);
-    const point = bench.cellCenter(context.bounds, 35, 19, plan.rows, plan.cols);
-    const prePath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-pre.png`);
-    const midPath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-mid.png`);
+    const [row, col] = options.cell;
+    const point = bench.cellCenter(context.bounds, row, col, plan.rows, plan.cols);
+    const stem = `blocked-${options.set}-s${options.motionScale}${options.cellExplicit ? `-cell${row}-${col}` : ''}-${i}`;
+    const prePath = join(options.out, `${stem}-pre.png`);
+    const midPath = join(options.out, `${stem}-mid.png`);
     const { timingMs, board, screen } = await probeBlockedPair(session.adb, session.serial, {
       bounds: context.bounds,
       headerBottom,
@@ -257,7 +281,7 @@ async function blockedPairs(session, options) {
       rmSync(midPath);
     }
   }
-  return { subcommand: 'blocked-pairs', set: options.set, motionScale: options.motionScale, midPhaseDelayS: MID_PHASE_DELAY_S, samples };
+  return { subcommand: 'blocked-pairs', set: options.set, motionScale: options.motionScale, cell: options.cell, midPhaseDelayS: MID_PHASE_DELAY_S, samples };
 }
 
 /**
@@ -429,8 +453,20 @@ async function exitRecordings(session, options) {
   return { subcommand: 'exit-recordings', set: options.set, motionScale: options.motionScale, secondFrameOffsetMs: EXIT_SECOND_FRAME_OFFSET_MS, footprintDilatePx: EXIT_FOOTPRINT_DILATE_PX, samples };
 }
 
+/** `<subcommand>[-<set>][-s<scale>][-cell<row>-<col>]`: a held-out cell never overwrites the gate cell's JSON. */
+export function calibrationOutputName(options) {
+  return [
+    options.command,
+    options.set,
+    options.motionScale === null ? null : `s${options.motionScale}`,
+    options.cellExplicit ? `cell${options.cell[0]}-${options.cell[1]}` : null,
+  ]
+    .filter((part) => part !== null && part !== undefined)
+    .join('-');
+}
+
 async function main() {
-  const options = parseCli(process.argv.slice(2));
+  const options = parseCalibrateArgs(process.argv.slice(2));
   mkdirSync(options.out, { recursive: true });
   const session = new Session(options);
   const commands = {
@@ -449,10 +485,7 @@ async function main() {
     throw new Error('--motion-scale is required');
   }
   const result = { ...session.header(), argv: process.argv.slice(2), ...(await run(session, options)) };
-  const name = [options.command, options.set, options.motionScale === null ? null : `s${options.motionScale}`]
-    .filter((part) => part !== null && part !== undefined)
-    .join('-');
-  const path = join(options.out, `${name}.json`);
+  const path = join(options.out, `${calibrationOutputName(options)}.json`);
   writeFileSync(path, `${JSON.stringify(result, null, 2)}\n`);
   log(`wrote ${path}`);
 }

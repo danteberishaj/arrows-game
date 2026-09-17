@@ -123,14 +123,58 @@ redraw. The brief names the base APK at scale 0 as a valid non-rendering control
 non-rendering control must be the base APK or set B"). B0 is that control, measured as its own
 n = 10 set. The Stage E runs below are fresh samples, not these ten.
 
-**`board` floor, arithmetic:** max(A ∪ B ∪ B0) = 6 px, spread of A ∪ B ∪ B0 = 6 − 0 = 6 px, so
-floor = 6 + 6 = **12 px (fraction 2.93e-6)**. The gate passes only when **changed px > 12**.
+**Superseded floor (fix round 1).** The first floor was fitted on cell (35,19) only:
+max(A ∪ B ∪ B0) = 6 px + spread 6 px = 12 px. A held-out check on another cell disproved it (next
+subsection): the base APK at scale 0 changes **14 px** on cell (31,14), so a 12 px floor passes the
+reduce-motion blackout there.
 
-- Set B's maximum is 0, which is not > 12, so **set B does not pass**.
-- B0's maximum is 6, which is not > 12, so **B0 does not pass**.
-- Set C's minimum is 2933 px > 12.
+### Held-out cells (fix round 1)
 
-**A/B/B0 and C separate by a factor of 244.**
+Command: `node scripts/perf/android/calibrate.mjs blocked-pairs --apk artifacts/P-02/apk/base-da93dcd-perf.apk --set <B0|C> --motion-scale <0|1> --n <10|3> --cell <row,col> --out artifacts/P-02/fix1/heldout`.
+Same base APK `fea8a939…`, same procedure as above, a force-stop and relaunch before each sample.
+The read-back scales were `0 0 0` for every B0 sample and `1 1 1` for every C sample. The gap from
+input end to the mid screencap was 158–191 ms. Cells (31,14) and (30,21) are the other two blocked
+arrows in `validateWorkload` (`benchmark.mjs`). Raw JSON is `artifacts/P-02/fix1/heldout/*.json`, and
+the summary is `artifacts/P-02/fix1/heldout-summary.txt`.
+
+The protocol was written down in `artifacts/P-02/fix1/PREREGISTRATION.txt` after the (31,14) B0
+samples and **before any (30,21) sample was taken**: refit on (35,19) and (31,14), then test on
+(30,21), with no second refit.
+
+| cell | role | set | scale | board changed px, raw | min / median / max |
+|---|---|---|---|---|---|
+| (35,19) | fitted (Stage D above) | B0 | 0 | 6 ×10 | 6 / 6 / 6 |
+| (31,14) | fitted (fix round 1) | B0 | 0 | 14, 14, 14, 14, 14, 14, 14, 14, 14, 14 | 14 / 14 / 14 |
+| (31,14) | positive control | C | 1 | 3075, 3077, 3171 | 3075 / 3077 / 3171 |
+| (30,21) | **held out** | B0 | 0 | 9, 9, 9, 9, 9, 9, 9, 9, 9, 9 | 9 / 9 / 9 |
+| (30,21) | **held out** positive control | C | 1 | 5163, 5144, 5167 | 5144 / 5163 / 5167 |
+
+Where the scale-0 pixels are (EXECUTED pixel listing, cause INFERRED):
+- (31,14): one column, x = 653, y 2106–2125, deltas 27–46. That is the edge of the tapped arrow's
+  head.
+- (30,21): 9 px at the corners of the tapped arrow, deltas 29–88.
+
+Both fit the antialiasing redraw already seen on (35,19). The count depends on the arrow's
+geometry, so it differs per cell but is identical within a cell across 10 fresh launches.
+
+**`board` floor, arithmetic:** max(A ∪ B ∪ B0(35,19) ∪ B0(31,14)) = 14 px, spread of that union =
+14 − 0 = 14 px, so floor = 14 + 14 = **28 px (fraction 6.84e-6)**. The gate passes only when
+**changed px > 28**.
+
+- Set B's maximum is 0, which is not > 28, so **set B does not pass**.
+- The fitted B0 maxima are 6 and 14, not > 28, so **B0 does not pass on either fitted cell**.
+- **Held out:** B0 on (30,21) is 9 px, not > 28, so the gate **FAILS the blackout on a cell it was
+  not fitted to**. C on (30,21) is ≥ 5144 px > 28, so it **PASSES** there.
+- Set C's minimum on any cell is 2933 px > 28.
+
+**A/B/B0 and C separate by a factor of about 105** (2933 ÷ 28).
+
+**Limits of the held-out claim:**
+- The held-out evidence is **one cell** of one level (3827) on this emulator. Each cell's count is
+  deterministic, so the 10 samples are one value, measured 10 times.
+- The held-out margin is 9 px against a 28 px floor.
+- A level, arrow shape or redraw path that repaints more than 28 px of antialiasing without drawing
+  the effect would still pass. The gate itself always taps (35,19) on level 3827.
 
 **`screen` region: does not separate for a blocked tap.** Floor = max(A ∪ B ∪ B0) + spread =
 3758 + (3758 − 0) = 7516 px, and C's maximum is 7259 px. The lost heart pip is as large as the
@@ -233,9 +277,11 @@ the calibration samples.
 
 | # | APK | read-back scales | phase | measured | floor | expected | outcome |
 |---|---|---|---|---|---|---|---|
-| 1 | base `fea8a939` | 1 1 1 | blocked | 2944 board px | > 12 px | PASS | **PASS** |
-| 2 | base `fea8a939` | 0 0 0 | blocked | 6 board px | > 12 px | FAIL (reduce-motion blackout) | **FAIL** |
-| 3 | base empty board `46c57ef7` (B control) | 1 1 1 | blocked | 0 board px | > 12 px | FAIL | **FAIL** |
+| 1 | base `fea8a939` | 1 1 1 | blocked | 2944 board px (fix round 1 re-run: 3008) | > 28 px | PASS | **PASS** |
+| 2 | base `fea8a939` | 0 0 0 | blocked | 6 board px (fix round 1 re-run: 6) | > 28 px | FAIL (reduce-motion blackout) | **FAIL**, calibration-fitted (see below) |
+| 3 | base empty board `46c57ef7` (B control) | 1 1 1 | blocked | 0 board px | > 28 px | FAIL | **FAIL** |
+| 2h | base `fea8a939` | 0 0 0 | blocked, **held-out cell (30,21)** | 9 board px ×10 | > 28 px | FAIL (reduce-motion blackout) | **FAIL** (held out) |
+| 1h | base `fea8a939` | 1 1 1 | blocked, **held-out cell (30,21)** | 5144–5167 board px ×3 | > 28 px | PASS | **PASS** (held out) |
 | 4 | base `fea8a939` | 1 1 1 | exit | displacement 180.3 px up; changed fraction 1.156e-3 | > 1 px; > 0 | PASS | **PASS** |
 | 5 | base `fea8a939` | 0 0 0 | exit | displacement **0 px** (moved check FAIL); changed fraction **9.879e-4 > 0** | > 1 px; > 0 | FAIL on the moved check while pixels change | **FAIL (moved), changed fraction above floor** |
 | 6 | base empty board `46c57ef7` (B control) | 1 1 1 | exit | displacement 0 px; changed fraction 0 | > 1 px; > 0 | FAIL | **FAIL** |
@@ -243,8 +289,27 @@ the calibration samples.
 Row 5 is the alpha-fade trap. A changed-pixel gate would pass it (9.879e-4 > 0), and the moved check
 catches it.
 
+**Fix round 1: what each blocked row proves.**
+- **Row 2 is calibration-fitted, not held out.** Its condition (base APK, scale 0, cell (35,19)) is
+  exactly set B0 on the fitted cell, and the count is deterministic (6 px in all 10 B0 samples and in
+  both gate runs). It fails by construction.
+- **Rows 2h and 1h are the held-out evidence**, on a cell that was not used to fit the floor. They
+  come from `calibrate.mjs blocked-pairs --cell 30,21` (the same `probeBlockedPair` the gate runs),
+  with the same limits as in "Held-out cells" above.
+- **Floor raised from 12 to 28 px.** Rows 1 and 2 were re-run end to end through the gate with the
+  new floor: `npm run perf:android -- --feedback --skip-build --apk artifacts/P-02/apk/base-da93dcd-perf.apk --runs 1 --warmups 0 --phases blocked --motion-scale <0|1> --assert-rendered blocked --label P-02-fix1-E1-base-scale<s>`.
+  - scale 0: `FAIL (changed 6 px vs floor 28)`, exit code 3;
+  - scale 1: `PASS (changed 3008 px vs floor 28)`, exit code 0;
+  - `artifacts/P-02/fix1/E1-fix1-*.json|log`.
+- **Row 3 is re-scored, not re-run.** Its 0 px measurement is unchanged by the floor, because the
+  blocked probe never reads the floor.
+- **The exit rows do not rest on B0.** The saved row-5 `exit.mp4` was re-scored at trail floor 0 and
+  gives displacement **0 px**, the same as at the 36 px floor. Row 4's recording gives 518.4 px at
+  trail floor 0 and 180.3 px at 36 (`artifacts/P-02/fix1/exit-rescore-trail-floor.txt`). B0 only
+  removes the tail artefact from the scale-1 displacement. The scale-0 moved FAIL holds without it.
+
 **Flip check (W0-04 evidence shape, not a P-02 criterion).** The HEAD PERF APK `3f3afaa8` (with the
-W0-04 reduce-motion fix) at read-back `0 0 0`, blocked: **PASS, 2735 board px > 12**
+W0-04 reduce-motion fix) at read-back `0 0 0`, blocked: **PASS, 2735 board px > 28** (re-scored from the 12 px run)
 (`artifacts/P-02/stageE/E-head-scale0-flip-check.json`). The static equivalent is drawn, so the gate
 flips as the brief predicts. This is why the non-rendering control is the base APK (B0) and never
 scale 0 on a current build.
@@ -275,14 +340,14 @@ artefact. That result led to B0 (Stage D above).
     "emitsFramesOnlyOnChange": true
   },
   "renderedFloors": {
-    "method": "calibrate.mjs blocked-pairs / exit-recordings, sets A B B0 C n=10, base da93dcd PERF APK (A, C, B0) and its empty-board build (B)",
+    "method": "calibrate.mjs blocked-pairs / exit-recordings, sets A B B0 C n=10, base da93dcd PERF APK (A, C, B0) and its empty-board build (B); blocked B0 also on cell (31,14) and held out on (30,21) (fix round 1)",
     "tolerance": 24,
     "blocked": {
       "region": "board",
       "procedure": "screencap -p pre; input tap (35,19); sleep 0.15; screencap -p mid",
       "midPhaseDelayS": 0.15,
-      "changedPixelsFloor": 12,
-      "arithmetic": "max(A u B u B0)=6 + spread(A u B u B0)=6-0 -> 12; pass when changed px > 12"
+      "changedPixelsFloor": 28,
+      "arithmetic": "max(A u B u B0(35,19) u B0(31,14))=14 + spread=14-0 -> 28; pass when changed px > 28; held out: B0(30,21)=9 fails, C(30,21)>=5144 passes"
     },
     "exit": {
       "region": "board",
