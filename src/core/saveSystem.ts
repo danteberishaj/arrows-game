@@ -264,6 +264,37 @@ export const SaveSystem = {
     store.setInt(Keys.rcVersion, nonNegativeInt(version));
   },
 
+  // ---- Telemetry identity (W6-05) ---------------------------------------
+  // See src/telemetry/identity.ts (ensureIdentity, nextSessionIndex) and
+  // docs/telemetry-identity.md for what these three keys hold and why.
+
+  /** High 31 bits of the app-generated install id; 0 = not generated yet. */
+  get telInstallHi(): number {
+    return nonNegativeInt(store.getInt(Keys.telInstallHi, 0));
+  },
+
+  setTelInstallHi(value: number): void {
+    store.setInt(Keys.telInstallHi, nonNegativeInt(value));
+  },
+
+  /** Low 31 bits of the app-generated install id; 0 = not generated yet. */
+  get telInstallLo(): number {
+    return nonNegativeInt(store.getInt(Keys.telInstallLo, 0));
+  },
+
+  setTelInstallLo(value: number): void {
+    store.setInt(Keys.telInstallLo, nonNegativeInt(value));
+  },
+
+  /** Cold starts since install, incremented once per launch. */
+  get telSessionCount(): number {
+    return nonNegativeInt(store.getInt(Keys.telSessionCount, 0));
+  },
+
+  setTelSessionCount(value: number): void {
+    store.setInt(Keys.telSessionCount, nonNegativeInt(value));
+  },
+
   // ---- Lifetime stats --------------------------------------------------
 
   /** Total levels ever solved. */

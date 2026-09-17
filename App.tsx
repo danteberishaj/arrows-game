@@ -14,6 +14,7 @@ import { AdHost, adInitController, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
+import { ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
 
@@ -46,6 +47,11 @@ export default function App() {
       .then(() => {
         setDark(SaveSystem.darkMode);
         setSoundOn(SaveSystem.soundOn);
+        // Install id + session count (W6-05): nothing sends these anywhere
+        // yet (W6-14 is the first reader), and this whole effect already
+        // returns above under PERF_MODE, so a benchmark run never writes them.
+        ensureIdentity(SaveSystem);
+        nextSessionIndex(SaveSystem);
         setReady(true);
         startAfterHydration();
       })
