@@ -4,6 +4,8 @@ import { LevelGenerator } from '../../../src/core/levelGenerator';
 export interface SoakTap {
   row: number;
   col: number;
+  /** Exit direction of the tapped arrow's head (src/core/direction.ts: 0 up, 1 down, 2 left, 3 right). */
+  dir: number;
 }
 
 export interface SoakLevelPlan {
@@ -64,7 +66,7 @@ function createLevelPlan(levelIndex: number): SoakLevelPlan {
     if (owner !== arrow || !generated.board.tryRemove(arrow)) {
       throw new Error(`Level ${levelIndex} produced an invalid solve head at ${arrow.head.r},${arrow.head.c}`);
     }
-    taps.push({ row: arrow.head.r, col: arrow.head.c });
+    taps.push({ row: arrow.head.r, col: arrow.head.c, dir: arrow.headDir });
   }
 
   if (taps.length !== generated.arrowCount) {

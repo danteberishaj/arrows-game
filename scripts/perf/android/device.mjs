@@ -7,7 +7,7 @@
 // device READS BACK and what the running app REPORTS, never what was requested.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -302,4 +302,47 @@ export function applyMotionScale(adbExecutable, serial, activity, scale, diagnos
     relaunched,
     environment: motionEnvironment({ readBack, appReducedMotion: app.value, relaunched }),
   };
+}
+
+// ---------------------------------------------------------------- recording
+
+/**
+ * screenrecord on this emulator cannot encode 1440x3120 and silently falls
+ * back to 720x1280, which distorts the aspect ratio. Half the physical size
+ * keeps it (720x1560).
+ */
+export function halfSize({ width, height }) {
+  const even = (n) => Math.max(2, Math.round(n / 2 / 2) * 2);
+  return `${even(width)}x${even(height)}`;
+}
+
+export function startScreenRecord(adbExecutable, serial, remotePath, { timeLimitS, size, bitRate = 20_000_000 }) {
+  const args = ['-s', serial, 'shell', 'screenrecord', '--time-limit', String(timeLimitS), '--bit-rate', String(bitRate)];
+  if (size) args.push('--size', size);
+  args.push(remotePath);
+  const child = spawn(adbExecutable, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { output += chunk; });
+  const exited = new Promise((resolveExit) => {
+    child.on('exit', (code, signal) => resolveExit({ code, signal, output }));
+  });
+  return { child, exited, remotePath, size, timeLimitS, startedAtMs: Date.now() };
+}
+
+/** Waits for the recorder (or stops it early), pulls the mp4 and removes it from the device. */
+export async function finishScreenRecord(adbExecutable, serial, recording, localPath, { stopEarly = false } = {}) {
+  if (stopEarly) tryCapture(adbExecutable, ['-s', serial, 'shell', 'pkill', '-INT', 'screenrecord']);
+  const result = await recording.exited;
+  delay(500); // the mp4 moov atom is written after the encoder stops
+  if (/ERROR|failed at/.test(result.output)) {
+    throw new Error(`screenrecord reported a problem: ${result.output.trim()}`);
+  }
+  adb(adbExecutable, serial, ['pull', recording.remotePath, localPath], { timeout: 120_000 });
+  tryCapture(adbExecutable, ['-s', serial, 'shell', 'rm', '-f', recording.remotePath]);
+  return { exitCode: result.code, output: result.output.trim() };
+}
+
+export function screencapPng(adbExecutable, serial) {
+  return adbBinary(adbExecutable, serial, ['screencap', '-p']);
 }

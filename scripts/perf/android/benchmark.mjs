@@ -16,6 +16,9 @@ import { buildInputDriver, resolveAndroidSdkRoot } from './build-uiautomator.mjs
 import {
   adb,
   applyMotionScale,
+  finishScreenRecord,
+  halfSize,
+  startScreenRecord,
   assertAppReducedMotionMatches,
   capture,
   delay,
@@ -49,7 +52,7 @@ const PROJECT_ROOT = resolve(SCRIPT_DIR, '../../..');
 const APPLICATION_ID = 'com.danteb.arrows';
 const FIXED_LEVEL = 3827;
 const GRID_SIZE = 39;
-const FIT_MARGIN = 0.94;
+export const FIT_MARGIN = 0.94;
 const GESTURE_STEPS = 60;
 const GESTURE_DURATION_MS = 1000;
 const SOAK_TAP_INTERVAL_MS = 160;
@@ -69,7 +72,7 @@ const FEEDBACK_START_GRACE_MS = 240;
 // make otherwise identical benchmark runs look different.
 const SOAK_POST_LEVEL_SETTLE_MS = 500;
 // Measure the exit effect at the densest point of the pinned 250-arrow board.
-const EXIT_PHASE_STARTING_ARROW_COUNT = 250;
+export const EXIT_PHASE_STARTING_ARROW_COUNT = 250;
 const EXIT_ANIMATION_DURATION_MS = parseExitAnimationDuration(
   process.env.EXPO_PUBLIC_PERF_EXIT_DURATION_MS,
 );
@@ -135,6 +138,7 @@ export function parseArgs(argv, env = process.env) {
     motionScale: '0',
     diagnosticBogusScaleKeys: false,
     diagnosticSkipRelaunch: false,
+    record: null,
     phases: [...DEFAULT_PHASES],
     soakLevels: null,
   };
@@ -161,6 +165,14 @@ export function parseArgs(argv, env = process.env) {
 
   for (const key of ['api', 'level', 'runs', 'warmups']) options[key] = Number(options[key]);
   options.motionScale = parseMotionScale(options.motionScale);
+  if (options.record !== null) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(options.record)) {
+      throw new Error(`--record label must be a plain directory name (got ${JSON.stringify(options.record)})`);
+    }
+    if (options.soakLevels !== null) throw new Error('--record cannot be combined with --soak-levels');
+    // A recorded run never produces perf numbers: the encoder shares the CPU.
+    options.runs = 1;
+  }
   if (options.soakLevels !== null) options.soakLevels = Number(options.soakLevels);
   if (options.soakLevels === null && options.level !== FIXED_LEVEL) {
     throw new Error('The single-level workload is pinned to level 3827');
@@ -316,6 +328,7 @@ const VALUE_OPTIONS = {
   '--phases': 'phases',
   '--soak-levels': 'soakLevels',
   '--motion-scale': 'motionScale',
+  '--record': 'record',
 };
 
 
@@ -354,7 +367,7 @@ function createSoakPlan(options) {
   return plan;
 }
 
-function createSingleLevelPlan() {
+export function createSingleLevelPlan() {
   return createSoakPlan({ level: FIXED_LEVEL, soakLevels: 20 }).measured[0];
 }
 
@@ -493,7 +506,7 @@ function validateApk(apk, sdkRoot) {
   };
 }
 
-function findBoardBounds(context) {
+export function findBoardBounds(context) {
   const remoteXml = '/data/local/tmp/arrows-perf-window.xml';
   for (let attempt = 0; attempt < 15; attempt += 1) {
     const dumped = tryCapture(context.adbExecutable, [
@@ -523,7 +536,7 @@ function findBoardBounds(context) {
   throw new Error('perf-board did not appear in the accessibility tree');
 }
 
-function invokeGestureDriver(context, args) {
+export function invokeGestureDriver(context, args) {
   const output = adb(context.adbExecutable, context.serial, [
     'shell',
     `CLASSPATH=${context.remoteJar}`,
@@ -556,7 +569,7 @@ function runGestureDriver(context, mode, points, steps, durationMs) {
   return timing;
 }
 
-function runTapSequence(context, points, intervalMs = SOAK_TAP_INTERVAL_MS) {
+export function runTapSequence(context, points, intervalMs = SOAK_TAP_INTERVAL_MS) {
   if (points.length < 1 || points.length > 8) {
     throw new Error(`tap-sequence requires 1..8 points, received ${points.length}`);
   }
@@ -594,7 +607,7 @@ function runPan(context, start, end, steps, durationMs) {
   return runGestureDriver(context, 'pan', [start, end], steps, durationMs);
 }
 
-function cellCenter(bounds, row, col, rows = GRID_SIZE, cols = GRID_SIZE) {
+export function cellCenter(bounds, row, col, rows = GRID_SIZE, cols = GRID_SIZE) {
   return cellCenterForBoard(bounds, row, col, rows, cols, FIT_MARGIN);
 }
 
@@ -903,7 +916,7 @@ function measurePhase(context, phase, levelPlan) {
   };
 }
 
-function dumpUi(context) {
+export function dumpUi(context) {
   const remoteXml = '/data/local/tmp/arrows-perf-assert.xml';
   adb(context.adbExecutable, context.serial, [
     'shell', 'uiautomator', 'dump', remoteXml,
@@ -918,7 +931,7 @@ function assertUiContains(context, expected) {
   }
 }
 
-function waitForUi(context, predicate, description, attempts = 20) {
+export function waitForUi(context, predicate, description, attempts = 20) {
   let latestXml = '';
   let latestError = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -936,7 +949,7 @@ function waitForUi(context, predicate, description, attempts = 20) {
   throw new Error(`UI did not reach ${description}\n${detail}`);
 }
 
-function waitForUiText(context, expected) {
+export function waitForUiText(context, expected) {
   return waitForUi(
     context,
     (xml) => xml.includes(expected),
@@ -1626,6 +1639,7 @@ async function main() {
     }
 
     const measurements = [];
+    const recordings = [];
     const framesByPhase = Object.fromEntries(options.phases.map((phase) => [phase, []]));
     const surfaceFramesByPhase = Object.fromEntries(options.phases.map((phase) => [phase, []]));
     const rootSurfaceFramesByPhase = Object.fromEntries(options.phases.map((phase) => [phase, []]));
@@ -1637,7 +1651,23 @@ async function main() {
       const phases = {};
       for (const phase of options.phases) {
         log(`run ${run}/${options.runs}: ${phase}`);
+        const recording = options.record === null ? null : startScreenRecord(
+          adbExecutable,
+          options.serial,
+          `/sdcard/benchmark-${options.record}-${phase}.mp4`,
+          { timeLimitS: 120, size: halfSize(physicalDisplaySize(adbExecutable, options.serial)) },
+        );
+        if (recording) delay(800); // recorder start-up before the phase launches the app
         const sample = measurePhase(context, phase, singleLevelPlan);
+        if (recording) {
+          const recordDir = join(PROJECT_ROOT, 'artifacts/captures', options.record);
+          mkdirSync(recordDir, { recursive: true });
+          const localPath = join(recordDir, `${phase}-run${run}.mp4`);
+          await finishScreenRecord(adbExecutable, options.serial, recording, localPath, { stopEarly: true });
+          recordings.push({ phase, run, path: localPath, size: recording.size });
+          phases[phase] = { driverTiming: sample.driverTiming, recording: localPath };
+          continue;
+        }
         framesByPhase[phase].push(...sample.frames);
         surfaceFramesByPhase[phase].push(...sample.surfaces.board.frames);
         rootSurfaceFramesByPhase[phase].push(...sample.surfaces.root.frames);
@@ -1671,7 +1701,7 @@ async function main() {
 
     const afterThermal = thermalStatus(adbExecutable, options.serial);
     if (afterThermal > 0) throw new Error(`Device throttled during benchmark (status ${afterThermal})`);
-    const phaseSummary = Object.fromEntries(
+    const phaseSummary = options.record !== null ? null : Object.fromEntries(
       options.phases.map((phase) => [phase, {
         ...summarizeOptionalGfxFrames(framesByPhase[phase]),
         ...summarizeSurfaceFrames(surfaceFramesByPhase[phase]),
@@ -1679,6 +1709,7 @@ async function main() {
       }]),
     );
     const result = {
+      ...(options.record === null ? {} : { perfNumbersInvalid: true }),
       schemaVersion: 2,
       label: options.label,
       timestamp: new Date().toISOString(),
@@ -1712,7 +1743,7 @@ async function main() {
         git: gitMetadata(),
       },
       measurements,
-      summary: {
+      summary: options.record !== null ? null : {
         ...summarizeOptionalGfxFrames(allFrames),
         ...summarizeSurfaceFrames(allSurfaceFrames),
         rootSurface: summarizeSurfaceFrames(allRootSurfaceFrames),
@@ -1720,6 +1751,10 @@ async function main() {
         phases: phaseSummary,
       },
     };
+    if (options.record !== null) {
+      result.recordings = recordings;
+      log('WARNING: --record run: perfNumbersInvalid, no frame or memory percentiles were written');
+    }
 
     const json = `${JSON.stringify(result, null, 2)}\n`;
     if (options.output) {

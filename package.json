@@ -46,6 +46,7 @@
     "perf:core": "tsx scripts/perf/core-benchmark.ts",
     "perf:core:metadata": "tsx scripts/perf/core-benchmark.ts --metadata",
     "perf:android": "node scripts/perf/android/benchmark.mjs",
+    "capture:android": "node scripts/perf/android/capture.mjs",
     "analysis:probe": "tsx scripts/analysis/difficulty-probe.ts"
   },
   "expo": {

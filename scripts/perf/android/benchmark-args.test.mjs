@@ -78,3 +78,12 @@ test('B2 diagnostics are explicit flags and default off', () => {
   assert.equal(diag.diagnosticBogusScaleKeys, true);
   assert.equal(diag.diagnosticSkipRelaunch, true);
 });
+
+test('--record forces a single run and is incompatible with soaks', () => {
+  const recorded = parseArgs(['--record', 'exit-scale1', '--runs', '10'], {});
+  assert.equal(recorded.record, 'exit-scale1');
+  assert.equal(recorded.runs, 1);
+  assert.equal(parseArgs([], {}).record, null);
+  assert.throws(() => parseArgs(['--record', 'x', '--soak-levels', '20'], {}), /--record/);
+  assert.throws(() => parseArgs(['--record', '../x'], {}), /label/);
+});

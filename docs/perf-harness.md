@@ -65,3 +65,27 @@ phases need `game`.
   the change. The run must abort on the `appReducedMotion` mismatch.
 
 Both stamp `environment.motionDiagnostic`. Never quote a number from such a run.
+
+## Captures (`capture.mjs`) and recorded benchmark runs
+
+- `npm run capture:android -- --motion-scale <0|1> (--shot <label> | --record <label> --seconds <n>)`
+  `[--apk path] [--wm-size WxH] [--wm-density dpi] [--frames] [--step blocked|exit|won|lost]`
+  `[--build-env KEY=VALUE]`. It works on PERF and non-PERF builds. It taps only for a scripted `--step`
+  (PERF builds, level 3827). Every tap goes through `ArrowsWorkload tap`, which holds 35–40 ms, below
+  the 64 ms press-preview delay (`docs/perf-capture-calibration.md`).
+- `--motion-scale` is **required**. A capture never inherits whatever the device was left at.
+- Artifacts go to `artifacts/captures/<label>/` (gitignored by `/artifacts/`), with `manifest.json`:
+  - git HEAD and dirty flag, APK sha256, serial, AVD, API level;
+  - `wm size`/`density` read-back (and the post-reset read-back);
+  - all three scales read-back, `relaunchedAfterScaleChange`, `appReducedMotion` and its source;
+  - the tap-hold measurement and the recorder frame period, both read from the calibration block in
+    `docs/perf-capture-calibration.md`;
+  - `buildEnv`: record every `EXPO_PUBLIC_*` flag the APK was built with (ruling F23: flag-ON capture
+    APKs are built from a clean tree).
+- Recordings are 720x1560. `screenrecord` cannot encode 1440x3120 on this emulator and silently falls
+  back to a distorted 720x1280. `--frames` splits the mp4 into PNGs, and the manifest carries the
+  `ffprobe` frame times.
+- **`screenrecord` emits frames only when the screen changes.** Never count frames over a static period.
+- **A recorded run never produces perf numbers.** `benchmark.mjs --record <label>` forces `runs=1`,
+  stamps `perfNumbersInvalid: true`, writes `summary: null` and no percentiles, and saves one mp4 per
+  phase under `artifacts/captures/<label>/`.
