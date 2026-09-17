@@ -266,7 +266,8 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () => {
-  // 46 is the upper rows clamp at levelGenerator.ts:65. 12 and 24 sample a
+  // 46 is the upper rows clamp at levelGenerator.ts:73 (as of this commit;
+  // W3-01 added a doc comment above it, shifting it from :65). 12 and 24 sample a
   // small and mid-size board so thin features (crescent horns, bolt tips,
   // crown valleys) are exercised well below and at the existing 24-row test.
   const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
