@@ -45,7 +45,8 @@
     "test": "jest",
     "perf:core": "tsx scripts/perf/core-benchmark.ts",
     "perf:core:metadata": "tsx scripts/perf/core-benchmark.ts --metadata",
-    "perf:android": "node scripts/perf/android/benchmark.mjs"
+    "perf:android": "node scripts/perf/android/benchmark.mjs",
+    "analysis:probe": "tsx scripts/analysis/difficulty-probe.ts"
   },
   "expo": {
     "autolinking": {

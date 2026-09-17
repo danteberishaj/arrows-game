@@ -14,6 +14,14 @@ export interface GeneratedLevel {
   shapeName: string;
   /** The silhouette that was packed (true = a cell that should hold an arrow). */
   mask: boolean[][];
+  /**
+   * The shape-cell count `generate` drew from `cfg.minCells..maxCells` before
+   * sizing the board (see the sizing comment below). Exposed read-only for
+   * analysis (W3-01's difficulty probe compares it against the mask's actual
+   * cell count to find shapes the size-fit under-filled at the grid clamp);
+   * it changes no v1 output — every other field is unchanged.
+   */
+  targetCells: number;
 }
 
 const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as const;
@@ -83,6 +91,7 @@ export const LevelGenerator = {
       arrowCount: arrows.length,
       shapeName: shape.name,
       mask,
+      targetCells,
     };
   },
 
