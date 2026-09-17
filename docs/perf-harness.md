@@ -89,3 +89,28 @@ Both stamp `environment.motionDiagnostic`. Never quote a number from such a run.
 - **A recorded run never produces perf numbers.** `benchmark.mjs --record <label>` forces `runs=1`,
   stamps `perfNumbersInvalid: true`, writes `summary: null` and no percentiles, and saves one mp4 per
   phase under `artifacts/captures/<label>/`.
+
+## Effect-rendered gate (`--assert-rendered`)
+
+- `benchmark.mjs --assert-rendered blocked|exit|blocked,exit` is opt-in. It needs a `game` build and
+  cannot be combined with `--record` or `--soak-levels`. The result JSON gains `assertRendered`, with
+  for each phase `ran`, `passed`, the measured values and the floor. A failing check sets exit code 3.
+  Evidence files go to `artifacts/captures/<label>/`.
+- **`blocked`:** board-region changed pixels, pre-phase screencap vs a screencap ~160 ms after an
+  `input tap` on cell (35,19), must be **> 12 px**.
+- **`exit`:** in a 2 s recording, the centroid of trail pixels (drawn outside the removed arrow's
+  footprint) must travel **> 1 recording px** along the arrow's exit direction. The trail floor is
+  36 px. The plain changed-pixel fraction is reported next to it, because a stationary fade changes
+  pixels without moving.
+- Floors, arithmetic and the six-outcome validation are in `docs/perf-capture-calibration.md`
+  (`renderedFloors`). They belong to this emulator only.
+
+### Rule 3: a number for a new visual effect needs proof that the effect rendered
+
+A number for a new visual effect may be reported only if the same session contains a passing
+`--assert-rendered` run for that phase, plus the attached capture. Per ruling F02, this applies to
+the phases the gate implements (`blocked`, `exit`). For any other new effect (scrim, grain, v2
+boards, …), the same session must attach a P-02 capture showing that the effect rendered: a
+changed-pixel count above the calibrated floor for that region, or, where no region is calibrated
+(ruling F03 a/c), the raw fraction next to the nearest calibrated floor plus an owner eyeball
+labelled UNVERIFIED-PIXEL.

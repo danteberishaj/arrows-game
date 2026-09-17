@@ -193,6 +193,20 @@ export function exitMotion(frames, times, {
       trailCentroid: trail === 0 ? null : { x: sumX / trail, y: sumY / trail },
     });
   }
+  return {
+    footprintPixels: footprintCount,
+    ...trailMotion(perFrame, { direction, secondFrameOffsetMs, trailCountFloor }),
+    maxChangedFraction,
+    perFrame,
+  };
+}
+
+/**
+ * first = first frame with more than `trailCountFloor` trail pixels; second = first later frame,
+ * at least `secondFrameOffsetMs` after it, that also has more; displacement along `direction`.
+ * Pure over exitMotion's perFrame, so a stored run can be re-scored against a new floor.
+ */
+export function trailMotion(perFrame, { direction, secondFrameOffsetMs = 60, trailCountFloor = 0 }) {
   const first = perFrame.find((f) => f.trailPixels > trailCountFloor) ?? null;
   const second = first === null
     ? null
@@ -201,14 +215,11 @@ export function exitMotion(frames, times, {
       f.trailPixels > trailCountFloor &&
       (f.t - first.t) * 1000 >= secondFrameOffsetMs - 1e-6) ?? null;
   return {
-    footprintPixels: footprintCount,
     first,
     second,
     displacementPx: first && second
       ? displacementAlong(first.trailCentroid, second.trailCentroid, directionVector(direction))
       : 0,
-    maxChangedFraction,
-    perFrame,
   };
 }
 

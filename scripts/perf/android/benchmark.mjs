@@ -94,6 +94,8 @@ export const DEFAULT_PHASES = [...GESTURE_PHASES, 'blocked', 'exit'];
 const SCREEN_PHASES = new Set(['splash', 'menu']);
 export const VALID_PHASES = new Set([...DEFAULT_PHASES, ...SCREEN_PHASES]);
 const PERF_SCREENS = new Set(['splash', 'menu', 'game']);
+// Phases the effect-rendered gate implements (P-02 Stage E, ruling F02).
+const RENDERED_GATE_PHASES = new Set(['blocked', 'exit']);
 
 function parsePerfScreen(raw) {
   if (raw === undefined) return 'game';
@@ -139,6 +141,7 @@ export function parseArgs(argv, env = process.env) {
     diagnosticBogusScaleKeys: false,
     diagnosticSkipRelaunch: false,
     record: null,
+    assertRendered: [],
     phases: [...DEFAULT_PHASES],
     soakLevels: null,
   };
@@ -165,6 +168,23 @@ export function parseArgs(argv, env = process.env) {
 
   for (const key of ['api', 'level', 'runs', 'warmups']) options[key] = Number(options[key]);
   options.motionScale = parseMotionScale(options.motionScale);
+  if (typeof options.assertRendered === 'string') {
+    options.assertRendered = options.assertRendered.split(',').map((phase) => phase.trim()).filter(Boolean);
+    if (
+      options.assertRendered.length === 0 ||
+      options.assertRendered.some((phase) => !RENDERED_GATE_PHASES.has(phase)) ||
+      new Set(options.assertRendered).size !== options.assertRendered.length
+    ) {
+      throw new Error(`--assert-rendered takes ${[...RENDERED_GATE_PHASES].join(',')} (no duplicates)`);
+    }
+    if (options.perfScreen !== 'game') {
+      throw new Error('--assert-rendered needs a build with EXPO_PUBLIC_PERF_SCREEN=game');
+    }
+    if (options.record !== null) {
+      throw new Error('--assert-rendered records its own evidence; do not combine it with --record');
+    }
+    if (options.soakLevels !== null) throw new Error('--assert-rendered cannot be combined with --soak-levels');
+  }
   if (options.record !== null) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(options.record)) {
       throw new Error(`--record label must be a plain directory name (got ${JSON.stringify(options.record)})`);
@@ -329,6 +349,7 @@ const VALUE_OPTIONS = {
   '--soak-levels': 'soakLevels',
   '--motion-scale': 'motionScale',
   '--record': 'record',
+  '--assert-rendered': 'assertRendered',
 };
 
 
@@ -1494,6 +1515,117 @@ function runSoakBenchmark(context, options, plan, baseResult, configuration) {
   }
 }
 
+/**
+ * Effect-rendered verdict against the Stage D floors (docs/perf-capture-calibration.md).
+ * blocked: board-region changed pixels of a mid-phase frame vs the pre-phase frame > floor.
+ * exit: trail-centroid displacement along the exit direction > floor (the moved check). The changed
+ * fraction is reported too, because at scale 0 pixels change (stationary fade) while nothing moves.
+ */
+export function renderedVerdict(phase, measured, floors) {
+  if (phase === 'blocked') {
+    const floor = floors.blocked.changedPixelsFloor;
+    return { passed: measured.changedPixels > floor, floor: { changedPixels: floor } };
+  }
+  if (phase === 'exit') {
+    const movedPassed = measured.displacementPx > floors.exit.displacementFloorPx;
+    const changedAboveFloor = measured.maxChangedFraction > floors.exit.changedFractionFloor;
+    return {
+      passed: movedPassed && changedAboveFloor,
+      movedPassed,
+      changedAboveFloor,
+      floor: {
+        displacementPx: floors.exit.displacementFloorPx,
+        changedFraction: floors.exit.changedFractionFloor,
+      },
+    };
+  }
+  throw new Error(`no rendered gate for phase ${phase}`);
+}
+
+function headerBottomFromUi(context) {
+  let bottom = 0;
+  for (const tag of dumpUi(context).match(/<node\b[^>]*>/g) ?? []) {
+    if (!/text="(LEVEL \d+|[^"]*\d+ left)"/.test(tag)) continue;
+    const m = tag.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    if (m) bottom = Math.max(bottom, Number(m[4]));
+  }
+  return bottom;
+}
+
+async function runAssertRendered(context, options, levelPlan) {
+  const { readCalibrationBlock } = await import('./capture.mjs');
+  const calibrate = await import('./calibrate.mjs');
+  const floors = readCalibrationBlock(
+    readFileSync(join(PROJECT_ROOT, 'docs/perf-capture-calibration.md'), 'utf8'),
+  )?.renderedFloors;
+  if (!floors) throw new Error('docs/perf-capture-calibration.md has no renderedFloors block');
+  const label = options.label ?? `assert-rendered-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const outDir = join(PROJECT_ROOT, 'artifacts/captures', label.replace(/[^A-Za-z0-9._-]/g, '_'));
+  mkdirSync(outDir, { recursive: true });
+  const display = physicalDisplaySize(context.adbExecutable, context.serial);
+  const results = {};
+  for (const phase of options.assertRendered) {
+    const bounds = startReady(context);
+    delay(1500); // OWNER-PICKED STARTING VALUE: same settle order as calibrate.mjs samples
+    const headerBottom = headerBottomFromUi(context);
+    let measured;
+    if (phase === 'blocked') {
+      const point = cellCenter(bounds, 35, 19);
+      const probe = await calibrate.probeBlockedPair(context.adbExecutable, context.serial, {
+        bounds,
+        headerBottom,
+        point,
+        prePath: join(outDir, 'blocked-pre.png'),
+        midPath: join(outDir, 'blocked-mid.png'),
+      });
+      measured = {
+        region: 'board',
+        changedPixels: probe.board.changed,
+        changedFraction: probe.board.fraction,
+        totalPixels: probe.board.total,
+        timingMs: probe.timingMs,
+        artifacts: [join(outDir, 'blocked-pre.png'), join(outDir, 'blocked-mid.png')],
+      };
+    } else {
+      prepareExitTrailWorkload(context, bounds, levelPlan);
+      const tap = levelPlan.taps[levelPlan.arrowCount - EXIT_PHASE_STARTING_ARROW_COUNT];
+      const direction = calibrate.DIRECTION_NAMES[tap.dir];
+      const probe = await calibrate.probeExitRecording(context.adbExecutable, context.serial, {
+        display,
+        bounds,
+        headerBottom,
+        point: cellCenter(bounds, tap.row, tap.col, levelPlan.rows, levelPlan.cols),
+        direction,
+        mp4: join(outDir, 'exit.mp4'),
+        framesDir: join(outDir, 'exit-frames'),
+        trailCountFloor: floors.exit.trailPixelsFloor,
+      });
+      measured = {
+        region: 'board',
+        direction,
+        displacementPx: probe.displacementPx,
+        maxChangedFraction: probe.maxChangedFraction,
+        trailPixelsFirst: probe.first?.trailPixels ?? 0,
+        footprintPixels: probe.footprintPixels,
+        frames: probe.frames,
+        perFrame: probe.perFrame,
+        artifacts: [probe.recording],
+      };
+    }
+    const verdict = renderedVerdict(phase, measured, floors);
+    results[phase] = { ran: true, ...verdict, measured };
+    log(
+      `assert-rendered ${phase}: ${verdict.passed ? 'PASS' : 'FAIL'} ` +
+      (phase === 'blocked'
+        ? `(changed ${measured.changedPixels} px vs floor ${verdict.floor.changedPixels})`
+        : `(displacement ${measured.displacementPx.toFixed(1)} px vs floor ${verdict.floor.displacementPx}; ` +
+          `moved ${verdict.movedPassed ? 'PASS' : 'FAIL'}; changed fraction ${measured.maxChangedFraction} ` +
+          `vs floor ${verdict.floor.changedFraction})`),
+    );
+  }
+  return { floorsSource: 'docs/perf-capture-calibration.md renderedFloors', floors, results };
+}
+
 function captureScreenshot(context, outputPath) {
   startScreen(context, context.perfScreen);
   const result = spawnSync(context.adbExecutable, [
@@ -1597,6 +1729,9 @@ async function main() {
     if (options.perfScreen !== 'game') validateScreen(context, options.perfScreen);
     else if (singleLevelPlan !== null) validateWorkload(context, singleLevelPlan);
     if (options.screenshot) captureScreenshot(context, options.screenshot);
+    const assertRendered = options.assertRendered.length === 0
+      ? null
+      : await runAssertRendered(context, options, singleLevelPlan);
 
     if (soakPlan !== null) {
       const baseResult = {
@@ -1751,6 +1886,10 @@ async function main() {
         phases: phaseSummary,
       },
     };
+    if (assertRendered !== null) {
+      result.assertRendered = assertRendered;
+      if (Object.values(assertRendered.results).some((entry) => !entry.passed)) process.exitCode = 3;
+    }
     if (options.record !== null) {
       result.recordings = recordings;
       log('WARNING: --record run: perfNumbersInvalid, no frame or memory percentiles were written');

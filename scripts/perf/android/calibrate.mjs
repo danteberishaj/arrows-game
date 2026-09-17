@@ -4,9 +4,9 @@
 //
 //   node scripts/perf/android/calibrate.mjs recorder --apk <perf.apk> [--n 5] --out <dir>
 //   node scripts/perf/android/calibrate.mjs idle     --apk <perf.apk> --out <dir>
-//   node scripts/perf/android/calibrate.mjs blocked-pairs --apk <apk> --set A|B|C --motion-scale 0|1 [--n 10] --out <dir>
+//   node scripts/perf/android/calibrate.mjs blocked-pairs --apk <apk> --set A|B|B0|C --motion-scale 0|1 [--n 10] --out <dir>
 //   node scripts/perf/android/calibrate.mjs menu-pairs --apk <menu.apk> --motion-scale 0|1 [--n 10] --out <dir>
-//   node scripts/perf/android/calibrate.mjs exit-recordings --apk <apk> --set A|B|C --motion-scale 0|1 [--n 10] --out <dir>
+//   node scripts/perf/android/calibrate.mjs exit-recordings --apk <apk> --set A|B|B0|C --motion-scale 0|1 [--n 10] --out <dir>
 //
 // It drives the device only through capture.mjs's building blocks (device.mjs) and measures with
 // pixel-diff.mjs. Output: <dir>/<subcommand>.json with raw per-sample values.
@@ -227,30 +227,15 @@ async function blockedPairs(session, options) {
     const motion = session.launch(options.motionScale);
     const { context, headerBottom } = await boardGeometry(session);
     const point = bench.cellCenter(context.bounds, 35, 19, plan.rows, plan.cols);
-    const pre = `/data/local/tmp/cal-pre.png`;
-    const mid = `/data/local/tmp/cal-mid.png`;
-    // `input tap` (DOWN->UP 0 ms, returns in ~15-25 ms). ArrowsWorkload's JVM takes ~0.9 s
-    // to exit after its UP, which would push the "mid-phase" frame past the 650 ms flash.
-    const input = options.set === 'A' ? 'true' : `input tap ${point.x} ${point.y}`; // set A: no input
-    const stamps = session.shell(
-      `t0=$(date +%s%N); screencap -p ${pre}; t1=$(date +%s%N); ${input}; t2=$(date +%s%N); ` +
-      `sleep ${MID_PHASE_DELAY_S}; t3=$(date +%s%N); screencap -p ${mid}; t4=$(date +%s%N); ` +
-      'echo $t0 $t1 $t2 $t3 $t4',
-    ).split(/\s+/).map(Number);
-    const timingMs = {
-      preScreencap: (stamps[1] - stamps[0]) / 1e6,
-      input: (stamps[2] - stamps[1]) / 1e6,
-      inputEndToMidScreencapStart: (stamps[3] - stamps[2]) / 1e6,
-      midScreencap: (stamps[4] - stamps[3]) / 1e6,
-    };
     const prePath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-pre.png`);
     const midPath = join(options.out, `blocked-${options.set}-s${options.motionScale}-${i}-mid.png`);
-    session.pull(pre, prePath);
-    session.pull(mid, midPath);
-    const a = await decodePng(prePath);
-    const b = await decodePng(midPath);
-    const board = diffImages(a, b, { rect: resolveRegion('board', a, { board: context.bounds, headerBottom }) });
-    const screen = diffImages(a, b, { rect: resolveRegion('screen', a) });
+    const { timingMs, board, screen } = await probeBlockedPair(session.adb, session.serial, {
+      bounds: context.bounds,
+      headerBottom,
+      point: options.set === 'A' ? null : point, // set A: no input at all
+      prePath,
+      midPath,
+    });
     samples.push({
       i,
       motion,
@@ -273,6 +258,61 @@ async function blockedPairs(session, options) {
     }
   }
   return { subcommand: 'blocked-pairs', set: options.set, motionScale: options.motionScale, midPhaseDelayS: MID_PHASE_DELAY_S, samples };
+}
+
+/**
+ * One blocked-phase screencap pair (Stage D calibration and Stage E gate share it).
+ * `input tap` has a 0 ms hold and returns in ~20 ms. ArrowsWorkload's JVM needs ~0.9 s to exit after
+ * its UP, which would push the mid-phase frame past the 650 ms flash. `point: null` means no input.
+ */
+export async function probeBlockedPair(adbExecutable, serial, { bounds, headerBottom, point, prePath, midPath }) {
+  const pre = '/data/local/tmp/render-probe-pre.png';
+  const mid = '/data/local/tmp/render-probe-mid.png';
+  const input = point ? `input tap ${point.x} ${point.y}` : 'true';
+  const stamps = adb(adbExecutable, serial, ['shell',
+    `t0=$(date +%s%N); screencap -p ${pre}; t1=$(date +%s%N); ${input}; t2=$(date +%s%N); ` +
+    `sleep ${MID_PHASE_DELAY_S}; t3=$(date +%s%N); screencap -p ${mid}; t4=$(date +%s%N); ` +
+    'echo $t0 $t1 $t2 $t3 $t4',
+  ], { timeout: 60_000 }).split(/\s+/).map(Number);
+  const timingMs = {
+    preScreencap: (stamps[1] - stamps[0]) / 1e6,
+    input: (stamps[2] - stamps[1]) / 1e6,
+    inputEndToMidScreencapStart: (stamps[3] - stamps[2]) / 1e6,
+    midScreencap: (stamps[4] - stamps[3]) / 1e6,
+  };
+  for (const [remote, local] of [[pre, prePath], [mid, midPath]]) {
+    writeFileSync(local, adbBinary(adbExecutable, serial, ['cat', remote]));
+    tryCapture(adbExecutable, ['-s', serial, 'shell', 'rm', '-f', remote]);
+  }
+  const a = await decodePng(prePath);
+  const b = await decodePng(midPath);
+  return {
+    timingMs,
+    board: diffImages(a, b, { rect: resolveRegion('board', a, { board: bounds, headerBottom }) }),
+    screen: diffImages(a, b, { rect: resolveRegion('screen', a) }),
+  };
+}
+
+/**
+ * One exit recording: 2 s screenrecord at half size, `input tap` on `point` 800 ms in (null = no
+ * input), frames split, pixel-diff exitMotion over the board region.
+ */
+export async function probeExitRecording(adbExecutable, serial, { display, bounds, headerBottom, point, direction, mp4, framesDir, trailCountFloor = 0 }) {
+  const size = halfSize(display);
+  const scale = Number(size.split('x')[0]) / display.width;
+  const recording = startScreenRecord(adbExecutable, serial, `/sdcard/render-probe-exit.mp4`, { timeLimitS: 2, size });
+  delay(800);
+  if (point) adb(adbExecutable, serial, ['shell', 'input', 'tap', String(point.x), String(point.y)]);
+  await finishScreenRecord(adbExecutable, serial, recording, mp4);
+  const times = probeFrameTimes(mp4);
+  splitFrames(mp4, framesDir);
+  const analysis = await analyseExitRecording(framesDir, times, {
+    rectFor: (image) => resolveRegion('board', image, { board: bounds, headerBottom, scale }),
+    direction,
+    trailCountFloor,
+  });
+  rmSync(framesDir, { recursive: true, force: true });
+  return { recording: mp4, size, frameTimesS: times, ...analysis };
 }
 
 function boundsOf(xml, predicate) {
@@ -333,10 +373,10 @@ async function menuPairs(session, options) {
 
 // ---------------------------------------------------------------- D/E: exit recordings
 
-const DIRECTION_NAMES = ['up', 'down', 'left', 'right']; // src/core/direction.ts enum order
+export const DIRECTION_NAMES = ['up', 'down', 'left', 'right']; // src/core/direction.ts enum order
 
 /** Decodes a split recording and runs pixel-diff's exitMotion on it (board region). */
-export async function analyseExitRecording(framesDir, times, { rectFor, direction }) {
+export async function analyseExitRecording(framesDir, times, { rectFor, direction, trailCountFloor = 0 }) {
   const files = readdirSync(framesDir).filter((f) => f.endsWith('.png')).sort();
   if (files.length !== times.length) throw new Error(`frames ${files.length} != pts ${times.length}`);
   const frames = [];
@@ -354,7 +394,7 @@ export async function analyseExitRecording(framesDir, times, { rectFor, directio
       direction,
       dilatePx: EXIT_FOOTPRINT_DILATE_PX,
       secondFrameOffsetMs: EXIT_SECOND_FRAME_OFFSET_MS,
-      trailCountFloor: 0,
+      trailCountFloor,
     }),
   };
 }
@@ -362,30 +402,27 @@ export async function analyseExitRecording(framesDir, times, { rectFor, directio
 async function exitRecordings(session, options) {
   const n = options.n ?? 10; // OWNER-PICKED STARTING VALUE (brief)
   const bench = await import('./benchmark.mjs');
-  const { runStep } = await import('./capture.mjs');
   const plan = bench.createSingleLevelPlan();
   const tap = plan.taps[plan.arrowCount - bench.EXIT_PHASE_STARTING_ARROW_COUNT];
   const samples = [];
   for (let i = 1; i <= n; i += 1) {
     const motion = session.launch(options.motionScale);
     const { context, headerBottom } = await boardGeometry(session);
-    const size = halfSize(session.display);
-    const scale = Number(size.split('x')[0]) / session.display.width;
-    const remote = `/sdcard/calibrate-exit-${i}.mp4`;
-    const recording = startScreenRecord(session.adb, session.serial, remote, { timeLimitS: 2, size });
-    delay(800);
-    const step = options.set === 'A' ? { step: 'none' } : await runStep(context, 'exit');
+    const point = options.set === 'A'
+      ? null // set A: no input at all
+      : bench.cellCenter(context.bounds, tap.row, tap.col, plan.rows, plan.cols);
     const mp4 = join(options.out, `exit-${options.set}-s${options.motionScale}-${i}.mp4`);
-    await finishScreenRecord(session.adb, session.serial, recording, mp4);
-    const times = probeFrameTimes(mp4);
-    const framesDir = join(options.out, `exit-${options.set}-s${options.motionScale}-${i}-frames`);
-    splitFrames(mp4, framesDir);
-    const analysis = await analyseExitRecording(framesDir, times, {
-      rectFor: (image) => resolveRegion('board', image, { board: context.bounds, headerBottom, scale }),
+    const analysis = await probeExitRecording(session.adb, session.serial, {
+      display: session.display,
+      bounds: context.bounds,
+      headerBottom,
+      point,
       direction: DIRECTION_NAMES[tap.dir],
+      mp4,
+      framesDir: join(options.out, `exit-${options.set}-s${options.motionScale}-${i}-frames`),
     });
-    rmSync(framesDir, { recursive: true, force: true });
-    samples.push({ i, motion, step, direction: DIRECTION_NAMES[tap.dir], recording: mp4, frameTimesS: times, ...analysis });
+    const step = point ? { injector: 'input tap', point } : { step: 'none' };
+    samples.push({ i, motion, step, direction: DIRECTION_NAMES[tap.dir], ...analysis });
     log(`exit set ${options.set} scale ${options.motionScale} #${i}: frames ${analysis.frames}, max changed ${analysis.maxChangedFraction}, trail ${analysis.first?.trailPixels ?? 0} px, displacement ${analysis.displacementPx} px`);
     if (i !== 1 && i !== n) rmSync(mp4);
   }
@@ -406,7 +443,7 @@ async function main() {
   const run = commands[options.command];
   if (!run) throw new Error(`unknown subcommand ${options.command} (${Object.keys(commands).join(', ')})`);
   if (['blocked-pairs', 'exit-recordings'].includes(options.command)) {
-    if (!['A', 'B', 'C'].includes(options.set)) throw new Error('--set A|B|C is required');
+    if (!['A', 'B', 'B0', 'C'].includes(options.set)) throw new Error('--set A|B|B0|C is required');
   }
   if (['blocked-pairs', 'menu-pairs', 'exit-recordings'].includes(options.command) && options.motionScale === null) {
     throw new Error('--motion-scale is required');

@@ -6,6 +6,7 @@ import {
   benchmarkConfiguration,
   parseArgs,
   perfBuildEnv,
+  renderedVerdict,
 } from './benchmark.mjs';
 
 // DEFAULT_PHASES at da93dcd: [...GESTURE_PHASES, 'blocked', 'exit'].
@@ -86,4 +87,36 @@ test('--record forces a single run and is incompatible with soaks', () => {
   assert.equal(parseArgs([], {}).record, null);
   assert.throws(() => parseArgs(['--record', 'x', '--soak-levels', '20'], {}), /--record/);
   assert.throws(() => parseArgs(['--record', '../x'], {}), /label/);
+});
+
+test('--assert-rendered is opt-in and accepts only the phases the gate implements', () => {
+  assert.deepEqual(parseArgs([], {}).assertRendered, []);
+  assert.deepEqual(parseArgs(['--assert-rendered', 'blocked'], {}).assertRendered, ['blocked']);
+  assert.deepEqual(parseArgs(['--assert-rendered', 'blocked,exit'], {}).assertRendered, ['blocked', 'exit']);
+  assert.throws(() => parseArgs(['--assert-rendered', 'zoomIn'], {}), /--assert-rendered/);
+  assert.throws(
+    () => parseArgs(['--assert-rendered', 'blocked', '--phases', 'menu'], { EXPO_PUBLIC_PERF_SCREEN: 'menu' }),
+    /--assert-rendered.*game/,
+  );
+  assert.throws(() => parseArgs(['--assert-rendered', 'exit', '--record', 'x'], {}), /--assert-rendered.*--record/);
+});
+
+const FLOORS = {
+  blocked: { region: 'board', changedPixelsFloor: 0 },
+  exit: { displacementFloorPx: 1, trailPixelsFloor: 0, changedFractionFloor: 0 },
+};
+
+test('blocked verdict: changed board pixels must exceed the floor', () => {
+  assert.equal(renderedVerdict('blocked', { changedPixels: 0 }, FLOORS).passed, false);
+  assert.equal(renderedVerdict('blocked', { changedPixels: 2933 }, FLOORS).passed, true);
+});
+
+test('exit verdict: pixels changing without moving fails the moved check (alpha-fade trap)', () => {
+  const fade = renderedVerdict('exit', { displacementPx: 0, maxChangedFraction: 0.0011 }, FLOORS);
+  assert.equal(fade.passed, false);
+  assert.equal(fade.movedPassed, false);
+  assert.equal(fade.changedAboveFloor, true);
+  const slither = renderedVerdict('exit', { displacementPx: 518.4, maxChangedFraction: 0.0011 }, FLOORS);
+  assert.equal(slither.passed, true);
+  assert.equal(renderedVerdict('exit', { displacementPx: 1, maxChangedFraction: 0.001 }, FLOORS).passed, false);
 });
