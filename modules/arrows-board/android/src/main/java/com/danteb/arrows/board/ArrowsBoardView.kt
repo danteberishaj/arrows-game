@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
+import android.os.Trace
 import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
@@ -109,11 +110,18 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   }
 
   internal fun setVisibleMask(value: String) {
-    synchronized(stateLock) {
-      visibleMask = value
-      rebuildCompoundPathsLocked()
+    // W6-01: app trace section for Perfetto (atrace_apps com.danteb.arrows);
+    // a no-op check when tracing is off. docs/perf-mask-rebuild-2026-09-17.md
+    Trace.beginSection("ArrowsBoard.setVisibleMask")
+    try {
+      synchronized(stateLock) {
+        visibleMask = value
+        rebuildCompoundPathsLocked()
+      }
+      postInvalidateOnAnimation()
+    } finally {
+      Trace.endSection()
     }
-    postInvalidateOnAnimation()
   }
 
   internal fun setInk(value: String) {
