@@ -7,6 +7,7 @@ import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { initRemoteConfig } from './src/config/remoteConfig';
 import { SaveSystem } from './src/core/saveSystem';
 import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE } from './src/perfMode';
 import { AdHost, adInitController, initAds } from './src/ui/ads';
@@ -29,6 +30,14 @@ export default function App() {
 
   useEffect(() => {
     if (PERF_MODE) return;
+    // Ads start only after hydration settles, so a remote kill persisted by an
+    // earlier session is already seeded when initAds() decides whether to call
+    // LevelPlay.init (W6-02). Before hydration SaveSystem reads its in-memory
+    // store, where every kill bit is 0. The remote config fetch never blocks it.
+    const startAfterHydration = () => {
+      initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
+      initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
+    };
     // No timeout here: `ready` must never come before hydration settles, or a later
     // SaveSystem.useStore swap could write an in-memory level-1 session over real
     // progress. On a rejection SaveSystem keeps its in-memory store, which never
@@ -38,9 +47,12 @@ export default function App() {
         setDark(SaveSystem.darkMode);
         setSoundOn(SaveSystem.soundOn);
         setReady(true);
+        startAfterHydration();
       })
-      .catch(() => setReady(true));
-    initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
+      .catch(() => {
+        setReady(true);
+        startAfterHydration();
+      });
     // A device that launched offline recovers ads when the player comes back.
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') adInitController.onAppActive();

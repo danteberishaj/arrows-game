@@ -240,6 +240,30 @@ export const SaveSystem = {
     store.setInt(Keys.finishedGames, nonNegativeInt(n));
   },
 
+  // ---- Remote kill switch (W6-02) ----------------------------------------
+
+  /**
+   * Last accepted remote kill bits (bit 0 all ads, 1 interstitials, 2 rewarded,
+   * 3 telemetry transport), read as a non-negative integer. Interpreted only by
+   * src/config/remoteConfig.ts. Not part of resetProgress().
+   */
+  get rcKillBits(): number {
+    return nonNegativeInt(store.getInt(Keys.rcKillBits, 0));
+  },
+
+  setRcKillBits(bits: number): void {
+    store.setInt(Keys.rcKillBits, nonNegativeInt(bits));
+  },
+
+  /** configVersion of the last accepted remote config; 0 = never fetched. */
+  get rcVersion(): number {
+    return nonNegativeInt(store.getInt(Keys.rcVersion, 0));
+  },
+
+  setRcVersion(version: number): void {
+    store.setInt(Keys.rcVersion, nonNegativeInt(version));
+  },
+
   // ---- Lifetime stats --------------------------------------------------
 
   /** Total levels ever solved. */

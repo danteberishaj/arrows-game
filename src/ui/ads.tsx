@@ -7,7 +7,9 @@ import type {
   LevelPlayRewardedAd,
   LevelPlayRewardedAdListener,
 } from 'unity-levelplay-mediation';
+import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
+import { adDecision, type AdFormat } from './adGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
@@ -30,6 +32,10 @@ import { Fonts, Palette } from './theme';
  * Rewarded readiness (`Ads.rewardedReady`) comes only from SDK callbacks, so a
  * button can say "no ad right now" instead of silently doing nothing. Init is
  * retried (timed, and whenever the app becomes active) until it succeeds.
+ *
+ * Remote kill switch (W6-02, src/config/remoteConfig.ts): every ad decision
+ * reads the kill bits at call time. A kill can only take ads away: no init, no
+ * interstitial, rewarded reported not ready. It never touches the pacing counter.
  *
  * The `import type` above is erased at compile time (zero runtime cost), so it
  * cannot break the Expo Go / web bundle where the native module is absent — the
@@ -180,6 +186,11 @@ function nativeAvailable(): boolean {
   return lpInterstitial !== null && lpRewarded !== null;
 }
 
+/** Remote kill for one ad format, read at call time (never captured at load). */
+function killed(format: AdFormat): boolean {
+  return adDecision(format, RemoteConfig.killBits()) === 'killed';
+}
+
 /** Native: the last rewarded SDK callback left a loaded, unconsumed ad. */
 let rewardedLoaded = false;
 const rewardedReadiness = createReadiness(false);
@@ -190,6 +201,11 @@ const rewardedReadiness = createReadiness(false);
  * release build without the native SDK is never ready.
  */
 function syncRewardedReady(): void {
+  if (killed('rewarded')) {
+    // Killed remotely: the button shows W0-02's "no ad available" state.
+    rewardedReadiness.set(false);
+    return;
+  }
   rewardedReadiness.set(
     nativeAvailable() ? rewardedLoaded : __DEV__ && fakeAdListener !== null,
   );
@@ -227,6 +243,12 @@ let initAttemptCount = 0;
 async function initLevelPlayOnce(): Promise<void> {
   const lp = levelPlayModule;
   if (!lp) throw new Error('LevelPlay module missing');
+  // Remote kill: no LevelPlay contact at all. Thrown as a failed attempt, so the
+  // controller's timed and app-active retries re-check this same gate.
+  if (RemoteConfig.adsKilled()) {
+    adLog('[ads] LevelPlay init skipped: ads killed by remote config');
+    throw new Error('ads killed by remote config');
+  }
   const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd } = lp;
   initAttemptCount += 1;
   adLog('[ads] LevelPlay init attempt', initAttemptCount);
@@ -329,6 +351,15 @@ export const adInitController = createAdInitController({
   clearTimer: (handle) => clearTimeout(handle),
 });
 
+// An accepted remote config changes readiness at once (a kill turns a loaded
+// rewarded ad not-ready), and a re-enable retries an init the kill blocked.
+// onAppActive() only starts an attempt after a failed one, so it is a no-op
+// before initAds() ran and after init succeeded.
+RemoteConfig.subscribe(() => {
+  syncRewardedReady();
+  if (!RemoteConfig.adsKilled()) adInitController.onAppActive();
+});
+
 /**
  * Initializes LevelPlay when the native module exists (dev build). In Expo
  * Go / web this quietly leaves the simulated path active. Safe to call more
@@ -391,6 +422,8 @@ export const Ads = {
    * Skips silently when not due or nothing is ready.
    */
   async showInterstitialIfDue(): Promise<void> {
+    // Killed remotely: skip without touching the pacing counter (W0-05).
+    if (killed('interstitial')) return;
     if (!isInterstitialDue(finishedGames(), GAMES_PER_INTERSTITIAL)) return;
 
     if (nativeAvailable()) {
@@ -432,6 +465,7 @@ export const Ads = {
   },
 
   async showRewarded(): Promise<boolean> {
+    if (killed('rewarded')) return false; // no ad, nothing granted
     if (nativeAvailable()) {
       try {
         if (!(await lpRewarded!.isAdReady())) return false;

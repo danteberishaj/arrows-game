@@ -1,0 +1,14 @@
+/**
+ * Build-time feature flags shared by W4, W6 and W7 (ruling I-29). Each flag is a
+ * plain constant, so a release build carries exactly the value committed here.
+ * Other workstreams keep their own flag modules (ftueConfig.ts, motionFlags.ts,
+ * artConfig.ts, generatorVersion.ts); audit all of them before a release.
+ */
+
+/**
+ * W6-02 remote kill switch for ads and telemetry. OFF: no config request is
+ * made and every RemoteConfig getter returns its compiled default ("not
+ * killed"), even when kill bits are persisted. W6-03 turns it on together with
+ * the hosted config URL, in a release the owner approves.
+ */
+export const REMOTE_KILL_SWITCH = false;
