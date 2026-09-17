@@ -14,6 +14,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildInputDriver, resolveAndroidSdkRoot } from './build-uiautomator.mjs';
 import {
+  adb,
+  applyMotionScale,
+  assertAppReducedMotionMatches,
+  capture,
+  delay,
+  gitMetadata,
+  parseMotionScale,
+  resolveActivity as resolveLauncherActivity,
+  physicalDisplaySize,
+  tryCapture,
+} from './device.mjs';
+import {
   parseGfxInfoFrames,
   parsePssCategoriesKb,
   parseTotalPssKb,
@@ -119,6 +131,10 @@ export function parseArgs(argv, env = process.env) {
     diagnosticEmptyBoard: false,
     diagnosticNoExitTrails: false,
     memoryOnly: false,
+    // Default 0: every recorded number before P-02 ran with all three scales at 0.
+    motionScale: '0',
+    diagnosticBogusScaleKeys: false,
+    diagnosticSkipRelaunch: false,
     phases: [...DEFAULT_PHASES],
     soakLevels: null,
   };
@@ -131,6 +147,8 @@ export function parseArgs(argv, env = process.env) {
     else if (option === '--diagnostic-empty-board') options.diagnosticEmptyBoard = true;
     else if (option === '--diagnostic-no-exit-trails') options.diagnosticNoExitTrails = true;
     else if (option === '--memory-only') options.memoryOnly = true;
+    else if (option === '--diagnostic-bogus-scale-keys') options.diagnosticBogusScaleKeys = true;
+    else if (option === '--diagnostic-skip-relaunch') options.diagnosticSkipRelaunch = true;
     else if (option in VALUE_OPTIONS) {
       const value = argv[++index];
       if (value === undefined) throw new Error(`${option} requires a value`);
@@ -142,6 +160,7 @@ export function parseArgs(argv, env = process.env) {
   }
 
   for (const key of ['api', 'level', 'runs', 'warmups']) options[key] = Number(options[key]);
+  options.motionScale = parseMotionScale(options.motionScale);
   if (options.soakLevels !== null) options.soakLevels = Number(options.soakLevels);
   if (options.soakLevels === null && options.level !== FIXED_LEVEL) {
     throw new Error('The single-level workload is pinned to level 3827');
@@ -296,33 +315,10 @@ const VALUE_OPTIONS = {
   '--expect-surface': 'expectSurface',
   '--phases': 'phases',
   '--soak-levels': 'soakLevels',
+  '--motion-scale': 'motionScale',
 };
 
-function capture(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? PROJECT_ROOT,
-    env: options.env ?? process.env,
-    encoding: 'utf8',
-    timeout: options.timeout ?? 120_000,
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `${basename(command)} ${args.join(' ')} failed (${result.status})\n` +
-        `${result.stdout ?? ''}${result.stderr ?? ''}`,
-    );
-  }
-  return result.stdout.trim();
-}
 
-function tryCapture(command, args, options = {}) {
-  try {
-    return capture(command, args, options);
-  } catch {
-    return null;
-  }
-}
 
 function runBuild(command, args, options = {}) {
   log(`${basename(command)} ${args.join(' ')}`);
@@ -362,13 +358,6 @@ function createSingleLevelPlan() {
   return createSoakPlan({ level: FIXED_LEVEL, soakLevels: 20 }).measured[0];
 }
 
-function adb(executable, serial, args, options) {
-  return capture(executable, ['-s', serial, ...args], options);
-}
-
-function delay(milliseconds) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
 
 function validateDevice(sdkRoot, options) {
   const adbExecutable = join(sdkRoot, 'platform-tools', 'adb');
@@ -384,10 +373,9 @@ function validateDevice(sdkRoot, options) {
 
   adb(adbExecutable, options.serial, ['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP']);
   tryCapture(adbExecutable, ['-s', options.serial, 'shell', 'wm', 'dismiss-keyguard']);
+  // The three animation scales are set by applyMotionScale after install, then
+  // force-stop + relaunch + read-back (device.mjs).
   for (const [namespace, key, value] of [
-    ['global', 'window_animation_scale', '0'],
-    ['global', 'transition_animation_scale', '0'],
-    ['global', 'animator_duration_scale', '0'],
     ['system', 'peak_refresh_rate', '60.0'],
     ['system', 'min_refresh_rate', '60.0'],
   ]) {
@@ -748,23 +736,6 @@ function runWorkload(context, phase, bounds, levelPlan) {
   return timing;
 }
 
-function resolveActivity(adbExecutable, serial) {
-  const output = adb(adbExecutable, serial, [
-    'shell', 'cmd', 'package', 'resolve-activity', '--brief',
-    '-a', 'android.intent.action.MAIN',
-    '-c', 'android.intent.category.LAUNCHER', APPLICATION_ID,
-  ]);
-  const activity = output.split(/\r?\n/).find((line) => line.includes('/'));
-  if (!activity) throw new Error(`Launcher activity was not resolved\n${output}`);
-  return activity;
-}
-
-function physicalDisplayHeight(adbExecutable, serial) {
-  const output = adb(adbExecutable, serial, ['shell', 'wm', 'size']);
-  const height = Number(output.match(/Physical size:\s*\d+x(\d+)/)?.[1]);
-  if (!Number.isFinite(height) || height < 1) throw new Error(`Could not parse display size\n${output}`);
-  return height;
-}
 
 function startReady(context) {
   adb(context.adbExecutable, context.serial, ['shell', 'am', 'force-stop', APPLICATION_ID]);
@@ -1532,13 +1503,6 @@ function gpuRenderer(adbExecutable, serial) {
   return output.match(/^GLES:\s*(.+)$/m)?.[1]?.trim() ?? 'unknown';
 }
 
-function gitMetadata() {
-  return {
-    head: tryCapture('git', ['rev-parse', 'HEAD'], { cwd: PROJECT_ROOT }),
-    branch: tryCapture('git', ['branch', '--show-current'], { cwd: PROJECT_ROOT }),
-    dirty: Boolean(tryCapture('git', ['status', '--short'], { cwd: PROJECT_ROOT })),
-  };
-}
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -1576,11 +1540,39 @@ async function main() {
     const context = {
       adbExecutable,
       serial: options.serial,
-      activity: resolveActivity(adbExecutable, options.serial),
+      activity: resolveLauncherActivity(adbExecutable, options.serial, APPLICATION_ID),
       remoteJar,
       perfScreen: options.perfScreen,
-      displayHeight: physicalDisplayHeight(adbExecutable, options.serial),
+      displayHeight: physicalDisplaySize(adbExecutable, options.serial).height,
     };
+    const motion = applyMotionScale(
+      adbExecutable,
+      options.serial,
+      context.activity,
+      options.motionScale,
+      {
+        bogusScaleKeys: options.diagnosticBogusScaleKeys,
+        skipRelaunch: options.diagnosticSkipRelaunch,
+      },
+    );
+    log(
+      `motion: requested ${options.motionScale}, read back ` +
+      `${JSON.stringify(motion.readBack)}, app reduced motion ${JSON.stringify(motion.appReducedMotion)} ` +
+      `(${motion.appReducedMotionSource})`,
+    );
+    assertAppReducedMotionMatches(motion.readBack, motion.appReducedMotion);
+    const motionFields = {
+      ...motion.environment,
+      ...(options.diagnosticBogusScaleKeys ? { motionDiagnostic: 'bogus-scale-keys' } : {}),
+      ...(options.diagnosticSkipRelaunch ? { motionDiagnostic: 'skip-relaunch' } : {}),
+    };
+    if (motionFields.reducedMotionVariantMeasured) {
+      log(
+        'WARNING: this run measures the REDUCED-MOTION variant (appReducedMotion ' +
+        `${JSON.stringify(motion.appReducedMotion)}); its numbers, including exit, are not the ` +
+        'shipped experience (docs/perf-harness.md)',
+      );
+    }
     startScreen(context, options.perfScreen);
     const installedSurfaceLayers = resolveSurfaceLayers(context);
     const installedSurfaceKind = installedSurfaceLayers.surfaceView ? 'surfaceView' : 'rootWindow';
@@ -1605,6 +1597,7 @@ async function main() {
           abi: adb(adbExecutable, options.serial, ['shell', 'getprop', 'ro.product.cpu.abi']),
           model: adb(adbExecutable, options.serial, ['shell', 'getprop', 'ro.product.model']),
           gpuRenderer: gpuRenderer(adbExecutable, options.serial),
+          ...motionFields,
           boardSurfaceKind: installedSurfaceKind,
           thermalStatusBefore: beforeThermal,
           thermalStatusAfter: null,
@@ -1711,6 +1704,7 @@ async function main() {
         abi: adb(adbExecutable, options.serial, ['shell', 'getprop', 'ro.product.cpu.abi']),
         model: adb(adbExecutable, options.serial, ['shell', 'getprop', 'ro.product.model']),
         gpuRenderer: gpuRenderer(adbExecutable, options.serial),
+        ...motionFields,
         boardSurfaceKind: installedSurfaceKind,
         thermalStatusBefore: beforeThermal,
         thermalStatusAfter: afterThermal,

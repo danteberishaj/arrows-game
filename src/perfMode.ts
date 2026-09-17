@@ -36,3 +36,20 @@ export function parsePerfScreen(raw: string | undefined): PerfScreen {
 export const PERF_SCREEN: PerfScreen = PERF_MODE
   ? parsePerfScreen(process.env.EXPO_PUBLIC_PERF_SCREEN)
   : 'game';
+
+/**
+ * Build-time capture diagnostic (ruling F01). EXPO_PUBLIC_CAPTURE_DIAG=1 exposes
+ * the app's own reduced-motion value in a non-PERF build; PERF builds always do.
+ * Unset in store builds, where Metro inlines `false`.
+ */
+export const CAPTURE_DIAG = process.env.EXPO_PUBLIC_CAPTURE_DIAG === '1';
+export const CAPTURE_DIAG_ENABLED = PERF_MODE || CAPTURE_DIAG;
+
+/**
+ * Accessibility label the capture harness reads with `uiautomator dump`
+ * (scripts/perf/android/device.mjs). `undefined` adds nothing to the tree.
+ */
+export function reducedMotionDiagLabel(enabled: boolean, reducedMotion: boolean): string | undefined {
+  if (!enabled) return undefined;
+  return `perf-reduced-motion-${reducedMotion ? 1 : 0}`;
+}

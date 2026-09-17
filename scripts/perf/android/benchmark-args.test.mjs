@@ -63,3 +63,18 @@ test('benchmarkConfiguration records perfScreen for fresh builds and caller APKs
     'splash',
   );
 });
+
+test('--motion-scale defaults to 0 so historical runs stay comparable, and accepts only 0 or 1', () => {
+  assert.equal(parseArgs([], {}).motionScale, 0);
+  assert.equal(parseArgs(['--motion-scale', '1'], {}).motionScale, 1);
+  assert.throws(() => parseArgs(['--motion-scale', '0.5'], {}), /--motion-scale must be 0 or 1/);
+});
+
+test('B2 diagnostics are explicit flags and default off', () => {
+  const plain = parseArgs([], {});
+  assert.equal(plain.diagnosticBogusScaleKeys, false);
+  assert.equal(plain.diagnosticSkipRelaunch, false);
+  const diag = parseArgs(['--diagnostic-bogus-scale-keys', '--diagnostic-skip-relaunch'], {});
+  assert.equal(diag.diagnosticBogusScaleKeys, true);
+  assert.equal(diag.diagnosticSkipRelaunch, true);
+});

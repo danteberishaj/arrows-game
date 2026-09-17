@@ -6,10 +6,17 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig } from './src/config/remoteConfig';
 import { SaveSystem } from './src/core/saveSystem';
-import { PERF_FEEDBACK, PERF_LEVEL_INDEX, PERF_MODE, PERF_SCREEN } from './src/perfMode';
+import {
+  CAPTURE_DIAG_ENABLED,
+  PERF_FEEDBACK,
+  PERF_LEVEL_INDEX,
+  PERF_MODE,
+  PERF_SCREEN,
+  reducedMotionDiagLabel,
+} from './src/perfMode';
 import { AdHost, adInitController, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -29,6 +36,15 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(PERF_MODE ? PERF_SCREEN : 'splash');
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  // Capture diagnostic (P-02 Stage B, ruling F01): Reanimated's own value,
+  // read once at app start, exposed only in PERF or EXPO_PUBLIC_CAPTURE_DIAG builds.
+  const diagLabel = reducedMotionDiagLabel(CAPTURE_DIAG_ENABLED, useReducedMotion());
+
+  useEffect(() => {
+    // uiautomator cannot dump a screen that animates forever (the menu's Play
+    // pill at scale 1), so the harness can also read this line from logcat.
+    if (diagLabel) console.log(`[capture-diag] ${diagLabel} screen=${screen}`);
+  }, [diagLabel, screen]);
 
   useEffect(() => {
     if (PERF_MODE) return;
@@ -83,12 +99,14 @@ export default function App() {
 
   const p = paletteFor(dark);
 
-  if (!ready || !fontsReady) return <View style={{ flex: 1, backgroundColor: p.bg }} />;
+  if (!ready || !fontsReady) {
+    return <View accessibilityLabel={diagLabel} style={{ flex: 1, backgroundColor: p.bg }} />;
+  }
 
   // Screens cross-fade (~180 ms) instead of hard-cutting (DESIGN.md "Motion").
   return (
     <SafeAreaProvider>
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView accessibilityLabel={diagLabel} style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === 'splash' && <SplashScreen palette={p} onDone={() => setScreen('menu')} />}
       {screen === 'menu' && (

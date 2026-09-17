@@ -1,5 +1,15 @@
 # Tap-forgiveness revision: frame A/B/A, 2026-09-08
 
+> **ERRATUM (P-02, 2026-09-17): every column here measured the reduced-motion variant.**
+> The harness set `window_animation_scale`, `transition_animation_scale` and
+> `animator_duration_scale` to 0 before every run and recorded none of them.
+> Reanimated reads `transition_animation_scale == 0` as reduced motion at app
+> start, so the app drew its reduced-motion feedback. The **`exit` column** is a
+> stationary dash that only fades (`ArrowsBoardView.kt:269-271`), not the moving
+> slither, and the `blocked` column is the pre-W0-04 blocker blackout. None of
+> these numbers is a baseline for a `--motion-scale 1` run. Rules:
+> `docs/perf-harness.md`.
+
 Same protocol as `scripts/perf/android/benchmark.mjs` (level 3827, 250 arrows,
 `--feedback`, 10 runs, AVD `fleet_floor_api31` API 31, `-gpu host`), run five
 times in one emulator session on the same Mac, alternating builds:
