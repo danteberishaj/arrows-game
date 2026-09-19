@@ -1,11 +1,10 @@
 # Board viewport measurement
 
-**W1-01 status: BLOCKED on the required UIAutomator agreement.** The React Native layout values
-were measured successfully, but Android's accessibility hierarchy clips the board node at the
-three-button navigation bar while React Native lays the board behind that bar. The raw height
-differences are 48 dp at native density and 56 dp at density 480, not the required <= 1 dp. The
-logged values and derived ceilings below are valid outputs of `BoardView.onLayout`, but this document
-must not be treated as a closed UIAutomator cross-check until the controller resolves that mismatch.
+**W1-01 status: COMPLETE.** The raw React Native layout includes the three-button navigation-bar
+area, while Android's accessibility hierarchy clips the board node to the visible app area. Per the
+controller's fix-round-1 ruling, the cross-check compares that same visible area on both sides. Once
+the device-reported system-bar inset is removed from the raw logged height, all three geometries
+agree with UIAutomator within 1 dp.
 
 ## Measurement scope
 
@@ -19,32 +18,30 @@ must not be treated as a closed UIAutomator cross-check until the controller res
 - UNVERIFIED-DEVICE: physical Android and iOS phones, including notches, cutouts, gesture-navigation
   insets, and manufacturer-specific system bars.
 
-The brief calls native `1440x3120 @560` a `514x1114 dp` screen. That parenthetical is arithmetically
-inconsistent with the specified density: `densityScale = 560/160 = 3.5`, so the literal geometry is
-`411.429x891.429 dp`. The raw `wm` values and measured layout are retained here rather than changing
-density to fit the parenthetical.
+The measured native geometry is `1440x3120 @560`, or `411.43x891.43 dp`, because
+`densityScale = 560/160 = 3.5`. The brief's native-dp parenthetical is wrong. Consumers, including
+W1-02, W1-04, and W3-08, must use the measured `411.43x891.43 dp` geometry rather than copying that
+parenthetical.
 
 ## Literal measurements and UIAutomator cross-check
 
-`UI board` is the `resource-id="perf-board"` node's literal pixel bounds divided by
-`density/160`. `Delta` is `logged - UI board`. The UI root ends 168 px above the physical screen
-bottom at every geometry, exactly where the three-button navigation bar begins.
+`Raw UI board` is the `resource-id="perf-board"` node's literal pixel bounds divided by
+`density/160`. The system-bar inset is read from `dumpsys window displays` as
+`cur height - app height`; at native geometry `cur` equals `init`. The adjusted comparison subtracts
+that inset from the raw logged height, leaving the same visible area that UIAutomator reports.
 
-| Geometry (same API 31 emulator) | Literal log `[board-viewport]` (dp) | Header height (dp) | UIAutomator `perf-board` bounds (px) | UI board from bounds (dp) | Delta (dp) | Agreement |
-|---|---:|---:|---:|---:|---:|---|
-| Native `1440x3120 @560` (`411.429x891.429 dp`) | `w=411.4285583496094 h=804.2857055664062` | `87.143` (`305/3.5`) | `[0,305][1440,2952]` | `411.429x756.286` | `0x48.000` | **FAIL** |
-| Override `1080x2340 @480` (`360x780 dp`) | `w=360 h=689` | `91` (`273/3`) | `[0,273][1080,2172]` | `360x633` | `0x56` | **FAIL** |
-| Override `1080x1920 @480` (`360x640 dp`) | `w=360 h=549` | `91` (`273/3`) | `[0,273][1080,1752]` | `360x493` | `0x56` | **FAIL** |
+| Geometry | API | Raw log `w x h` (dp) | Raw UIAutomator bounds (px) | Raw UI board `w x h` (dp) | Measured inset | Adjusted comparison (dp) | Agreement |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Native `1440x3120 @560` (`411.43x891.43 dp`) | 31 | `411.428558x804.285706` | `[0,305][1440,2952]` | `411.428571x756.285714` | `3120-2952=168 px = 48 dp` | log visible `411.428558x756.285706` vs UI `411.428571x756.285714`; max delta `0.000013` | **PASS** |
+| Override `1080x2340 @480` (`360x780 dp`) | 31 | `360x689` | `[0,273][1080,2172]` | `360x633` | `2340-2172=168 px = 56 dp` | log visible `360x633` vs UI `360x633`; delta `0` | **PASS** |
+| Override `1080x1920 @480` (`360x640 dp`) | 31 | `360x549` | `[0,273][1080,1752]` | `360x493` | `1920-1752=168 px = 56 dp` | log visible `360x493` vs UI `360x493`; delta `0` | **PASS** |
 
-- EXECUTED: raw logcats are `artifacts/W1-01/native-logcat.txt`,
-  `artifacts/W1-01/360x780-logcat.txt`, and `artifacts/W1-01/360x640-logcat.txt`.
-- EXECUTED: raw hierarchies are `artifacts/W1-01/native-ui.xml`,
-  `artifacts/W1-01/360x780-ui.xml`, and `artifacts/W1-01/360x640-ui.xml`.
-- EXECUTED: screenshots are `artifacts/W1-01/native.png`, `artifacts/W1-01/360x780.png`, and
-  `artifacts/W1-01/360x640.png`.
-- INFERRED from the exact 168 px clipping and the visible three-button bar in every screenshot:
-  UIAutomator reports the visible intersection of the accessible node, not the full Yoga layout
-  rectangle that `onLayout` reports. No correction was applied to the raw UI values.
+- EXECUTED: fix-round-1 raw logcats, `dumpsys window displays` output, UI hierarchies,
+  screenshots, command output, and restoration proof are under `artifacts/W1-01/fix1/`.
+- EXECUTED: every `dumpsys window displays` row reports the same 168 px difference between `cur`
+  and `app`, and every screenshot shows the three-button navigation bar in that strip.
+- EXECUTED: the adjusted comparisons pass the <= 1 dp acceptance threshold at all three
+  geometries; no adjustment was made to the raw values recorded above.
 
 ## Cell-size formula and ceilings from the logged values
 
@@ -81,12 +78,14 @@ guidance lists a 44x44 pt default control size, retained here only as the reques
 
 - EXECUTED: `npx tsx scripts/analysis/ftue-board-metrics.ts --level 0` printed
   `level 0 rows 20 cols 20 arrows 60 clearable 19 (31.7%)`, followed by all 60
-  `remaining:legal` states of its greedy solve (`artifacts/W1-01/ftue-level-0.txt`).
+  `remaining:legal` states of its greedy solve
+  (`artifacts/W1-01/fix1/instrument-calibration.txt`).
 - EXECUTED: `npm run analysis:probe -- --version 1 --levels 1-1` independently printed level 1,
   index 0, `20x20`, 60 arrows, 19 clearable, and 31.7%
-  (`artifacts/W1-01/w3-probe-level-1.txt`).
-- INFERRED: `--tutorial T1|T2` is wired through an optional `src/core` export and will measure those
-  boards after W1-02 adds `buildTutorialLevel`. W1-01 does not invent tutorial data or choose sizes.
+  (`artifacts/W1-01/fix1/instrument-calibration.txt`).
+- EXECUTED: `--tutorial T1` exits with `unavailable until W1-02 exports buildTutorialLevel`
+  (`artifacts/W1-01/fix1/tutorial-dormant.txt`). The T1/T2 metrics stay dormant until W1-02 exports
+  those boards; W1-01 does not invent tutorial data or choose sizes.
 
 ## Re-measurement trigger
 
