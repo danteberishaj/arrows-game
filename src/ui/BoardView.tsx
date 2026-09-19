@@ -41,6 +41,7 @@ import {
   hintStrokeSwellAt,
   PRESSED_STROKE_SWELL,
 } from './feedbackCurves';
+import { FirstPaintCleanupTimer } from './firstPaintCleanup';
 import { ArrowHitTester, TAP_RADIUS_PT } from './hitTest';
 import { StaticBoardSurface } from './StaticBoardSurface';
 import type { NativeExitAnimation } from './StaticBoardSurface.types';
@@ -232,8 +233,8 @@ export function BoardView({
   const exitCleanupTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>(
     Array.from({ length: MAX_CONCURRENT_EXIT_TRAILS }, () => null),
   ).current;
-  const shakeCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blockerCleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shakeCleanup = useRef(new FirstPaintCleanupTimer()).current;
+  const blockerCleanup = useRef(new FirstPaintCleanupTimer()).current;
   const shakingRef = useRef<AnimatedArrowState | null>(null);
   const pressedRef = useRef<ArrowPath | null>(null);
   const pressPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -254,10 +255,20 @@ export function BoardView({
     for (const timer of exitCleanupTimers) {
       if (timer !== null) clearTimeout(timer);
     }
-    if (shakeCleanupTimer.current !== null) clearTimeout(shakeCleanupTimer.current);
-    if (blockerCleanupTimer.current !== null) clearTimeout(blockerCleanupTimer.current);
+    shakeCleanup.clear();
+    blockerCleanup.clear();
     if (pressPreviewTimer.current !== null) clearTimeout(pressPreviewTimer.current);
   }, []);
+
+  React.useLayoutEffect(() => {
+    if (shaking) shakeCleanup.committed(shaking.id);
+    else shakeCleanup.clear();
+  }, [shaking?.id, shakeCleanup]);
+
+  React.useLayoutEffect(() => {
+    if (blocker) blockerCleanup.committed(blocker.id);
+    else blockerCleanup.clear();
+  }, [blocker?.id, blockerCleanup]);
 
   // ---- pan / zoom ------------------------------------------------------
 
@@ -312,14 +323,8 @@ export function BoardView({
       if (timer !== null) clearTimeout(timer);
       exitCleanupTimers[slot] = null;
     }
-    if (shakeCleanupTimer.current !== null) {
-      clearTimeout(shakeCleanupTimer.current);
-      shakeCleanupTimer.current = null;
-    }
-    if (blockerCleanupTimer.current !== null) {
-      clearTimeout(blockerCleanupTimer.current);
-      blockerCleanupTimer.current = null;
-    }
+    shakeCleanup.clear();
+    blockerCleanup.clear();
     if (pressPreviewTimer.current !== null) {
       clearTimeout(pressPreviewTimer.current);
       pressPreviewTimer.current = null;
@@ -426,10 +431,7 @@ export function BoardView({
       lastRemoved.current = { arrow: owner, at: Date.now() };
       if (hint && hint.arrow === owner) clearHint();
       if (shakingRef.current?.arrow === owner) {
-        if (shakeCleanupTimer.current !== null) {
-          clearTimeout(shakeCleanupTimer.current);
-          shakeCleanupTimer.current = null;
-        }
+        shakeCleanup.clear(shakingRef.current.id);
         shakingRef.current = null;
         setShaking(null);
       }
@@ -484,35 +486,31 @@ export function BoardView({
       const id = nextId.current++;
       const nextShaking = { arrow: owner, id };
       shakingRef.current = nextShaking;
+      shakeCleanup.stage({
+        id,
+        durationMs: BLOCKED_BUMP_MS + 40,
+        onElapsed: () => {
+          setShaking((current) => {
+            if (current?.id !== id) return current;
+            shakingRef.current = null;
+            return null;
+          });
+        },
+      });
       setShaking(nextShaking);
-      if (shakeCleanupTimer.current !== null) {
-        clearTimeout(shakeCleanupTimer.current);
-      }
-      const timer = setTimeout(() => {
-        if (shakeCleanupTimer.current === timer) shakeCleanupTimer.current = null;
-        setShaking((current) => {
-          if (current?.id !== id) return current;
-          shakingRef.current = null;
-          return null;
-        });
-      }, BLOCKED_BUMP_MS + 40);
-      shakeCleanupTimer.current = timer;
 
       // Show WHY: the first arrow in the lane lights up for a moment.
       const blocking = board.blockerOf(owner);
       if (blocking) {
         const blockerId = nextId.current++;
+        blockerCleanup.stage({
+          id: blockerId,
+          durationMs: BLOCKER_FLASH_MS + 40,
+          onElapsed: () => {
+            setBlocker((current) => (current?.id === blockerId ? null : current));
+          },
+        });
         setBlocker({ arrow: blocking, id: blockerId });
-        if (blockerCleanupTimer.current !== null) {
-          clearTimeout(blockerCleanupTimer.current);
-        }
-        const blockerTimer = setTimeout(() => {
-          if (blockerCleanupTimer.current === blockerTimer) {
-            blockerCleanupTimer.current = null;
-          }
-          setBlocker((current) => (current?.id === blockerId ? null : current));
-        }, BLOCKER_FLASH_MS + 40);
-        blockerCleanupTimer.current = blockerTimer;
       }
       onBlocked(blockedLedger.charge(owner));
     }
