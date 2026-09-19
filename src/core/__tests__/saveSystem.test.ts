@@ -220,6 +220,19 @@ describe('P-01 reset lock', () => {
   });
 });
 
+describe('W1-03 FTUE stage', () => {
+  test('ftueStage defaults to 0 on an empty store', () => {
+    expect(SaveSystem.ftueStage).toBe(0);
+  });
+
+  test('setFtueStage(2) round-trips through an in-memory store', () => {
+    SaveSystem.setFtueStage(2);
+
+    expect(store.map.get('arrows_ftue_stage')).toBe(2);
+    expect(SaveSystem.ftueStage).toBe(2);
+  });
+});
+
 describe('W0-05 interstitial pacing counter', () => {
   /** An IntStore over a map it does not own, so a second instance sees the same "disk". */
   class SharedMapStore implements IntStore {

@@ -135,6 +135,7 @@ const PersistenceKeys: readonly string[] = Object.freeze(Object.values(Keys));
  * migration step and its own P-01 amendment.
  */
 const SCHEMA_VERSION = 1;
+const FTUE_NOT_STARTED_STAGE = 0; // OWNER-PICKED STARTING VALUE
 
 let persistenceHealthy = false;
 
@@ -223,6 +224,17 @@ export const SaveSystem = {
 
   setCurrentLevel(index: number): void {
     store.setInt(Keys.currentLevel, Math.max(0, index));
+  },
+
+  // ---- First-time user experience (W1-03) ------------------------------
+
+  /** Raw FTUE stage: 0 not started, 1 T1 cleared, 2 assist, 3 done. */
+  get ftueStage(): number {
+    return store.getInt(Keys.ftueStage, FTUE_NOT_STARTED_STAGE);
+  },
+
+  setFtueStage(stage: number): void {
+    store.setInt(Keys.ftueStage, stage);
   },
 
   // ---- Interstitial pacing (W0-05) --------------------------------------
