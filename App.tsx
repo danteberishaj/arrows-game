@@ -50,6 +50,10 @@ const perfTelemetrySink = PERF_TELEMETRY_TIMING
   : null;
 if (perfTelemetrySink) {
   Telemetry.useSink(perfTelemetrySink);
+} else if (__DEV__) {
+  Telemetry.useSink((event) => {
+    console.log(`[telemetry] ${JSON.stringify(event)}`);
+  });
 }
 
 function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu' | 'game' {
