@@ -96,6 +96,7 @@ export const VALID_PHASES = new Set([...DEFAULT_PHASES, ...SCREEN_PHASES]);
 const PERF_SCREENS = new Set(['splash', 'menu', 'game']);
 // Phases the effect-rendered gate implements (P-02 Stage E, ruling F02).
 const RENDERED_GATE_PHASES = new Set(['blocked', 'exit']);
+const DEFAULT_ASSERT_RENDERED_BLOCKED_CELL = Object.freeze([35, 19]);
 
 function parsePerfScreen(raw) {
   if (raw === undefined) return 'game';
@@ -108,6 +109,19 @@ function parseExitAnimationDuration(value) {
   return Number.isFinite(duration) && duration >= 160 && duration <= 1000
     ? duration
     : 180;
+}
+
+function parseAssertRenderedBlockedCell(value) {
+  const match = /^(\d+),(\d+)$/.exec(value ?? '');
+  const row = Number(match?.[1]);
+  const col = Number(match?.[2]);
+  if (!match || row >= GRID_SIZE || col >= GRID_SIZE) {
+    throw new Error(
+      `--assert-rendered-blocked-cell expects row,col within the ${GRID_SIZE}x${GRID_SIZE} grid ` +
+      `(got ${JSON.stringify(value)})`,
+    );
+  }
+  return [row, col];
 }
 
 function log(message) {
@@ -144,6 +158,7 @@ export function parseArgs(argv, env = process.env) {
     diagnosticSkipRelaunch: false,
     record: null,
     assertRendered: [],
+    assertRenderedBlockedCell: null,
     phases: [...DEFAULT_PHASES],
     soakLevels: null,
   };
@@ -186,6 +201,13 @@ export function parseArgs(argv, env = process.env) {
       throw new Error('--assert-rendered records its own evidence; do not combine it with --record');
     }
     if (options.soakLevels !== null) throw new Error('--assert-rendered cannot be combined with --soak-levels');
+  }
+  const blockedCellWasExplicit = options.assertRenderedBlockedCell !== null;
+  options.assertRenderedBlockedCell = blockedCellWasExplicit
+    ? parseAssertRenderedBlockedCell(options.assertRenderedBlockedCell)
+    : [...DEFAULT_ASSERT_RENDERED_BLOCKED_CELL];
+  if (blockedCellWasExplicit && !options.assertRendered.includes('blocked')) {
+    throw new Error('--assert-rendered-blocked-cell requires --assert-rendered to include blocked');
   }
   if (options.record !== null) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(options.record)) {
@@ -356,6 +378,7 @@ const VALUE_OPTIONS = {
   '--motion-scale': 'motionScale',
   '--record': 'record',
   '--assert-rendered': 'assertRendered',
+  '--assert-rendered-blocked-cell': 'assertRenderedBlockedCell',
 };
 
 
@@ -1577,7 +1600,8 @@ async function runAssertRendered(context, options, levelPlan) {
     const headerBottom = headerBottomFromUi(context);
     let measured;
     if (phase === 'blocked') {
-      const point = cellCenter(bounds, 35, 19);
+      const [row, col] = options.assertRenderedBlockedCell;
+      const point = cellCenter(bounds, row, col, levelPlan.rows, levelPlan.cols);
       const probe = await calibrate.probeBlockedPair(context.adbExecutable, context.serial, {
         bounds,
         headerBottom,
@@ -1587,6 +1611,7 @@ async function runAssertRendered(context, options, levelPlan) {
       });
       measured = {
         region: 'board',
+        cell: [row, col],
         changedPixels: probe.board.changed,
         changedFraction: probe.board.fraction,
         totalPixels: probe.board.total,

@@ -118,6 +118,25 @@ test('--assert-rendered is opt-in and accepts only the phases the gate implement
   assert.throws(() => parseArgs(['--assert-rendered', 'exit', '--record', 'x'], {}), /--assert-rendered.*--record/);
 });
 
+test('--assert-rendered-blocked-cell selects an in-grid held-out cell only for the blocked gate', () => {
+  assert.deepEqual(parseArgs(['--assert-rendered', 'blocked'], {}).assertRenderedBlockedCell, [35, 19]);
+  assert.deepEqual(
+    parseArgs(['--assert-rendered', 'blocked', '--assert-rendered-blocked-cell', '30,21'], {})
+      .assertRenderedBlockedCell,
+    [30, 21],
+  );
+  assert.throws(
+    () => parseArgs(['--assert-rendered', 'exit', '--assert-rendered-blocked-cell', '30,21'], {}),
+    /--assert-rendered-blocked-cell.*blocked/,
+  );
+  for (const cell of ['30', '-1,2', '39,2', '2,39']) {
+    assert.throws(
+      () => parseArgs(['--assert-rendered', 'blocked', '--assert-rendered-blocked-cell', cell], {}),
+      /--assert-rendered-blocked-cell/,
+    );
+  }
+});
+
 const FLOORS = {
   blocked: { region: 'board', changedPixelsFloor: 0 },
   exit: { displacementFloorPx: 1, trailPixelsFloor: 0, changedFractionFloor: 0 },
