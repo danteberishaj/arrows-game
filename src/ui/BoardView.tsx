@@ -395,6 +395,9 @@ export function BoardView({
   const onLayout = useCallback((e: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width: vw, height: vh } = e.nativeEvent.layout;
     if (vw < 1 || vh < 1) return;
+    if (process.env.EXPO_PUBLIC_LOG_BOARD_VIEWPORT === '1') {
+      console.log(`[board-viewport] w=${vw} h=${vh}`);
+    }
     setViewportSize((current) =>
       current.w === vw && current.h === vh ? current : { w: vw, h: vh },
     );
