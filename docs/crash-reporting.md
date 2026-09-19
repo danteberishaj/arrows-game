@@ -109,14 +109,43 @@ survive.
 ### Measured Android coverage
 
 Coverage depends on `HydratedIntStore`'s microtask-scheduled AsyncStorage write reaching native
-storage before the fatal process ends. On `emulator-5556` (`sdk_gphone64_arm64`, API 31), the W6-07
-release-path probe observed:
+storage before the fatal process ends.
 
-**0/10 cold relaunches drained a record after 10/10 observed JavaScript fatals.**
+#### Valid fix-round-1 measurement
+
+On 2026-09-19, the W6-07 release-path probe on `emulator-5556` (`sdk_gphone64_arm64`, API 31)
+logged a release-visible cold-start marker immediately before `drainFatals()`:
+
+```text
+[W607] pending=<count> hash=<last-hash>
+```
+
+The detector and persistence path were controlled before the fatal trials:
+
+- **Positive control A passed:** a throwaway action set pending to `1` without crashing. After a
+  3-second wait, force-stop and cold relaunch, the marker read
+  `[W607] pending=1 hash=60701`.
+- **Negative control B passed:** after that startup drained the seeded value, another force-stop and
+  cold relaunch read `[W607] pending=0 hash=60701`.
+
+The subsequent valid 10-trial result was:
+
+**0/10 cold relaunches read `pending>=1` after 10/10 observed JavaScript fatals.** Every relaunch
+contained exactly one `[W607]` marker, and every marker read `pending=0 hash=0`.
 
 Therefore this mechanism has **no observed Android fatal-capture coverage with the current store on
 this emulator**. It remains best-effort code for a future synchronous store or a platform where the
 write happens to land; this result must not be described as working crash reporting.
+
+#### Invalid original instrument run (retained)
+
+The earlier run also printed `drained=0/10`, but that number is **invalid as a survival
+measurement**. Its detector counted a relaunch line matching a `[telemetry]` `js_fatal` event, while
+the `[telemetry]` console sink is installed only under `__DEV__` and the probe was a release bundle.
+The retained original `trial-{1,5,10}-logcat.txt` files contain zero `[telemetry]` lines of any kind,
+including `app_open`, and the harness saved only filtered lines. That run measured a detector that
+could never fire, not AsyncStorage survival. It is retained only as historical invalid-run evidence;
+the conclusion above comes from the controlled `[W607]` run.
 
 #### Exact build and measurement commands
 
@@ -130,9 +159,10 @@ npx expo run:android --variant release --device fleet_floor_api31
 ```
 
 Gradle completed `assembleRelease`; Expo CLI's later Metro startup hit the sandbox's watcher limit,
-so the generated APK was installed directly. The post-fix probe was JavaScript-only: a temporary
-Play-button throw plus a temporary release console sink were bundled as optimized Hermes bytecode
-over that Gradle release host and debug-signed for emulator installation:
+so the generated APK was installed directly. The original, invalid post-fix probe was
+JavaScript-only: a temporary Play-button throw was bundled as optimized Hermes bytecode over that
+Gradle release host and debug-signed for emulator installation. It did not add a release-visible
+drain marker or sink:
 
 ```sh
 artifacts/W6-06/scripts/repack-apk.sh \
@@ -147,16 +177,29 @@ artifacts/W6-06/scripts/repack-apk.sh \
 sh artifacts/W6-07/run-survival-trials.sh
 ```
 
-For each trial, `run-survival-trials.sh` cleared logcat, tapped Play, required exactly one
-`ReactNativeJS` fatal marker, force-stopped the already-fatal package so the next launch was
-unambiguously cold, relaunched, and counted emitted `js_fatal` events. The summary and per-trial
-filtered logs are in `artifacts/W6-07/survival-summary.txt` and
-`artifacts/W6-07/trial-*-logcat.txt`.
+That historical harness and its filtered evidence remain in `artifacts/W6-07/` and must not be used
+for a survival conclusion.
+
+Fix round 1 used two temporary probe bundles, both built with `export:embed --dev false` and
+optimized Hermes bytecode over the same clean release host. The first made Play seed pending without
+crashing; the second made Play throw the fatal. Both logged `[W607]` before `drainFatals()`. The
+commands that ran the controls and accepted trials were:
+
+```sh
+sh -x artifacts/W6-07/fix1/run-controls.sh
+sh -x artifacts/W6-07/fix1/run-survival-trials.sh
+```
+
+`run-survival-trials.sh` requires one fatal marker and one cold-start marker per trial, counts
+`pending>=1` directly from the cold-start marker, and saves the complete relaunch logcat. Its output
+is `artifacts/W6-07/fix1/survival-summary.txt`; the complete logs are
+`artifacts/W6-07/fix1/trial-*-relaunch-full-logcat.txt`. The temporary source patch and probe APKs
+were removed after measurement.
 
 ### Not covered
 
 - non-fatal JavaScript errors;
-- JavaScript fatals whose AsyncStorage write does not land (all 10 emulator trials above);
+- JavaScript fatals whose AsyncStorage write does not land (all 10 valid emulator trials above);
 - Android ANRs, which Google Play reports without this app context;
 - native crashes, covered separately by W6-08/W6-09;
 - any iOS crash path;
