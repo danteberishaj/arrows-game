@@ -12,3 +12,10 @@
  * the hosted config URL, in a release the owner approves.
  */
 export const REMOTE_KILL_SWITCH = false;
+
+/**
+ * W6-14 first-party telemetry transport. OFF means App keeps the no-op sink,
+ * so no event can reach a network request even if another transport gate is
+ * accidentally opened. W6-15 owns any future enablement.
+ */
+export const TELEMETRY_TRANSPORT = false;

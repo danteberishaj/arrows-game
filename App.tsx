@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import { SaveSystem } from './src/core/saveSystem';
+import { TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
   PERF_FEEDBACK,
@@ -25,6 +26,12 @@ import { SplashScreen } from './src/ui/SplashScreen';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
 import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
+import {
+  createHttpSink,
+  HTTP_SINK_CAP,
+  TELEMETRY_ENDPOINT_URL,
+  type HttpSink,
+} from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
@@ -43,10 +50,6 @@ const perfTelemetrySink = PERF_TELEMETRY_TIMING
   : null;
 if (perfTelemetrySink) {
   Telemetry.useSink(perfTelemetrySink);
-} else if (__DEV__) {
-  Telemetry.useSink((event) => {
-    console.log(`[telemetry] ${JSON.stringify(event)}`);
-  });
 }
 
 function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu' | 'game' {
@@ -99,6 +102,7 @@ export default function App() {
 
   useEffect(() => {
     if (PERF_MODE) return;
+    let httpSink: HttpSink | null = null;
     // Ads start only after hydration settles, so a remote kill persisted by an
     // earlier session is already seeded when initAds() decides whether to call
     // LevelPlay.init (W6-02). Before hydration SaveSystem reads its in-memory
@@ -122,6 +126,18 @@ export default function App() {
         const sessionIndex = nextSessionIndex(SaveSystem);
         const bucket = bucketOf(identity.hi, identity.lo);
         Telemetry.configure({ sessionIndex, bucket });
+        if (TELEMETRY_TRANSPORT) {
+          httpSink = createHttpSink({
+            url: TELEMETRY_ENDPOINT_URL,
+            fetchImpl: fetch,
+            appState: AppState,
+            consentGranted: () => false,
+            killed: () => RemoteConfig.telemetryKilled(),
+            installId: identity,
+            cap: HTTP_SINK_CAP,
+          });
+          Telemetry.useSink(httpSink.send);
+        }
         startAfterHydration();
         installFatalHandlerOnce();
         drainFatals();
@@ -142,7 +158,10 @@ export default function App() {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') adInitController.onAppActive();
     });
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      httpSink?.dispose();
+    };
   }, []);
 
   useEffect(() => RemoteConfig.subscribe(syncTelemetryDisabled), []);
