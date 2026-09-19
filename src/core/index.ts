@@ -8,5 +8,7 @@ export { BoardLogic } from './boardLogic';
 export { ShapeDef, ShapeLibrary } from './shapeLibrary';
 export { LevelGenerator } from './levelGenerator';
 export type { GeneratedLevel } from './levelGenerator';
+export { TUTORIAL_BOARDS, buildTutorialLevel } from './tutorialLevels';
+export type { TutorialId } from './tutorialLevels';
 export { SaveSystem } from './saveSystem';
 export type { IntStore } from './saveSystem';
