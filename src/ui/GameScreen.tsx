@@ -230,7 +230,7 @@ export function GameScreen({
       setAdShowFailed(true); // stay on the lose panel and say so; nothing granted
       return;
     }
-    levelAggregatorRef.current.continueUsed();
+    levelAggregatorRef.current.resume();
     terminalTransition.reset();
     setTerminalPending(false);
     heartsRef.current = 1;

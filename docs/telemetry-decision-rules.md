@@ -175,3 +175,13 @@ The install id used as a join key in rows 1 and 4 is intentionally **not**
 in this table: it is not an `EventSchema` field (see "The join key" section
 above), so it is not subject to the grep check the acceptance criterion
 describes.
+
+## Continued-level lifecycle
+
+An earned continue reopens the same aggregation after its
+`level_end{outcome:'out_of_hearts'}` event, so a continued level emits two
+`level_end` events for the same `levelIndex`; the later terminal keeps the
+earlier counters and has `continuesUsed >= 1`. Count those as distinct terminal
+stages and dedupe retries on `levelIndex + continuesUsed` within an install and
+session rather than assuming one `level_end` per `level_start`; only a
+`level_end{outcome:'cleared'}` contributes to the session's cleared-level tally.

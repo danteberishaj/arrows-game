@@ -7,10 +7,11 @@ export type LevelMode = EventProps<'level_start'>['mode'];
 
 /**
  * Aggregates the hot tap path into plain counters. A tap only increments one
- * number; event construction happens once, when the level ends.
+ * number; event construction happens only at terminal boundaries. An earned
+ * continue can resume an out-of-hearts level without resetting its counters.
  */
 export class LevelAggregator {
-  private active = false;
+  private state: 'idle' | 'active' | 'resumable' = 'idle';
   private levelIndex = 0;
   private heartsMax = 0;
   private levelStartedAt = 0;
@@ -42,7 +43,7 @@ export class LevelAggregator {
     mode: LevelMode,
     now: number,
   ): void {
-    this.active = true;
+    this.state = 'active';
     this.levelIndex = levelIndex;
     this.heartsMax = heartsMax;
     this.levelStartedAt = now;
@@ -67,7 +68,7 @@ export class LevelAggregator {
   }
 
   tap(outcome: TapOutcome): void {
-    if (!this.active) return;
+    if (this.state !== 'active') return;
     switch (outcome) {
       case 'exit':
         this.tapsExit += 1;
@@ -85,20 +86,23 @@ export class LevelAggregator {
   }
 
   heartLost(): void {
-    if (this.active) this.heartsLost += 1;
+    if (this.state === 'active') this.heartsLost += 1;
   }
 
   hintUsed(): void {
-    if (this.active) this.hintsUsed += 1;
+    if (this.state === 'active') this.hintsUsed += 1;
   }
 
-  continueUsed(): void {
-    if (this.active) this.continuesUsed += 1;
+  /** Reopens the same counters after an earned continue from an out-of-hearts end. */
+  resume(): void {
+    if (this.state !== 'resumable') return;
+    this.state = 'active';
+    this.continuesUsed += 1;
   }
 
   end(outcome: LevelOutcome, heartsLeft: number, now: number): void {
-    if (!this.active) return;
-    this.active = false;
+    if (this.state !== 'active') return;
+    this.state = outcome === 'out_of_hearts' ? 'resumable' : 'idle';
     if (outcome === 'cleared') this.levelsCleared += 1;
 
     const taps = this.tapsExit + this.tapsBlocked + this.tapsGhost + this.tapsMiss;

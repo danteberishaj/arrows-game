@@ -92,6 +92,82 @@ test('heartsMax real blocked taps charge every heart and end out of hearts at ze
   ]);
 });
 
+test('an earned continue resumes the same level and a later clear updates the session', () => {
+  const generated = LevelGenerator.generate(0);
+  const aggregator = new LevelAggregator(1_000);
+  const { events } = captureEvents();
+  aggregator.start(
+    0,
+    generated.arrowCount,
+    generated.shapeName,
+    generated.hearts,
+    'campaign',
+    1_100,
+  );
+
+  const blocked = generated.board.arrows().filter((arrow) => !generated.board.canExit(arrow));
+  for (const arrow of blocked.slice(0, generated.hearts)) {
+    expect(generated.board.tryRemove(arrow)).toBe(false);
+    aggregator.tap('blocked');
+    aggregator.heartLost();
+  }
+  aggregator.end('out_of_hearts', 0, 1_500);
+
+  aggregator.resume();
+  while (!generated.board.isCleared()) {
+    const arrow = generated.board.findHint();
+    expect(arrow).not.toBeNull();
+    expect(generated.board.tryRemove(arrow!)).toBe(true);
+    aggregator.tap('exit');
+  }
+  aggregator.end('cleared', 1, 2_100);
+  aggregator.sessionEnd(2_200);
+
+  expect(events('level_end')).toEqual([
+    expect.objectContaining({
+      levelIndex: 0,
+      outcome: 'out_of_hearts',
+      tapsBlocked: generated.hearts,
+      tapsExit: 0,
+      continuesUsed: 0,
+    }),
+    expect.objectContaining({
+      levelIndex: 0,
+      outcome: 'cleared',
+      tapsBlocked: generated.hearts,
+      tapsExit: generated.arrowCount,
+      continuesUsed: 1,
+    }),
+  ]);
+  expect(events('session_end')).toEqual([
+    expect.objectContaining({
+      levelsStarted: 1,
+      levelsCleared: 1,
+      lastLevelIndex: 0,
+    }),
+  ]);
+});
+
+test('resume cannot reopen a level unless it ended out of hearts', () => {
+  const generated = LevelGenerator.generate(0);
+  const aggregator = new LevelAggregator(1_000);
+  const { events } = captureEvents();
+
+  aggregator.resume();
+  aggregator.tap('exit');
+  aggregator.end('cleared', 1, 1_050);
+
+  aggregator.start(0, generated.arrowCount, generated.shapeName, 3, 'campaign', 1_100);
+  aggregator.end('abandoned', 2, 1_200);
+  aggregator.resume();
+  aggregator.tap('exit');
+  aggregator.end('cleared', 1, 1_300);
+
+  expect(events('level_end')).toEqual([
+    expect.objectContaining({ outcome: 'abandoned', continuesUsed: 0 }),
+  ]);
+});
+
 test('a second end after the first emits nothing', () => {
   const generated = LevelGenerator.generate(0);
   const aggregator = new LevelAggregator(1_000);
