@@ -1,7 +1,18 @@
-/** Jest config for the engine-free core logic (src/core). UI tests will use
- * jest-expo later; the core suite runs plain ts-jest in node. */
+/** Component tests cannot verify visuals, layout, Reanimated, Skia or native output.
+ * Those close only on P-02 captures. */
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  testMatch: ['**/src/**/__tests__/**/*.test.ts'],
+  projects: [
+    {
+      displayName: 'core',
+      preset: 'ts-jest',
+      testEnvironment: 'node',
+      testMatch: ['**/src/**/__tests__/**/*.test.ts'],
+    },
+    {
+      displayName: 'ui',
+      preset: 'jest-expo',
+      testMatch: ['**/src/**/__tests__/**/*.test.tsx'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+    },
+  ],
 };
