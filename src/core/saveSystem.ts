@@ -295,6 +295,37 @@ export const SaveSystem = {
     store.setInt(Keys.telSessionCount, nonNegativeInt(value));
   },
 
+  // ---- Pending JavaScript fatals (W6-07) -------------------------------
+
+  /** JS fatals recorded but not yet emitted on a later cold start. */
+  get telFatalPending(): number {
+    return nonNegativeInt(store.getInt(Keys.telFatalPending, 0));
+  },
+
+  setTelFatalPending(value: number): void {
+    store.setInt(Keys.telFatalPending, nonNegativeInt(value));
+  },
+
+  /** Unsigned FNV-1a hash of the last fatal's name and message. */
+  get telFatalHash(): number {
+    return store.getInt(Keys.telFatalHash, 0);
+  },
+
+  setTelFatalHash(value: number): void {
+    store.setInt(Keys.telFatalHash, value);
+  },
+
+  /** Last fatal's screen: 1 splash, 2 menu, 3 game; corrupt values read 0. */
+  get telFatalScreen(): number {
+    const value = store.getInt(Keys.telFatalScreen, 0);
+    return Number.isInteger(value) && value >= 1 && value <= 3 ? value : 0;
+  },
+
+  setTelFatalScreen(value: number): void {
+    const valid = Number.isInteger(value) && value >= 1 && value <= 3;
+    store.setInt(Keys.telFatalScreen, valid ? value : 0);
+  },
+
   // ---- Lifetime stats --------------------------------------------------
 
   /** Total levels ever solved. */

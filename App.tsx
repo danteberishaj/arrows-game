@@ -23,12 +23,16 @@ import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
+import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
 import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
 
 type Screen = 'splash' | 'menu' | 'game';
+
+let currentTelemetryScreen: FatalScreen = 'splash';
+let fatalHandlerInstalled = false;
 
 Telemetry.configure({ disabled: PERF_MODE });
 
@@ -49,6 +53,21 @@ function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu
   if (screen === 'daily') return 'game';
   if (screen === 'gallery') return 'menu';
   return screen;
+}
+
+function emitScreenView(screen: Screen | 'daily' | 'gallery'): void {
+  currentTelemetryScreen = telemetryScreen(screen);
+  Telemetry.emit('screen_view', { screen: currentTelemetryScreen });
+}
+
+function installFatalHandlerOnce(): void {
+  if (fatalHandlerInstalled) return;
+  installFatalHandler({
+    errorUtils: ErrorUtils,
+    save: SaveSystem,
+    currentScreen: () => currentTelemetryScreen,
+  });
+  fatalHandlerInstalled = true;
 }
 
 function syncTelemetryDisabled(): void {
@@ -104,13 +123,15 @@ export default function App() {
         const bucket = bucketOf(identity.hi, identity.lo);
         Telemetry.configure({ sessionIndex, bucket });
         startAfterHydration();
+        installFatalHandlerOnce();
+        drainFatals();
         Telemetry.emit('app_open', {
           cold: true,
           sessionIndex,
           appVersion: Constants.expoConfig?.version ?? 'unknown',
           bucket,
         });
-        Telemetry.emit('screen_view', { screen: telemetryScreen(screen) });
+        emitScreenView(screen);
         setReady(true);
       })
       .catch(() => {
@@ -135,7 +156,7 @@ export default function App() {
   }, []);
 
   const showScreen = useCallback((next: Screen) => {
-    Telemetry.emit('screen_view', { screen: telemetryScreen(next) });
+    emitScreenView(next);
     setScreen(next);
   }, []);
 
