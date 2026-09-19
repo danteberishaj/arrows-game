@@ -1,7 +1,7 @@
 /**
- * The pluggable telemetry sink (W6-04). Nothing in this module persists or
- * sends anything: the default sink is `noopSink`, and no other file imports
- * this module yet, so shipping it changes no runtime behaviour.
+ * The pluggable telemetry sink (W6-04/W6-06). Nothing in this module persists
+ * or sends anything: the default sink is `noopSink`; App installs only a
+ * development console sink or explicit performance-test memory sink.
  *
  * W6-06 (emitting from the game), W6-05/W6-07 (persistence) and W6-14
  * (transport, which alone attaches the install id) are separate tasks.
@@ -17,8 +17,7 @@ export type TelemetrySink = (event: EnvelopedEvent) => void;
  * installed (fix round 1: this used to skip validation too). */
 export const noopSink: TelemetrySink = () => {};
 
-/** A bounded in-memory sink for dev-only consumers (a future `__DEV__`
- * console log, a debug overlay). Not wired to anything by this task. */
+/** A bounded in-memory sink for tests and opt-in development diagnostics. */
 export interface MemorySink extends TelemetrySink {
   readonly events: readonly EnvelopedEvent[];
 }
@@ -40,6 +39,8 @@ export function createMemorySink(cap: number): MemorySink {
 interface TelemetryConfig {
   validate: boolean;
   disabled: boolean;
+  sessionIndex: number;
+  bucket: number;
 }
 
 function defaultValidate(): boolean {
@@ -49,7 +50,12 @@ function defaultValidate(): boolean {
   return typeof __DEV__ !== 'undefined' ? Boolean(__DEV__) : false;
 }
 
-let config: TelemetryConfig = { validate: defaultValidate(), disabled: false };
+let config: TelemetryConfig = {
+  validate: defaultValidate(),
+  disabled: false,
+  sessionIndex: 0,
+  bucket: 0,
+};
 let currentSink: TelemetrySink = noopSink;
 let seq = 0;
 
@@ -110,9 +116,8 @@ function checkEvent(name: string, props: Record<string, unknown> | undefined): S
 
 export const Telemetry = {
   /** `validate` defaults to `__DEV__` when defined, otherwise `false`.
-   * `disabled` is meant to be set by `App.tsx` when `PERF_MODE` is on
-   * (wiring that is out of this task's scope — nothing imports this module
-   * yet). */
+   * App keeps `disabled` synchronized with PERF_MODE and the telemetry
+   * remote-config kill switch. */
   configure(next: Partial<TelemetryConfig>): void {
     config = { ...config, ...next };
   },
@@ -159,10 +164,8 @@ export const Telemetry = {
       name,
       ts: Date.now(),
       seq,
-      // OWNER-PICKED STARTING VALUE: session tracking lands with W6-06;
-      // until then every event carries session 0 / bucket 0.
-      sessionIndex: 0,
-      bucket: 0,
+      sessionIndex: config.sessionIndex,
+      bucket: config.bucket,
       schemaVersion: SCHEMA_VERSION,
       ...props,
     };

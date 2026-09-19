@@ -97,6 +97,7 @@ jest.mock('unity-levelplay-mediation', () => ({
 type AdsModule = typeof import('../ads');
 type SaveModule = typeof import('../../core/saveSystem');
 type RcModule = typeof import('../../config/remoteConfig');
+type TelemetryModule = typeof import('../../telemetry/telemetry');
 type FetchLike = import('../../config/remoteConfig').FetchLike;
 
 const BITS = 'arrows_rc_kill_bits';
@@ -141,16 +142,21 @@ async function boot(disk: Map<string, number>, fetchImpl: FetchLike = neverFetch
   let ads: AdsModule | null = null;
   let save: SaveModule | null = null;
   let rc: RcModule | null = null;
+  let telemetry: TelemetryModule | null = null;
   jest.isolateModules(() => {
     save = require('../../core/saveSystem') as SaveModule;
     rc = require('../../config/remoteConfig') as RcModule;
+    telemetry = require('../../telemetry/telemetry') as TelemetryModule;
     ads = require('../ads') as AdsModule;
   });
+  const telemetrySink = telemetry!.createMemorySink(20);
+  telemetry!.Telemetry.configure({ validate: true, disabled: false });
+  telemetry!.Telemetry.useSink(telemetrySink);
   save!.SaveSystem.useStore(mapStore(disk));
   const fetched = rc!.initRemoteConfig({ fetchImpl });
   await ads!.initAds();
   await settle();
-  return { ads: ads!, save: save!, rc: rc!, fetched };
+  return { ads: ads!, save: save!, rc: rc!, fetched, telemetrySink };
 }
 
 const settle = async () => {
@@ -188,6 +194,24 @@ describe('cached kill at boot (ads killed by a previous process)', () => {
     expect(sdk.inits).toBe(1);
   });
 
+  test('a rewarded success emits one request, result and reward with its placement', async () => {
+    const { ads, telemetrySink } = await boot(new Map());
+    sdk.rewardedListener!.onAdLoaded({});
+
+    await expect(ads.Ads.showRewarded('hint')).resolves.toBe(true);
+
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+      'ad_reward',
+    ]);
+    expect(telemetrySink.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'ad_request', placement: 'hint' }),
+      expect.objectContaining({ name: 'ad_result', placement: 'hint', outcome: 'shown' }),
+      expect.objectContaining({ name: 'ad_reward', placement: 'hint', earned: true }),
+    ]));
+  });
+
   test('LevelPlay.init (and the pre-init metadata call) never runs, including retries', async () => {
     const { ads } = await boot(killedDisk());
     expect(sdk.inits).toBe(0);
@@ -202,17 +226,35 @@ describe('cached kill at boot (ads killed by a previous process)', () => {
 
   test('a due interstitial is not shown and the pacing counter is unchanged', async () => {
     const disk = killedDisk();
-    const { ads } = await boot(disk);
+    const { ads, telemetrySink } = await boot(disk);
     await ads.Ads.showInterstitialIfDue();
     expect(sdk.interstitialShows).toBe(0);
     expect(disk.get(FINISHED)).toBe(2);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(expect.objectContaining({ outcome: 'killed' }));
   });
 
   test('rewarded reports not ready and showRewarded resolves false', async () => {
-    const { ads } = await boot(killedDisk());
+    const { ads, telemetrySink } = await boot(killedDisk());
     expect(ads.Ads.rewardedReady).toBe(false);
-    await expect(ads.Ads.showRewarded()).resolves.toBe(false);
+    await expect(ads.Ads.showRewarded('hint')).resolves.toBe(false);
     expect(sdk.rewardedShows).toBe(0);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+      'ad_reward',
+    ]);
+    expect(telemetrySink.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'ad_result',
+        placement: 'hint',
+        outcome: 'killed',
+      }),
+      expect.objectContaining({ name: 'ad_reward', placement: 'hint', earned: false }),
+    ]));
   });
 });
 

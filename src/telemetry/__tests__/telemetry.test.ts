@@ -177,6 +177,24 @@ describe('Telemetry.emit validation', () => {
     Telemetry.emit('screen_view', { screen: 'menu' });
     expect(sink).not.toHaveBeenCalled();
   });
+
+  test('configured session identity is copied into every envelope', () => {
+    Telemetry.configure({
+      validate: true,
+      disabled: false,
+      sessionIndex: 7,
+      bucket: 42,
+    });
+    const sink = jest.fn();
+    Telemetry.useSink(sink);
+
+    Telemetry.emit('screen_view', { screen: 'game' });
+
+    expect(sink).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionIndex: 7, bucket: 42 }),
+    );
+    Telemetry.configure({ sessionIndex: 0, bucket: 0 });
+  });
 });
 
 describe('Telemetry.emit validation with the default sink still installed (fix round 1)', () => {

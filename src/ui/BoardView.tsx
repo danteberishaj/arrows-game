@@ -16,6 +16,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
 import { PERF_MODE } from '../perfMode';
+import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
   arrowArt,
   BoardArrowArtCache,
@@ -143,6 +144,48 @@ function timeMaskBuild(build: () => string): string {
   return mask;
 }
 
+/**
+ * W6-06 direct timer around the one callback added to the hot tap path. The
+ * build-time flag keeps the timing arrays and log text out of ordinary
+ * bundles; the untimed branch calls the callback directly.
+ */
+const PERF_TELEMETRY_TIMING =
+  process.env.EXPO_PUBLIC_PERF_TELEMETRY_TIMING === '1';
+const TELEMETRY_TIMING_QUIET_LOG_MS = 750; // OWNER-PICKED STARTING VALUE
+const telemetryTimingAllMs: number[] = [];
+let telemetryTimingUnloggedMs: number[] = [];
+let telemetryTimingQuietTimer: ReturnType<typeof setTimeout> | null = null;
+
+function logTelemetryTiming(): void {
+  if (telemetryTimingUnloggedMs.length === 0) return;
+  const minNonZero = telemetryTimingAllMs.reduce(
+    (minimum, value) => value > 0 && value < minimum ? value : minimum,
+    Infinity,
+  );
+  console.log(
+    `[telemetry-tap] n=${telemetryTimingAllMs.length} ` +
+    `minNonZero=${Number.isFinite(minNonZero) ? minNonZero.toFixed(6) : 'none'} ` +
+    `new=${telemetryTimingUnloggedMs.map((value) => value.toFixed(6)).join(',')}`,
+  );
+  telemetryTimingUnloggedMs = [];
+}
+
+function timeTapOutcome(
+  callback: (outcome: TapOutcome) => void,
+  outcome: TapOutcome,
+): void {
+  const start = performance.now();
+  callback(outcome);
+  const elapsedMs = performance.now() - start;
+  telemetryTimingAllMs.push(elapsedMs);
+  telemetryTimingUnloggedMs.push(elapsedMs);
+  if (telemetryTimingQuietTimer !== null) clearTimeout(telemetryTimingQuietTimer);
+  telemetryTimingQuietTimer = setTimeout(() => {
+    telemetryTimingQuietTimer = null;
+    logTelemetryTiming();
+  }, TELEMETRY_TIMING_QUIET_LOG_MS);
+}
+
 export interface BoardViewProps {
   board: BoardLogic;
   palette: Palette;
@@ -154,6 +197,8 @@ export interface BoardViewProps {
    * mistake): shake it, nudge the player, keep the heart.
    */
   onBlocked: (costsHeart: boolean) => void;
+  /** One aggregate counter increment for every unlocked tap attempt. */
+  onTapOutcome?: (outcome: TapOutcome) => void;
   /** Ignore taps (win/lose overlay up). */
   locked: boolean;
   /** Arrow to pulse as a hint (ArrowTile.Highlight), keyed to retrigger. */
@@ -211,6 +256,7 @@ export function BoardView({
   palette,
   onRemoved,
   onBlocked,
+  onTapOutcome,
   locked,
   hint,
   clearHint,
@@ -237,6 +283,7 @@ export function BoardView({
   const blockerCleanup = useRef(new FirstPaintCleanupTimer()).current;
   const shakingRef = useRef<AnimatedArrowState | null>(null);
   const pressedRef = useRef<ArrowPath | null>(null);
+  const nullTapOutcomeRef = useRef<Extract<TapOutcome, 'ghost' | 'miss'>>('miss');
   const pressPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRemoved = useRef<RecentRemoval | null>(null);
   const blockedLedger = useRef(new BlockedTapLedger()).current;
@@ -383,8 +430,12 @@ export function BoardView({
    */
   const resolveTap = useCallback((bx: number, by: number, radius: number): ArrowPath | null => {
     const cell = { r: Math.floor(by / CELL), c: Math.floor(bx / CELL) };
-    if (isGhostTap(board, lastRemoved.current, cell, Date.now())) return null;
+    if (isGhostTap(board, lastRemoved.current, cell, Date.now())) {
+      nullTapOutcomeRef.current = 'ghost';
+      return null;
+    }
     const hit = hitTester.nearest(bx, by, radius, (arrow) => board.canExit(arrow));
+    if (hit === null) nullTapOutcomeRef.current = 'miss';
     return hit?.arrow ?? null;
   }, [board, hitTester]);
 
@@ -425,9 +476,22 @@ export function BoardView({
     const owner = previewed && board.arrows().includes(previewed)
       ? previewed
       : resolveTap(bx, by, radius);
-    if (!owner) return;
+    if (!owner) {
+      if (onTapOutcome) {
+        if (PERF_TELEMETRY_TIMING) {
+          timeTapOutcome(onTapOutcome, nullTapOutcomeRef.current);
+        } else {
+          onTapOutcome(nullTapOutcomeRef.current);
+        }
+      }
+      return;
+    }
 
     if (board.tryRemove(owner)) {
+      if (onTapOutcome) {
+        if (PERF_TELEMETRY_TIMING) timeTapOutcome(onTapOutcome, 'exit');
+        else onTapOutcome('exit');
+      }
       lastRemoved.current = { arrow: owner, at: Date.now() };
       if (hint && hint.arrow === owner) clearHint();
       if (shakingRef.current?.arrow === owner) {
@@ -483,6 +547,10 @@ export function BoardView({
       }
       onRemoved(board.isCleared());
     } else {
+      if (onTapOutcome) {
+        if (PERF_TELEMETRY_TIMING) timeTapOutcome(onTapOutcome, 'blocked');
+        else onTapOutcome('blocked');
+      }
       const id = nextId.current++;
       const nextShaking = { arrow: owner, id };
       shakingRef.current = nextShaking;
@@ -522,6 +590,7 @@ export function BoardView({
     hint,
     onBlocked,
     onRemoved,
+    onTapOutcome,
     reducedMotion,
     resolveTap,
   ]);

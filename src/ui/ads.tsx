@@ -9,6 +9,8 @@ import type {
 } from 'unity-levelplay-mediation';
 import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
+import type { EventProps } from '../telemetry/events';
+import { Telemetry } from '../telemetry/telemetry';
 import { adDecision, type AdFormat } from './adGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
@@ -179,6 +181,8 @@ let lpRewarded: LevelPlayRewardedAd | null = null;
 let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
 let levelPlayModule: LevelPlayModule | null = null;
 let rewardEarned = false;
+let rewardedDisplayed = false;
+let interstitialDisplayed = false;
 let onRewardedClosed: ((earned: boolean) => void) | null = null;
 let onInterstitialClosed: (() => void) | null = null;
 
@@ -286,7 +290,10 @@ async function initLevelPlayOnce(): Promise<void> {
     onAdLoaded: () => {},
     onAdLoadFailed: () => reloadInterstitial(),
     // The only place the pacing counter resets: an interstitial really displayed.
-    onAdDisplayed: () => markInterstitialDisplayed(),
+    onAdDisplayed: () => {
+      interstitialDisplayed = true;
+      markInterstitialDisplayed();
+    },
     onAdClosed: () => {
       onInterstitialClosed?.();
       onInterstitialClosed = null;
@@ -310,6 +317,7 @@ async function initLevelPlayOnce(): Promise<void> {
       reloadRewarded();
     },
     onAdDisplayed: () => {
+      rewardedDisplayed = true;
       setRewardedLoaded(false); // the loaded ad is consumed
     },
     onAdRewarded: () => {
@@ -410,6 +418,34 @@ function markInterstitialDisplayed(): void {
   SaveSystem.setFinishedGames(afterDisplayed());
 }
 
+type AdResultOutcome = EventProps<'ad_result'>['outcome'];
+type RewardedPlacement = EventProps<'ad_reward'>['placement'];
+
+function emitAdRequest(
+  format: EventProps<'ad_request'>['format'],
+  placement: EventProps<'ad_request'>['placement'],
+): void {
+  Telemetry.emit('ad_request', { format, placement });
+}
+
+function emitAdResult(
+  format: EventProps<'ad_result'>['format'],
+  placement: EventProps<'ad_result'>['placement'],
+  outcome: AdResultOutcome,
+): void {
+  Telemetry.emit('ad_result', { format, placement, outcome });
+}
+
+function finishRewarded(
+  placement: RewardedPlacement,
+  outcome: AdResultOutcome,
+  earned: boolean,
+): boolean {
+  emitAdResult('rewarded', placement, outcome);
+  Telemetry.emit('ad_reward', { placement, earned });
+  return earned;
+}
+
 export const Ads = {
   /** Counts a finished game (a win or a loss both count) toward the pacing. */
   registerGameFinished(): void {
@@ -422,32 +458,48 @@ export const Ads = {
    * Skips silently when not due or nothing is ready.
    */
   async showInterstitialIfDue(): Promise<void> {
-    // Killed remotely: skip without touching the pacing counter (W0-05).
-    if (killed('interstitial')) return;
     if (!isInterstitialDue(finishedGames(), GAMES_PER_INTERSTITIAL)) return;
+    emitAdRequest('interstitial', 'between_levels');
+    // Killed remotely: report the reason, but never touch the pacing counter.
+    if (killed('interstitial')) {
+      emitAdResult('interstitial', 'between_levels', 'killed');
+      return;
+    }
 
     if (nativeAvailable()) {
+      let outcome: AdResultOutcome = 'display_failed';
       try {
-        if (!(await lpInterstitial!.isAdReady())) return; // not ready: skip, don't reset
-        // No reset here: onAdDisplayed resets, so a failed show keeps the count.
-        await new Promise<void>((resolve) => {
-          onInterstitialClosed = resolve;
-          lpInterstitial!.showAd().catch(() => {
-            onInterstitialClosed = null;
-            resolve();
+        if (!(await lpInterstitial!.isAdReady())) {
+          outcome = 'not_ready'; // skip without resetting the pacing counter
+        } else {
+          interstitialDisplayed = false;
+          // No reset here: onAdDisplayed resets, so a failed show keeps the count.
+          await new Promise<void>((resolve) => {
+            onInterstitialClosed = resolve;
+            lpInterstitial!.showAd().catch(() => {
+              onInterstitialClosed = null;
+              resolve();
+            });
           });
-        });
+          outcome = interstitialDisplayed ? 'shown' : 'display_failed';
+        }
       } catch {
-        /* degrade gracefully */
+        outcome = 'display_failed';
       }
+      emitAdResult('interstitial', 'between_levels', outcome);
       return;
     }
 
     // No native ad: a release build shows nothing, so it must not touch the
     // pacing counter (only a displayed ad may reset it).
-    if (!__DEV__) return;
+    if (!__DEV__ || fakeAdListener === null) {
+      emitAdResult('interstitial', 'between_levels', 'not_ready');
+      return;
+    }
     // Development host: resets when the simulated ad opens, not if no host is mounted.
+    adLog('[ads][simulated] interstitial telemetry can be filtered from this dev tag');
     await showFakeAd('interstitial', markInterstitialDisplayed);
+    emitAdResult('interstitial', 'between_levels', 'shown');
   },
 
   /**
@@ -464,23 +516,39 @@ export const Ads = {
     return rewardedReadiness.subscribe(cb);
   },
 
-  async showRewarded(): Promise<boolean> {
-    if (killed('rewarded')) return false; // no ad, nothing granted
+  async showRewarded(placement: RewardedPlacement = 'continue'): Promise<boolean> {
+    emitAdRequest('rewarded', placement);
+    if (killed('rewarded')) {
+      return finishRewarded(placement, 'killed', false);
+    }
     if (nativeAvailable()) {
       try {
-        if (!(await lpRewarded!.isAdReady())) return false;
-        return await new Promise<boolean>((resolve) => {
+        if (!(await lpRewarded!.isAdReady())) {
+          return finishRewarded(placement, 'not_ready', false);
+        }
+        rewardEarned = false;
+        rewardedDisplayed = false;
+        const earned = await new Promise<boolean>((resolve) => {
           onRewardedClosed = resolve;
           lpRewarded!.showAd().catch(() => {
             onRewardedClosed = null;
             resolve(false);
           });
         });
+        const outcome: AdResultOutcome = earned
+          ? 'shown'
+          : rewardedDisplayed ? 'dismissed' : 'display_failed';
+        return finishRewarded(placement, outcome, earned);
       } catch {
-        return false;
+        return finishRewarded(placement, 'display_failed', false);
       }
     }
-    return showFakeAd('rewarded');
+    if (!__DEV__ || fakeAdListener === null) {
+      return finishRewarded(placement, 'not_ready', false);
+    }
+    adLog(`[ads][simulated] rewarded/${placement} telemetry can be filtered from this dev tag`);
+    const earned = await showFakeAd('rewarded');
+    return finishRewarded(placement, earned ? 'shown' : 'dismissed', earned);
   },
 };
 

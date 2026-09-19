@@ -127,6 +127,7 @@ jest.mock('unity-levelplay-mediation', () => ({
 
 type AdsModule = typeof import('../ads');
 type SaveModule = typeof import('../../core/saveSystem');
+type TelemetryModule = typeof import('../../telemetry/telemetry');
 
 /** Map-backed IntStore: the "disk" survives a fresh module load (process death). */
 function mapStore(disk: Map<string, number>) {
@@ -138,16 +139,21 @@ function mapStore(disk: Map<string, number>) {
 }
 
 /** A fresh process: new ads.tsx and SaveSystem module state over the same disk. */
-function boot(disk: Map<string, number>): { ads: AdsModule; save: SaveModule } {
+function boot(disk: Map<string, number>) {
   (globalThis as { __DEV__?: boolean }).__DEV__ = false;
   let ads: AdsModule | null = null;
   let save: SaveModule | null = null;
+  let telemetry: TelemetryModule | null = null;
   jest.isolateModules(() => {
     save = require('../../core/saveSystem') as SaveModule;
+    telemetry = require('../../telemetry/telemetry') as TelemetryModule;
     ads = require('../ads') as AdsModule;
   });
+  const telemetrySink = telemetry!.createMemorySink(20);
+  telemetry!.Telemetry.configure({ validate: true, disabled: false });
+  telemetry!.Telemetry.useSink(telemetrySink);
   save!.SaveSystem.useStore(mapStore(disk));
-  return { ads: ads!, save: save! };
+  return { ads: ads!, save: save!, telemetrySink };
 }
 
 const settle = async () => {
@@ -200,7 +206,7 @@ describe('ads.tsx pacing counter (release build)', () => {
 
   test('not due at one finished game: no show, counter kept', async () => {
     const disk = new Map<string, number>();
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
     ads.Ads.registerGameFinished();
@@ -209,11 +215,12 @@ describe('ads.tsx pacing counter (release build)', () => {
 
     expect(sdk.shows).toBe(0);
     expect(disk.get(KEY)).toBe(1);
+    expect(telemetrySink.events).toHaveLength(0);
   });
 
   test('the counter is not reset before showAd, only by onAdDisplayed', async () => {
     const disk = new Map<string, number>([[KEY, 2]]);
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
 
@@ -228,11 +235,16 @@ describe('ads.tsx pacing counter (release build)', () => {
     sdk.interstitialListener!.onAdClosed({});
     await shown;
     expect(disk.get(KEY)).toBe(0);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(expect.objectContaining({ outcome: 'shown' }));
   });
 
   test('a display failure does not consume the count', async () => {
     const disk = new Map<string, number>([[KEY, 2]]);
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
 
@@ -251,12 +263,22 @@ describe('ads.tsx pacing counter (release build)', () => {
     sdk.interstitialListener!.onAdClosed({});
     await retry;
     expect(disk.get(KEY)).toBe(0);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(
+      expect.objectContaining({ outcome: 'display_failed' }),
+    );
+    expect(telemetrySink.events[3]).toEqual(expect.objectContaining({ outcome: 'shown' }));
   });
 
   test('a rejected showAd does not consume the count', async () => {
     sdk.showRejects = true;
     const disk = new Map<string, number>([[KEY, 2]]);
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
 
@@ -264,12 +286,19 @@ describe('ads.tsx pacing counter (release build)', () => {
 
     expect(sdk.shows).toBe(1);
     expect(disk.get(KEY)).toBe(2);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(
+      expect.objectContaining({ outcome: 'display_failed' }),
+    );
   });
 
   test('no ad ready: skipped, counter kept', async () => {
     sdk.interstitialReady = false;
     const disk = new Map<string, number>([[KEY, 2]]);
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
 
@@ -277,6 +306,11 @@ describe('ads.tsx pacing counter (release build)', () => {
 
     expect(sdk.shows).toBe(0);
     expect(disk.get(KEY)).toBe(2);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(expect.objectContaining({ outcome: 'not_ready' }));
 
     sdk.interstitialReady = true; // loaded later: the next attempt shows
     const shown = ads.Ads.showInterstitialIfDue();
@@ -290,7 +324,7 @@ describe('ads.tsx pacing counter (release build)', () => {
   test('no native SDK (init failed, release): nothing shows and the counter is kept', async () => {
     sdk.initOutcome = 'failed';
     const disk = new Map<string, number>([[KEY, 2]]);
-    const { ads } = boot(disk);
+    const { ads, telemetrySink } = boot(disk);
     await ads.initAds();
     await settle();
 
@@ -300,6 +334,11 @@ describe('ads.tsx pacing counter (release build)', () => {
     expect(sdk.interstitialListener).toBeNull();
     expect(sdk.shows).toBe(0);
     expect(disk.get(KEY)).toBe(3);
+    expect(telemetrySink.events.map((event) => event.name)).toEqual([
+      'ad_request',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[1]).toEqual(expect.objectContaining({ outcome: 'not_ready' }));
   });
 
   test('a corrupt negative stored counter counts up from 0', () => {

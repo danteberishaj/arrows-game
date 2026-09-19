@@ -135,6 +135,8 @@ export function parseArgs(argv, env = process.env) {
     perfScreen,
     // W6-01: build-time JS timer around the native visibility-mask memo.
     perfMaskTiming: env.EXPO_PUBLIC_PERF_MASK_TIMING === '1',
+    // W6-06: build-time timer around the per-tap aggregation callback.
+    perfTelemetryTiming: env.EXPO_PUBLIC_PERF_TELEMETRY_TIMING === '1',
     serial: 'emulator-5556',
     avd: 'fleet_floor_api31',
     api: 31,
@@ -281,6 +283,7 @@ export function benchmarkConfiguration(options) {
       // The caller's value; whether the APK really has the timer shows in
       // logcat `[mask]` lines (docs/perf-mask-rebuild-2026-09-17.md).
       perfMaskTiming: options.perfMaskTiming,
+      perfTelemetryTiming: options.perfTelemetryTiming,
       configurationVerifiedFromFreshBuild: false,
       nativePrebuildRecreated: false,
       productionRenderer: null,
@@ -318,6 +321,7 @@ export function benchmarkConfiguration(options) {
   return {
     perfScreen: options.perfScreen,
     perfMaskTiming: options.perfMaskTiming,
+    perfTelemetryTiming: options.perfTelemetryTiming,
     configurationVerifiedFromFreshBuild: true,
     nativePrebuildRecreated: !options.skipPrebuild,
     productionRenderer,
@@ -482,6 +486,7 @@ export function perfBuildEnv(options, env = process.env) {
     EXPO_PUBLIC_PERF_FEEDBACK: options.feedback ? '1' : '0',
     EXPO_PUBLIC_PERF_SCREEN: options.perfScreen,
     EXPO_PUBLIC_PERF_MASK_TIMING: options.perfMaskTiming ? '1' : '0',
+    EXPO_PUBLIC_PERF_TELEMETRY_TIMING: options.perfTelemetryTiming ? '1' : '0',
   };
 }
 

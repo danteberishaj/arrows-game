@@ -1,5 +1,6 @@
 import { Fredoka_600SemiBold } from '@expo-google-fonts/fredoka/600SemiBold';
 import { Fredoka_700Bold } from '@expo-google-fonts/fredoka/700Bold';
+import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
-import { initRemoteConfig } from './src/config/remoteConfig';
+import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import { SaveSystem } from './src/core/saveSystem';
 import {
   CAPTURE_DIAG_ENABLED,
@@ -21,11 +22,42 @@ import { AdHost, adInitController, initAds } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
-import { ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
+import { appLevelAggregator } from './src/telemetry/levelAggregator';
+import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
+import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
 
 type Screen = 'splash' | 'menu' | 'game';
+
+Telemetry.configure({ disabled: PERF_MODE });
+
+const PERF_TELEMETRY_TIMING =
+  process.env.EXPO_PUBLIC_PERF_TELEMETRY_TIMING === '1';
+const perfTelemetrySink = PERF_TELEMETRY_TIMING
+  ? createMemorySink(1) // OWNER-PICKED STARTING VALUE: only the disabled-count check reads it.
+  : null;
+if (perfTelemetrySink) {
+  Telemetry.useSink(perfTelemetrySink);
+} else if (__DEV__) {
+  Telemetry.useSink((event) => {
+    console.log(`[telemetry] ${JSON.stringify(event)}`);
+  });
+}
+
+function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu' | 'game' {
+  if (screen === 'daily') return 'game';
+  if (screen === 'gallery') return 'menu';
+  return screen;
+}
+
+function syncTelemetryDisabled(): void {
+  Telemetry.configure({ disabled: PERF_MODE || RemoteConfig.telemetryKilled() });
+}
+
+const perfTelemetryUnmountProbe = perfTelemetrySink
+  ? () => console.log(`[telemetry-perf] sinkCount=${perfTelemetrySink.events.length}`)
+  : undefined;
 
 export default function App() {
   const [ready, setReady] = useState(PERF_MODE);
@@ -54,6 +86,7 @@ export default function App() {
     // store, where every kill bit is 0. The remote config fetch never blocks it.
     const startAfterHydration = () => {
       initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
+      syncTelemetryDisabled();
       initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
     };
     // No timeout here: `ready` must never come before hydration settles, or a later
@@ -64,13 +97,21 @@ export default function App() {
       .then(() => {
         setDark(SaveSystem.darkMode);
         setSoundOn(SaveSystem.soundOn);
-        // Install id + session count (W6-05): nothing sends these anywhere
-        // yet (W6-14 is the first reader), and this whole effect already
-        // returns above under PERF_MODE, so a benchmark run never writes them.
-        ensureIdentity(SaveSystem);
-        nextSessionIndex(SaveSystem);
-        setReady(true);
+        // Install id + session count (W6-05). This whole effect returns above
+        // under PERF_MODE, so a benchmark run never writes them.
+        const identity = ensureIdentity(SaveSystem);
+        const sessionIndex = nextSessionIndex(SaveSystem);
+        const bucket = bucketOf(identity.hi, identity.lo);
+        Telemetry.configure({ sessionIndex, bucket });
         startAfterHydration();
+        Telemetry.emit('app_open', {
+          cold: true,
+          sessionIndex,
+          appVersion: Constants.expoConfig?.version ?? 'unknown',
+          bucket,
+        });
+        Telemetry.emit('screen_view', { screen: telemetryScreen(screen) });
+        setReady(true);
       })
       .catch(() => {
         setReady(true);
@@ -81,6 +122,21 @@ export default function App() {
       if (s === 'active') adInitController.onAppActive();
     });
     return () => sub.remove();
+  }, []);
+
+  useEffect(() => RemoteConfig.subscribe(syncTelemetryDisabled), []);
+
+  // Deliberately separate from W0-02's ad-retry AppState listener above.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') appLevelAggregator.sessionEnd(Date.now());
+    });
+    return () => sub.remove();
+  }, []);
+
+  const showScreen = useCallback((next: Screen) => {
+    Telemetry.emit('screen_view', { screen: telemetryScreen(next) });
+    setScreen(next);
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -108,14 +164,14 @@ export default function App() {
     <SafeAreaProvider>
     <GestureHandlerRootView accessibilityLabel={diagLabel} style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      {screen === 'splash' && <SplashScreen palette={p} onDone={() => setScreen('menu')} />}
+      {screen === 'splash' && <SplashScreen palette={p} onDone={() => showScreen('menu')} />}
       {screen === 'menu' && (
         <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
           <HomeScreen
             palette={p}
             dark={dark}
             soundOn={soundOn}
-            onPlay={() => setScreen('game')}
+            onPlay={() => showScreen('game')}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
           />
@@ -128,7 +184,8 @@ export default function App() {
             initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
             benchmarkMode={PERF_MODE}
             feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
-            onHome={() => setScreen('menu')}
+            onTelemetryProbeUnmount={perfTelemetryUnmountProbe}
+            onHome={() => showScreen('menu')}
           />
         </Animated.View>
       )}

@@ -14,6 +14,11 @@ import {
   Difficulty,
   SaveSystem,
 } from '../core';
+import {
+  appLevelAggregator,
+  type LevelMode,
+  type TapOutcome,
+} from '../telemetry/levelAggregator';
 import { Ads } from './ads';
 import { BoardView } from './BoardView';
 import {
@@ -42,20 +47,34 @@ export function GameScreen({
   initialLevelIndex,
   benchmarkMode = false,
   feedbackEnabled = true,
+  mode = 'campaign',
+  onTelemetryProbeUnmount,
 }: {
   palette: Palette;
   onHome: () => void;
   initialLevelIndex?: number;
   benchmarkMode?: boolean;
   feedbackEnabled?: boolean;
+  mode?: LevelMode;
+  onTelemetryProbeUnmount?: () => void;
 }) {
   const p = palette;
   const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
 
   const revisionRef = useRef(0);
+  const levelAggregatorRef = useRef(appLevelAggregator);
   const [session, setSession] = useState(() => {
     const index = initialLevelIndex ?? SaveSystem.currentLevel;
-    return createLevelSession(index, revisionRef.current);
+    const initial = createLevelSession(index, revisionRef.current);
+    levelAggregatorRef.current.start(
+      initial.index,
+      initial.level.arrowCount,
+      initial.level.shapeName,
+      initial.level.hearts,
+      mode,
+      Date.now(),
+    );
+    return initial;
   });
   const { index: levelIndex, level } = session;
   const [hearts, setHearts] = useState(() => level.hearts);
@@ -80,6 +99,10 @@ export function GameScreen({
   const clearHint = useCallback(() => setHint(null), []);
 
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
+  useEffect(() => () => {
+    levelAggregatorRef.current.end('abandoned', heartsRef.current, Date.now());
+    onTelemetryProbeUnmount?.();
+  }, []);
   // Subscribed directly (not via an effect on `rewardedReady`) so the clear
   // runs synchronously at the SDK callback, before a failed show's
   // `setAdShowFailed(true)` that follows it.
@@ -103,6 +126,14 @@ export function GameScreen({
   const loadLevel = useCallback((index: number) => {
     revisionRef.current += 1;
     const next = createLevelSession(index, revisionRef.current);
+    levelAggregatorRef.current.start(
+      next.index,
+      next.level.arrowCount,
+      next.level.shapeName,
+      next.level.hearts,
+      mode,
+      Date.now(),
+    );
     terminalTransition.reset();
     setTerminalPending(false);
     setSession(next);
@@ -113,7 +144,16 @@ export function GameScreen({
     setPhase('playing');
     setHint(null);
     setAdShowFailed(false);
-  }, [terminalTransition]);
+  }, [mode, terminalTransition]);
+
+  const onTapOutcome = useCallback((outcome: TapOutcome) => {
+    levelAggregatorRef.current.tap(outcome);
+  }, []);
+
+  const onHomePress = useCallback(() => {
+    levelAggregatorRef.current.end('abandoned', heartsRef.current, Date.now());
+    onHome();
+  }, [onHome]);
 
   const onRemoved = useCallback(
     (cleared: boolean) => {
@@ -127,6 +167,7 @@ export function GameScreen({
       setRemaining(level.board.count());
       if (!cleared) return;
       if (!beginTerminalTransition('won', 450)) return;
+      levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
       if (!benchmarkMode) {
         SaveSystem.registerSolve(heartsRef.current === level.hearts); // perfect = no heart lost
         SaveSystem.setCurrentLevel(levelIndex + 1);
@@ -155,8 +196,12 @@ export function GameScreen({
     const left = heartsRef.current - 1;
     heartsRef.current = left;
     setHearts(left);
-    if (left <= 0 && beginTerminalTransition('lost', 350) && !benchmarkMode) {
-      Ads.registerGameFinished(); // a loss counts toward the pacing too
+    levelAggregatorRef.current.heartLost();
+    if (left <= 0 && beginTerminalTransition('lost', 350)) {
+      levelAggregatorRef.current.end('out_of_hearts', 0, Date.now());
+      if (!benchmarkMode) {
+        Ads.registerGameFinished(); // a loss counts toward the pacing too
+      }
     }
   }, [benchmarkMode, beginTerminalTransition, feedbackEnabled, terminalTransition]);
 
@@ -179,12 +224,13 @@ export function GameScreen({
   const onContinueWithAd = useCallback(async () => {
     setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
-    const earned = await Ads.showRewarded();
+    const earned = await Ads.showRewarded('continue');
     setAdBusy(false);
     if (!earned) {
       setAdShowFailed(true); // stay on the lose panel and say so; nothing granted
       return;
     }
+    levelAggregatorRef.current.continueUsed();
     terminalTransition.reset();
     setTerminalPending(false);
     heartsRef.current = 1;
@@ -199,12 +245,13 @@ export function GameScreen({
     if (!arrow) return;
     setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
-    const earned = await Ads.showRewarded();
+    const earned = await Ads.showRewarded('hint');
     setAdBusy(false);
     if (!earned) {
       setAdShowFailed(true); // "Hint unavailable"; no hint without a reward
       return;
     }
+    levelAggregatorRef.current.hintUsed();
     // Re-find: the board may have changed while the ad played.
     const fresh = level.board.findHint();
     if (fresh) setHint({ arrow: fresh, id: hintId.current++ });
@@ -223,7 +270,7 @@ export function GameScreen({
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerLeft}>
-          <HeaderButton label="‹" palette={p} onPress={onHome} />
+          <HeaderButton label="‹" palette={p} onPress={onHomePress} />
           <View>
             <Text style={[styles.levelLabel, { color: p.accentLight }]}>
               LEVEL {levelIndex + 1}
@@ -266,6 +313,7 @@ export function GameScreen({
         palette={p}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
+        onTapOutcome={onTapOutcome}
         locked={phase !== 'playing' || terminalPending || adBusy}
         hint={hint}
         clearHint={clearHint}

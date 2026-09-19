@@ -82,6 +82,30 @@ test('EXPO_PUBLIC_PERF_MASK_TIMING is forwarded explicitly and recorded (W6-01)'
   assert.equal(parseArgs([], { EXPO_PUBLIC_PERF_MASK_TIMING: 'true' }).perfMaskTiming, false);
 });
 
+test('EXPO_PUBLIC_PERF_TELEMETRY_TIMING is forwarded explicitly and recorded (W6-06)', () => {
+  const off = parseArgs([], {});
+  const on = parseArgs([], { EXPO_PUBLIC_PERF_TELEMETRY_TIMING: '1' });
+  assert.equal(perfBuildEnv(off, {}).EXPO_PUBLIC_PERF_TELEMETRY_TIMING, '0');
+  assert.equal(
+    perfBuildEnv(off, { EXPO_PUBLIC_PERF_TELEMETRY_TIMING: '1' })
+      .EXPO_PUBLIC_PERF_TELEMETRY_TIMING,
+    '0',
+  );
+  assert.equal(perfBuildEnv(on, {}).EXPO_PUBLIC_PERF_TELEMETRY_TIMING, '1');
+  assert.equal(benchmarkConfiguration(off).perfTelemetryTiming, false);
+  assert.equal(benchmarkConfiguration(on).perfTelemetryTiming, true);
+  assert.equal(
+    benchmarkConfiguration(
+      parseArgs(['--skip-build'], { EXPO_PUBLIC_PERF_TELEMETRY_TIMING: '1' }),
+    ).perfTelemetryTiming,
+    true,
+  );
+  assert.equal(
+    parseArgs([], { EXPO_PUBLIC_PERF_TELEMETRY_TIMING: 'true' }).perfTelemetryTiming,
+    false,
+  );
+});
+
 test('--motion-scale defaults to 0 so historical runs stay comparable, and accepts only 0 or 1', () => {
   assert.equal(parseArgs([], {}).motionScale, 0);
   assert.equal(parseArgs(['--motion-scale', '1'], {}).motionScale, 1);
