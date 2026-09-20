@@ -37,13 +37,19 @@ import {
   type TerminalPhase,
 } from './gameSessionLifecycle';
 import { T1_LINE, T2_BLOCKED_LINE, T2_LINE } from './ftueCopy';
-import { FTUE_ASSIST_ENABLED, FTUE_ENABLED } from './ftueConfig';
+import {
+  FTUE_ASSIST_ENABLED,
+  FTUE_ENABLED,
+  FTUE_STALL_HINT_ENABLED,
+  FTUE_STALL_HINT_MS,
+} from './ftueConfig';
 import {
   assistActive,
   ASSIST_STAGE,
   DONE_STAGE,
   T1_CLEARED_STAGE,
 } from './ftueRoute';
+import { FtueStallTimer } from './ftueStallTimer';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
@@ -107,6 +113,8 @@ export function GameScreen({
   // readiness change or board tap (no timer).
   const [adShowFailed, setAdShowFailed] = useState(false);
   const hintId = useRef(1);
+  const stallHintTimer = useRef(new FtueStallTimer(FTUE_STALL_HINT_MS)).current;
+  const stallHintTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartsRef = useRef(hearts);
   const exitCombo = useRef<ExitCombo | null>(null);
   const terminalTransitionRef = useRef<TerminalTransitionGuard | null>(null);
@@ -116,6 +124,33 @@ export function GameScreen({
   const terminalTransition = terminalTransitionRef.current;
   heartsRef.current = hearts;
   const clearHint = useCallback(() => setHint(null), []);
+
+  const clearStallHintTimeout = useCallback(() => {
+    if (stallHintTimeout.current === null) return;
+    clearTimeout(stallHintTimeout.current);
+    stallHintTimeout.current = null;
+  }, []);
+
+  const cancelStallHint = useCallback(() => {
+    clearStallHintTimeout();
+    stallHintTimer.cancel();
+  }, [clearStallHintTimeout, stallHintTimer]);
+
+  const scheduleStallHint = useCallback(() => {
+    clearStallHintTimeout();
+    if (
+      !activeTutorialId ||
+      !FTUE_STALL_HINT_ENABLED ||
+      FTUE_STALL_HINT_MS === null
+    ) return;
+
+    stallHintTimeout.current = setTimeout(() => {
+      stallHintTimeout.current = null;
+      if (!stallHintTimer.due(Date.now())) return;
+      const arrow = level.board.findHint();
+      if (arrow) setHint({ arrow, id: hintId.current++ });
+    }, FTUE_STALL_HINT_MS);
+  }, [activeTutorialId, clearStallHintTimeout, level, stallHintTimer]);
 
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
   useEffect(() => () => {
@@ -131,6 +166,24 @@ export function GameScreen({
     prepareFeedback(SaveSystem.soundOn);
     return releaseFeedback;
   }, [feedbackEnabled]);
+  useEffect(() => {
+    cancelStallHint();
+    if (
+      !activeTutorialId ||
+      !FTUE_STALL_HINT_ENABLED ||
+      FTUE_STALL_HINT_MS === null
+    ) return undefined;
+
+    stallHintTimer.arm(Date.now());
+    scheduleStallHint();
+    return cancelStallHint;
+  }, [
+    activeTutorialId,
+    cancelStallHint,
+    level,
+    scheduleStallHint,
+    stallHintTimer,
+  ]);
 
   const beginTerminalTransition = useCallback(
     (
@@ -140,13 +193,15 @@ export function GameScreen({
     ) => {
       const accepted = terminalTransition.begin(nextPhase, delayMs, commit ?? setPhase);
       if (!accepted) return false;
+      cancelStallHint();
       setTerminalPending(true);
       return true;
     },
-    [terminalTransition],
+    [cancelStallHint, terminalTransition],
   );
 
   const loadSession = useCallback((next: LevelSession) => {
+    cancelStallHint();
     levelAggregatorRef.current.start(
       next.index,
       next.level.arrowCount,
@@ -169,7 +224,7 @@ export function GameScreen({
     setPhase('playing');
     setHint(null);
     setAdShowFailed(false);
-  }, [terminalTransition]);
+  }, [cancelStallHint, terminalTransition]);
 
   const loadLevel = useCallback((index: number) => {
     revisionRef.current += 1;
@@ -194,6 +249,7 @@ export function GameScreen({
     (cleared: boolean) => {
       setAdShowFailed(false);
       if (terminalTransition.isPending) return;
+      if (stallHintTimer.onRemoval(Date.now())) scheduleStallHint();
       if (activeTutorialId === 'T2') {
         setTutorialLine((current) => current === T2_BLOCKED_LINE ? '' : current);
       }
@@ -246,6 +302,8 @@ export function GameScreen({
       levelIndex,
       loadLevel,
       loadTutorial,
+      scheduleStallHint,
+      stallHintTimer,
       terminalTransition,
     ],
   );
