@@ -50,3 +50,6 @@ credentials.backup.enc
 
 # Local build artifacts and captures (release APKs here are signed with the upload key)
 /artifacts/
+
+# Generated art previews
+out/art/
