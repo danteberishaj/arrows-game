@@ -34,8 +34,8 @@ import {
 } from './ftueSessionLog';
 import { HeaderButton } from './HeaderButton';
 import {
-  createLevelSession,
-  createTutorialSession,
+  createLevelSession, createTutorialSession,
+  LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS,
   TerminalTransitionGuard,
   type GamePhase,
   type LevelSession,
@@ -309,7 +309,7 @@ export function GameScreen({
       const perfect = heartsRef.current === level.hearts;
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
-        if (!beginTerminalTransition('won', 450, () => {
+        if (!beginTerminalTransition('won', WON_PANEL_DELAY_MS, () => {
           if (nextTutorialId) {
             loadTutorial(nextTutorialId);
           } else {
@@ -321,7 +321,7 @@ export function GameScreen({
           activeTutorialId === 'T1' ? T1_CLEARED_STAGE : ASSIST_STAGE,
         );
       } else {
-        if (!beginTerminalTransition('won', 450)) return;
+        if (!beginTerminalTransition('won', WON_PANEL_DELAY_MS)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
         if (!benchmarkMode) {
           if (ftueStageAtClear === ASSIST_STAGE && perfect) {
@@ -404,7 +404,7 @@ export function GameScreen({
     const reloadTutorial = activeTutorialId
       ? () => restartTutorial(activeTutorialId)
       : undefined;
-    if (left <= 0 && beginTerminalTransition('lost', 350, reloadTutorial)) {
+    if (left <= 0 && beginTerminalTransition('lost', LOSE_PANEL_DELAY_MS, reloadTutorial)) {
       levelAggregatorRef.current.end('out_of_hearts', 0, Date.now());
       if (!benchmarkMode && !activeTutorialId) {
         Ads.registerGameFinished(); // a loss counts toward the pacing too

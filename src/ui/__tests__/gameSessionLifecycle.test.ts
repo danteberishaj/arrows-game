@@ -1,8 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildTutorialLevel, LevelGenerator } from '../../core';
+import {
+  BLOCKER_FLASH_MS,
+  FEEDBACK_CLEANUP_MARGIN_MS,
+} from '../feedbackCurves';
 import {
   createLevelSession,
   createTutorialSession,
+  LOSE_PANEL_DELAY_MS,
   TerminalTransitionGuard,
+  WON_PANEL_DELAY_MS,
 } from '../gameSessionLifecycle';
 
 describe('game session lifecycle', () => {
@@ -43,6 +51,19 @@ describe('game session lifecycle', () => {
     expect(tutorial.tutorialId).toBe('T1');
     expect(tutorial.mode).toBe('tutorial');
     expect(tutorial.level.arrowCount).toBe(buildTutorialLevel('T1').arrowCount);
+  });
+
+  it('waits for fatal feedback cleanup before showing the lose panel', () => {
+    expect(LOSE_PANEL_DELAY_MS).toBe(BLOCKER_FLASH_MS + FEEDBACK_CLEANUP_MARGIN_MS);
+    expect(LOSE_PANEL_DELAY_MS).toBeGreaterThan(WON_PANEL_DELAY_MS);
+  });
+
+  it('names every GameScreen terminal-transition delay', () => {
+    const source = readFileSync(join(__dirname, '..', 'GameScreen.tsx'), 'utf8');
+
+    expect(source).not.toMatch(
+      /beginTerminalTransition\(\s*['"](?:won|lost)['"]\s*,\s*\d/,
+    );
   });
 
   it('accepts only the first terminal event until the session resets', () => {

@@ -8,6 +8,8 @@
 export const BLOCKED_BUMP_MS = 300;
 /** The blocking arrow's flash: hold, then fade back to plain ink. */
 export const BLOCKER_FLASH_MS = 650;
+/** Keep feedback mounted just past its driver so the final frame can render. */
+export const FEEDBACK_CLEANUP_MARGIN_MS = 40; // OWNER-PICKED STARTING VALUE
 /** Press preview stroke, relative to the resting stroke. Bold enough to read
  * at 9 pt cells; it draws over the static arrow, so it must fully cover it. */
 export const PRESSED_STROKE_SWELL = 1.6;

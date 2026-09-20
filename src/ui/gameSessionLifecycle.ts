@@ -6,6 +6,13 @@ import {
   type TutorialId,
 } from '../core';
 import type { LevelMode } from '../telemetry/levelAggregator';
+import {
+  BLOCKER_FLASH_MS,
+  FEEDBACK_CLEANUP_MARGIN_MS,
+} from './feedbackCurves';
+
+export const LOSE_PANEL_DELAY_MS = BLOCKER_FLASH_MS + FEEDBACK_CLEANUP_MARGIN_MS;
+export const WON_PANEL_DELAY_MS = 450; // OWNER-PICKED STARTING VALUE
 
 export type GamePhase = 'playing' | 'won' | 'lost';
 export type TerminalPhase = Exclude<GamePhase, 'playing'>;

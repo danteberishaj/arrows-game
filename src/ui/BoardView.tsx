@@ -35,7 +35,7 @@ import {
 } from './exitAnimationConfig';
 import {
   BLOCKED_BUMP_MS,
-  BLOCKER_FLASH_MS,
+  BLOCKER_FLASH_MS, FEEDBACK_CLEANUP_MARGIN_MS,
   blockedBumpAt,
   blockedFlashMixAt,
   blockerOpacityAt,
@@ -570,7 +570,7 @@ export function BoardView({
       shakingRef.current = nextShaking;
       shakeCleanup.stage({
         id,
-        durationMs: BLOCKED_BUMP_MS + 40,
+        durationMs: BLOCKED_BUMP_MS + FEEDBACK_CLEANUP_MARGIN_MS,
         onElapsed: () => {
           setShaking((current) => {
             if (current?.id !== id) return current;
@@ -587,7 +587,7 @@ export function BoardView({
         const blockerId = nextId.current++;
         blockerCleanup.stage({
           id: blockerId,
-          durationMs: BLOCKER_FLASH_MS + 40,
+          durationMs: BLOCKER_FLASH_MS + FEEDBACK_CLEANUP_MARGIN_MS,
           onElapsed: () => {
             setBlocker((current) => (current?.id === blockerId ? null : current));
           },
