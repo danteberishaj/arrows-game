@@ -6,7 +6,14 @@ export { ArrowPath } from './arrowPath';
 export type { Cell } from './arrowPath';
 export { BoardLogic } from './boardLogic';
 export { ShapeDef, ShapeLibrary } from './shapeLibrary';
-export { LevelGenerator } from './levelGenerator';
+export {
+  MAX_CATALOGUE_BITS,
+  RETIRED_SHAPE_IDS,
+  SHAPE_CATALOGUE,
+  catalogueIndexOf,
+  shapeDefFor,
+} from './shapeCatalogue';
+export { LevelGenerator, shapeNameForLevel } from './levelGenerator';
 export type { GeneratedLevel } from './levelGenerator';
 export { TUTORIAL_BOARDS, buildTutorialLevel } from './tutorialLevels';
 export type { TutorialId } from './tutorialLevels';

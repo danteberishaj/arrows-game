@@ -24,6 +24,11 @@ export interface GeneratedLevel {
   targetCells: number;
 }
 
+export function shapeNameForLevel(levelIndex: number): string {
+  const difficulty = Difficulties.forLevel(levelIndex);
+  return ShapeLibrary.pick(difficulty, new DotNetRandom(seed(levelIndex))).name;
+}
+
 const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as const;
 
 /**
