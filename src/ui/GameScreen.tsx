@@ -37,6 +37,7 @@ import {
   type TerminalPhase,
 } from './gameSessionLifecycle';
 import { T1_LINE, T2_LINE } from './ftueCopy';
+import { ASSIST_STAGE, T1_CLEARED_STAGE } from './ftueRoute';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -193,7 +194,9 @@ export function GameScreen({
           }
         })) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
-        SaveSystem.setFtueStage(activeTutorialId === 'T1' ? 1 : 2);
+        SaveSystem.setFtueStage(
+          activeTutorialId === 'T1' ? T1_CLEARED_STAGE : ASSIST_STAGE,
+        );
       } else {
         if (!beginTerminalTransition('won', 450)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
@@ -324,7 +327,7 @@ export function GameScreen({
           {activeTutorialId ? (
             <Text
               numberOfLines={2}
-              style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentLight }]}
+              style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentText }]}
             >
               {activeTutorialId === 'T1' ? T1_LINE : T2_LINE}
             </Text>
