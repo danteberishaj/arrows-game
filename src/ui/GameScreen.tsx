@@ -27,6 +27,10 @@ import {
   releaseFeedback,
 } from './feedback';
 import { nextExitCombo, type ExitCombo } from './exitCombo';
+import {
+  formatFtueSessionLog,
+  type FtueSessionLogEvent,
+} from './ftueSessionLog';
 import { HeaderButton } from './HeaderButton';
 import {
   createLevelSession,
@@ -52,6 +56,10 @@ import {
 import { FtueStallTimer } from './ftueStallTimer';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
+
+// Keep the playtest logger callable in release builds, where direct console.log
+// calls in application code are removed by the production transform.
+const writeFtueSessionLog = console.log.bind(console);
 
 /**
  * One play session: header (home, level, difficulty, hearts), the pan/zoom
@@ -95,6 +103,8 @@ export function GameScreen({
     );
     return initial;
   });
+  const ftueBoardMountedAtRef = useRef(Date.now());
+  const ftueMountedSessionRef = useRef<LevelSession | null>(null);
   const { index: levelIndex, level, tutorialId: activeTutorialId } = session;
   const tutorialGraceAvailableRef = useRef(activeTutorialId === 'T2');
   const removalsThisBoardRef = useRef(0);
@@ -125,6 +135,14 @@ export function GameScreen({
   heartsRef.current = hearts;
   const clearHint = useCallback(() => setHint(null), []);
 
+  const logFtueEvent = useCallback((event: FtueSessionLogEvent) => {
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    writeFtueSessionLog(formatFtueSessionLog(
+      event,
+      Date.now() - ftueBoardMountedAtRef.current,
+    ));
+  }, []);
+
   const clearStallHintTimeout = useCallback(() => {
     if (stallHintTimeout.current === null) return;
     clearTimeout(stallHintTimeout.current);
@@ -148,10 +166,23 @@ export function GameScreen({
       stallHintTimeout.current = null;
       if (!stallHintTimer.due(Date.now())) return;
       const arrow = level.board.findHint();
-      if (arrow) setHint({ arrow, id: hintId.current++ });
+      if (arrow) {
+        logFtueEvent({ type: 'stall_hint' });
+        setHint({ arrow, id: hintId.current++ });
+      }
     }, FTUE_STALL_HINT_MS);
-  }, [activeTutorialId, clearStallHintTimeout, level, stallHintTimer]);
+  }, [activeTutorialId, clearStallHintTimeout, level, logFtueEvent, stallHintTimer]);
 
+  useEffect(() => {
+    if (ftueMountedSessionRef.current === session) return;
+    ftueMountedSessionRef.current = session;
+    ftueBoardMountedAtRef.current = Date.now();
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    writeFtueSessionLog(formatFtueSessionLog({
+      type: 'board_mount',
+      board: session.tutorialId ?? session.index,
+    }, 0));
+  }, [session]);
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
   useEffect(() => () => {
     levelAggregatorRef.current.end('abandoned', heartsRef.current, Date.now());
@@ -236,6 +267,16 @@ export function GameScreen({
     loadSession(createTutorialSession(id, revisionRef.current));
   }, [loadSession]);
 
+  const restartLevel = useCallback((index: number) => {
+    logFtueEvent({ type: 'restart' });
+    loadLevel(index);
+  }, [loadLevel, logFtueEvent]);
+
+  const restartTutorial = useCallback((id: TutorialId) => {
+    logFtueEvent({ type: 'restart' });
+    loadTutorial(id);
+  }, [loadTutorial, logFtueEvent]);
+
   const onTapOutcome = useCallback((outcome: TapOutcome) => {
     levelAggregatorRef.current.tap(outcome);
   }, []);
@@ -249,6 +290,7 @@ export function GameScreen({
     (cleared: boolean) => {
       setAdShowFailed(false);
       if (terminalTransition.isPending) return;
+      logFtueEvent({ type: 'removal' });
       if (stallHintTimer.onRemoval(Date.now())) scheduleStallHint();
       if (activeTutorialId === 'T2') {
         setTutorialLine((current) => current === T2_BLOCKED_LINE ? '' : current);
@@ -289,6 +331,7 @@ export function GameScreen({
           Ads.registerGameFinished(); // counts toward the every-2-games interstitial
         }
       }
+      logFtueEvent({ type: 'clear', heartsLeft: heartsRef.current });
       if (feedbackEnabled) {
         feedback('cleared', SaveSystem.soundOn);
       }
@@ -302,6 +345,7 @@ export function GameScreen({
       levelIndex,
       loadLevel,
       loadTutorial,
+      logFtueEvent,
       scheduleStallHint,
       stallHintTimer,
       terminalTransition,
@@ -313,19 +357,29 @@ export function GameScreen({
     if (terminalTransition.isPending) return;
     exitCombo.current = null;
 
+    const mode = activeTutorialId === 'T2'
+      ? 'tutorialGrace'
+      : assistActive({
+        enabled: FTUE_ENABLED,
+        assistEnabled: FTUE_ASSIST_ENABLED,
+        stage: SaveSystem.ftueStage,
+      })
+        ? 'assist'
+        : 'normal';
     const cost = blockedTapCost({
       ledgerCharge,
-      mode: activeTutorialId === 'T2'
-        ? 'tutorialGrace'
-        : assistActive({
-          enabled: FTUE_ENABLED,
-          assistEnabled: FTUE_ASSIST_ENABLED,
-          stage: SaveSystem.ftueStage,
-        })
-          ? 'assist'
-          : 'normal',
+      mode,
       graceAvailable: tutorialGraceAvailableRef.current,
       removalsThisBoard: removalsThisBoardRef.current,
+    });
+    logFtueEvent({
+      type: 'blocked',
+      charged: cost.chargeHeart,
+      graceOrAssist: cost.consumeGrace
+        ? 'grace'
+        : mode === 'assist' && ledgerCharge && removalsThisBoardRef.current === 0
+          ? 'assist'
+          : 'none',
     });
     if (cost.consumeGrace) {
       tutorialGraceAvailableRef.current = false;
@@ -347,7 +401,7 @@ export function GameScreen({
     setHearts(left);
     levelAggregatorRef.current.heartLost();
     const reloadTutorial = activeTutorialId
-      ? () => loadTutorial(activeTutorialId)
+      ? () => restartTutorial(activeTutorialId)
       : undefined;
     if (left <= 0 && beginTerminalTransition('lost', 350, reloadTutorial)) {
       levelAggregatorRef.current.end('out_of_hearts', 0, Date.now());
@@ -360,8 +414,8 @@ export function GameScreen({
     benchmarkMode,
     beginTerminalTransition,
     feedbackEnabled,
-    level,
-    loadTutorial,
+    logFtueEvent,
+    restartTutorial,
     terminalTransition,
   ]);
 
@@ -550,7 +604,7 @@ export function GameScreen({
                 phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
                 phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
               ]}
-              onPress={() => (phase === 'won' ? onNextLevel() : loadLevel(levelIndex))}
+              onPress={() => (phase === 'won' ? onNextLevel() : restartLevel(levelIndex))}
             >
               <Text style={[styles.buttonText, { color: phase === 'won' ? p.inkOnAccent : p.inkDim }]}>
                 {phase === 'won' ? 'Next level' : 'Retry'}
