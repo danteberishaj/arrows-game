@@ -37,7 +37,13 @@ import {
   type TerminalPhase,
 } from './gameSessionLifecycle';
 import { T1_LINE, T2_BLOCKED_LINE, T2_LINE } from './ftueCopy';
-import { ASSIST_STAGE, T1_CLEARED_STAGE } from './ftueRoute';
+import { FTUE_ASSIST_ENABLED, FTUE_ENABLED } from './ftueConfig';
+import {
+  assistActive,
+  ASSIST_STAGE,
+  DONE_STAGE,
+  T1_CLEARED_STAGE,
+} from './ftueRoute';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
@@ -85,6 +91,10 @@ export function GameScreen({
   });
   const { index: levelIndex, level, tutorialId: activeTutorialId } = session;
   const tutorialGraceAvailableRef = useRef(activeTutorialId === 'T2');
+  const removalsThisBoardRef = useRef(0);
+  // W4-11 reads this at the delayed won-phase commit. Keep the stage-2
+  // snapshot even when this clear immediately advances persisted stage to 3.
+  const assistedAtClearRef = useRef(false);
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
   const [tutorialLine, setTutorialLine] = useState(() => initialTutorialLine(activeTutorialId));
@@ -152,6 +162,8 @@ export function GameScreen({
     setHearts(next.level.hearts);
     setRemaining(next.level.arrowCount);
     tutorialGraceAvailableRef.current = next.tutorialId === 'T2';
+    removalsThisBoardRef.current = 0;
+    assistedAtClearRef.current = false;
     setTutorialLine(initialTutorialLine(next.tutorialId));
     exitCombo.current = null;
     setPhase('playing');
@@ -190,8 +202,12 @@ export function GameScreen({
         exitCombo.current = combo;
         feedback('exit', SaveSystem.soundOn, combo.step);
       }
+      removalsThisBoardRef.current += 1;
       setRemaining(level.board.count());
       if (!cleared) return;
+      const ftueStageAtClear = SaveSystem.ftueStage;
+      assistedAtClearRef.current = ftueStageAtClear === ASSIST_STAGE;
+      const perfect = heartsRef.current === level.hearts;
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
         if (!beginTerminalTransition('won', 450, () => {
@@ -209,7 +225,10 @@ export function GameScreen({
         if (!beginTerminalTransition('won', 450)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
         if (!benchmarkMode) {
-          SaveSystem.registerSolve(heartsRef.current === level.hearts); // perfect = no heart lost
+          if (ftueStageAtClear === ASSIST_STAGE && perfect) {
+            SaveSystem.setFtueStage(DONE_STAGE);
+          }
+          SaveSystem.registerSolve(perfect); // perfect = no heart lost
           SaveSystem.setCurrentLevel(levelIndex + 1);
           Ads.registerGameFinished(); // counts toward the every-2-games interstitial
         }
@@ -238,9 +257,17 @@ export function GameScreen({
 
     const cost = blockedTapCost({
       ledgerCharge,
-      mode: activeTutorialId === 'T2' ? 'tutorialGrace' : 'normal',
+      mode: activeTutorialId === 'T2'
+        ? 'tutorialGrace'
+        : assistActive({
+          enabled: FTUE_ENABLED,
+          assistEnabled: FTUE_ASSIST_ENABLED,
+          stage: SaveSystem.ftueStage,
+        })
+          ? 'assist'
+          : 'normal',
       graceAvailable: tutorialGraceAvailableRef.current,
-      removalsThisBoard: level.arrowCount - level.board.count(),
+      removalsThisBoard: removalsThisBoardRef.current,
     });
     if (cost.consumeGrace) {
       tutorialGraceAvailableRef.current = false;

@@ -24,6 +24,42 @@ describe('BlockedTapLedger', () => {
 });
 
 describe('blockedTapCost', () => {
+  it('assist with no removals and a fresh charge does not charge a heart', () => {
+    expect(blockedTapCost({
+      ledgerCharge: true,
+      mode: 'assist',
+      graceAvailable: false,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: false, consumeGrace: false });
+  });
+
+  it('assist after a removal passes through a fresh heart charge', () => {
+    expect(blockedTapCost({
+      ledgerCharge: true,
+      mode: 'assist',
+      graceAvailable: false,
+      removalsThisBoard: 1,
+    })).toEqual({ chargeHeart: true, consumeGrace: false });
+  });
+
+  it('assist with a repeat tap neither charges a heart nor consumes grace', () => {
+    expect(blockedTapCost({
+      ledgerCharge: false,
+      mode: 'assist',
+      graceAvailable: false,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: false, consumeGrace: false });
+  });
+
+  it('normal with no removals passes through a fresh heart charge', () => {
+    expect(blockedTapCost({
+      ledgerCharge: true,
+      mode: 'normal',
+      graceAvailable: false,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: true, consumeGrace: false });
+  });
+
   it('tutorialGrace with a fresh charge and grace available does not charge a heart and consumes grace', () => {
     expect(blockedTapCost({
       ledgerCharge: true,

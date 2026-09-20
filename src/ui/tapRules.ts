@@ -14,15 +14,16 @@ interface BlockedTapCost {
   consumeGrace: boolean;
 }
 
-/**
- * Combines the per-arrow ledger with the active game rule. Assist currently
- * preserves normal charging; W1-06 adds its zero-removal exception here.
- */
+/** Combines the per-arrow ledger with the active game rule. */
 export function blockedTapCost({
   ledgerCharge,
   mode,
   graceAvailable,
+  removalsThisBoard,
 }: BlockedTapCostInput): BlockedTapCost {
+  if (mode === 'assist' && removalsThisBoard === 0) {
+    return { chargeHeart: false, consumeGrace: false };
+  }
   if (mode === 'tutorialGrace' && ledgerCharge && graceAvailable) {
     return { chargeHeart: false, consumeGrace: true };
   }

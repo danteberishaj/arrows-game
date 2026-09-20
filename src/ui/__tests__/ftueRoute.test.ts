@@ -84,6 +84,10 @@ test('assist is inactive when its own flag is off', () => {
   expect(assistActive({ enabled: true, assistEnabled: false, stage: 2 })).toBe(false);
 });
 
-test.each([0, 1, 3])('assist is inactive at stage %i', (stage) => {
+test.each([0, 1])('assist is inactive at stage %i', (stage) => {
   expect(assistActive({ enabled: true, assistEnabled: true, stage })).toBe(false);
+});
+
+test('assist is inactive at stage 3 even with both flags on', () => {
+  expect(assistActive({ enabled: true, assistEnabled: true, stage: 3 })).toBe(false);
 });
