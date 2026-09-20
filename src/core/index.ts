@@ -13,8 +13,17 @@ export {
   catalogueIndexOf,
   shapeDefFor,
 } from './shapeCatalogue';
-export { LevelGenerator, shapeNameForLevel } from './levelGenerator';
+export { LevelGenerator, seed, shapeNameForLevel } from './levelGenerator';
 export type { GeneratedLevel } from './levelGenerator';
+export {
+  DAILY_POOL_V1,
+  DAILY_VERSIONS,
+  dailyPoolFor,
+  dailySeed,
+  generateDaily,
+  generateDailyFromPool,
+} from './dailyBoard';
+export type { DailyVersion } from './dailyBoard';
 export { TUTORIAL_BOARDS, buildTutorialLevel } from './tutorialLevels';
 export type { TutorialId } from './tutorialLevels';
 export { SaveSystem } from './saveSystem';

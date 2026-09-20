@@ -3,7 +3,7 @@ import { BoardLogic } from './boardLogic';
 import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
 import { DotNetRandom } from './dotnetRandom';
-import { ShapeLibrary } from './shapeLibrary';
+import { ShapeDef, ShapeLibrary } from './shapeLibrary';
 
 /** One generated puzzle plus its metadata. */
 export interface GeneratedLevel {
@@ -61,6 +61,26 @@ export const LevelGenerator = {
 
     const shape = ShapeLibrary.pick(difficulty, rng);
 
+    return LevelGenerator.buildFromShape(shape, difficulty, cfg, rng);
+  },
+
+  /**
+   * Everything `generate` does AFTER the shape is picked: size the grid,
+   * rasterize, pack and wrap the result. Split out (W4-03) so a caller with
+   * its own shape and seed — the daily board, which draws from its own pool —
+   * reuses the exact pipeline instead of copying it.
+   *
+   * The RNG is consumed in the same order as before the split: `generate`
+   * still draws `ShapeLibrary.pick` first and hands the SAME `rng` on, so
+   * every campaign board is unchanged (the golden checksums in
+   * `__tests__/levelGenerator.test.ts` are the net).
+   */
+  buildFromShape(
+    shape: ShapeDef,
+    difficulty: Difficulty,
+    cfg: DifficultyConfig,
+    rng: DotNetRandom,
+  ): GeneratedLevel {
     // Size the board so the SHAPE holds ~targetCells cells: probe the
     // silhouette's fill density at a reference size, then solve for the rows
     // that hit the target. A thin bolt gets a big grid, a solid square a
@@ -393,7 +413,9 @@ export const LevelGenerator = {
 
 // Deterministic, well-spread seed per level index (FNV-1a style mix), matching
 // the C# `unchecked((int)((2166136261u ^ (uint)levelIndex) * 16777619u))`.
-function seed(levelIndex: number): number {
+// Exported (W4-03) so the daily board's namespace test can prove no daily seed
+// collides with a campaign seed against the LIVE function, not a copy of it.
+export function seed(levelIndex: number): number {
   return Math.imul((2166136261 ^ levelIndex) | 0, 16777619) | 0;
 }
 
