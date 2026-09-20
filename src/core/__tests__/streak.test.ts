@@ -111,6 +111,23 @@ describe.each(RULE_ROWS)('freezes enabled: $name', ({ state, expected, expectedR
   });
 });
 
+describe('corrupt store freeze values clamp to 0..cap before use (freezes enabled)', () => {
+  test.each([
+    ['stored -3 clamps to 0', -3, 0],
+    ['stored NaN clamps to 0', NaN, 0],
+    ['stored 999 clamps to the cap of 2', 999, 2],
+  ] as const)('%s', (_name, storedFreezes, expectedFreezes) => {
+    // First-ever solve (lastPlayDay 0): advanceStreak reaches a streak of 1, which is not a
+    // multiple of earnEveryDays (7), so earnFreeze passes the clamped bank through unchanged and
+    // the output "freezes" field is exactly boundedFreezes(storedFreezes, cap).
+    const state: StreakState = { today: 20, lastPlayDay: 0, streak: 0, freezes: storedFreezes };
+
+    const result = advanceStreak(state, OPTIONS);
+
+    expect(result.freezes).toBe(expectedFreezes);
+  });
+});
+
 describe.each(RULE_ROWS)('flag-off parity: $name', ({ state }) => {
   test('matches expected values computed by the old registerSolve and dayStreak formulas', () => {
     const options = { ...OPTIONS, freezesEnabled: false };

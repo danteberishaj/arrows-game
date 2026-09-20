@@ -1,10 +1,28 @@
-import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SaveSystem, type IntStore } from '../../core/saveSystem';
 import { HomeScreen } from '../HomeScreen';
 import { Daylight, InkNight } from '../theme';
 
+/**
+ * Override only META_STREAK_FREEZE, keeping every other flag's real compiled value, so
+ * CONSENT_GATE, REMOTE_KILL_SWITCH and TELEMETRY_TRANSPORT read the same as they would outside
+ * this test instead of `undefined`.
+ *
+ * Fix-round-1 decision: the brief named the env-var + `jest.isolateModules` pattern from
+ * `src/core/__tests__/saveSystem.test.ts`'s "W4-02 SaveSystem day-chain wiring" block (lines
+ * 313-354). That pattern is safe there because that block never renders a React tree. Applied
+ * literally here it broke: `jest.isolateModules` forks the *whole* module registry, so the
+ * freshly-required `HomeScreen` pulled in a second, separate copy of `react` than the one
+ * `@testing-library/react-native`'s `render()` (imported at file scope, since that module
+ * registers global Jest hooks at load time and cannot be required mid-test) uses internally.
+ * HomeScreen's own `useSafeAreaInsets()` then read a null dispatcher from its copy of `react`
+ * that the renderer never set up, and the test failed with
+ * "TypeError: Cannot read properties of null (reading 'useContext')" — confirmed by running it.
+ * `jest.mock` with a `requireActual` spread reaches the same goal (only the one flag overridden)
+ * without forking the module registry, so `react` stays a single instance.
+ */
 jest.mock('../../featureFlags', () => ({
+  ...jest.requireActual('../../featureFlags'),
   META_STREAK_FREEZE: true,
 }));
 
