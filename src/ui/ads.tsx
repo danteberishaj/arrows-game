@@ -189,6 +189,7 @@ let lpRewarded: LevelPlayRewardedAd | null = null;
 let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
 let levelPlayModule: LevelPlayModule | null = null;
 let consentSource: ConsentSource | undefined;
+let consentAllowsAdSurfaces = !CONSENT_GATE;
 let rewardEarned = false;
 let rewardedDisplayed = false;
 let interstitialDisplayed = false;
@@ -196,7 +197,7 @@ let onRewardedClosed: ((earned: boolean) => void) | null = null;
 let onInterstitialClosed: (() => void) | null = null;
 
 function nativeAvailable(): boolean {
-  return lpInterstitial !== null && lpRewarded !== null;
+  return consentAllowsAdSurfaces && lpInterstitial !== null && lpRewarded !== null;
 }
 
 /** Remote kill for one ad format, read at call time (never captured at load). */
@@ -214,14 +215,19 @@ const rewardedReadiness = createReadiness(false);
  * release build without the native SDK is never ready.
  */
 function syncRewardedReady(): void {
-  if (killed('rewarded')) {
-    // Killed remotely: the button shows W0-02's "no ad available" state.
+  if (!consentAllowsAdSurfaces || killed('rewarded')) {
+    // Refused or killed: the button shows W0-02's "no ad available" state.
     rewardedReadiness.set(false);
     return;
   }
   rewardedReadiness.set(
     nativeAvailable() ? rewardedLoaded : __DEV__ && fakeAdListener !== null,
   );
+}
+
+function setConsentAllowsAdSurfaces(allowed: boolean): void {
+  consentAllowsAdSurfaces = !CONSENT_GATE || allowed;
+  syncRewardedReady();
 }
 
 function setRewardedLoaded(loaded: boolean): void {
@@ -282,14 +288,18 @@ async function initLevelPlayOnce(): Promise<void | 'declined'> {
       setConsent: (value) => LevelPlay.setConsent(value),
     };
 
-    // The SDK cannot be torn down. A later consent change is applied at once,
-    // while the cold-start init gate takes full effect on the next launch.
-    if (levelPlayApi) {
-      await applyPrivacy(state, privacyApi);
-      return;
+    const allowed = mayInitAds(state);
+    if (!allowed) {
+      // Keep an already-running SDK process, but close every ad surface before
+      // awaiting its privacy update so withdrawal takes effect immediately.
+      setConsentAllowsAdSurfaces(false);
+      if (levelPlayApi) await applyPrivacy(state, privacyApi);
+      return 'declined';
     }
-    if (!mayInitAds(state)) return 'declined';
+
     await applyPrivacy(state, privacyApi);
+    setConsentAllowsAdSurfaces(true);
+    if (levelPlayApi) return;
   }
 
   initAttemptCount += 1;
@@ -505,6 +515,10 @@ export const Ads = {
       emitAdResult('interstitial', 'between_levels', 'killed');
       return;
     }
+    if (!consentAllowsAdSurfaces) {
+      emitAdResult('interstitial', 'between_levels', 'not_ready');
+      return;
+    }
 
     if (nativeAvailable()) {
       let outcome: AdResultOutcome = 'display_failed';
@@ -560,6 +574,9 @@ export const Ads = {
     emitAdRequest('rewarded', placement);
     if (killed('rewarded')) {
       return finishRewarded(placement, 'killed', false);
+    }
+    if (!consentAllowsAdSurfaces) {
+      return finishRewarded(placement, 'not_ready', false);
     }
     if (nativeAvailable()) {
       try {

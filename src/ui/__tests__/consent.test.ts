@@ -24,6 +24,13 @@ class MemoryStore implements IntStore {
   }
 }
 
+let previousStore: IntStore | undefined;
+
+afterEach(() => {
+  if (previousStore) SaveSystem.useStore(previousStore);
+  previousStore = undefined;
+});
+
 describe('consent state', () => {
   test('applyPrivacy calls setCOPPA, setCCPA, setConsent in that order', async () => {
     const calls: [string, boolean][] = [];
@@ -78,6 +85,20 @@ describe('consent state', () => {
   });
 
   test.each([
+    ['negative', -1],
+    ['out-of-range positive', 23],
+  ])('a %s stored value is unresolved and cannot initialise ads', async (_label, stored) => {
+    const consentStore = new MemoryStore();
+    consentStore.setInt('arrows_consent', stored);
+    previousStore = SaveSystem.useStore(consentStore);
+
+    const state = await lastKnownSource.gather();
+
+    expect(state.resolved).toBe(false);
+    expect(mayInitAds(state)).toBe(false);
+  });
+
+  test.each([
     ['unresolved', false, { resolved: false, gdprApplies: false, personalisedAds: false, ccpaOptOut: false }],
     ['EEA refused', false, { resolved: true, gdprApplies: true, personalisedAds: false, ccpaOptOut: false }],
     ['EEA granted', true, { resolved: true, gdprApplies: true, personalisedAds: true, ccpaOptOut: false }],
@@ -87,7 +108,7 @@ describe('consent state', () => {
   });
 
   test('lastKnownSource returns the persisted state and never requires or shows UI', async () => {
-    SaveSystem.useStore(new MemoryStore());
+    previousStore = SaveSystem.useStore(new MemoryStore());
     SaveSystem.setConsentBits(15);
 
     const expected = decodeConsent(15);

@@ -215,7 +215,7 @@ describe('createAdInitController', () => {
     expect(a.calls).toHaveLength(2);
   });
 
-  it('a throwing gather attempt ends failed, never ready', async () => {
+  it('a throwing attempt ends failed, never ready', async () => {
     const t = fakeTimers();
     const source = {
       gather: async () => {

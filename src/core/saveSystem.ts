@@ -136,6 +136,7 @@ const PersistenceKeys: readonly string[] = Object.freeze(Object.values(Keys));
  */
 const SCHEMA_VERSION = 1;
 const FTUE_NOT_STARTED_STAGE = 0; // OWNER-PICKED STARTING VALUE
+const CONSENT_BITS_MASK = 0b1111;
 
 let persistenceHealthy = false;
 
@@ -157,6 +158,12 @@ function nonNegativeInt(v: number): number {
   return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
 }
 
+/** Only the four defined consent bits are valid; corrupt values fail closed. */
+function validConsentBits(v: number): number {
+  if (!Number.isSafeInteger(v) || v < 0 || v > CONSENT_BITS_MASK) return 0;
+  return v & CONSENT_BITS_MASK;
+}
+
 export const SaveSystem = {
   /** Complete, immutable list of persistence keys owned by the save system. */
   get persistenceKeys(): readonly string[] {
@@ -171,9 +178,11 @@ export const SaveSystem = {
     return Keys;
   },
 
-  /** Swap in the platform store (MMKV / localStorage adapter) at app startup. */
-  useStore(s: IntStore): void {
+  /** Swap stores and return the previous one so scoped callers can restore it. */
+  useStore(s: IntStore): IntStore {
+    const previous = store;
     store = s;
+    return previous;
   },
 
   // ---- Schema version and health ----------------------------------------
@@ -254,13 +263,13 @@ export const SaveSystem = {
 
   // ---- Ad consent (W7-01) -----------------------------------------------
 
-  /** Packed consent state; absent reads 0 (unresolved). */
+  /** Packed consent state; absent or corrupt reads 0 (unresolved). */
   get consentBits(): number {
-    return store.getInt(Keys.consent, 0);
+    return validConsentBits(store.getInt(Keys.consent, 0));
   },
 
   setConsentBits(n: number): void {
-    store.setInt(Keys.consent, n);
+    store.setInt(Keys.consent, validConsentBits(n));
   },
 
   // ---- Remote kill switch (W6-02) ----------------------------------------

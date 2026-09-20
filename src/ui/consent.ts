@@ -48,6 +48,7 @@ export interface PrivacyApi {
 
 export function privacyCallsFor(state: ConsentState): readonly PrivacyCall[] {
   return [
+    // 13+ posture: RELEASE.md:89-90; owner/legal confirmation is W7-07.
     ['setCOPPA', false],
     ['setCCPA', state.ccpaOptOut],
     ['setConsent', state.personalisedAds],
