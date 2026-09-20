@@ -25,9 +25,9 @@ function fakeTimers() {
 
 /** An attempt whose outcome each test settles by hand. */
 function manualAttempts() {
-  const calls: { resolve: () => void; reject: (e: unknown) => void }[] = [];
+  const calls: { resolve: (outcome?: 'declined') => void; reject: (e: unknown) => void }[] = [];
   const attempt = () =>
-    new Promise<void>((resolve, reject) => {
+    new Promise<void | 'declined'>((resolve, reject) => {
       calls.push({ resolve, reject });
     });
   return { attempt, calls };
@@ -191,5 +191,65 @@ describe('createAdInitController', () => {
     const p = c.start();
     a.calls[0].reject(new Error('offline'));
     await expect(p).resolves.toBeUndefined();
+  });
+
+  it('a declined outcome is terminal until consentChanged starts exactly one attempt', async () => {
+    const t = fakeTimers();
+    const a = manualAttempts();
+    const c = createAdInitController({ attempt: a.attempt, delaysMs: [10, 20], ...t });
+
+    c.start();
+    a.calls[0].resolve('declined');
+    await flush();
+
+    expect(c.state).toBe('declined');
+    expect(t.pendingDelays()).toEqual([]);
+    t.fireAll();
+    c.onAppActive();
+    c.start();
+    expect(a.calls).toHaveLength(1);
+
+    c.consentChanged();
+    c.consentChanged();
+    expect(c.state).toBe('running');
+    expect(a.calls).toHaveLength(2);
+  });
+
+  it('a throwing gather attempt ends failed, never ready', async () => {
+    const t = fakeTimers();
+    const source = {
+      gather: async () => {
+        throw new Error('CMP unreachable');
+      },
+    };
+    const c = createAdInitController({
+      attempt: async () => {
+        await source.gather();
+      },
+      delaysMs: [],
+      ...t,
+    });
+
+    await c.start();
+
+    expect(c.state).toBe('failed');
+    expect(c.state).not.toBe('ready');
+  });
+
+  it('consentChanged after ready starts exactly one attempt', async () => {
+    const t = fakeTimers();
+    const a = manualAttempts();
+    const c = createAdInitController({ attempt: a.attempt, delaysMs: [], ...t });
+
+    c.start();
+    a.calls[0].resolve();
+    await flush();
+    expect(c.state).toBe('ready');
+
+    c.consentChanged();
+    c.consentChanged();
+
+    expect(c.state).toBe('running');
+    expect(a.calls).toHaveLength(2);
   });
 });

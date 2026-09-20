@@ -252,6 +252,17 @@ export const SaveSystem = {
     store.setInt(Keys.finishedGames, nonNegativeInt(n));
   },
 
+  // ---- Ad consent (W7-01) -----------------------------------------------
+
+  /** Packed consent state; absent reads 0 (unresolved). */
+  get consentBits(): number {
+    return store.getInt(Keys.consent, 0);
+  },
+
+  setConsentBits(n: number): void {
+    store.setInt(Keys.consent, n);
+  },
+
   // ---- Remote kill switch (W6-02) ----------------------------------------
 
   /**

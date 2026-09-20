@@ -1,6 +1,6 @@
 /**
- * Build-time feature flags shared by W4, W6 and W7 (ruling I-29). Each flag is a
- * plain constant, so a release build carries exactly the value committed here.
+ * Build-time feature flags shared by W4, W6 and W7 (ruling I-29). Network and
+ * kill gates stay literal; player-visible feature gates use EXPO_PUBLIC_*.
  * Other workstreams keep their own flag modules (ftueConfig.ts, motionFlags.ts,
  * artConfig.ts, generatorVersion.ts); audit all of them before a release.
  */
@@ -19,3 +19,9 @@ export const REMOTE_KILL_SWITCH = false;
  * accidentally opened. W6-15 owns any future enablement.
  */
 export const TELEMETRY_TRANSPORT = false;
+
+/**
+ * W7 consent gate. OFF keeps the W6-02 ad-init path unchanged while W7-03's
+ * certified CMP source is not available.
+ */
+export const CONSENT_GATE = process.env.EXPO_PUBLIC_CONSENT_GATE === '1';

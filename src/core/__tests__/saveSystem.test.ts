@@ -297,3 +297,15 @@ describe('W0-05 interstitial pacing counter', () => {
     expect(store.deleted).not.toContain('arrows_finished_games');
   });
 });
+
+describe('W7-01 consent bits', () => {
+  test('resetProgress leaves consentBits unchanged', () => {
+    SaveSystem.setConsentBits(15);
+
+    SaveSystem.resetProgress();
+
+    expect(SaveSystem.consentBits).toBe(15);
+    expect(store.getInt('arrows_consent', 0)).toBe(15);
+    expect(store.deleted).not.toContain('arrows_consent');
+  });
+});

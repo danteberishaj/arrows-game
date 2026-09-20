@@ -11,7 +11,7 @@ import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-r
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { SaveSystem } from './src/core/saveSystem';
-import { TELEMETRY_TRANSPORT } from './src/featureFlags';
+import { CONSENT_GATE, TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
   PERF_FEEDBACK,
@@ -34,6 +34,7 @@ import {
   type HttpSink,
 } from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
+import { activeConsentSource } from './src/ui/consent';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
@@ -118,7 +119,7 @@ export default function App() {
     const startAfterHydration = () => {
       initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
       syncTelemetryDisabled();
-      initAds().catch(() => {}); // no-op in Expo Go / web (simulated ads take over)
+      initAds(CONSENT_GATE ? activeConsentSource : undefined).catch(() => {}); // no-op in Expo Go / web
     };
     // No timeout here: `ready` must never come before hydration settles, or a later
     // SaveSystem.useStore swap could write an in-memory level-1 session over real

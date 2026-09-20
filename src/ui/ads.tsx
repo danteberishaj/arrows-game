@@ -9,12 +9,20 @@ import type {
 } from 'unity-levelplay-mediation';
 import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
+import { CONSENT_GATE } from '../featureFlags';
 import type { EventProps } from '../telemetry/events';
 import { Telemetry } from '../telemetry/telemetry';
 import { adDecision, type AdFormat } from './adGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
+import {
+  applyPrivacy,
+  encodeConsent,
+  mayInitAds,
+  type ConsentSource,
+  type PrivacyApi,
+} from './consent';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -180,6 +188,7 @@ let lpInterstitial: LevelPlayInterstitialAd | null = null;
 let lpRewarded: LevelPlayRewardedAd | null = null;
 let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
 let levelPlayModule: LevelPlayModule | null = null;
+let consentSource: ConsentSource | undefined;
 let rewardEarned = false;
 let rewardedDisplayed = false;
 let interstitialDisplayed = false;
@@ -240,11 +249,13 @@ function createReloader(label: string, load: () => Promise<void>): () => void {
 let initAttemptCount = 0;
 
 /**
- * One init attempt: LevelPlay.init, then assign the handles, then start the
- * first loads (un-awaited). Rejects when init fails, so the controller retries.
- * Keep this order (init, assign handles, load) for any later consent work.
+ * One init attempt: when the consent gate is on, gather and persist consent,
+ * stop on a refusal, then apply privacy. From there the existing order remains
+ * LevelPlay.init, assign the handles, then start the first loads (un-awaited).
+ * Rejects when gathering, privacy application or init fails, so the controller
+ * retries without treating an error as consent.
  */
-async function initLevelPlayOnce(): Promise<void> {
+async function initLevelPlayOnce(): Promise<void | 'declined'> {
   const lp = levelPlayModule;
   if (!lp) throw new Error('LevelPlay module missing');
   // Remote kill: no LevelPlay contact at all. Thrown as a failed attempt, so the
@@ -253,7 +264,34 @@ async function initLevelPlayOnce(): Promise<void> {
     adLog('[ads] LevelPlay init skipped: ads killed by remote config');
     throw new Error('ads killed by remote config');
   }
-  const { LevelPlay, LevelPlayInitRequest, LevelPlayInterstitialAd, LevelPlayRewardedAd } = lp;
+  const {
+    LevelPlay,
+    LevelPlayInitRequest,
+    LevelPlayInterstitialAd,
+    LevelPlayPrivacySettings,
+    LevelPlayRewardedAd,
+  } = lp;
+
+  if (CONSENT_GATE) {
+    if (!consentSource) throw new Error('Consent source missing');
+    const state = await consentSource.gather();
+    SaveSystem.setConsentBits(encodeConsent(state));
+    const privacyApi: PrivacyApi = {
+      setCOPPA: (value) => LevelPlayPrivacySettings.setCOPPA(value),
+      setCCPA: (value) => LevelPlayPrivacySettings.setCCPA(value),
+      setConsent: (value) => LevelPlay.setConsent(value),
+    };
+
+    // The SDK cannot be torn down. A later consent change is applied at once,
+    // while the cold-start init gate takes full effect on the next launch.
+    if (levelPlayApi) {
+      await applyPrivacy(state, privacyApi);
+      return;
+    }
+    if (!mayInitAds(state)) return 'declined';
+    await applyPrivacy(state, privacyApi);
+  }
+
   initAttemptCount += 1;
   adLog('[ads] LevelPlay init attempt', initAttemptCount);
 
@@ -373,9 +411,11 @@ RemoteConfig.subscribe(() => {
  * Go / web this quietly leaves the simulated path active. Safe to call more
  * than once; a failed init is retried by `adInitController`.
  */
-export async function initAds(): Promise<void> {
+export async function initAds(source?: ConsentSource): Promise<void> {
   if (Platform.OS === 'web') return;
   if (Constants.executionEnvironment === 'storeClient') return; // Expo Go
+
+  if (CONSENT_GATE) consentSource = source;
 
   if (!levelPlayModule) {
     try {

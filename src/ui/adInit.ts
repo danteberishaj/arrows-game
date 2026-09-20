@@ -2,13 +2,14 @@
  * Retryable ad-SDK init. Pure TS (no react-native import): the attempt and the
  * timer functions are injected, so the policy is unit-testable in node.
  *
- * - `start()` is idempotent: a no-op while an attempt is running or after one
- *   succeeded.
+ * - `start()` is idempotent: a no-op while an attempt is running, after one
+ *   succeeded, or while consent remains declined.
  * - After a failure the next timed attempt is scheduled from `delaysMs`; once
  *   every delay has fired, timed retries stop.
  * - `onAppActive()` (the app came to the foreground) starts an attempt whenever
  *   the last one failed, whether or not timed attempts remain.
- * - After `ready`, no attempt ever starts again.
+ * - `declined` is terminal until `consentChanged()` starts one new attempt.
+ * - After `ready`, only `consentChanged()` can start another attempt.
  */
 
 /**
@@ -18,14 +19,16 @@
  */
 export const AD_INIT_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 45000]; // OWNER-PICKED STARTING VALUE
 
-export type AdInitState = 'idle' | 'running' | 'ready' | 'failed';
+export type AdInitState = 'idle' | 'running' | 'ready' | 'failed' | 'declined';
 
 export interface AdInitController {
   readonly state: AdInitState;
-  /** Starts an attempt unless one is running or init already succeeded. Never rejects. */
+  /** Starts unless running, ready, or declined. Never rejects. */
   start(): Promise<void>;
   /** Call when the app becomes active: retries only after a failure. */
   onAppActive(): void;
+  /** Re-evaluates consent after a decline or after the SDK became ready. */
+  consentChanged(): void;
 }
 
 export function createAdInitController<TimerHandle>({
@@ -34,7 +37,7 @@ export function createAdInitController<TimerHandle>({
   setTimer,
   clearTimer,
 }: {
-  attempt: () => Promise<void>;
+  attempt: () => Promise<void | 'declined'>;
   delaysMs: readonly number[];
   setTimer: (fn: () => void, ms: number) => TimerHandle;
   clearTimer: (handle: TimerHandle) => void;
@@ -51,18 +54,18 @@ export function createAdInitController<TimerHandle>({
   };
 
   const run = (): Promise<void> => {
-    if (state === 'running' || state === 'ready') return inFlight;
+    if (state === 'running' || state === 'ready' || state === 'declined') return inFlight;
     cancelTimer();
     state = 'running';
-    let pending: Promise<void>;
+    let pending: Promise<void | 'declined'>;
     try {
       pending = Promise.resolve(attempt());
     } catch (e) {
       pending = Promise.reject(e);
     }
     inFlight = pending.then(
-      () => {
-        state = 'ready';
+      (outcome) => {
+        state = outcome === 'declined' ? 'declined' : 'ready';
         cancelTimer();
       },
       () => {
@@ -87,6 +90,11 @@ export function createAdInitController<TimerHandle>({
     start: run,
     onAppActive() {
       if (state === 'failed') void run();
+    },
+    consentChanged() {
+      if (state !== 'declined' && state !== 'ready') return;
+      state = 'idle';
+      void run();
     },
   };
 }
