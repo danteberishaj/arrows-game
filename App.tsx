@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { SaveSystem } from './src/core/saveSystem';
@@ -226,7 +226,11 @@ export default function App() {
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === 'splash' && <SplashScreen palette={p} onDone={() => showScreen('menu')} />}
       {screen === 'menu' && (
-        <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
+        // Decorative screen fades follow the player's system reduced-motion setting.
+        <Animated.View
+          style={{ flex: 1 }}
+          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+        >
           <HomeScreen
             palette={p}
             dark={dark}
@@ -238,7 +242,11 @@ export default function App() {
         </Animated.View>
       )}
       {screen === 'game' && (
-        <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
+        // Decorative screen fades follow the player's system reduced-motion setting.
+        <Animated.View
+          style={{ flex: 1 }}
+          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+        >
           <GameScreen
             palette={p}
             tutorialId={tutorialId}

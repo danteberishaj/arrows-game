@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { AppState, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
@@ -71,12 +72,48 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     // A JS timer does not fire while Android has the app paused.
     const sub = AppState.addEventListener('change', (state) => backstop.onAppStateChange(state));
 
-    mark.value = withDelay(150, withSpring(1, { damping: 14, stiffness: 120 }));
-    draw.value = withDelay(650, withTiming(1, { duration: 850, easing: Easing.inOut(Easing.cubic) }));
-    head.value = withDelay(1450, withSpring(1, { damping: 12, stiffness: 260 }));
-    out.value = withDelay(2250, withTiming(1, { duration: 380, easing: Easing.in(Easing.quad) }, (f) => {
-      if (f) runOnJS(finish)();
-    }));
+    // Decorative wordmark motion follows the player's system setting.
+    mark.value = withDelay(
+      150,
+      withSpring(1, {
+        damping: 14,
+        stiffness: 120,
+        reduceMotion: ReduceMotion.System,
+      }),
+      ReduceMotion.System,
+    );
+    // Decorative line drawing follows the player's system setting.
+    draw.value = withDelay(
+      650,
+      withTiming(1, {
+        duration: 850,
+        easing: Easing.inOut(Easing.cubic),
+        reduceMotion: ReduceMotion.System,
+      }),
+      ReduceMotion.System,
+    );
+    // Decorative arrowhead motion follows the player's system setting.
+    head.value = withDelay(
+      1450,
+      withSpring(1, {
+        damping: 12,
+        stiffness: 260,
+        reduceMotion: ReduceMotion.System,
+      }),
+      ReduceMotion.System,
+    );
+    // Decorative splash fade follows the player's system setting.
+    out.value = withDelay(
+      2250,
+      withTiming(1, {
+        duration: 380,
+        easing: Easing.in(Easing.quad),
+        reduceMotion: ReduceMotion.System,
+      }, (f) => {
+        if (f) runOnJS(finish)();
+      }),
+      ReduceMotion.System,
+    );
 
     return () => {
       sub.remove();
@@ -86,7 +123,8 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
   }, []);
 
   const skip = () => {
-    out.value = withTiming(1, { duration: 180 }, (f) => {
+    // A requested skip follows the system setting and therefore remains instant when reduced.
+    out.value = withTiming(1, { duration: 180, reduceMotion: ReduceMotion.System }, (f) => {
       if (f) runOnJS(finish)();
     });
   };

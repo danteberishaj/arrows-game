@@ -5,6 +5,7 @@ import Animated, {
   cancelAnimation,
   Easing,
   interpolateColor,
+  ReduceMotion,
   useAnimatedProps,
   useReducedMotion,
   useSharedValue,
@@ -420,8 +421,18 @@ export function BoardView({
     const tyT = Math.min(yhi, Math.max(ylo, vh / 2 - cy * s));
     cancelAnimation(tx);
     cancelAnimation(ty);
-    tx.value = withTiming(txT, { duration: 280, easing: Easing.out(Easing.cubic) });
-    ty.value = withTiming(tyT, { duration: 280, easing: Easing.out(Easing.cubic) });
+    // Vestibular horizontal recentring follows the player's system setting.
+    tx.value = withTiming(txT, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+    // Vestibular vertical recentring follows the player's system setting.
+    ty.value = withTiming(tyT, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
   }, [hint, boardW, boardH]);
 
   // ---- tap -> game move --------------------------------------------------
@@ -620,8 +631,20 @@ export function BoardView({
         const vw = viewport.value.w, vh = viewport.value.h;
         const xr = panRange(boardW * scale.value, vw);
         const yr = panRange(boardH * scale.value, vh);
-        tx.value = withDecay({ velocity: e.velocityX, clamp: xr, rubberBandEffect: true });
-        ty.value = withDecay({ velocity: e.velocityY, clamp: yr, rubberBandEffect: true });
+        // Vestibular horizontal fling momentum follows the player's system setting.
+        tx.value = withDecay({
+          velocity: e.velocityX,
+          clamp: xr,
+          rubberBandEffect: true,
+          reduceMotion: ReduceMotion.System,
+        });
+        // Vestibular vertical fling momentum follows the player's system setting.
+        ty.value = withDecay({
+          velocity: e.velocityY,
+          clamp: yr,
+          rubberBandEffect: true,
+          reduceMotion: ReduceMotion.System,
+        });
       });
 
     const pinch = Gesture.Pinch()
@@ -1155,7 +1178,12 @@ function ExitTrail({
 
   React.useEffect(() => {
     k.value = 0;
-    k.value = withTiming(1, { duration: durationMs, easing: Easing.linear });
+    // The component supplies its own stationary fade, so its opacity clock must keep running.
+    k.value = withTiming(1, {
+      duration: durationMs,
+      easing: Easing.linear,
+      reduceMotion: ReduceMotion.Never,
+    });
   }, []);
 
   const fadeAt = (kk: number) => {

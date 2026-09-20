@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore }
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -700,7 +701,12 @@ const HeartPip = React.memo(function HeartPip({
   useEffect(() => {
     if (prev.current && !filled) {
       k.value = 1.35;
-      k.value = withSpring(1, { damping: 9, stiffness: 240 });
+      // Decorative heart-pip scale follows the player's system setting.
+      k.value = withSpring(1, {
+        damping: 9,
+        stiffness: 240,
+        reduceMotion: ReduceMotion.System,
+      });
     }
     prev.current = filled;
   }, [filled]);
@@ -771,7 +777,16 @@ function Star({
 }) {
   const k = useSharedValue(0);
   useEffect(() => {
-    k.value = withDelay(delay, withSpring(1, { damping: 11, stiffness: 260 }));
+    // Decorative star motion and its stagger follow the player's system setting.
+    k.value = withDelay(
+      delay,
+      withSpring(1, {
+        damping: 11,
+        stiffness: 260,
+        reduceMotion: ReduceMotion.System,
+      }),
+      ReduceMotion.System,
+    );
     // Each earned star pops with a tiny rising chirp, timed to its entrance.
     if (filled && feedbackEnabled) {
       const t = setTimeout(() => feedback('star', SaveSystem.soundOn), delay);

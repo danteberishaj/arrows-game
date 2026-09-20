@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -47,10 +48,17 @@ export function HomeScreen({
   // Gentle "tap me" breathing on the Play pill (IdlePulse).
   const pulse = useSharedValue(0);
   useEffect(() => {
+    // Decorative breathing follows the player's system reduced-motion setting.
     pulse.value = withRepeat(
-      withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1, {
+        duration: 1100,
+        easing: Easing.inOut(Easing.sin),
+        reduceMotion: ReduceMotion.System,
+      }),
       -1,
       true,
+      undefined,
+      ReduceMotion.System,
     );
   }, []);
   const pulseStyle = useAnimatedStyle(() => ({
