@@ -13,10 +13,10 @@ import {
   Difficulties,
   Difficulty,
   SaveSystem,
+  type TutorialId,
 } from '../core';
 import {
   appLevelAggregator,
-  type LevelMode,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
 import { Ads } from './ads';
@@ -30,10 +30,13 @@ import { nextExitCombo, type ExitCombo } from './exitCombo';
 import { HeaderButton } from './HeaderButton';
 import {
   createLevelSession,
+  createTutorialSession,
   TerminalTransitionGuard,
   type GamePhase,
+  type LevelSession,
   type TerminalPhase,
 } from './gameSessionLifecycle';
+import { T1_LINE, T2_LINE } from './ftueCopy';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -44,18 +47,18 @@ import { Fonts, Palette } from './theme';
 export function GameScreen({
   palette,
   onHome,
+  tutorialId,
   initialLevelIndex,
   benchmarkMode = false,
   feedbackEnabled = true,
-  mode = 'campaign',
   onTelemetryProbeUnmount,
 }: {
   palette: Palette;
   onHome: () => void;
+  tutorialId?: TutorialId;
   initialLevelIndex?: number;
   benchmarkMode?: boolean;
   feedbackEnabled?: boolean;
-  mode?: LevelMode;
   onTelemetryProbeUnmount?: () => void;
 }) {
   const p = palette;
@@ -65,18 +68,20 @@ export function GameScreen({
   const levelAggregatorRef = useRef(appLevelAggregator);
   const [session, setSession] = useState(() => {
     const index = initialLevelIndex ?? SaveSystem.currentLevel;
-    const initial = createLevelSession(index, revisionRef.current);
+    const initial = tutorialId
+      ? createTutorialSession(tutorialId, revisionRef.current)
+      : createLevelSession(index, revisionRef.current);
     levelAggregatorRef.current.start(
       initial.index,
       initial.level.arrowCount,
       initial.level.shapeName,
       initial.level.hearts,
-      mode,
+      initial.mode,
       Date.now(),
     );
     return initial;
   });
-  const { index: levelIndex, level } = session;
+  const { index: levelIndex, level, tutorialId: activeTutorialId } = session;
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
   const [phase, setPhase] = useState<GamePhase>('playing');
@@ -114,8 +119,12 @@ export function GameScreen({
   }, [feedbackEnabled]);
 
   const beginTerminalTransition = useCallback(
-    (nextPhase: TerminalPhase, delayMs: number) => {
-      const accepted = terminalTransition.begin(nextPhase, delayMs, setPhase);
+    (
+      nextPhase: TerminalPhase,
+      delayMs: number,
+      commit?: (phase: TerminalPhase) => void,
+    ) => {
+      const accepted = terminalTransition.begin(nextPhase, delayMs, commit ?? setPhase);
       if (!accepted) return false;
       setTerminalPending(true);
       return true;
@@ -123,15 +132,13 @@ export function GameScreen({
     [terminalTransition],
   );
 
-  const loadLevel = useCallback((index: number) => {
-    revisionRef.current += 1;
-    const next = createLevelSession(index, revisionRef.current);
+  const loadSession = useCallback((next: LevelSession) => {
     levelAggregatorRef.current.start(
       next.index,
       next.level.arrowCount,
       next.level.shapeName,
       next.level.hearts,
-      mode,
+      next.mode,
       Date.now(),
     );
     terminalTransition.reset();
@@ -144,7 +151,17 @@ export function GameScreen({
     setPhase('playing');
     setHint(null);
     setAdShowFailed(false);
-  }, [mode, terminalTransition]);
+  }, [terminalTransition]);
+
+  const loadLevel = useCallback((index: number) => {
+    revisionRef.current += 1;
+    loadSession(createLevelSession(index, revisionRef.current));
+  }, [loadSession]);
+
+  const loadTutorial = useCallback((id: TutorialId) => {
+    revisionRef.current += 1;
+    loadSession(createTutorialSession(id, revisionRef.current));
+  }, [loadSession]);
 
   const onTapOutcome = useCallback((outcome: TapOutcome) => {
     levelAggregatorRef.current.tap(outcome);
@@ -166,18 +183,41 @@ export function GameScreen({
       }
       setRemaining(level.board.count());
       if (!cleared) return;
-      if (!beginTerminalTransition('won', 450)) return;
-      levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
-      if (!benchmarkMode) {
-        SaveSystem.registerSolve(heartsRef.current === level.hearts); // perfect = no heart lost
-        SaveSystem.setCurrentLevel(levelIndex + 1);
-        Ads.registerGameFinished(); // counts toward the every-2-games interstitial
+      if (activeTutorialId) {
+        const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
+        if (!beginTerminalTransition('won', 450, () => {
+          if (nextTutorialId) {
+            loadTutorial(nextTutorialId);
+          } else {
+            loadLevel(SaveSystem.currentLevel);
+          }
+        })) return;
+        levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
+        SaveSystem.setFtueStage(activeTutorialId === 'T1' ? 1 : 2);
+      } else {
+        if (!beginTerminalTransition('won', 450)) return;
+        levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
+        if (!benchmarkMode) {
+          SaveSystem.registerSolve(heartsRef.current === level.hearts); // perfect = no heart lost
+          SaveSystem.setCurrentLevel(levelIndex + 1);
+          Ads.registerGameFinished(); // counts toward the every-2-games interstitial
+        }
       }
       if (feedbackEnabled) {
         feedback('cleared', SaveSystem.soundOn);
       }
     },
-    [benchmarkMode, beginTerminalTransition, feedbackEnabled, level, levelIndex, terminalTransition],
+    [
+      activeTutorialId,
+      benchmarkMode,
+      beginTerminalTransition,
+      feedbackEnabled,
+      level,
+      levelIndex,
+      loadLevel,
+      loadTutorial,
+      terminalTransition,
+    ],
   );
 
   const onBlocked = useCallback((costsHeart: boolean) => {
@@ -197,13 +237,23 @@ export function GameScreen({
     heartsRef.current = left;
     setHearts(left);
     levelAggregatorRef.current.heartLost();
-    if (left <= 0 && beginTerminalTransition('lost', 350)) {
+    const reloadTutorial = activeTutorialId
+      ? () => loadTutorial(activeTutorialId)
+      : undefined;
+    if (left <= 0 && beginTerminalTransition('lost', 350, reloadTutorial)) {
       levelAggregatorRef.current.end('out_of_hearts', 0, Date.now());
-      if (!benchmarkMode) {
+      if (!benchmarkMode && !activeTutorialId) {
         Ads.registerGameFinished(); // a loss counts toward the pacing too
       }
     }
-  }, [benchmarkMode, beginTerminalTransition, feedbackEnabled, terminalTransition]);
+  }, [
+    activeTutorialId,
+    benchmarkMode,
+    beginTerminalTransition,
+    feedbackEnabled,
+    loadTutorial,
+    terminalTransition,
+  ]);
 
   /** "Next level" after a clear: the paced interstitial slots in between. */
   const onNextLevel = useCallback(async () => {
@@ -271,39 +321,50 @@ export function GameScreen({
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerLeft}>
           <HeaderButton label="‹" palette={p} onPress={onHomePress} />
-          <View>
-            <Text style={[styles.levelLabel, { color: p.accentLight }]}>
-              LEVEL {levelIndex + 1}
+          {activeTutorialId ? (
+            <Text
+              numberOfLines={2}
+              style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentLight }]}
+            >
+              {activeTutorialId === 'T1' ? T1_LINE : T2_LINE}
             </Text>
-            <View style={styles.missionLabelRow}>
-              {adShowFailed && phase === 'playing' ? (
-                // Takes the mission label's place while shown: appended after
-                // "N left" it pushed the hint button off a 411 dp-wide screen.
-                <Text style={[styles.diffLabel, { color: diffColor }]}>
-                  Hint unavailable ·{' '}
-                </Text>
-              ) : (
-                <MissionLabel
-                  difficulty={level.difficulty}
-                  shapeName={level.shapeName}
-                  color={diffColor}
-                />
-              )}
-              <Text style={[styles.diffLabel, { color: diffColor }]}>
-                {remaining} left
+          ) : (
+            <View>
+              <Text style={[styles.levelLabel, { color: p.accentLight }]}>
+                LEVEL {levelIndex + 1}
               </Text>
+              <View style={styles.missionLabelRow}>
+                {adShowFailed && phase === 'playing' ? (
+                  // Takes the mission label's place while shown: appended after
+                  // "N left" it pushed the hint button off a 411 dp-wide screen.
+                  <Text style={[styles.diffLabel, { color: diffColor }]}>
+                    Hint unavailable ·{' '}
+                  </Text>
+                ) : (
+                  <MissionLabel
+                    difficulty={level.difficulty}
+                    shapeName={level.shapeName}
+                    color={diffColor}
+                  />
+                )}
+                <Text style={[styles.diffLabel, { color: diffColor }]}>
+                  {remaining} left
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
         <View style={styles.headerRight}>
           <HeartPips left={hearts} max={level.hearts} palette={p} />
-          <HeaderButton
-            label="💡"
-            palette={p}
-            onPress={onHint}
-            active={!terminalPending && !adBusy}
-            disabled={!rewardedReady || terminalPending || adBusy}
-          />
+          {!activeTutorialId && (
+            <HeaderButton
+              label="💡"
+              palette={p}
+              onPress={onHint}
+              active={!terminalPending && !adBusy}
+              disabled={!rewardedReady || terminalPending || adBusy}
+            />
+          )}
         </View>
       </View>
 
@@ -321,7 +382,7 @@ export function GameScreen({
       />
 
       {/* Win / lose overlays */}
-      {phase !== 'playing' && (
+      {!activeTutorialId && phase !== 'playing' && (
         <View
           testID={benchmarkMode ? 'perf-terminal-overlay' : undefined}
           style={[
@@ -598,6 +659,9 @@ const styles = StyleSheet.create({
     fontSize: 24, // was 18: 18 bold is body text and accentLight fails 4.5:1 (W0-06); matches Home
     fontFamily: Fonts.bold,
     letterSpacing: 1,
+  },
+  tutorialLabel: {
+    fontSize: 18,
   },
   diffLabel: {
     fontSize: 12,

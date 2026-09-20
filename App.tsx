@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
+import type { TutorialId } from './src/core';
 import { SaveSystem } from './src/core/saveSystem';
 import { TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
@@ -35,6 +36,8 @@ import {
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
+import { FTUE_ENABLED } from './src/ui/ftueConfig';
+import { ftueRoute } from './src/ui/ftueRoute';
 
 type Screen = 'splash' | 'menu' | 'game';
 
@@ -92,6 +95,7 @@ export default function App() {
   const fontsReady = fontsLoaded || fontError != null;
   // A PERF build opens on EXPO_PUBLIC_PERF_SCREEN (default game, P-02 Stage A).
   const [screen, setScreen] = useState<Screen>(PERF_MODE ? PERF_SCREEN : 'splash');
+  const [tutorialId, setTutorialId] = useState<TutorialId | undefined>();
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   // Capture diagnostic (P-02 Stage B, ruling F01): Reanimated's own value,
@@ -183,6 +187,18 @@ export default function App() {
     setScreen(next);
   }, []);
 
+  const onPlay = useCallback(() => {
+    const route = ftueRoute({
+      enabled: FTUE_ENABLED,
+      perfMode: PERF_MODE,
+      stage: SaveSystem.ftueStage,
+      currentLevel: SaveSystem.currentLevel,
+      totalSolved: SaveSystem.totalSolved,
+    });
+    setTutorialId(route === 'real' ? undefined : route);
+    showScreen('game');
+  }, [showScreen]);
+
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       SaveSystem.soundOn = !on;
@@ -215,7 +231,7 @@ export default function App() {
             palette={p}
             dark={dark}
             soundOn={soundOn}
-            onPlay={() => showScreen('game')}
+            onPlay={onPlay}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
           />
@@ -225,6 +241,7 @@ export default function App() {
         <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(180)}>
           <GameScreen
             palette={p}
+            tutorialId={tutorialId}
             initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
             benchmarkMode={PERF_MODE}
             feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}

@@ -1,4 +1,11 @@
-import { LevelGenerator, type GeneratedLevel } from '../core';
+import {
+  buildTutorialLevel,
+  LevelGenerator,
+  SaveSystem,
+  type GeneratedLevel,
+  type TutorialId,
+} from '../core';
+import type { LevelMode } from '../telemetry/levelAggregator';
 
 export type GamePhase = 'playing' | 'won' | 'lost';
 export type TerminalPhase = Exclude<GamePhase, 'playing'>;
@@ -7,6 +14,8 @@ export interface LevelSession {
   index: number;
   revision: number;
   level: GeneratedLevel;
+  mode: LevelMode;
+  tutorialId?: TutorialId;
 }
 
 /**
@@ -19,6 +28,18 @@ export function createLevelSession(index: number, revision: number): LevelSessio
     index,
     revision,
     level: LevelGenerator.generate(index),
+    mode: 'campaign',
+  };
+}
+
+/** Build an authored tutorial board without advancing or generating campaign progress. */
+export function createTutorialSession(id: TutorialId, revision: number): LevelSession {
+  return {
+    index: SaveSystem.currentLevel,
+    revision,
+    level: buildTutorialLevel(id),
+    mode: 'tutorial',
+    tutorialId: id,
   };
 }
 

@@ -1,6 +1,7 @@
-import { LevelGenerator } from '../../core';
+import { buildTutorialLevel, LevelGenerator } from '../../core';
 import {
   createLevelSession,
+  createTutorialSession,
   TerminalTransitionGuard,
 } from '../gameSessionLifecycle';
 
@@ -26,6 +27,22 @@ describe('game session lifecycle', () => {
     expect(generate).toHaveBeenCalledTimes(3);
     expect(generate).toHaveBeenLastCalledWith(19);
     expect([initial.revision, retry.revision, next.revision]).toEqual([0, 1, 2]);
+    expect([initial.mode, retry.mode, next.mode]).toEqual([
+      'campaign',
+      'campaign',
+      'campaign',
+    ]);
+  });
+
+  it('creates T1 without calling the campaign generator', () => {
+    const generate = jest.spyOn(LevelGenerator, 'generate');
+
+    const tutorial = createTutorialSession('T1', 0);
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(tutorial.tutorialId).toBe('T1');
+    expect(tutorial.mode).toBe('tutorial');
+    expect(tutorial.level.arrowCount).toBe(buildTutorialLevel('T1').arrowCount);
   });
 
   it('accepts only the first terminal event until the session resets', () => {
