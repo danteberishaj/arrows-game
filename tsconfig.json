@@ -3,5 +3,23 @@
   "compilerOptions": {
     "strict": true,
     "types": ["jest"]
-  }
+  },
+  "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "modules/**/*",
+    "plugins/**/*",
+    "App.tsx",
+    "index.ts",
+    "jest.setup.ts"
+  ],
+  "exclude": [
+    "artifacts",
+    "android",
+    "ios",
+    ".superpowers",
+    ".expo",
+    "dist",
+    "node_modules"
+  ]
 }
