@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -11,6 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
+import { META_STREAK_FREEZE } from '../featureFlags';
 import { HeaderButton } from './HeaderButton';
 import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';
@@ -39,6 +40,15 @@ export function HomeScreen({
   const insets = useSafeAreaInsets(); // keep the corners clear of notches (SafeArea.cs)
   const resumeIndex = SaveSystem.currentLevel;
   const difficulty = Difficulties.forLevel(resumeIndex);
+  const [statsLine] = useState(() =>
+    buildStatsLine(META_STREAK_FREEZE && SaveSystem.streakSavedDay !== 0),
+  );
+
+  useEffect(() => {
+    if (META_STREAK_FREEZE && SaveSystem.streakSavedDay !== 0) {
+      SaveSystem.clearStreakSavedDay();
+    }
+  }, []);
 
   const diffColor =
     difficulty === Difficulty.SuperHard ? p.heartText
@@ -100,14 +110,14 @@ export function HomeScreen({
       </Animated.View>
 
       <Text style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + 32 }]}>
-        {buildStatsLine()}
+        {statsLine}
       </Text>
     </View>
   );
 }
 
 /** Lifetime stats line (GameManager.BuildStatsLine): empty until the first solve. */
-function buildStatsLine(): string {
+function buildStatsLine(streakSaved: boolean): string {
   const solved = SaveSystem.totalSolved;
   if (solved <= 0) return '';
 
@@ -116,6 +126,7 @@ function buildStatsLine(): string {
   if (days >= 2) line += `   ·   ${days}-day streak`;
   const best = SaveSystem.bestPerfectStreak;
   if (best >= 2) line += `   ·   best perfect run ${best}`;
+  if (streakSaved) line += '   ·   streak saved'; // OWNER-PICKED STARTING VALUE
   return line;
 }
 

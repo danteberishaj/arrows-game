@@ -1,3 +1,11 @@
+import { META_STREAK_FREEZE } from '../featureFlags';
+import {
+  advanceStreak,
+  readStreak,
+  STREAK_FREEZE_CAP,
+  STREAK_FREEZE_EARN_EVERY_DAYS,
+} from './streak';
+
 /**
  * Progress persistence: the resume pointer, lightweight lifetime stats (total
  * solves, perfect-clear streaks, daily play streak) and the sound/theme
@@ -141,6 +149,13 @@ const CONSENT_BITS_MASK = 0b1111;
 let persistenceHealthy = false;
 
 let store: IntStore = new MemoryStore();
+let clock: () => Date = () => new Date();
+
+const STREAK_OPTIONS = {
+  freezesEnabled: META_STREAK_FREEZE,
+  earnEveryDays: STREAK_FREEZE_EARN_EVERY_DAYS,
+  cap: STREAK_FREEZE_CAP,
+};
 
 // Days since an arbitrary epoch, in LOCAL time, so "yesterday" matches the
 // clock on the wall (a solve at 23:59 then 00:01 counts as two days).
@@ -183,6 +198,18 @@ export const SaveSystem = {
     const previous = store;
     store = s;
     return previous;
+  },
+
+  /** Swap clocks and return the previous one so scoped callers can restore it. */
+  useClock(fn: () => Date): () => Date {
+    const previous = clock;
+    clock = fn;
+    return previous;
+  },
+
+  /** Current local calendar day, using the injected clock. */
+  today(): number {
+    return dayNumber(clock());
   },
 
   // ---- Schema version and health ----------------------------------------
@@ -375,16 +402,35 @@ export const SaveSystem = {
     return store.getInt(Keys.bestPerfectStreak, 0);
   },
 
+  /** Banked automatic streak freezes, bounded to the feature's cap. */
+  get streakFreezes(): number {
+    return Math.min(STREAK_FREEZE_CAP, nonNegativeInt(store.getInt(Keys.streakFreezes, 0)));
+  },
+
+  /** Local day of an unshown freeze rescue; 0 means no pending message. */
+  get streakSavedDay(): number {
+    return nonNegativeInt(store.getInt(Keys.streakSavedDay, 0));
+  },
+
+  /** Marks the pending one-mount rescue message as shown. */
+  clearStreakSavedDay(): void {
+    store.setInt(Keys.streakSavedDay, 0);
+  },
+
   /**
-   * Consecutive calendar days with at least one solve. Reads as 0 if the
-   * chain is already broken (last solve was before yesterday), so the menu
-   * never shows a stale streak.
+   * Consecutive calendar days with at least one solve. Reads the stored chain
+   * while the next solve can still rescue it, otherwise 0.
    */
   get dayStreak(): number {
-    const last = store.getInt(Keys.lastPlayDay, 0);
-    if (last === 0) return 0;
-    const today = dayNumber(new Date());
-    return today - last <= 1 ? store.getInt(Keys.dayStreak, 0) : 0;
+    return readStreak(
+      {
+        today: this.today(),
+        lastPlayDay: store.getInt(Keys.lastPlayDay, 0),
+        streak: store.getInt(Keys.dayStreak, 0),
+        freezes: store.getInt(Keys.streakFreezes, 0),
+      },
+      STREAK_OPTIONS,
+    );
   },
 
   /** Records one solved level and updates every derived stat. */
@@ -395,14 +441,25 @@ export const SaveSystem = {
     store.setInt(Keys.perfectStreak, streak);
     if (streak > this.bestPerfectStreak) store.setInt(Keys.bestPerfectStreak, streak);
 
-    // Daily chain: same day = keep, yesterday = extend, otherwise restart at 1.
-    const today = dayNumber(new Date());
-    const last = store.getInt(Keys.lastPlayDay, 0);
-    if (last !== today) {
-      const days = last !== 0 && today - last === 1 ? store.getInt(Keys.dayStreak, 0) + 1 : 1;
-      store.setInt(Keys.dayStreak, days);
-      store.setInt(Keys.lastPlayDay, today);
+    const previousDayStreak = store.getInt(Keys.dayStreak, 0);
+    const previousLastPlayDay = store.getInt(Keys.lastPlayDay, 0);
+    const previousFreezes = store.getInt(Keys.streakFreezes, 0);
+    const next = advanceStreak(
+      {
+        today: this.today(),
+        lastPlayDay: previousLastPlayDay,
+        streak: previousDayStreak,
+        freezes: previousFreezes,
+      },
+      STREAK_OPTIONS,
+    );
+
+    if (next.streak !== previousDayStreak) store.setInt(Keys.dayStreak, next.streak);
+    if (next.lastPlayDay !== previousLastPlayDay) {
+      store.setInt(Keys.lastPlayDay, next.lastPlayDay);
     }
+    if (next.freezes !== previousFreezes) store.setInt(Keys.streakFreezes, next.freezes);
+    if (next.savedToday) store.setInt(Keys.streakSavedDay, next.lastPlayDay);
   },
 
   // ---- Preferences -----------------------------------------------------

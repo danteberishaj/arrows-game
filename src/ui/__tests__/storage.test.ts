@@ -336,3 +336,30 @@ test('P-01 A7: a failed hydrate marks persistence unhealthy and does not migrate
   expect(storage.multiSet).not.toHaveBeenCalled();
   expect(storage.multiRemove).not.toHaveBeenCalled();
 });
+
+test('W4-02: a live 14-day chain survives hydration and advances with absent freeze keys', async () => {
+  const previousClock = SaveSystem.useClock(() => new Date(2026, 8, 20, 12, 0, 0));
+  try {
+    const today = SaveSystem.today();
+    const disk = useMapBackedStorage([
+      ['arrows_schema_version', '1'],
+      ['arrows_day_streak', '14'],
+      ['arrows_last_play_day', String(today - 1)],
+    ]);
+
+    await coldStart();
+
+    expect(SaveSystem.dayStreak).toBe(14);
+    expect(SaveSystem.streakFreezes).toBe(0);
+
+    SaveSystem.registerSolve(true);
+    await settlePersistence();
+
+    expect(SaveSystem.dayStreak).toBe(15);
+    expect(SaveSystem.streakFreezes).toBe(0);
+    expect(disk.get('arrows_day_streak')).toBe('15');
+    expect(disk.get('arrows_streak_freezes')).toBeUndefined();
+  } finally {
+    SaveSystem.useClock(previousClock);
+  }
+});

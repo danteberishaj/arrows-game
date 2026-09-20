@@ -25,3 +25,6 @@ export const TELEMETRY_TRANSPORT = false;
  * certified CMP source is not available.
  */
 export const CONSENT_GATE = process.env.EXPO_PUBLIC_CONSENT_GATE === '1';
+
+/** W4-02 forgiving day streak with free automatic freezes. */
+export const META_STREAK_FREEZE = process.env.EXPO_PUBLIC_META_STREAK_FREEZE === '1';

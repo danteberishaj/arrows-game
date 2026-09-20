@@ -309,3 +309,46 @@ describe('W7-01 consent bits', () => {
     expect(store.deleted).not.toContain('arrows_consent');
   });
 });
+
+describe('W4-02 SaveSystem day-chain wiring', () => {
+  const rows = [
+    { name: 'gap 0', gap: 0, freezes: 1, expectedStreak: 14, expectedFreezes: 1, saved: false },
+    { name: 'gap 1', gap: 1, freezes: 1, expectedStreak: 15, expectedFreezes: 1, saved: false },
+    { name: 'gap 2 covered', gap: 2, freezes: 1, expectedStreak: 15, expectedFreezes: 0, saved: true },
+    { name: 'gap 2 uncovered', gap: 2, freezes: 0, expectedStreak: 1, expectedFreezes: 0, saved: false },
+    { name: 'gap 3 covered', gap: 3, freezes: 2, expectedStreak: 15, expectedFreezes: 0, saved: true },
+    { name: 'gap 3 uncovered', gap: 3, freezes: 1, expectedStreak: 1, expectedFreezes: 1, saved: false },
+    { name: 'negative gap', gap: -1, freezes: 1, expectedStreak: 14, expectedFreezes: 1, saved: false },
+  ] as const;
+
+  test.each(rows)('$name stores the pure-rule result with an injected clock', (row) => {
+    const previousFlag = process.env.EXPO_PUBLIC_META_STREAK_FREEZE;
+    process.env.EXPO_PUBLIC_META_STREAK_FREEZE = '1';
+    try {
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { SaveSystem: FlaggedSaveSystem } = require('../saveSystem') as typeof import('../saveSystem');
+        const flaggedStore = new RecordingStore();
+        FlaggedSaveSystem.useStore(flaggedStore);
+        FlaggedSaveSystem.useClock(() => new Date(2026, 8, 20, 12, 0, 0));
+        const today = FlaggedSaveSystem.today();
+        flaggedStore.setInt('arrows_day_streak', 14);
+        flaggedStore.setInt('arrows_last_play_day', today - row.gap);
+        flaggedStore.setInt('arrows_streak_freezes', row.freezes);
+
+        const canReadBefore = row.gap <= 1 || row.freezes >= row.gap - 1;
+        expect(FlaggedSaveSystem.dayStreak).toBe(canReadBefore ? 14 : 0);
+
+        FlaggedSaveSystem.registerSolve(true);
+
+        expect(flaggedStore.getInt('arrows_day_streak', -1)).toBe(row.expectedStreak);
+        expect(flaggedStore.getInt('arrows_last_play_day', -1)).toBe(today);
+        expect(flaggedStore.getInt('arrows_streak_freezes', -1)).toBe(row.expectedFreezes);
+        expect(flaggedStore.getInt('arrows_streak_saved_day', 0)).toBe(row.saved ? today : 0);
+      });
+    } finally {
+      if (previousFlag === undefined) delete process.env.EXPO_PUBLIC_META_STREAK_FREEZE;
+      else process.env.EXPO_PUBLIC_META_STREAK_FREEZE = previousFlag;
+    }
+  });
+});
