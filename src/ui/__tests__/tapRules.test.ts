@@ -1,5 +1,10 @@
 import { ArrowPath, BoardLogic, Direction } from '../../core';
-import { BlockedTapLedger, GHOST_TAP_WINDOW_MS, isGhostTap } from '../tapRules';
+import {
+  blockedTapCost,
+  BlockedTapLedger,
+  GHOST_TAP_WINDOW_MS,
+  isGhostTap,
+} from '../tapRules';
 
 const arrow = (r: number, c: number) => new ArrowPath([{ r, c }], Direction.Up);
 
@@ -16,6 +21,47 @@ describe('BlockedTapLedger', () => {
     ledger.reset();
     expect(ledger.charge(a)).toBe(true);
   });
+});
+
+describe('blockedTapCost', () => {
+  it('tutorialGrace with a fresh charge and grace available does not charge a heart and consumes grace', () => {
+    expect(blockedTapCost({
+      ledgerCharge: true,
+      mode: 'tutorialGrace',
+      graceAvailable: true,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: false, consumeGrace: true });
+  });
+
+  it('tutorialGrace with a second fresh charge after grace is used charges a heart', () => {
+    expect(blockedTapCost({
+      ledgerCharge: true,
+      mode: 'tutorialGrace',
+      graceAvailable: false,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: true, consumeGrace: false });
+  });
+
+  it('tutorialGrace with a repeat ledger tap neither charges a heart nor consumes grace', () => {
+    expect(blockedTapCost({
+      ledgerCharge: false,
+      mode: 'tutorialGrace',
+      graceAvailable: true,
+      removalsThisBoard: 0,
+    })).toEqual({ chargeHeart: false, consumeGrace: false });
+  });
+
+  it.each([true, false])(
+    'normal mode passes through ledgerCharge=%s',
+    (ledgerCharge) => {
+      expect(blockedTapCost({
+        ledgerCharge,
+        mode: 'normal',
+        graceAvailable: true,
+        removalsThisBoard: 0,
+      })).toEqual({ chargeHeart: ledgerCharge, consumeGrace: false });
+    },
+  );
 });
 
 describe('isGhostTap', () => {

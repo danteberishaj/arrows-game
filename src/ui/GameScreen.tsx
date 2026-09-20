@@ -36,8 +36,9 @@ import {
   type LevelSession,
   type TerminalPhase,
 } from './gameSessionLifecycle';
-import { T1_LINE, T2_LINE } from './ftueCopy';
+import { T1_LINE, T2_BLOCKED_LINE, T2_LINE } from './ftueCopy';
 import { ASSIST_STAGE, T1_CLEARED_STAGE } from './ftueRoute';
+import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -83,8 +84,10 @@ export function GameScreen({
     return initial;
   });
   const { index: levelIndex, level, tutorialId: activeTutorialId } = session;
+  const tutorialGraceAvailableRef = useRef(activeTutorialId === 'T2');
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
+  const [tutorialLine, setTutorialLine] = useState(() => initialTutorialLine(activeTutorialId));
   const [phase, setPhase] = useState<GamePhase>('playing');
   const [terminalPending, setTerminalPending] = useState(false);
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
@@ -148,6 +151,8 @@ export function GameScreen({
     heartsRef.current = next.level.hearts;
     setHearts(next.level.hearts);
     setRemaining(next.level.arrowCount);
+    tutorialGraceAvailableRef.current = next.tutorialId === 'T2';
+    setTutorialLine(initialTutorialLine(next.tutorialId));
     exitCombo.current = null;
     setPhase('playing');
     setHint(null);
@@ -177,6 +182,9 @@ export function GameScreen({
     (cleared: boolean) => {
       setAdShowFailed(false);
       if (terminalTransition.isPending) return;
+      if (activeTutorialId === 'T2') {
+        setTutorialLine((current) => current === T2_BLOCKED_LINE ? '' : current);
+      }
       if (feedbackEnabled) {
         const combo = nextExitCombo(exitCombo.current, Date.now());
         exitCombo.current = combo;
@@ -223,14 +231,27 @@ export function GameScreen({
     ],
   );
 
-  const onBlocked = useCallback((costsHeart: boolean) => {
+  const onBlocked = useCallback((ledgerCharge: boolean) => {
     setAdShowFailed(false);
     if (terminalTransition.isPending) return;
     exitCombo.current = null;
-    if (!costsHeart) {
-      // Same blocked arrow again: it bumps and the blocker flashes, but the
-      // heart was already paid. A soft tick instead of the thud.
-      if (feedbackEnabled) feedback('nudge', SaveSystem.soundOn);
+
+    const cost = blockedTapCost({
+      ledgerCharge,
+      mode: activeTutorialId === 'T2' ? 'tutorialGrace' : 'normal',
+      graceAvailable: tutorialGraceAvailableRef.current,
+      removalsThisBoard: level.arrowCount - level.board.count(),
+    });
+    if (cost.consumeGrace) {
+      tutorialGraceAvailableRef.current = false;
+      setTutorialLine(T2_BLOCKED_LINE);
+    }
+    if (!cost.chargeHeart) {
+      // Both free cases still bump the arrow and flash its blocker. Tutorial
+      // grace keeps the teaching thud; a ledger-refunded repeat gets a nudge.
+      if (feedbackEnabled) {
+        feedback(cost.consumeGrace ? 'blocked' : 'nudge', SaveSystem.soundOn);
+      }
       return;
     }
     if (feedbackEnabled) {
@@ -254,6 +275,7 @@ export function GameScreen({
     benchmarkMode,
     beginTerminalTransition,
     feedbackEnabled,
+    level,
     loadTutorial,
     terminalTransition,
   ]);
@@ -322,14 +344,14 @@ export function GameScreen({
     >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <View style={styles.headerLeft}>
+        <View style={[styles.headerLeft, activeTutorialId && styles.tutorialHeaderLeft]}>
           <HeaderButton label="‹" palette={p} onPress={onHomePress} />
           {activeTutorialId ? (
             <Text
               numberOfLines={2}
               style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentText }]}
             >
-              {activeTutorialId === 'T1' ? T1_LINE : T2_LINE}
+              {tutorialLine}
             </Text>
           ) : (
             <View>
@@ -357,7 +379,7 @@ export function GameScreen({
             </View>
           )}
         </View>
-        <View style={styles.headerRight}>
+        <View style={[styles.headerRight, activeTutorialId && styles.tutorialHeaderRight]}>
           <HeartPips left={hearts} max={level.hearts} palette={p} />
           {!activeTutorialId && (
             <HeaderButton
@@ -459,6 +481,12 @@ export function GameScreen({
       )}
     </View>
   );
+}
+
+function initialTutorialLine(tutorialId: TutorialId | undefined): string {
+  if (tutorialId === 'T1') return T1_LINE;
+  if (tutorialId === 'T2') return T2_LINE;
+  return '';
 }
 
 const readRewardedReady = () => Ads.rewardedReady;
@@ -653,17 +681,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  tutorialHeaderLeft: { flex: 1 },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  tutorialHeaderRight: { flexShrink: 0 },
   levelLabel: {
     fontSize: 24, // was 18: 18 bold is body text and accentLight fails 4.5:1 (W0-06); matches Home
     fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
   tutorialLabel: {
+    flexShrink: 1,
     fontSize: 18,
   },
   diffLabel: {

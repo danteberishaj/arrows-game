@@ -1,5 +1,34 @@
 import type { ArrowPath, BoardLogic, Cell } from '../core';
 
+export type BlockedTapMode = 'normal' | 'tutorialGrace' | 'assist';
+
+interface BlockedTapCostInput {
+  ledgerCharge: boolean;
+  mode: BlockedTapMode;
+  graceAvailable: boolean;
+  removalsThisBoard: number;
+}
+
+interface BlockedTapCost {
+  chargeHeart: boolean;
+  consumeGrace: boolean;
+}
+
+/**
+ * Combines the per-arrow ledger with the active game rule. Assist currently
+ * preserves normal charging; W1-06 adds its zero-removal exception here.
+ */
+export function blockedTapCost({
+  ledgerCharge,
+  mode,
+  graceAvailable,
+}: BlockedTapCostInput): BlockedTapCost {
+  if (mode === 'tutorialGrace' && ledgerCharge && graceAvailable) {
+    return { chargeHeart: false, consumeGrace: true };
+  }
+  return { chargeHeart: ledgerCharge, consumeGrace: false };
+}
+
 /**
  * A blocked arrow costs one heart the first time it is tapped and nothing
  * on any later tap while the level lasts. Re-tapping is how players probe
