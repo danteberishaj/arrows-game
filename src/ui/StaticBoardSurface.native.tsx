@@ -17,6 +17,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
 import { PERF_MODE } from '../perfMode';
+import { nativeGridProps } from './boardGrid';
+import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import { BOARD_WRAPPER_OVERFLOW } from './boardOverflow';
 import {
   BLOCKED_BUMP_MS,
@@ -65,6 +67,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   hint,
   nativeExitAnimation,
   reducedMotion,
+  grid,
 }: StaticBoardSurfaceProps) {
   const boardStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -90,6 +93,8 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
       : serializeNativeExitAnimation(nativeExitAnimation),
     [nativeExitAnimation],
   );
+  // POLISH-T4: flag off spreads {}, so the native props are exactly today's.
+  const gridProps = useMemo(() => nativeGridProps(grid, BOARD_GRID_ENABLED), [grid]);
 
   return (
     <>
@@ -110,6 +115,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
             ink={ink}
             strokeWidth={strokeWidth}
             exitAnimation={exitAnimation}
+            {...gridProps}
             style={StyleSheet.absoluteFill}
           />
         )}

@@ -79,6 +79,29 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private val exitHeadPaint = Paint(headPaint)
   private val exitSlots = Array(MAX_CONCURRENT_EXITS) { ExitSlot() }
 
+  // POLISH-T4 (META_BOARD_GRID): cell-centre dots and optional lane lines,
+  // recorded under the arrows. The JS side never sets these props with the
+  // flag off, so without them nothing below runs and onDraw is unchanged.
+  private val gridDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeCap = Paint.Cap.ROUND
+    color = Color.TRANSPARENT
+  }
+  private val gridLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeCap = Paint.Cap.BUTT
+    color = Color.TRANSPARENT
+  }
+  private var gridValue = ""
+  private var gridStyleValue = ""
+  // Dots in square blocks of GRID_BLOCK_CELLS cells, one drawPoints op per block, so
+  // the replayed display list quick-rejects the (mostly off-screen) extent block by
+  // block instead of rasterising every dot on every pan frame.
+  private var gridPoints: Array<FloatArray>? = null
+  private var gridLineSegments: FloatArray? = null
+  private var gridStyled = false
+  private var gridLinesOn = false
+
   private var visibleMask = ""
   private var geometryIsValid = false
   private var hasVisibleArrows = false
@@ -236,6 +259,55 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     postInvalidateOnAnimation()
   }
 
+  /**
+   * POLISH-T4 grid extent: `cell,minCol,minRow,maxCol,maxRow,#dot,#line` in board
+   * points (dots at cell centres, lines through them across the extent). Blank
+   * or malformed input draws no grid (fail closed, like geometry).
+   */
+  internal fun setGrid(value: String) {
+    if (value == gridValue) return
+    val parsed = if (value.isBlank()) null else parseGrid(value)
+    synchronized(stateLock) {
+      gridValue = value
+      if (parsed == null) {
+        gridPoints = null
+        gridLineSegments = null
+      } else {
+        gridPoints = parsed.points
+        gridLineSegments = parsed.lines
+        gridDotPaint.color = parsed.dotColor
+        gridLinePaint.color = parsed.lineColor
+      }
+    }
+    postInvalidateOnAnimation()
+  }
+
+  /**
+   * POLISH-T4 grid stroke: `dotRadius,lineWidth,lines(0|1)` in board points,
+   * re-sent by JS only on a 2^(1/4) zoom step or the "#" toggle.
+   */
+  internal fun setGridStyle(value: String) {
+    if (value == gridStyleValue) return
+    val tokens = value.split(',')
+    val radius = tokens.getOrNull(0)?.toFloatOrNull()
+    val lineWidth = tokens.getOrNull(1)?.toFloatOrNull()
+    val lines = tokens.getOrNull(2)
+    val valid = tokens.size == GRID_STYLE_TOKEN_COUNT &&
+      radius != null && radius.isFinite() && radius > 0f &&
+      lineWidth != null && lineWidth.isFinite() && lineWidth > 0f &&
+      (lines == "0" || lines == "1")
+    synchronized(stateLock) {
+      gridStyleValue = value
+      gridStyled = valid
+      if (valid) {
+        gridDotPaint.strokeWidth = radius!! * 2f
+        gridLinePaint.strokeWidth = lineWidth!!
+        gridLinesOn = lines == "1"
+      }
+    }
+    postInvalidateOnAnimation()
+  }
+
   internal fun clearPaths() {
     clearExitAnimations()
     synchronized(stateLock) {
@@ -245,6 +317,11 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       visibleMask = ""
       geometryIsValid = false
       hasVisibleArrows = false
+      gridValue = ""
+      gridStyleValue = ""
+      gridPoints = null
+      gridLineSegments = null
+      gridStyled = false
     }
   }
 
@@ -252,7 +329,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var keepAnimating = false
     synchronized(stateLock) {
       val hasActiveExit = exitSlots.any { it.active }
-      if (!geometryIsValid || (!hasVisibleArrows && !hasActiveExit)) {
+      val drawArrows = geometryIsValid && (hasVisibleArrows || hasActiveExit)
+      // POLISH-T4: the grid stays on a cleared board until the level ends.
+      val pointBlocks = if (gridStyled) gridPoints else null
+      if (!drawArrows && pointBlocks == null) {
         return
       }
 
@@ -262,11 +342,17 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       // display density exactly once at the native drawing boundary.
       val saveCount = canvas.save()
       canvas.scale(logicalPointScale, logicalPointScale)
-      if (hasVisibleArrows) {
+      if (pointBlocks != null) {
+        // Bottom to top: lines, dots, then every arrow layer.
+        val lines = gridLineSegments
+        if (gridLinesOn && lines != null) canvas.drawLines(lines, gridLinePaint)
+        for (block in pointBlocks) canvas.drawPoints(block, gridDotPaint)
+      }
+      if (drawArrows && hasVisibleArrows) {
         canvas.drawPath(compoundShaft, shaftPaint)
         canvas.drawPath(compoundHead, headPaint)
       }
-      if (hasActiveExit) {
+      if (drawArrows && hasActiveExit) {
         val now = AnimationUtils.currentAnimationTimeMillis()
         for (slot in exitSlots) {
           if (drawExitSlot(canvas, slot, now)) keepAnimating = true
@@ -356,6 +442,68 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     }
   }
 
+  private class ParsedGrid(
+    val points: Array<FloatArray>,
+    val lines: FloatArray,
+    val dotColor: Int,
+    val lineColor: Int,
+  )
+
+  private fun parseGrid(value: String): ParsedGrid? {
+    val tokens = value.split(',')
+    if (tokens.size != GRID_TOKEN_COUNT) return null
+    val cell = tokens[0].toFloatOrNull() ?: return null
+    val minCol = tokens[1].toIntOrNull() ?: return null
+    val minRow = tokens[2].toIntOrNull() ?: return null
+    val maxCol = tokens[3].toIntOrNull() ?: return null
+    val maxRow = tokens[4].toIntOrNull() ?: return null
+    if (!cell.isFinite() || cell <= 0f) return null
+    val cols = maxCol.toLong() - minCol.toLong() + 1L
+    val rows = maxRow.toLong() - minRow.toLong() + 1L
+    if (cols < 1L || rows < 1L || cols > MAX_GRID_AXIS_CELLS || rows > MAX_GRID_AXIS_CELLS) return null
+    if (cols * rows > MAX_GRID_POINTS) return null
+    val dotColor = try { Color.parseColor(tokens[5]) } catch (_: IllegalArgumentException) { return null }
+    val lineColor = try { Color.parseColor(tokens[6]) } catch (_: IllegalArgumentException) { return null }
+
+    val blocks = ArrayList<FloatArray>()
+    var blockRow = minRow
+    while (blockRow <= maxRow) {
+      val rowEnd = minOf(maxRow, blockRow + GRID_BLOCK_CELLS - 1)
+      var blockCol = minCol
+      while (blockCol <= maxCol) {
+        val colEnd = minOf(maxCol, blockCol + GRID_BLOCK_CELLS - 1)
+        val block = FloatArray((rowEnd - blockRow + 1) * (colEnd - blockCol + 1) * 2)
+        var i = 0
+        for (row in blockRow..rowEnd) {
+          val y = (row + 0.5f) * cell
+          for (col in blockCol..colEnd) {
+            block[i++] = (col + 0.5f) * cell
+            block[i++] = y
+          }
+        }
+        blocks.add(block)
+        blockCol = colEnd + 1
+      }
+      blockRow = rowEnd + 1
+    }
+    val points = blocks.toTypedArray()
+    val left = minCol * cell
+    val right = (maxCol + 1) * cell
+    val top = minRow * cell
+    val bottom = (maxRow + 1) * cell
+    val lines = FloatArray(((rows + cols) * 4L).toInt())
+    var j = 0
+    for (row in minRow..maxRow) {
+      val y = (row + 0.5f) * cell
+      lines[j++] = left; lines[j++] = y; lines[j++] = right; lines[j++] = y
+    }
+    for (col in minCol..maxCol) {
+      val x = (col + 0.5f) * cell
+      lines[j++] = x; lines[j++] = top; lines[j++] = x; lines[j++] = bottom
+    }
+    return ParsedGrid(points, lines, dotColor, lineColor)
+  }
+
   private fun parseGeometry(value: String): ArrayList<ArrowPaths>? {
     if (value.isBlank()) {
       return ArrayList()
@@ -429,5 +577,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val MIN_EXIT_DURATION_MS = 160L
     const val MAX_EXIT_DURATION_MS = 1000L
     const val EXIT_FADE_START = 0.55f
+    const val GRID_TOKEN_COUNT = 7
+    const val GRID_STYLE_TOKEN_COUNT = 3
+    const val MAX_GRID_AXIS_CELLS = 1024L
+    const val MAX_GRID_POINTS = 100_000L
+    const val GRID_BLOCK_CELLS = 8 // OWNER-PICKED STARTING VALUE (POLISH-T4 frame-cost fix)
   }
 }

@@ -1,5 +1,6 @@
 import type { SharedValue } from 'react-native-reanimated';
 import type { SlitherPath } from './arrowGeometry';
+import type { BoardGrid } from './boardGrid';
 import type { NativeExitAnimation } from './nativeExitAnimation';
 
 export interface AnimatedArrowArt {
@@ -53,4 +54,6 @@ export interface StaticBoardSurfaceProps {
   exiting: (AnimatedExitTrail | null)[];
   nativeExitAnimation: NativeExitAnimation | null;
   reducedMotion: boolean;
+  /** POLISH-T4 dot grid (and "#" lines), under the arrows; null = none. */
+  grid: BoardGrid | null;
 }

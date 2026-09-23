@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type AccessibilityRole } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 import { Palette } from './theme';
 
@@ -21,6 +21,10 @@ export const HeaderButton = React.memo(function HeaderButton({
   palette,
   onPress,
   size = 36,
+  accessibilityRole,
+  accessibilityLabel,
+  accessibilityHint,
+  checked,
 }: {
   label: string;
   active?: boolean;
@@ -34,6 +38,12 @@ export const HeaderButton = React.memo(function HeaderButton({
   palette: Palette;
   onPress: () => void;
   size?: number;
+  /** Optional pass-through for toggles such as the "#" grid-lines switch. */
+  accessibilityRole?: AccessibilityRole;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  /** A switch's state for TalkBack/VoiceOver; omitted = not a switch. */
+  checked?: boolean;
 }) {
   const glyphColor = active && !off && !disabled ? palette.accentCore : palette.glyphOff;
   const inner = size - 2 * BORDER_WIDTH; // absolute children sit inside the border
@@ -41,7 +51,11 @@ export const HeaderButton = React.memo(function HeaderButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      accessibilityState={{ disabled }}
+      accessibilityState={checked === undefined ? { disabled } : { checked, disabled }}
+      aria-checked={checked} // react-native-web reads the ARIA prop, not accessibilityState
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       hitSlop={8}
       style={({ pressed }) => ({
         width: size,

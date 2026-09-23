@@ -28,6 +28,15 @@ class ArrowsBoardModule : Module() {
         view.setExitAnimation(exitAnimation)
       }
 
+      // POLISH-T4 (META_BOARD_GRID): never set by JS while the flag is off.
+      Prop("grid") { view: ArrowsBoardView, grid: String ->
+        view.setGrid(grid)
+      }
+
+      Prop("gridStyle") { view: ArrowsBoardView, gridStyle: String ->
+        view.setGridStyle(gridStyle)
+      }
+
       OnViewDestroys { view: ArrowsBoardView ->
         view.clearPaths()
       }

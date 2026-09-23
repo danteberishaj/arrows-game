@@ -8,6 +8,7 @@ import Animated, {
   interpolateColor,
   ReduceMotion,
   useAnimatedProps,
+  useAnimatedReaction,
   useReducedMotion,
   useSharedValue,
   withDecay,
@@ -28,6 +29,8 @@ import {
   STROKE,
 } from './arrowGeometry';
 import { cameraViewport, centreOn, initialCamera, panRange } from './boardCamera';
+import { boardGridFor, gridRestrokeNeeded, type BoardGrid } from './boardGrid';
+import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
   EXIT_TRAIL_CLEANUP_MARGIN_MS,
   EXIT_TRAIL_STROKE_CELLS,
@@ -199,6 +202,8 @@ export interface BoardViewProps {
   clearHint: () => void;
   /** Stable native identifier used only by the release benchmark driver. */
   testID?: string;
+  /** POLISH-T4: the "#" toggle's row/column lines (only with META_BOARD_GRID). */
+  gridLines?: boolean;
 }
 
 interface ExitingTrail {
@@ -244,6 +249,7 @@ export function BoardView({
   hint,
   clearHint,
   testID,
+  gridLines = false,
 }: BoardViewProps) {
   const boardW = board.cols * CELL;
   const boardH = board.rows * CELL;
@@ -317,6 +323,23 @@ export function BoardView({
   const cameraBottomInset = META_ZOOMED_CAMERA ? safeAreaBottom : 0;
   const cameraBottomInsetRef = useRef(cameraBottomInset);
   cameraBottomInsetRef.current = cameraBottomInset;
+  // POLISH-T4 (META_BOARD_GRID): the zoom the grid's stroke sizes were last
+  // sent for. Re-sent only on a 2^(1/4) zoom step, at pinch end and on fit.
+  const [gridScale, setGridScale] = useState(0);
+  const gridSentScale = useSharedValue(0);
+  if (BOARD_GRID_ENABLED) {
+    // BOARD_GRID_ENABLED is a build-time constant, so the hook order never
+    // changes within one bundle.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedReaction(
+      () => scale.value,
+      (s) => {
+        if (!gridRestrokeNeeded(gridSentScale.value, s)) return;
+        gridSentScale.value = s;
+        scheduleOnRN(setGridScale, s);
+      },
+    );
+  }
 
   const clampPos = useCallback(() => {
     'worklet';
@@ -357,6 +380,10 @@ export function BoardView({
     scale.value = camera.scale;
     tx.value = camera.tx;
     ty.value = camera.ty;
+    if (BOARD_GRID_ENABLED) {
+      gridSentScale.value = camera.scale;
+      setGridScale(camera.scale);
+    }
   }, [boardW, boardH]);
 
   React.useLayoutEffect(() => {
@@ -680,6 +707,16 @@ export function BoardView({
         scale.value = s2;
         clampPos();
       });
+    if (BOARD_GRID_ENABLED) {
+      // POLISH-T4: exact grid stroke sizes for the zoom the pinch settled on.
+      pinch.onEnd(() => {
+        'worklet';
+        if (scale.value > 0 && scale.value !== gridSentScale.value) {
+          gridSentScale.value = scale.value;
+          scheduleOnRN(setGridScale, scale.value);
+        }
+      });
+    }
 
     const tap = Gesture.Tap()
       .maxDuration(TAP_MAX_DURATION_MS)
@@ -722,6 +759,21 @@ export function BoardView({
     e.preventDefault?.();
   }, [zoomAround]);
 
+  // POLISH-T4: null (no grid, no native prop) unless META_BOARD_GRID is on.
+  const grid = useMemo(() => boardGridFor({
+    enabled: BOARD_GRID_ENABLED,
+    boardW,
+    boardH,
+    cell: CELL,
+    layoutW: viewportSize.w,
+    layoutH: viewportSize.h,
+    bottomInset: cameraBottomInset,
+    zoomedCamera: META_ZOOMED_CAMERA,
+    palette,
+    linesOn: gridLines,
+    strokeScale: gridScale,
+  }), [boardW, boardH, viewportSize.w, viewportSize.h, cameraBottomInset, palette, gridLines, gridScale]);
+
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -751,6 +803,7 @@ export function BoardView({
           pressed={pressed}
           hint={hint}
           reducedMotion={reducedMotion}
+          grid={grid}
         />
       </View>
     </GestureDetector>
@@ -776,6 +829,7 @@ function BoardContent(props: {
   pressed: AnimatedArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
   reducedMotion: boolean;
+  grid: BoardGrid | null;
 }) {
   const {
     scale,
@@ -795,6 +849,7 @@ function BoardContent(props: {
     pressed,
     hint,
     reducedMotion,
+    grid,
   } = props;
 
   const arrowCount = board.count();
@@ -871,6 +926,7 @@ function BoardContent(props: {
         exiting={exiting}
         nativeExitAnimation={nativeExitAnimation}
         reducedMotion={reducedMotion}
+        grid={grid}
       />
       {Platform.OS === 'web' && hasDynamicLayer && (
         <WebDynamicBoardLayer

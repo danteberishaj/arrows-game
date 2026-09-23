@@ -10,4 +10,11 @@ export type ArrowsBoardViewProps = {
   strokeWidth: number;
   /** Latest dense-board exit event: id,index,durationMs,reducedMotionFlag. */
   exitAnimation: string;
+  /**
+   * POLISH-T4 (META_BOARD_GRID, Android only): `cell,minCol,minRow,maxCol,maxRow,#dot,#line`.
+   * Omitted entirely while the flag is off. The iOS view does not read it (R7).
+   */
+  grid?: string;
+  /** POLISH-T4: `dotRadius,lineWidth,lines(0|1)` in board points; omitted while the flag is off. */
+  gridStyle?: string;
 } & ViewProps;

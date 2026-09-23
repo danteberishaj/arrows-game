@@ -22,6 +22,7 @@ import {
 } from '../telemetry/levelAggregator';
 import { Ads } from './ads';
 import { BoardView } from './BoardView';
+import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
   feedback,
   prepareFeedback,
@@ -55,8 +56,14 @@ import {
   T1_CLEARED_STAGE,
 } from './ftueRoute';
 import { FtueStallTimer } from './ftueStallTimer';
+import { readGridLines, setGridLines, subscribeGridLines } from './gridLinesSession';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
+
+/** POLISH-T4 "#" button: the menu's 44 dp HeaderButton, 16 dp (the header's
+ * side padding) plus the safe-area inset from the bottom-right corner. */
+const GRID_TOGGLE_SIZE_PT = 44; // OWNER-PICKED STARTING VALUE (design spec A)
+const GRID_TOGGLE_INSET_PT = 16; // OWNER-PICKED STARTING VALUE (design spec A)
 
 // Keep the playtest logger callable in release builds, where direct console.log
 // calls in application code are removed by the production transform.
@@ -122,6 +129,8 @@ export function GameScreen({
   // Continue (lose panel) and hint each have their own rewarded unit (M3).
   const rewardedReady = useSyncExternalStore(Ads.subscribeRewardedReady, readRewardedReady);
   const hintReady = useSyncExternalStore(subscribeHintReady, readHintReady);
+  // POLISH-T4 (R5): session-only "#" grid lines; OFF after a cold start.
+  const gridLines = useSyncExternalStore(subscribeGridLines, readGridLines);
   // A rewarded show was attempted and resolved false. Cleared by the next
   // readiness change or board tap (no timer).
   const [adShowFailed, setAdShowFailed] = useState(false);
@@ -554,7 +563,30 @@ export function GameScreen({
         hint={hint}
         clearHint={clearHint}
         testID={benchmarkMode ? 'perf-board' : undefined}
+        gridLines={gridLines}
       />
+
+      {/* POLISH-T4 "#": grid lines on/off, bottom-right, clear of the nav bar. */}
+      {BOARD_GRID_ENABLED && !activeTutorialId && (
+        <View
+          style={[
+            styles.gridToggle,
+            { right: insets.right + GRID_TOGGLE_INSET_PT, bottom: insets.bottom + GRID_TOGGLE_INSET_PT },
+          ]}
+        >
+          <HeaderButton
+            label="#"
+            size={GRID_TOGGLE_SIZE_PT}
+            off={!gridLines}
+            palette={p}
+            onPress={() => setGridLines(!gridLines)}
+            accessibilityRole="switch"
+            accessibilityLabel="Grid lines"
+            accessibilityHint="Shows row and column lines across the board"
+            checked={gridLines}
+          />
+        </View>
+      )}
 
       {/* Win / lose overlays */}
       {!activeTutorialId && phase !== 'playing' && (
@@ -835,6 +867,7 @@ function hexA(hex: string, a: number): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  gridToggle: { position: 'absolute' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
