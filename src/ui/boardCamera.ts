@@ -124,3 +124,20 @@ export function centreOn(
     ty: Math.min(yhi, Math.max(ylo, vh / 2 - cy * s)),
   };
 }
+
+/**
+ * The area the camera fits, centres and clamps against, from the board view's
+ * raw layout. Android draws edge to edge, so the raw layout runs under the
+ * system navigation bar; `bottomInset` (the bottom safe-area inset) takes that
+ * strip off, and the board keeps drawing under it. BoardView passes 0 while
+ * META_ZOOMED_CAMERA is off, which keeps today's raw-layout camera. An inset
+ * that would leave less than 1 pt is ignored.
+ */
+export function cameraViewport(
+  layoutW: number,
+  layoutH: number,
+  bottomInset: number,
+): { w: number; h: number } {
+  const visibleH = layoutH - Math.max(0, bottomInset);
+  return { w: layoutW, h: visibleH >= 1 ? visibleH : layoutH };
+}

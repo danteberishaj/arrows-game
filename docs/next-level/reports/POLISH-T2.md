@@ -158,3 +158,77 @@ directory (257 MB) was deleted afterwards, and free disk is back to 4.1 GiB. Gra
 - `artifacts/POLISH-T2/00-summary.png` (and `01`, `08`): is 14 cells across the right opening density? yes/no
 - `03`/`09`: does a pinch-out to the whole board feel reachable enough? yes/no
 - The hint on level 3827 with the flag ON (design spec D acceptance 4): needs a sample-key build; not yet shown.
+
+## Fix round 1: the camera uses the visible area above the navigation bar (controller ruling)
+
+Status: **DONE**. This round addresses round-0 concern 3.
+
+With `META_ZOOMED_CAMERA` on, the camera now fits, centres and clamps against the board view's raw
+layout minus the bottom safe-area inset. The board still draws edge to edge, under the nav bar. With the flag off,
+the inset is a constant 0, so the camera is today's.
+
+### Changes
+- `src/ui/boardCamera.ts` gains `cameraViewport(layoutW, layoutH, bottomInset)`. It returns
+  `{w, h: layoutH - inset}`, keeps the raw height if the result would be under 1 pt, and treats a negative inset as 0.
+- `src/ui/BoardView.tsx` reads the inset through `useSafeAreaInsets().bottom`, the same hook GameScreen and HomeScreen use.
+  - `cameraBottomInset = META_ZOOMED_CAMERA ? bottom : 0`.
+  - `viewport` (the shared value used by `clampPos`, the pan and decay clamps, the pinch focal clamp,
+    the hint `centreOn` and the web wheel focus) now holds the camera viewport.
+  - A new `measuredLayout` ref keeps the raw layout for the board-change refit.
+  - The `viewportSize` state passed to the surface stays raw, so drawing still covers the whole view.
+  - The inset reaches `fitToViewport` through a ref, so the function's identity, and with it the level-reset
+    layout effect, does not depend on the inset.
+  - A separate effect, active only when the flag is ON, re-fits the camera when the inset changes after layout.
+  - The existing `EXPO_PUBLIC_LOG_BOARD_VIEWPORT` diagnostic line now also prints `cameraBottomInset=`.
+- `src/ui/contrastAudit.ts`: the BoardView sites move from 832/833/834 to 852/853/854.
+- A consequence of the ruling:
+  - With the flag ON, `minScale` (fit) is computed on the visible area, so a full pinch-out fits the board above the nav bar.
+  - It is unchanged for width-bound boards, which covers every square board on these phones.
+  - `maxScale` follows from that fit, as before.
+
+### TDD
+- **RED 1 (EXECUTED).** `TS2305: Module '"../boardCamera"' has no exported member 'cameraViewport'`.
+- **RED 2 (EXECUTED; `fix1/tdd-red-stub.txt`).** Against a stub that ignored the inset, 18 failed and 41 passed.
+  - For example, it expected `h: 756.285706` but received the raw 804.29.
+  - The 15 board × layout rows failed because the centre was 24–28 dp low.
+- **GREEN (EXECUTED; `fix1/tdd-green.txt`).** 59/59.
+- The new cases use the measured raw layouts and insets from docs/board-viewport-measured.md:
+  - 411.43×804.29 with a 48 dp inset;
+  - 360×689 and 360×549 with a 56 dp inset.
+
+  Each case asserts the visible viewport, board-centre-to-visible-centre for all five boards, the pinch-out fit
+  inside the visible area, and that the bottom edge at the upper pan limit is at or above the inset. Two more cases
+  cover no inset and a degenerate inset.
+
+### Evidence (emulator-5556, JS repack as in round 0, `artifacts/POLISH-T2/fix1/`, summary `00-summary-fix1.png`)
+1. **EXECUTED: runtime inset.** The flag-ON build with `EXPO_PUBLIC_LOG_BOARD_VIEWPORT=1` logged
+   `[board-viewport] w=411.4285583496094 h=804.2857055664062 cameraBottomInset=48` on level 1 and on level 3828
+   (`board-viewport-logcat-*.txt`). This is the live inset value, not the config value, and it matches the measured 48 dp.
+2. **EXECUTED: level 1 at open** (`01-on-level1-open.png`, `01-shift-vs-round0.txt`).
+   - The board sits exactly 84 px (24.0 dp) higher than the round-0 capture, with 0 mismatched pixels at that offset.
+   - The ink bbox midpoint is at 1627.5 px, against the visible-area midpoint (305–2952 px) of 1628.5 px.
+   - Level 1 at 29.4 dp is 588 dp tall, shorter than the 756 dp visible area, so it is centred and locked vertically. An upward pan (`02-…`) does not move it.
+   - Its last row is at y ≤ 2552 px, which is 400 px above the nav bar.
+3. **EXECUTED: level 3828 (39×39) at open** (`03-on-level3828-open.png`, `03-shift-vs-round0.txt`). Also 84 px higher, with 0 mismatched pixels. It still draws under the nav bar, as the ruling allows.
+4. **EXECUTED: level 3828 panned to the bottom edge** (`04-on-level3828-panned-to-bottom-edge.png`,
+   `04-bottom-edge-measure.txt`).
+   - Three 1800 px upward pans. A fourth pan changed 0 pixels, so the view is at the clamp.
+   - The lowest ink is at y = 2366 px, and the nav bar starts at 2952 px.
+   - Model: the arrows occupy rows 3..35 of 39 (`LevelGenerator.generate(3827)`, run with tsx). At the clamp the board bottom is at 2952 − 72 dp·3.5 = 2700 px, so row 35 ends at 2391 px. The measured 2366 fits inside that row, allowing for the end-of-stroke inset.
+   - The last row is fully visible, about 167 dp above the nav bar.
+5. **EXECUTED: a tap while zoomed** (`06-on-level1-after-tap.png`, `06-tap-count.txt`). I tapped (565,790), the same free U arrow as round 0, now 84 px higher. `60 left` became `59 left`, 3 hearts remained, and the arrow is gone.
+6. **EXECUTED: flag OFF** (`05-off-level1-open.png`, `05-off-vs-baseline-pixel-diff.txt`). Against the round-0 host-APK
+   (f58692c) level-1 capture on the same emulator geometry: **0 differing pixels** in rows 120–2951. The status bar differs by 2214 pixels (the clock).
+7. **Gates (EXECUTED).** `npx tsc --noEmit` exited 0 (`fix1/gate-tsc.txt`). `npx jest`: 48 suites and 783 tests passed
+   (`fix1/gate-jest.txt`; 763 + 20).
+8. **Environment.** Emulator scales were read back as 1/1/1. The host APK was reinstalled at the end. The scratch directory was deleted, and free disk is 11 GiB. No gradle build was run and no git state was changed.
+
+### Decisions and remaining risks
+- The inset's re-fit effect also fires when a board change creates a new `fitToViewport` (flag ON only). That is a second fit to the same values in the same commit, so it is idempotent.
+- BoardView now subscribes to the safe-area context even with the flag OFF. The hook call cannot be made conditional.
+  - An inset change would re-render BoardView without changing any camera value or native prop.
+  - Item 6 shows the OFF frame is pixel-identical.
+  - There is no perf measurement of that subscription. INFERRED to be negligible, because insets do not change during play.
+- 360 dp devices (56 dp inset) are covered by unit tests only, not by screenshots. Gesture-navigation devices (small
+  inset) and iOS home-indicator insets are UNVERIFIED-DEVICE. The hint recentre on a zoomed board remains
+  UNVERIFIED-DEVICE (round-0 concern 1). It now centres on the visible area, because `centreOn` reads the same `viewport`.

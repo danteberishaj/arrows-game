@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -27,7 +28,7 @@ import {
   SlitherPath,
   STROKE,
 } from './arrowGeometry';
-import { centreOn, initialCamera, panRange } from './boardCamera';
+import { cameraViewport, centreOn, initialCamera, panRange } from './boardCamera';
 import {
   EXIT_TRAIL_CLEANUP_MARGIN_MS,
   EXIT_TRAIL_STROKE_CELLS,
@@ -307,7 +308,14 @@ export function BoardView({
   const maxScale = useSharedValue(1);
   const pinchStart = useSharedValue({ scale: 1, tx: 0, ty: 0, fx: 0, fy: 0 });
   const panStart = useSharedValue({ tx: 0, ty: 0 });
-  const viewport = useSharedValue({ w: 0, h: 0 });
+  const viewport = useSharedValue({ w: 0, h: 0 }); // the camera's (visible) viewport
+  const measuredLayout = useRef({ w: 0, h: 0 }); // raw layout; the board draws over all of it
+  // META_ZOOMED_CAMERA: centre and clamp above the bottom safe-area inset (the
+  // Android navigation bar the edge-to-edge layout runs under). OFF: 0, as before.
+  const safeAreaBottom = useSafeAreaInsets().bottom;
+  const cameraBottomInset = META_ZOOMED_CAMERA ? safeAreaBottom : 0;
+  const cameraBottomInsetRef = useRef(cameraBottomInset);
+  cameraBottomInsetRef.current = cameraBottomInset;
 
   const clampPos = useCallback(() => {
     'worklet';
@@ -333,9 +341,13 @@ export function BoardView({
 
   const fitToViewport = useCallback((vw: number, vh: number) => {
     if (vw < 1 || vh < 1) return;
-    viewport.value = { w: vw, h: vh };
+    measuredLayout.current = { w: vw, h: vh };
+    const visible = cameraViewport(vw, vh, cameraBottomInsetRef.current);
+    viewport.value = visible;
     // Fit (or, with META_ZOOMED_CAMERA, ~14 cells across); pinch-out reaches fit.
-    const camera = initialCamera(vw, vh, boardW, boardH, CELL, META_ZOOMED_CAMERA);
+    const camera = initialCamera(
+      visible.w, visible.h, boardW, boardH, CELL, META_ZOOMED_CAMERA,
+    );
     if (camera === null) return;
     minScale.value = camera.minScale;
     maxScale.value = camera.maxScale;
@@ -370,15 +382,23 @@ export function BoardView({
     setShaking(null);
     setBlocker(null);
     setPressed(null);
-    const measuredViewport = viewport.value;
-    fitToViewport(measuredViewport.w, measuredViewport.h);
+    const measured = measuredLayout.current;
+    fitToViewport(measured.w, measured.h);
   }, [board, fitToViewport]);
+
+  // A safe-area inset that arrives or changes after layout re-fits the camera
+  // (only while META_ZOOMED_CAMERA is on; OFF the inset is a constant 0).
+  React.useEffect(() => {
+    if (!META_ZOOMED_CAMERA) return;
+    const measured = measuredLayout.current;
+    fitToViewport(measured.w, measured.h);
+  }, [cameraBottomInset, fitToViewport]);
 
   const onLayout = useCallback((e: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width: vw, height: vh } = e.nativeEvent.layout;
     if (vw < 1 || vh < 1) return;
     if (process.env.EXPO_PUBLIC_LOG_BOARD_VIEWPORT === '1') {
-      console.log(`[board-viewport] w=${vw} h=${vh}`);
+      console.log(`[board-viewport] w=${vw} h=${vh} cameraBottomInset=${cameraBottomInsetRef.current}`);
     }
     setViewportSize((current) =>
       current.w === vw && current.h === vh ? current : { w: vw, h: vh },

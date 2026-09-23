@@ -1,4 +1,5 @@
 import {
+  cameraViewport,
   centreOn,
   initialCamera,
   panRange,
@@ -196,4 +197,48 @@ describe('centreOn (hint recentre) under the zoomed camera', () => {
     expect(tx).toBe(fitCam.tx);
     expect(ty).toBe(fitCam.ty);
   });
+});
+
+/**
+ * Fix round 1: with META_ZOOMED_CAMERA the camera treats the VISIBLE area as its viewport. The
+ * board view's raw layout runs under the 3-button navigation bar (Android edge-to-edge), so the
+ * bottom safe-area inset is taken off the camera viewport, while the board keeps drawing to the
+ * raw bottom edge. Raw layouts and insets are the measured ones in
+ * docs/board-viewport-measured.md (raw log height, `cur - app` inset).
+ */
+describe('cameraViewport (bottom safe-area inset)', () => {
+  const RAW = [
+    { name: '1440x3120@560', w: 411.428558, h: 804.285706, inset: 48, visibleH: 756.285706 },
+    { name: '1080x2340@480', w: 360, h: 689, inset: 56, visibleH: 633 },
+    { name: '1080x1920@480', w: 360, h: 549, inset: 56, visibleH: 493 },
+  ] as const;
+
+  it.each(RAW.map((r) => [r.name, r] as const))('%s: the camera viewport is the area above the inset', (_n, r) => {
+    expect(cameraViewport(r.w, r.h, r.inset)).toEqual({ w: r.w, h: r.visibleH });
+  });
+
+  it('no inset (flag OFF passes 0) keeps the raw layout', () => {
+    expect(cameraViewport(411.428558, 804.285706, 0)).toEqual({ w: 411.428558, h: 804.285706 });
+  });
+
+  it('an inset that would leave no room is ignored rather than producing a <1 dp viewport', () => {
+    expect(cameraViewport(360, 40, 56)).toEqual({ w: 360, h: 40 });
+  });
+
+  it.each(RAW.flatMap((r) => BOARDS.map((b) => [r.name, b.name, r, b] as const)))(
+    '%s, %s: zoomed board centres on the visible area and its last row can rise above the inset',
+    (_rn, _bn, r, b) => {
+      const boardW = b.cols * CELL;
+      const boardH = b.rows * CELL;
+      const v = cameraViewport(r.w, r.h, r.inset);
+      const cam = initialCamera(v.w, v.h, boardW, boardH, CELL, true)!;
+      // Centre of the board lands on the centre of the visible area, not of the raw layout.
+      expect(cam.ty + (boardH / 2) * cam.scale).toBeCloseTo(r.visibleH / 2, 6);
+      // Fully zoomed out, the whole board fits the visible area.
+      expect(boardH * cam.minScale).toBeLessThanOrEqual(r.visibleH);
+      // Panned all the way up, the board's bottom edge sits at or above the inset.
+      const [ylo] = panRange(boardH * cam.scale, v.h);
+      expect(ylo + boardH * cam.scale).toBeLessThanOrEqual(r.visibleH + 1e-9);
+    },
+  );
 });
