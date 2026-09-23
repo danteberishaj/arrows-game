@@ -75,6 +75,8 @@ class ArrowsBoardView: ExpoView {
   /**
    * Starts one of two bounded slither exits. Event format (board points):
    * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
+   * optionally followed by `,fadeStart,launch` (POLISH-T3, META_EXIT_TO_SCREEN_EDGE):
+   * 10 + 2n tokens keep today's 0.55 fade start and ease-in curve; 12 + 2n set them.
    */
   func setExitAnimation(_ value: String) {
     if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -100,7 +102,8 @@ class ArrowsBoardView: ExpoView {
           totalLength.isFinite, totalLength > 0,
           directionX.isFinite, directionY.isFinite,
           pointCount >= 2, pointCount <= 4098,
-          tokens.count == headerCount + pointCount * 2,
+          tokens.count == headerCount + pointCount * 2
+            || tokens.count == headerCount + pointCount * 2 + 2,
           arrows.indices.contains(arrowIndex),
           id != lastExitId else {
       return
@@ -119,6 +122,18 @@ class ArrowsBoardView: ExpoView {
       } else {
         trailPath.addLine(to: point)
       }
+    }
+    // POLISH-T3 motion tokens (fade start, launch speed), validated like the header.
+    var motion: (fadeStart: Double, launch: Double)?
+    if tokens.count == headerCount + pointCount * 2 + 2 {
+      let motionIndex = headerCount + pointCount * 2
+      guard let fadeStart = Double(tokens[motionIndex]), fadeStart.isFinite,
+            fadeStart >= 0, fadeStart < 1,
+            let launch = Double(tokens[motionIndex + 1]), launch.isFinite,
+            launch >= 0, launch <= 1 else {
+        return
+      }
+      motion = (fadeStart, launch)
     }
     lastExitId = id
 
@@ -161,7 +176,13 @@ class ArrowsBoardView: ExpoView {
 
     // travelled = k^2 * totalLen (ExitTrail): ease-in quadratic on both the
     // dash phase and the head translation.
-    let easeInQuad = CAMediaTimingFunction(controlPoints: 0.11, 0, 0.5, 0)
+    // With motion tokens: launch*k + (1-launch)*k^2 exactly, as the cubic Bezier
+    // (1/3, launch/3, 2/3, (1+launch)/3) (degree elevation of that quadratic).
+    let easeInQuad = motion.map {
+      CAMediaTimingFunction(
+        controlPoints: 1.0 / 3.0, Float($0.launch / 3), 2.0 / 3.0, Float((1 + $0.launch) / 3)
+      )
+    } ?? CAMediaTimingFunction(controlPoints: 0.11, 0, 0.5, 0)
 
     let phase = CABasicAnimation(keyPath: "lineDashPhase")
     phase.fromValue = patternSum
@@ -189,7 +210,8 @@ class ArrowsBoardView: ExpoView {
 
     let opacity = CAKeyframeAnimation(keyPath: "opacity")
     opacity.values = reducedMotion ? [1, 0] : [1, 1, 0]
-    opacity.keyTimes = reducedMotion ? [0, 1] : [0, 0.55, 1]
+    let fadeStart = NSNumber(value: motion?.fadeStart ?? 0.55)
+    opacity.keyTimes = reducedMotion ? [0, 1] : [0, fadeStart, 1]
     opacity.timingFunctions = reducedMotion
       ? [CAMediaTimingFunction(name: .linear)]
       : [CAMediaTimingFunction(name: .linear), CAMediaTimingFunction(name: .easeInEaseOut)]

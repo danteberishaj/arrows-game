@@ -41,3 +41,39 @@ describe('serializeNativeExitAnimation', () => {
     expect(encoded.split(',')[3]).toBe('1');
   });
 });
+
+describe('POLISH-T3: flag-OFF payload is byte-identical to the pre-T3 serializer', () => {
+  // Captured from the pre-T3 code (HEAD 330cf7f) with scratchpad/golden.ts before any T3 edit.
+  const PRE_T3_RIGHT =
+    '7,3,214,0,10.4,136.8,493.6,1,0,7,43.2,100,60,100,100,100,100,140,140,140,140,140,496.8,140';
+  const PRE_T3_UP_RM =
+    '12,0,180,1,10.4,96.8,373.6,0,-1,6,180,236.8,180,220,180,180,180,140,180,140,180,-136.8';
+  const right = new ArrowPath(
+    [{ r: 2, c: 1 }, { r: 2, c: 2 }, { r: 3, c: 2 }, { r: 3, c: 3 }],
+    Direction.Right,
+  );
+  const up = new ArrowPath([{ r: 5, c: 4 }, { r: 4, c: 4 }, { r: 3, c: 4 }], Direction.Up);
+
+  it('serializes an event without motion (no extent) exactly as before', () => {
+    expect(serializeNativeExitAnimation({
+      id: 7, arrowIndex: 3, durationMs: 214, reducedMotion: false,
+      path: slitherPath(right, 40, 6, 8), trailStrokeWidth: 0.26 * 40,
+    })).toBe(PRE_T3_RIGHT);
+    expect(serializeNativeExitAnimation({
+      id: 12, arrowIndex: 0, durationMs: 180, reducedMotion: true,
+      path: slitherPath(up, 40, 20, 20), trailStrokeWidth: 10.4, motion: null,
+    })).toBe(PRE_T3_UP_RM);
+  });
+
+  it('with motion, appends fadeStart,launch AFTER the points (header layout unchanged)', () => {
+    const path = slitherPath(right, 40, 6, 8);
+    const encoded = serializeNativeExitAnimation({
+      id: 7, arrowIndex: 3, durationMs: 214, reducedMotion: false,
+      path, trailStrokeWidth: 0.26 * 40, motion: { fadeStart: 0.85, launch: 0.35 },
+    });
+    expect(encoded).toBe(`${PRE_T3_RIGHT},0.85,0.35`);
+    const tokens = encoded.split(',').map(Number);
+    // Parsers tell the variants apart from n (token 9): 10 + 2n (defaults) or 12 + 2n.
+    expect(tokens.length).toBe(12 + tokens[9] * 2);
+  });
+});

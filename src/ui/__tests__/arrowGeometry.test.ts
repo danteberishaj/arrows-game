@@ -4,6 +4,7 @@ import {
   batchedArrowArt,
   BoardArrowArtCache,
   serializeNativeBoardGeometry,
+  slitherPath,
 } from '../arrowGeometry';
 
 const CELL = 40;
@@ -121,5 +122,66 @@ describe('serializeNativeBoardGeometry', () => {
 
   it('uses an empty payload for an empty board', () => {
     expect(serializeNativeBoardGeometry([], CELL)).toBe('');
+  });
+});
+
+describe('slitherPath extent (POLISH-T3)', () => {
+  // Right-pointing bent arrow, head (3,3): head centre (140,140), body 136.8.
+  const right = new ArrowPath(
+    [{ r: 2, c: 1 }, { r: 2, c: 2 }, { r: 3, c: 2 }, { r: 3, c: 3 }],
+    Direction.Right,
+  );
+  const up = new ArrowPath([{ r: 5, c: 4 }, { r: 4, c: 4 }, { r: 3, c: 4 }], Direction.Up);
+  const left = new ArrowPath([{ r: 1, c: 5 }, { r: 1, c: 4 }], Direction.Left);
+  const down = new ArrowPath([{ r: 0, c: 6 }, { r: 1, c: 6 }], Direction.Down);
+  const last = (p: { points: readonly { x: number; y: number }[] }) => p.points[p.points.length - 1];
+  const wide = { minX: -500, minY: -300, maxX: 1000, maxY: 900 };
+
+  it('without an extent the ray still ends body + one cell past the BOARD edge', () => {
+    const p = slitherPath(right, CELL, 6, 8);
+    expect(last(p).x).toBeCloseTo(320 + 136.8 + 40, 6);
+    expect(p.totalLen).toBeCloseTo(136.8 + (320 - 140) + 136.8 + 40, 6);
+  });
+
+  it('with an extent the ray ends body + one cell past the EXTENT edge, in all four directions', () => {
+    const r = slitherPath(right, CELL, 6, 8, wide);
+    expect(last(r)).toEqual({ x: 1000 + 136.8 + 40, y: 140 });
+    const u = slitherPath(up, CELL, 6, 8, wide);
+    expect(last(u).x).toBe(180);
+    expect(last(u).y).toBeCloseTo(-300 - 96.8 - 40, 6);
+    const l = slitherPath(left, CELL, 6, 8, wide);
+    // head (1,4): centre (180, 60); body 16.8 + 40.
+    expect(last(l).x).toBeCloseTo(-500 - 56.8 - 40, 6);
+    expect(last(l).y).toBe(60);
+    const d = slitherPath(down, CELL, 6, 8, wide);
+    // head (1,6): centre (260, 60).
+    expect(last(d).x).toBe(260);
+    expect(last(d).y).toBeCloseTo(900 + 56.8 + 40, 6);
+  });
+
+  it('an extent edge INSIDE the board (zoomed camera) ends the ray at the extent, not the board', () => {
+    const p = slitherPath(right, CELL, 6, 8, { minX: 0, minY: 0, maxX: 250, maxY: 240 });
+    expect(last(p).x).toBeCloseTo(250 + 136.8 + 40, 6);
+  });
+
+  it('a head already past the extent edge still moves body + one cell (toEdge clamps to 0)', () => {
+    const p = slitherPath(right, CELL, 6, 8, { minX: 0, minY: 0, maxX: 100, maxY: 240 });
+    expect(last(p).x).toBeCloseTo(140 + 136.8 + 40, 6);
+  });
+
+  it('the extent changes only the ray: body, head triangle and direction are unchanged', () => {
+    const board = slitherPath(right, CELL, 6, 8);
+    const ext = slitherPath(right, CELL, 6, 8, wide);
+    expect(ext.bodyLen).toBe(board.bodyLen);
+    expect(ext.headTip).toEqual(board.headTip);
+    expect(ext.headBaseL).toEqual(board.headBaseL);
+    expect(ext.headBaseR).toEqual(board.headBaseR);
+    expect(ext.dir).toEqual(board.dir);
+    expect(ext.points.slice(0, -1)).toEqual(board.points.slice(0, -1));
+  });
+
+  it('an extent equal to the board rectangle reproduces the no-extent path exactly', () => {
+    expect(slitherPath(right, CELL, 6, 8, { minX: 0, minY: 0, maxX: 320, maxY: 240 }))
+      .toEqual(slitherPath(right, CELL, 6, 8));
   });
 });

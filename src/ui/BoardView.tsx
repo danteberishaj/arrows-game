@@ -17,14 +17,13 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
-import { META_ZOOMED_CAMERA } from '../featureFlags';
+import { META_EXIT_TO_SCREEN_EDGE, META_ZOOMED_CAMERA } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
   arrowArt,
   BoardArrowArtCache,
   dirVec,
-  slitherPath,
   SlitherPath,
   STROKE,
 } from './arrowGeometry';
@@ -34,8 +33,8 @@ import {
   EXIT_TRAIL_STROKE_CELLS,
   MAX_CONCURRENT_EXIT_TRAILS,
   exitAnimationKind,
-  exitTrailDurationMs,
 } from './exitAnimationConfig';
+import { exitFadeAt, exitTravelFraction, planExit, type ExitCamera } from './exitToScreenEdge';
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS, FEEDBACK_CLEANUP_MARGIN_MS,
@@ -49,6 +48,7 @@ import {
 import { FirstPaintCleanupTimer } from './firstPaintCleanup';
 import { ArrowHitTester, TAP_RADIUS_PT } from './hitTest';
 import { StaticBoardSurface } from './StaticBoardSurface';
+import type { ExitMotion } from './nativeExitAnimation';
 import type { NativeExitAnimation } from './StaticBoardSurface.types';
 import { BlockedTapLedger, isGhostTap, type RecentRemoval } from './tapRules';
 import { Palette } from './theme';
@@ -206,6 +206,7 @@ interface ExitingTrail {
   path: SlitherPath;
   durationMs: number;
   reducedMotion: boolean;
+  motion: ExitMotion | null;
 }
 
 interface AnimatedArrowState {
@@ -517,31 +518,40 @@ export function BoardView({
         PERF_NO_EXIT_TRAILS,
         Platform.OS !== 'web',
       );
+      // POLISH-T3: with META_EXIT_TO_SCREEN_EDGE the ray runs past the edge of
+      // the area the board draws into (raw layout, under the nav bar too).
+      const exitCamera: ExitCamera = {
+        tx: tx.value, ty: ty.value, scale: scale.value,
+        viewportW: measuredLayout.current.w, viewportH: measuredLayout.current.h,
+      };
+      const exitOptions = { toScreenEdge: META_EXIT_TO_SCREEN_EDGE, reducedMotion };
       if (animationKind === 'native-slither') {
         // The retained board view already owns the arrowhead path; it only
         // needs the trail polyline, which is identical to the web slither.
         const arrowIndex = arrowArtCache.indexFor(owner);
         if (arrowIndex !== null) {
-          const path = slitherPath(owner, CELL, board.rows, board.cols);
+          const { path, durationMs, motion } =
+            planExit(owner, CELL, board.rows, board.cols, exitCamera, exitOptions);
           setNativeExitAnimation({
             id,
             arrowIndex,
-            durationMs: exitTrailDurationMs(path.totalLen * scale.value),
+            durationMs,
             reducedMotion,
             path,
             trailStrokeWidth: EXIT_TRAIL_STROKE_CELLS * CELL,
+            motion,
           });
         }
       } else if (animationKind === 'slither') {
-        const path = slitherPath(owner, CELL, board.rows, board.cols);
-        const durationMs = exitTrailDurationMs(path.totalLen * scale.value);
+        const { path, durationMs, motion } =
+          planExit(owner, CELL, board.rows, board.cols, exitCamera, exitOptions);
         const slot = nextExitSlot.current;
         nextExitSlot.current = (slot + 1) % MAX_CONCURRENT_EXIT_TRAILS;
         const previousTimer = exitCleanupTimers[slot];
         if (previousTimer !== null) clearTimeout(previousTimer);
         setExiting((current) => {
           const next = [...current];
-          next[slot] = { id, path, durationMs, reducedMotion };
+          next[slot] = { id, path, durationMs, reducedMotion, motion };
           return next;
         });
         const timer = setTimeout(() => {
@@ -920,6 +930,16 @@ function WebDynamicBoardLayer({
   const boardProps = useAnimatedProps(() => ({
     transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
   }) as any);
+  const exitTrails = exiting.filter((trail): trail is ExitingTrail => trail !== null).map((trail) => (
+    <ExitTrail
+      key={trail.id}
+      path={trail.path}
+      durationMs={trail.durationMs}
+      ink={palette.ink}
+      reducedMotion={trail.reducedMotion}
+      motion={trail.motion}
+    />
+  ));
 
   return (
     <Svg
@@ -965,16 +985,10 @@ function WebDynamicBoardLayer({
               reducedMotion={reducedMotion}
             />
           )}
-          {exiting.filter((trail): trail is ExitingTrail => trail !== null).map((trail) => (
-            <ExitTrail
-              key={trail.id}
-              path={trail.path}
-              durationMs={trail.durationMs}
-              ink={palette.ink}
-              reducedMotion={trail.reducedMotion}
-            />
-          ))}
+          {!META_EXIT_TO_SCREEN_EDGE && exitTrails}
         </G>
+        {/* POLISH-T3: unclipped, so the trail runs on to the screen edge. */}
+        {META_EXIT_TO_SCREEN_EDGE && exitTrails}
       </AnimatedG>
     </Svg>
   );
@@ -1159,18 +1173,22 @@ function HintArrow({
  * board, accelerating out and fading past 55%. The arrowhead stays on,
  * leading the trail — everything past the head is a straight ray, so the head
  * is a pure translation along the exit direction. The SVG is clipped to the
- * board, so head and trail vanish exactly at the edge.
+ * board, so head and trail vanish exactly at the edge. With `motion`
+ * (POLISH-T3, META_EXIT_TO_SCREEN_EDGE) the trail is unclipped, runs past the
+ * screen edge, travels `launch*k + (1-launch)*k^2` and fades from `fadeStart`.
  */
 function ExitTrail({
   path,
   durationMs,
   ink,
   reducedMotion,
+  motion,
 }: {
   path: SlitherPath;
   durationMs: number;
   ink: string;
   reducedMotion: boolean;
+  motion: ExitMotion | null;
 }) {
   const k = useSharedValue(0);
 
@@ -1184,16 +1202,21 @@ function ExitTrail({
     });
   }, []);
 
+  const fadeStart = motion ? motion.fadeStart : 0.55;
+  const launch = motion ? motion.launch : 0; // 0 = today's k^2
   const fadeAt = (kk: number) => {
     'worklet';
-    if (kk < 0.55) return 1;
-    const f = (kk - 0.55) / 0.45;
-    return 1 - f * f * (3 - 2 * f); // smoothstep fade
+    if (!motion) {
+      if (kk < 0.55) return 1;
+      const f = (kk - 0.55) / 0.45;
+      return 1 - f * f * (3 - 2 * f); // smoothstep fade
+    }
+    return exitFadeAt(kk, fadeStart);
   };
 
   const trailProps = useAnimatedProps(() => {
     const kk = k.value;
-    const travelled = reducedMotion ? 0 : kk * kk * path.totalLen;
+    const travelled = reducedMotion ? 0 : exitTravelFraction(kk, launch) * path.totalLen;
     return {
       strokeDashoffset: -travelled,
       opacity: reducedMotion ? 1 - kk : fadeAt(kk),
@@ -1201,7 +1224,7 @@ function ExitTrail({
   });
 
   const headTransformProps = useAnimatedProps(() => {
-    const travelled = reducedMotion ? 0 : k.value * k.value * path.totalLen;
+    const travelled = reducedMotion ? 0 : exitTravelFraction(k.value, launch) * path.totalLen;
     const dx = path.dir.x * travelled;
     const dy = path.dir.y * travelled;
     return { transform: `translate(${dx}, ${dy})` } as any;

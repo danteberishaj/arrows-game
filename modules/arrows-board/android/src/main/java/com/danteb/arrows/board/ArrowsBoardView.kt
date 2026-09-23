@@ -39,6 +39,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var durationMs = 180L
     var startTimeMs = 0L
     var reducedMotion = false
+    var fadeStart = EXIT_FADE_START
+    var launch = 0f
 
     val active: Boolean get() = trail != null
 
@@ -51,6 +53,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       directionY = 0f
       startTimeMs = 0L
       reducedMotion = false
+      fadeStart = EXIT_FADE_START
+      launch = 0f
     }
   }
 
@@ -156,6 +160,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   /**
    * Starts one of two bounded slither exits. Event format (board points):
    * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
+   * optionally followed by `,fadeStart,launch` (POLISH-T3, META_EXIT_TO_SCREEN_EDGE):
+   * 10 + 2n tokens keep today's fade start (0.55) and k^2 travel; 12 + 2n set them.
    */
   internal fun setExitAnimation(value: String) {
     if (value.isBlank()) {
@@ -181,7 +187,19 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     if (!totalLength.isFinite() || totalLength <= 0f) return
     if (!directionX.isFinite() || !directionY.isFinite()) return
     if (pointCount < 2 || pointCount > MAX_TRAIL_POINTS) return
-    if (tokens.size != EXIT_HEADER_TOKEN_COUNT + pointCount * 2) return
+    val pointTokenEnd = EXIT_HEADER_TOKEN_COUNT + pointCount * 2
+    var fadeStart = EXIT_FADE_START
+    var launch = 0f
+    when (tokens.size) {
+      pointTokenEnd -> Unit
+      pointTokenEnd + EXIT_MOTION_TOKEN_COUNT -> {
+        fadeStart = tokens[pointTokenEnd].toFloatOrNull() ?: return
+        launch = tokens[pointTokenEnd + 1].toFloatOrNull() ?: return
+        if (!fadeStart.isFinite() || fadeStart < 0f || fadeStart >= 1f) return
+        if (!launch.isFinite() || launch < 0f || launch > 1f) return
+      }
+      else -> return
+    }
 
     val trail = Path()
     for (pointIndex in 0 until pointCount) {
@@ -212,6 +230,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.durationMs = durationMs
       slot.startTimeMs = AnimationUtils.currentAnimationTimeMillis()
       slot.reducedMotion = reducedMotion
+      slot.fadeStart = fadeStart
+      slot.launch = launch
     }
     postInvalidateOnAnimation()
   }
@@ -273,13 +293,20 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       return false
     }
 
-    // Same curve as ExitTrail: the dash accelerates out (k^2) and fades past 55%.
-    val travelled = if (slot.reducedMotion) 0f else progress * progress * slot.totalLength
+    // Same curve as ExitTrail (exitTravelFraction): launch*k + (1-launch)*k^2, which is
+    // exactly k^2 at the default launch 0; fades past fadeStart (default 55%).
+    val launch = slot.launch
+    val travelled = if (slot.reducedMotion) {
+      0f
+    } else {
+      (launch * progress + (1f - launch) * progress * progress) * slot.totalLength
+    }
+    val fadeStart = slot.fadeStart
     val opacity = when {
       slot.reducedMotion -> 1f - progress
-      progress < EXIT_FADE_START -> 1f
+      progress < fadeStart -> 1f
       else -> {
-        val fade = ((progress - EXIT_FADE_START) / (1f - EXIT_FADE_START)).coerceIn(0f, 1f)
+        val fade = ((progress - fadeStart) / (1f - fadeStart)).coerceIn(0f, 1f)
         1f - fade * fade * (3f - 2f * fade)
       }
     }
@@ -398,6 +425,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val HEAD_COORDINATE_COUNT = 6
     const val MAX_CONCURRENT_EXITS = 2
     const val EXIT_HEADER_TOKEN_COUNT = 10
+    const val EXIT_MOTION_TOKEN_COUNT = 2
     const val MIN_EXIT_DURATION_MS = 160L
     const val MAX_EXIT_DURATION_MS = 1000L
     const val EXIT_FADE_START = 0.55f

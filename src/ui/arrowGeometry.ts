@@ -252,11 +252,43 @@ export interface SlitherPath {
 
 /**
  * The slither-exit path (SlitherExit.cs): the arrow's own centerline
- * continued straight past the head to beyond the board edge, so the dash
- * segment retraces every bend as it flows out. The ray overshoots the edge by
- * the body length + one cell so the trail fully leaves before the dash ends.
+ * continued straight past the head to beyond the board edge (or, given an
+ * `extent`, beyond that rectangle's edge), so the dash segment retraces every
+ * bend as it flows out. The ray overshoots the edge by the body length + one
+ * cell so the trail fully leaves before the dash ends.
  */
-export function slitherPath(arrow: ArrowPath, cell: number, rows: number, cols: number): SlitherPath {
+/** An axis-aligned rectangle in board points. */
+export interface BoardRect {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Distance from `p` to the edge of `rect` along the unit axis direction `d`. */
+function distanceToRectEdge(p: Pt, d: Pt, rect: BoardRect): number {
+  if (d.x > 0) return rect.maxX - p.x;
+  if (d.x < 0) return p.x - rect.minX;
+  if (d.y > 0) return rect.maxY - p.y;
+  return p.y - rect.minY;
+}
+
+/**
+ * Head-centre distance to `rect`'s edge along the arrow's exit direction
+ * (negative when the head is already past that edge). POLISH-T3 uses it for
+ * the on-screen part of the run, which sets the exit duration.
+ */
+export function headDistanceToRectEdge(arrow: ArrowPath, cell: number, rect: BoardRect): number {
+  return distanceToRectEdge(center(arrow.head.r, arrow.head.c, cell), dirVec(arrow.headDir), rect);
+}
+
+export function slitherPath(
+  arrow: ArrowPath,
+  cell: number,
+  rows: number,
+  cols: number,
+  extent?: BoardRect,
+): SlitherPath {
   const d = dirVec(arrow.headDir);
   const headCenter = center(arrow.head.r, arrow.head.c, cell);
 
@@ -268,9 +300,13 @@ export function slitherPath(arrow: ArrowPath, cell: number, rows: number, cols: 
   bodyLen = Math.max(bodyLen, 0.45 * cell); // single-cell arrows still get a short trail
 
   // Distance from the head center to the board edge along the exit direction.
+  // POLISH-T3 (META_EXIT_TO_SCREEN_EDGE): with an `extent` (the visible
+  // screen in board space plus a pan margin) the ray runs to that edge
+  // instead; a head already past it still travels body + one cell.
   const boardW = cols * cell, boardH = rows * cell;
   let toEdge: number;
-  if (d.x > 0) toEdge = boardW - headCenter.x;
+  if (extent) toEdge = Math.max(0, distanceToRectEdge(headCenter, d, extent));
+  else if (d.x > 0) toEdge = boardW - headCenter.x;
   else if (d.x < 0) toEdge = headCenter.x;
   else if (d.y > 0) toEdge = boardH - headCenter.y;
   else toEdge = headCenter.y;
