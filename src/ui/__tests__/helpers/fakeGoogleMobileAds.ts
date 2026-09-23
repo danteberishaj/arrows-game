@@ -39,6 +39,42 @@ export const TestIds = {
   ADAPTIVE_BANNER: 'ca-app-pub-3940256099942544/9214589741',
 } as const;
 
+/** ADMOB-C: the banner's size constants (src/BannerAdSize.ts). */
+export const BannerAdSize = {
+  ANCHORED_ADAPTIVE_BANNER: 'ANCHORED_ADAPTIVE_BANNER',
+  LARGE_ANCHORED_ADAPTIVE_BANNER: 'LARGE_ANCHORED_ADAPTIVE_BANNER',
+} as const;
+
+/** ADMOB-C: a stand-in for the `BannerAd` component (never rendered in node). */
+export function FakeBannerAd(): null {
+  return null;
+}
+
+/**
+ * ADMOB-C: what the fake UMP (`AdsConsent`) reports. `form` decides what
+ * loadAndShowConsentFormIfRequired does: 'answer' resolves with `answer`,
+ * 'error' rejects (e.g. no GDPR message published, so no form can be built).
+ */
+export interface FakeUmpState {
+  form: 'answer' | 'error';
+  answer: { status: string; canRequestAds: boolean; privacyOptionsRequirementStatus: string };
+  tcfGdprApplies: boolean;
+  storeAndAccess: boolean;
+  personalised: boolean;
+  calls: string[];
+}
+
+function defaultUmp(): FakeUmpState {
+  return {
+    form: 'answer',
+    answer: { status: 'OBTAINED', canRequestAds: true, privacyOptionsRequirementStatus: 'REQUIRED' },
+    tcfGdprApplies: true,
+    storeAndAccess: true,
+    personalised: true,
+    calls: [],
+  };
+}
+
 export type FakeAdKind = 'interstitial' | 'rewarded';
 
 /**
@@ -92,6 +128,8 @@ export interface FakeGma {
   callLog: string[];
   /** How many times the package module was evaluated (required). */
   moduleLoads: number;
+  /** ADMOB-C: the fake UMP. */
+  ump: FakeUmpState;
   reset(): void;
   /** The module object `jest.mock('react-native-google-mobile-ads', ...)` returns. */
   module(): Record<string, unknown>;
@@ -107,7 +145,9 @@ export function createFakeGma(): FakeGma {
     requestConfigurations: [],
     callLog: [],
     moduleLoads: 0,
+    ump: defaultUmp(),
     reset() {
+      gma.ump = defaultUmp();
       gma.config = defaultConfig();
       gma.ads = [];
       gma.inits = 0;
@@ -157,10 +197,47 @@ export function createFakeGma(): FakeGma {
         TestIds,
         InterstitialAd: { createForAdRequest: create('interstitial') },
         RewardedAd: { createForAdRequest: create('rewarded') },
+        BannerAd: FakeBannerAd,
+        BannerAdSize,
+        AdsConsent: fakeAdsConsent(gma),
       };
     },
   };
   return gma;
+}
+
+function fakeAdsConsent(gma: FakeGma) {
+  const info = () => ({ ...gma.ump.answer, isConsentFormAvailable: gma.ump.form === 'answer' });
+  const log = (call: string) => gma.ump.calls.push(call);
+  return {
+    requestInfoUpdate: async (options: unknown) => {
+      log(`requestInfoUpdate:${JSON.stringify(options)}`);
+      return { ...info(), status: 'REQUIRED', canRequestAds: false };
+    },
+    loadAndShowConsentFormIfRequired: async () => {
+      log('loadAndShowConsentFormIfRequired');
+      if (gma.ump.form === 'error') {
+        throw new Error('[googleMobileAds/consent-form-error] No available form can be built.');
+      }
+      return info();
+    },
+    getConsentInfo: async () => {
+      log('getConsentInfo');
+      return gma.ump.form === 'error'
+        ? { ...info(), status: 'REQUIRED', canRequestAds: false }
+        : info();
+    },
+    showPrivacyOptionsForm: async () => {
+      log('showPrivacyOptionsForm');
+      return info();
+    },
+    getGdprApplies: async () => gma.ump.tcfGdprApplies,
+    getUserChoices: async () => ({
+      storeAndAccessInformationOnDevice: gma.ump.storeAndAccess,
+      selectPersonalisedAds: gma.ump.personalised,
+    }),
+    reset: () => log('reset'),
+  };
 }
 
 function defaultConfig(): FakeGmaConfig {

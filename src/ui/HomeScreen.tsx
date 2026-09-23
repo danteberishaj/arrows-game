@@ -11,8 +11,12 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
-import { META_STREAK_FREEZE } from '../featureFlags';
+import { META_BANNER, META_STREAK_FREEZE } from '../featureFlags';
+import { PERF_MODE } from '../perfMode';
+import { FTUE_ENABLED } from './ftueConfig';
+import { ftueRoute } from './ftueRoute';
 import { HeaderButton } from './HeaderButton';
+import { MenuBanner } from './MenuBanner';
 import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
@@ -43,6 +47,22 @@ export function HomeScreen({
   const [statsLine] = useState(() =>
     buildStatsLine(META_STREAK_FREEZE && SaveSystem.streakSavedDay !== 0),
   );
+
+  // ADMOB-C (M4): the banner lives on the menu only, and not while the player
+  // is still inside the tutorial (Play would start T1/T2, the same routing as
+  // App.tsx's onPlay). It takes no space until an ad has loaded.
+  const [showBanner] = useState(
+    () =>
+      META_BANNER &&
+      ftueRoute({
+        enabled: FTUE_ENABLED,
+        perfMode: PERF_MODE,
+        stage: SaveSystem.ftueStage,
+        currentLevel: SaveSystem.currentLevel,
+        totalSolved: SaveSystem.totalSolved,
+      }) === 'real',
+  );
+  const [bannerHeight, setBannerHeight] = useState(0);
 
   useEffect(() => {
     if (META_STREAK_FREEZE && SaveSystem.streakSavedDay !== 0) {
@@ -109,9 +129,13 @@ export function HomeScreen({
         </Pressable>
       </Animated.View>
 
-      <Text style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + 32 }]}>
+      <Text
+        style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + bannerHeight + 32 }]}
+      >
         {statsLine}
       </Text>
+
+      {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
     </View>
   );
 }

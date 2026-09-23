@@ -15,7 +15,7 @@
  * minifier drops the object literal. A test build therefore does not even
  * contain the owner unit IDs (proved by a bundle grep in the ADMOB-B report).
  *
- * The banner unit (ruling M4) belongs to the next task and is not listed here.
+ * ADMOB-C adds the menu banner unit (ruling M4) under the same rule.
  * Ad unit IDs ship in every binary and are not secrets.
  */
 
@@ -23,6 +23,8 @@ export interface AdUnitIds {
   interstitial: string;
   rewardedHint: string;
   rewardedContinue: string;
+  /** ADMOB-C (ruling M4): the menu's anchored adaptive banner. */
+  banner: string;
 }
 
 export type AdUnitSet = 'test' | 'real';
@@ -31,6 +33,7 @@ export type AdUnitSet = 'test' | 'real';
 export interface GoogleTestIds {
   readonly INTERSTITIAL: string;
   readonly REWARDED: string;
+  readonly ADAPTIVE_BANNER: string;
 }
 
 /**
@@ -44,6 +47,7 @@ export const OWNER_AD_UNITS: AdUnitIds | null =
         interstitial: 'ca-app-pub-9813131856455133/6706292920',
         rewardedHint: 'ca-app-pub-9813131856455133/7549521178',
         rewardedContinue: 'ca-app-pub-9813131856455133/3505414519',
+        banner: 'ca-app-pub-9813131856455133/5508761320',
       };
 
 /**
@@ -66,6 +70,7 @@ export function selectAdUnits(input: {
         // Google publishes one rewarded sample unit; both placements use it.
         rewardedHint: testIds.REWARDED,
         rewardedContinue: testIds.REWARDED,
+        banner: testIds.ADAPTIVE_BANNER,
       },
     };
   }

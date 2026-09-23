@@ -46,3 +46,11 @@ export const META_BOARD_GRID = process.env.EXPO_PUBLIC_META_BOARD_GRID === '1';
  * (scripts/perf/android/soak-utils.mjs cellCenterForBoard), so benchmark with it OFF.
  */
 export const META_ZOOMED_CAMERA = process.env.EXPO_PUBLIC_META_ZOOMED_CAMERA === '1';
+
+/**
+ * ADMOB-C (ruling M4): an anchored adaptive AdMob banner at the bottom of the
+ * MENU only (never on the game screen or during the tutorial). It respects the
+ * remote kill switch (all-ads bit) and the consent gate, and takes no space
+ * until an ad has loaded.
+ */
+export const META_BANNER = process.env.EXPO_PUBLIC_META_BANNER === '1';

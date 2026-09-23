@@ -20,7 +20,7 @@ import {
   PERF_SCREEN,
   reducedMotionDiagLabel,
 } from './src/perfMode';
-import { AdHost, adInitController, initAds } from './src/ui/ads';
+import { AdHost, adInitController, initAds, playerConsentSource } from './src/ui/ads';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
@@ -34,7 +34,6 @@ import {
   type HttpSink,
 } from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
-import { activeConsentSource } from './src/ui/consent';
 import { initSaveSystem } from './src/ui/storage';
 import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
@@ -119,7 +118,8 @@ export default function App() {
     const startAfterHydration = () => {
       initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
       syncTelemetryDisabled();
-      initAds(CONSENT_GATE ? activeConsentSource : undefined).catch(() => {}); // no-op in Expo Go / web
+      // CONSENT_GATE on: Google UMP (or a W7-01 verification fixture), ADMOB-C.
+      initAds(CONSENT_GATE ? playerConsentSource() : undefined).catch(() => {}); // no-op in Expo Go / web
     };
     // No timeout here: `ready` must never come before hydration settles, or a later
     // SaveSystem.useStore swap could write an in-memory level-1 session over real

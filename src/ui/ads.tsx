@@ -8,7 +8,7 @@ import type {
 } from 'react-native-google-mobile-ads';
 import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
-import { CONSENT_GATE } from '../featureFlags';
+import { CONSENT_GATE, META_BANNER } from '../featureFlags';
 import type { EventProps } from '../telemetry/events';
 import { Telemetry } from '../telemetry/telemetry';
 import { adDecision, type AdFormat } from './adGate';
@@ -17,12 +17,19 @@ import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
 import { OWNER_AD_UNITS, selectAdUnits, type AdUnitIds, type AdUnitSet } from './adUnits';
 import {
+  activeConsentSource,
   applyPrivacy,
   encodeConsent,
   mayInitAds,
   type ConsentSource,
   type PrivacyApi,
 } from './consent';
+import {
+  createUmpSource,
+  umpDebugResetEnabled,
+  umpRequestOptions,
+  type UmpApi,
+} from './umpConsent';
 import { Fonts, Palette } from './theme';
 
 /**
@@ -245,6 +252,32 @@ const rewardedReadiness = {
 };
 
 /**
+ * ADMOB-C (M4): whether the menu banner may be shown right now. Allowed only
+ * with META_BANNER on, the SDK initialised (ad objects created), ads not
+ * remote-killed (the all-ads bit; the banner has no bit of its own) and
+ * consent allowing ad surfaces. Recomputed wherever rewarded readiness is, so
+ * a mid-session kill or a consent withdrawal removes the banner at once.
+ */
+let bannerKey: string | null = null;
+const bannerSubscribers = new Set<(allowed: boolean) => void>();
+
+function syncBanner(): void {
+  const config = liveConfig;
+  const allowed =
+    META_BANNER &&
+    sdkInitialized &&
+    config !== null &&
+    consentAllowsAdSurfaces &&
+    !RemoteConfig.adsKilled();
+  // The key also changes when a consent change recreates the ads with new
+  // request options, so the banner remounts and re-requests with them.
+  const key = allowed && config ? `${config.units.banner}|${JSON.stringify(config.options)}` : null;
+  if (key === bannerKey) return;
+  bannerKey = key;
+  for (const cb of [...bannerSubscribers]) cb(key !== null);
+}
+
+/**
  * Readiness = native SDK state once the ad objects exist. Without them, only a
  * development build with the simulated host mounted can "serve" an ad; a
  * release build without the native SDK is never ready.
@@ -260,6 +293,7 @@ function syncRewardedReady(): void {
       nativeAvailable() ? rewardedLoaded[placement] : __DEV__ && fakeAdListener !== null,
     );
   }
+  syncBanner();
 }
 
 function setConsentAllowsAdSurfaces(allowed: boolean): void {
@@ -367,6 +401,15 @@ interface LiveAdConfig {
 }
 
 let liveConfig: LiveAdConfig | null = null;
+
+/** ADMOB-C: everything MenuBanner needs to render the banner. */
+export interface BannerRequest {
+  BannerAd: AdMobModule['BannerAd'];
+  size: string;
+  unitId: string;
+  requestOptions: RequestOptions;
+  key: string;
+}
 
 /**
  * Release-build log line, silent under jest so test output stays clean.
@@ -668,6 +711,67 @@ export async function initAds(source?: ConsentSource): Promise<void> {
 }
 
 /**
+ * ADMOB-C (M5): the consent source a player build uses when CONSENT_GATE is on.
+ * A W7-01 verification fixture (EXPO_PUBLIC_CONSENT_FIXTURE) still wins;
+ * otherwise Google's UMP (`AdsConsent`), required lazily inside gather() so a
+ * remote-killed boot never loads the package. UMP debug geography and the
+ * debug reset are honoured only in a test build (src/ui/umpConsent.ts).
+ */
+export function playerConsentSource(): ConsentSource {
+  if (process.env.EXPO_PUBLIC_CONSENT_FIXTURE) return activeConsentSource;
+  const isDev = __DEV__;
+  const testAdsFlag = process.env.EXPO_PUBLIC_ADMOB_TEST_ADS;
+  return createUmpSource({
+    api: () => (loadAdMob()?.AdsConsent as UmpApi | undefined) ?? null,
+    requestOptions: umpRequestOptions({
+      isDev,
+      testAdsFlag,
+      debugGeography: process.env.EXPO_PUBLIC_UMP_DEBUG_GEOGRAPHY,
+      testDeviceIds: process.env.EXPO_PUBLIC_UMP_TEST_DEVICE_IDS,
+    }),
+    resetFirst: umpDebugResetEnabled({
+      isDev,
+      testAdsFlag,
+      resetFlag: process.env.EXPO_PUBLIC_UMP_DEBUG_RESET,
+    }),
+    log: releaseLog,
+  });
+}
+
+/**
+ * Whether the consent source says a privacy-options entry point must be
+ * reachable (UMP: privacyOptionsRequirementStatus REQUIRED). Always false with
+ * CONSENT_GATE off. W7-04's Settings sheet shows its "Ad privacy choices" row
+ * from this.
+ */
+export function adPrivacyOptionsRequired(): boolean {
+  return CONSENT_GATE && consentSource !== undefined && consentSource.privacyOptionsRequired();
+}
+
+/**
+ * The ad privacy-options entry point (UMP's privacy options form). Not wired to
+ * any UI yet: W7-04's "Ad privacy choices" row calls it. Resolves true when the
+ * form ran. A withdrawal persists the new bits and closes every ad surface
+ * (banner, both rewarded placements, interstitials) BEFORE the consent
+ * re-evaluation, so it takes effect even if that re-gather fails; the
+ * existing W7-01 consentChanged() path then re-runs the normal attempt.
+ */
+export async function openAdPrivacyOptions(): Promise<boolean> {
+  if (!CONSENT_GATE || !consentSource) return false;
+  let state;
+  try {
+    state = await consentSource.showPrivacyOptions();
+  } catch (e) {
+    adLog('[ads] privacy options form failed:', e);
+    return false;
+  }
+  SaveSystem.setConsentBits(encodeConsent(state));
+  if (!mayInitAds(state)) setConsentAllowsAdSurfaces(false);
+  adInitController.consentChanged();
+  return true;
+}
+
+/**
  * Opens AdMob's Ad Inspector (ad-unit and request debugging) once the SDK is
  * initialised; a no-op on the simulated path (Expo Go / web). Not wired to any
  * UI — call from a dev affordance when needed.
@@ -800,6 +904,40 @@ export const Ads = {
     placement: RewardedPlacement = 'continue',
   ): () => void {
     return rewardedReadiness[placement].subscribe(cb);
+  },
+
+  /** ADMOB-C (M4): whether the menu banner may be shown right now. */
+  get bannerAllowed(): boolean {
+    return bannerKey !== null;
+  },
+
+  /**
+   * Notifies when the banner becomes allowed or not allowed, and when its
+   * request changes (a new `bannerRequest().key`); returns an unsubscribe.
+   */
+  subscribeBanner(cb: (allowed: boolean) => void): () => void {
+    bannerSubscribers.add(cb);
+    return () => {
+      bannerSubscribers.delete(cb);
+    };
+  },
+
+  /**
+   * What the menu banner renders, or null when it is not allowed. The unit is
+   * the build's banner unit (M1: Google's sample unit in test builds) and the
+   * request options are the full-screen ads' privacy options; `key` changes
+   * when those options change, so the banner remounts and re-requests.
+   */
+  bannerRequest(): BannerRequest | null {
+    if (bannerKey === null || !liveConfig) return null;
+    const { gma, units, options } = liveConfig;
+    return {
+      BannerAd: gma.BannerAd,
+      size: gma.BannerAdSize.ANCHORED_ADAPTIVE_BANNER,
+      unitId: units.banner,
+      requestOptions: options,
+      key: bannerKey,
+    };
   },
 
   /**
