@@ -37,12 +37,10 @@
         {
           "android": {
             "enableMinifyInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true,
-            "extraProguardRules": "# ironSource / LevelPlay mediation core — keep all classes; the AAR's own\n# consumer rules resolve from Maven at build time and are not on disk to audit,\n# so we keep the ironSource-documented baseline in full.\n-keep class com.ironsource.** { *; }\n-dontwarn com.ironsource.**\n\n# Parcelable CREATOR fields must survive R8 so mediation payloads deserialize.\n-keepclassmembers class * implements android.os.Parcelable { public static final android.os.Parcelable$Creator *; }\n\n# Google Mobile Ads (AdMob adapter surface reached reflectively by mediation).\n-keep public class com.google.android.gms.ads.** { public *; }\n\n# Unity Ads / unity-levelplay-mediation SDK (com.unity3d.ads-mediation:mediation-sdk).\n-keep class com.unity3d.** { *; }\n-dontwarn com.unity3d.**\n"
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ],
-      "./plugins/withLevelPlay",
       "./plugins/withUploadKeystore",
       "./plugins/withPerfProfileable",
       [
@@ -55,6 +53,14 @@
             "image": "./assets/images/mark.png",
             "backgroundColor": "#13111C"
           }
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-9813131856455133~9332456261",
+          "androidSdk": "classic",
+          "delayAppMeasurementInit": true
         }
       ]
     ]

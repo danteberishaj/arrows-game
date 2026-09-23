@@ -6,7 +6,7 @@ import type {
   LevelPlayInterstitialAdListener,
   LevelPlayRewardedAd,
   LevelPlayRewardedAdListener,
-} from 'unity-levelplay-mediation';
+} from './admobFacade';
 import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
 import { CONSENT_GATE } from '../featureFlags';
@@ -50,11 +50,17 @@ import { Fonts, Palette } from './theme';
  * The `import type` above is erased at compile time (zero runtime cost), so it
  * cannot break the Expo Go / web bundle where the native module is absent — the
  * only real load happens through the guarded dynamic `require` in initAds().
+ *
+ * ADMOB-A: LevelPlay is removed. The "LevelPlay" names below now come from
+ * ./admobFacade, a temporary LevelPlay-shaped facade over AdMob
+ * (react-native-google-mobile-ads) that requests Google's sample units only.
+ * ADMOB-B replaces it with a direct AdMob adapter.
  */
 
 // =====================  EDIT THESE  (from the LevelPlay dashboard)  =========
 // Same app key / ad units as the Unity Android build. If the RN app ships
 // under its own package name, register it in LevelPlay and swap these in.
+// ADMOB-A: legacy LevelPlay values; admobFacade ignores them (TestIds only).
 const APP_KEY = '27012eed5';
 const INTERSTITIAL_AD_UNIT = 'tme2lh9p1pkvk1bl';
 const REWARDED_AD_UNIT = 'smim4g4z79173hcw';
@@ -145,7 +151,7 @@ export function AdHost({ palette }: { palette: Palette }) {
         </Text>
         <Text style={[styles.count, { color: p.accent }]}>{done ? '✓' : left}</Text>
         <Text style={[styles.sub, { color: p.inkDim }]}>
-          Real LevelPlay ads appear in a dev build.
+          Real AdMob test ads appear in a dev build.
         </Text>
         {req.kind === 'rewarded' ? (
           <View style={styles.row}>
@@ -182,7 +188,7 @@ export function AdHost({ palette }: { palette: Palette }) {
 
 // ---- LevelPlay adapter ------------------------------------------------------
 
-type LevelPlayModule = typeof import('unity-levelplay-mediation');
+type LevelPlayModule = typeof import('./admobFacade');
 
 let lpInterstitial: LevelPlayInterstitialAd | null = null;
 let lpRewarded: LevelPlayRewardedAd | null = null;
@@ -429,8 +435,9 @@ export async function initAds(source?: ConsentSource): Promise<void> {
 
   if (!levelPlayModule) {
     try {
-      // Dynamic require: only resolvable in a dev build with the native module.
-      levelPlayModule = require('unity-levelplay-mediation') as LevelPlayModule;
+      // Dynamic require: the AdMob native module exists only in a dev/release
+      // build, so loading the facade throws (and is caught) anywhere else.
+      levelPlayModule = require('./admobFacade') as LevelPlayModule;
     } catch (e) {
       adLog('[ads] native ads unavailable:', e);
       return; // no native module: nothing to retry

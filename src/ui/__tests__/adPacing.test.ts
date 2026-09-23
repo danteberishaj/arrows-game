@@ -85,7 +85,7 @@ jest.mock('expo-constants', () => ({
   default: { executionEnvironment: 'standalone' },
 }));
 
-jest.mock('unity-levelplay-mediation', () => ({
+jest.mock('../admobFacade', () => ({
   LevelPlay: {
     setMetaData: () => Promise.resolve(),
     init: (_req: unknown, cb: { onInitSuccess: () => void; onInitFailed: (e: unknown) => void }) => {

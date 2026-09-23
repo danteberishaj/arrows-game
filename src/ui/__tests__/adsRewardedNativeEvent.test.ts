@@ -1,19 +1,27 @@
 /**
- * W0-02 fix round 2: a native `onRewardedAdLoaded` EVENT drives
- * `Ads.rewardedReady`, through the real unity-levelplay-mediation JS.
+ * W0-02 fix round 2: a native rewarded "loaded" EVENT drives
+ * `Ads.rewardedReady`, through the real ad-SDK JS.
  *
- * Round 1 (adsRewardedReadiness.test.ts) replaced the whole SDK package and
- * called the listener object directly. This suite keeps the package's real JS
- * (LevelPlay.init, LevelPlayRewardedAd, LevelPlayAdObjectManager and its
- * payload parsers) and replaces only what sits below JS on a device:
- * - the TurboModule `LevelPlayMediation` (create/load return like Kotlin does);
+ * ADMOB-A: LevelPlay is removed, so this suite now runs through the real
+ * react-native-google-mobile-ads JS (MobileAds, RewardedAd, MobileAd and the
+ * shared event fan-out) and the real ./admobFacade, instead of the real
+ * unity-levelplay-mediation JS. The assertions are the same ones the LevelPlay
+ * version made; only the event plumbing below JS changed.
+ *
+ * Round 1 (adsRewardedReadiness.test.ts) replaced the whole SDK and called the
+ * listener object directly. This suite keeps the package's real JS and replaces
+ * only what sits below JS on a device:
+ * - the TurboModules (`RNGoogleMobileAdsModule` init, `RNGoogleMobileAdsRewardedModule`
+ *   load, `RNAppModule` listener registration);
  * - the device event bus (`NativeEventEmitter` over one shared listener map,
- *   like RCTDeviceEventEmitter).
+ *   like RCTDeviceEventEmitter), plus RN's Flow `EventEmitter` the package's
+ *   SharedEventEmitter is built on.
  *
- * The event names and the `getConstants()` map are parsed from the plugin's
- * Kotlin source (LevelPlayConstants.kt), the loaded-event name is the constant
- * the Kotlin `createRewardedAdListener.onAdLoaded` passes to `sendEvent`, and
- * the adInfo payload uses the keys of Kotlin `LevelPlayAdInfo.toReadableMap()`.
+ * The event name, the loaded / error type strings and the event-body keys are
+ * parsed from the package's Android sources: the rewarded module's
+ * `getAdEventName()`, the classic full-screen module's `onAdLoaded` (rewarded
+ * branch) and `onAdFailedToLoad`, `ReactNativeGoogleMobileAdsEvent.getEventBody()`
+ * and the `rnapp_` prefix of `ReactNativeEventEmitter.emit`.
  * What stays outside: the native SDK calling `onAdLoaded` at all (needs fill).
  */
 import * as fs from 'fs';
@@ -26,90 +34,115 @@ type Handler = (data: unknown) => void;
 const mockBus = new Map<string, Handler[]>();
 
 interface MockNative {
-  constants: Record<string, string>;
-  rewardedCreated: string[];
-  rewardedLoads: string[];
-  nextAdId: number;
+  /** Event names JS registered through RNAppModule.eventsAddListener. */
+  jsListeners: Set<string>;
+  rewardedLoads: Array<{ requestId: number; adUnitId: string }>;
   initOutcome: 'success' | 'failed';
 }
 
 const mockNative: MockNative = {
-  constants: {},
-  rewardedCreated: [],
+  jsListeners: new Set(),
   rewardedLoads: [],
-  nextAdId: 1,
   initOutcome: 'success',
 };
 
-// ---- Kotlin source of the installed plugin ---------------------------------
-const pluginRoot = path.dirname(require.resolve('unity-levelplay-mediation/package.json'));
-const ktDir = path.join(pluginRoot, 'android/src/main/java/com/unity3d/reactnative');
-const constantsKt = fs.readFileSync(path.join(ktDir, 'LevelPlayConstants.kt'), 'utf8');
-const objectManagerKt = fs.readFileSync(path.join(ktDir, 'LevelPlayAdObjectManager.kt'), 'utf8');
-const extensionsKt = fs.readFileSync(path.join(ktDir, 'LevelPlayExtensions.kt'), 'utf8');
+// ---- Android source of the installed package --------------------------------
+const pkgRoot = path.dirname(require.resolve('react-native-google-mobile-ads/package.json'));
+const javaDir = path.join(pkgRoot, 'android/src/main/java/io/invertase/googlemobileads');
+const classicDir = path.join(pkgRoot, 'android/src/classic/java/io/invertase/googlemobileads');
+const eventJava = fs.readFileSync(path.join(javaDir, 'ReactNativeGoogleMobileAdsEvent.java'), 'utf8');
+const emitterJava = fs.readFileSync(path.join(javaDir, 'common/ReactNativeEventEmitter.java'), 'utf8');
+const rewardedKt = fs.readFileSync(
+  path.join(classicDir, 'ReactNativeGoogleMobileAdsRewardedModule.kt'),
+  'utf8',
+);
+const fullScreenKt = fs.readFileSync(
+  path.join(classicDir, 'ReactNativeGoogleMobileAdsFullScreenAdModule.kt'),
+  'utf8',
+);
+const commonJava = fs.readFileSync(path.join(classicDir, 'ReactNativeGoogleMobileAdsCommon.java'), 'utf8');
 
-/** `const val NAME = "value"` declarations. */
-const ktConst: Record<string, string> = {};
-for (const m of constantsKt.matchAll(/const val (\w+) = "([^"]*)"/g)) ktConst[m[1]] = m[2];
+/** `public static final String NAME = "value";` declarations. */
+const javaConst: Record<string, string> = {};
+for (const m of eventJava.matchAll(/static final String (\w+) =\s*"([^"]*)"/g)) javaConst[m[1]] = m[2];
 
-/** `getEventConstants()`: "JS_KEY" to KOTLIN_CONST. */
-const eventConstants: Record<string, string> = {};
-for (const m of constantsKt.matchAll(/"(\w+)" to (\w+)/g)) eventConstants[m[1]] = ktConst[m[2]];
-
-/** The event name one Kotlin rewarded-listener override sends. */
-function kotlinRewardedEvent(override: string): string {
-  const body = objectManagerKt.split('createRewardedAdListener')[2] ?? '';
-  const re = new RegExp(`override fun ${override}\\([^)]*\\) \\{[^}]*sendEvent\\(reactApplicationContext, (\\w+)`);
-  const m = body.match(re);
-  if (!m) throw new Error(`no sendEvent in Kotlin ${override}`);
-  return ktConst[m[1]];
+/** The native event name the rewarded module sends on (`getAdEventName()`). */
+function rewardedEventName(): string {
+  const m = rewardedKt.match(/getAdEventName\(\): String = ReactNativeGoogleMobileAdsEvent\.(\w+)/);
+  if (!m) throw new Error('no getAdEventName in the rewarded module');
+  return javaConst[m[1]];
 }
 
-/** A payload with exactly the keys Kotlin `LevelPlayAdInfo.toReadableMap()` puts. */
-function kotlinAdInfo(): Record<string, unknown> {
-  const block = extensionsKt.split('fun LevelPlayAdInfo.toReadableMap()')[1].split('return map')[0];
-  const info: Record<string, unknown> = {};
-  for (const m of block.matchAll(/map\.put(\w+)\("(\w+)"/g)) {
-    const [, kind, key] = m;
-    // putMap("adSize", getAdSize().toReadableMap()) is null for a size-less
-    // (non-banner) ad; the key is always present, never undefined.
-    info[key] = kind === 'Map' ? null : kind === 'Double' ? 0.01 : `${key}-value`;
-  }
-  return info;
+/** The event-type constant the classic module sends from one load callback. */
+function loadCallbackType(callback: 'onAdLoaded' | 'onAdFailedToLoad'): string {
+  const body = fullScreenKt.split(`override fun ${callback}(`)[1] ?? '';
+  const re =
+    callback === 'onAdLoaded'
+      ? /if \(ad is RewardedAd[^{]*\{\s*eventType = ReactNativeGoogleMobileAdsEvent\.(\w+)/
+      : /sendAdEvent\(\s*ReactNativeGoogleMobileAdsEvent\.(\w+)/;
+  const m = body.match(re);
+  if (!m) throw new Error(`no event type in Kotlin ${callback}`);
+  return javaConst[m[1]];
+}
+
+/** The keys `ReactNativeGoogleMobileAdsEvent.getEventBody()` puts on the wire. */
+function eventBodyKeys(): string[] {
+  const block = eventJava.split('getEventBody()')[1].split('return event')[0];
+  return [...block.matchAll(/event\.put\w+\((\w+),/g)].map((m) => {
+    const key = eventJava.match(new RegExp(`${m[1]} = "(\\w+)"`));
+    if (!key) throw new Error(`no value for ${m[1]}`);
+    return key[1];
+  });
+}
+
+/** The keys `buildAdErrorMap(code, message, phase)` puts on an error. */
+function errorMapKeys(): string[] {
+  const block = commonJava.split('WritableMap buildAdErrorMap(')[1].split('return map')[0];
+  return [...block.matchAll(/map\.put\w+\("(\w+)"/g)].map((m) => m[1]);
+}
+
+/** The JS-side prefix `ReactNativeEventEmitter.emit` puts before the event name. */
+function jsEventPrefix(): string {
+  const m = emitterJava.match(/\.emit\("(\w+)" \+ event\.getEventName\(\)/);
+  if (!m) throw new Error('no emit prefix');
+  return m[1];
 }
 
 jest.mock('react-native', () => {
-  const nativeModule = new Proxy(
-    {
-      getConstants: () => mockNative.constants,
-      init: () => {
-        // Native reports the outcome later, as an event.
-        setImmediate(() => {
-          const name = mockNative.initOutcome === 'success' ? 'onInitSuccess' : 'onInitFailed';
-          const data =
-            mockNative.initOutcome === 'success'
-              ? { isAdQualityEnabled: false, ab: 'A' }
-              : { errorCode: 2070, errorMessage: 'noServerResponse' };
-          (mockBus.get(name) ?? []).slice().forEach((h) => h(data));
-        });
-        return Promise.resolve();
-      },
-      createInterstitialAd: () => Promise.resolve(String(mockNative.nextAdId++)),
-      createRewardedAd: () => {
-        const id = String(mockNative.nextAdId++);
-        mockNative.rewardedCreated.push(id);
-        return Promise.resolve(id);
-      },
-      loadRewardedAd: (adId: string) => {
-        mockNative.rewardedLoads.push(adId);
-        return Promise.resolve();
-      },
-    } as Record<string, unknown>,
-    {
-      get: (target, prop: string) =>
-        prop in target ? target[prop] : () => Promise.resolve(undefined),
+  const appModule = {
+    eventsNotifyReady: () => {},
+    eventsAddListener: (name: string) => mockNative.jsListeners.add(name),
+    eventsRemoveListener: (name: string) => mockNative.jsListeners.delete(name),
+    addListener: () => {},
+    removeListeners: () => {},
+  };
+  const mobileAdsModule = {
+    getConstants: () => ({ sdkVersion: '25.4.0' }),
+    initialize: () =>
+      mockNative.initOutcome === 'success'
+        ? Promise.resolve([])
+        : Promise.reject(new Error('initialize failed')),
+    setRequestConfiguration: () => Promise.resolve(),
+    openAdInspector: () => Promise.resolve(),
+  };
+  const rewardedModule = {
+    rewardedLoad: (requestId: number, adUnitId: string) => {
+      mockNative.rewardedLoads.push({ requestId, adUnitId });
     },
-  );
+    rewardedShow: () => Promise.resolve(),
+    rewardedDestroy: () => {},
+  };
+  const modules: Record<string, unknown> = {
+    RNAppModule: appModule,
+    RNGoogleMobileAdsModule: mobileAdsModule,
+    RNGoogleMobileAdsRewardedModule: rewardedModule,
+  };
+  // Every other package module: constants are empty and calls resolve, like
+  // an idle native module.
+  const idle = new Proxy({} as Record<string, unknown>, {
+    get: (_t, prop) => (prop === 'getConstants' ? () => ({}) : () => Promise.resolve(undefined)),
+  });
+  const getModule = (name: string) => modules[name] ?? idle;
   class NativeEventEmitter {
     addListener(name: string, h: Handler) {
       mockBus.set(name, [...(mockBus.get(name) ?? []), h]);
@@ -120,14 +153,14 @@ jest.mock('react-native', () => {
     }
   }
   return {
-    Platform: { OS: 'android', constants: { reactNativeVersion: { major: 0, minor: 86, patch: 3 } } },
+    Platform: { OS: 'android', select: (o: Record<string, unknown>) => o.android ?? o.default },
     Pressable: 'Pressable',
     Text: 'Text',
     View: 'View',
     StyleSheet: { create: <T>(s: T) => s },
     NativeEventEmitter,
-    TurboModuleRegistry: { getEnforcing: () => nativeModule, get: () => nativeModule },
-    NativeModules: { LevelPlayConfig: { setPluginData: () => Promise.resolve() } },
+    TurboModuleRegistry: { getEnforcing: getModule, get: getModule },
+    NativeModules: {},
     codegenNativeComponent: () => 'NativeComponent',
     codegenNativeCommands: () => ({}),
     requireNativeComponent: () => 'NativeComponent',
@@ -136,15 +169,48 @@ jest.mock('react-native', () => {
   };
 });
 
-// The plugin's view specs deep-import these Flow files; the views are unused here.
-jest.mock('react-native/Libraries/Utilities/codegenNativeComponent', () => ({
-  __esModule: true,
-  default: () => 'NativeComponent',
-}));
-jest.mock('react-native/Libraries/Utilities/codegenNativeCommands', () => ({
-  __esModule: true,
-  default: () => ({}),
-}));
+// RN's Flow EventEmitter, which the package's SharedEventEmitter instantiates.
+jest.mock('react-native/Libraries/vendor/emitter/EventEmitter', () => {
+  class MockEventEmitter {
+    private readonly map = new Map<string, Set<(...args: unknown[]) => void>>();
+    addListener(name: string, fn: (...args: unknown[]) => void) {
+      if (!this.map.has(name)) this.map.set(name, new Set());
+      this.map.get(name)!.add(fn);
+      return { remove: () => this.map.get(name)?.delete(fn) };
+    }
+    emit(name: string, ...args: unknown[]) {
+      [...(this.map.get(name) ?? [])].forEach((fn) => fn(...args));
+    }
+    removeAllListeners(name?: string) {
+      if (name === undefined) this.map.clear();
+      else this.map.delete(name);
+    }
+    listenerCount(name: string) {
+      return this.map.get(name)?.size ?? 0;
+    }
+  }
+  return { __esModule: true, default: MockEventEmitter };
+});
+
+// The package's commonjs build requires its view specs as raw TypeScript
+// (for Codegen), which a node_modules file cannot be transformed from here.
+// The views are unused by this suite, so each spec becomes a plain stub.
+jest.mock(
+  '../../../node_modules/react-native-google-mobile-ads/lib/commonjs/specs/components/GoogleMobileAdsBannerViewNativeComponent',
+  () => ({ __esModule: true, default: 'NativeComponent', Commands: {} }),
+);
+jest.mock(
+  '../../../node_modules/react-native-google-mobile-ads/lib/commonjs/specs/components/GoogleMobileAdsMultiFormatBannerViewNativeComponent',
+  () => ({ __esModule: true, default: 'NativeComponent', Commands: {} }),
+);
+jest.mock(
+  '../../../node_modules/react-native-google-mobile-ads/lib/commonjs/specs/components/GoogleMobileAdsMediaViewNativeComponent',
+  () => ({ __esModule: true, default: 'NativeComponent', Commands: {} }),
+);
+jest.mock(
+  '../../../node_modules/react-native-google-mobile-ads/lib/commonjs/specs/components/GoogleMobileAdsNativeViewNativeComponent',
+  () => ({ __esModule: true, default: 'NativeComponent', Commands: {} }),
+);
 
 jest.mock('expo-constants', () => ({
   __esModule: true,
@@ -154,10 +220,10 @@ jest.mock('expo-constants', () => ({
 type AdsModule = typeof import('../ads');
 
 /**
- * A fresh ads.tsx + plugin JS (both keep module-level state), release build.
- * resetModules, not isolateModules: ads.tsx requires the plugin lazily inside
+ * A fresh ads.tsx + package JS (both keep module-level state), release build.
+ * resetModules, not isolateModules: ads.tsx requires the facade lazily inside
  * initAds(), after an isolateModules callback would already have returned, so
- * the plugin (and its adId map and bus subscriptions) would leak across tests.
+ * the package (its request ids and bus subscriptions) would leak across tests.
  */
 function loadAds(): AdsModule {
   (globalThis as { __DEV__?: boolean }).__DEV__ = false;
@@ -165,10 +231,41 @@ function loadAds(): AdsModule {
   return require('../ads') as AdsModule;
 }
 
-/** What `sendEvent(reactApplicationContext, name, args)` delivers to JS. */
-function emitNative(name: string, data: unknown): void {
-  (mockBus.get(name) ?? []).slice().forEach((h) => h(data));
+/**
+ * What `ReactNativeEventEmitter.emit` delivers to JS for one
+ * `sendAdEvent(event, requestId, type, adUnitId, error, data)`. Like the native
+ * emitter, nothing is delivered for an event name JS never registered.
+ */
+function emitNative(
+  requestId: number,
+  adUnitId: string,
+  type: string,
+  extra: { error?: Record<string, unknown>; data?: Record<string, unknown> } = {},
+): void {
+  const eventName = rewardedEventName();
+  if (!mockNative.jsListeners.has(eventName)) return;
+  const [bodyKey, requestIdKey, unitKey, nameKey] = eventBodyKeys();
+  const payload = {
+    [bodyKey]: { type, ...extra },
+    [requestIdKey]: requestId,
+    [unitKey]: adUnitId,
+    [nameKey]: eventName,
+  };
+  (mockBus.get(`${jsEventPrefix()}${eventName}`) ?? []).slice().forEach((h) => h(payload));
 }
+
+/** A load-failure error with exactly the keys `buildAdErrorMap` puts. */
+function kotlinLoadError(): Record<string, unknown> {
+  const values: Record<string, unknown> = {
+    code: 'error-code-no-fill',
+    message: 'No fill.',
+    reason: 'no-fill',
+    phase: 'load',
+  };
+  return Object.fromEntries(errorMapKeys().map((k) => [k, values[k]]));
+}
+
+const REWARD_DATA = { type: 'coins', amount: 1 };
 
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
@@ -176,10 +273,8 @@ const flush = async () => {
 
 beforeEach(() => {
   mockBus.clear();
-  mockNative.constants = { ...eventConstants };
-  mockNative.rewardedCreated = [];
+  mockNative.jsListeners = new Set();
   mockNative.rewardedLoads = [];
-  mockNative.nextAdId = 1;
   mockNative.initOutcome = 'success';
   // Retry/reload timers stay fake so none outlives a test; setImmediate stays
   // real so native events and promise chains can be flushed.
@@ -191,27 +286,28 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('Kotlin source facts this suite relies on', () => {
-  it('the loaded and load-failed overrides send the constants JS subscribes to', () => {
-    expect(kotlinRewardedEvent('onAdLoaded')).toBe('onRewardedAdLoaded');
-    expect(eventConstants.ON_REWARDED_AD_LOADED).toBe('onRewardedAdLoaded');
-    expect(kotlinRewardedEvent('onAdLoadFailed')).toBe('onRewardedAdLoadFailed');
-    expect(eventConstants.ON_REWARDED_AD_LOAD_FAILED).toBe('onRewardedAdLoadFailed');
-    expect(Object.keys(kotlinAdInfo())).toEqual(
-      expect.arrayContaining(['adId', 'adUnitId', 'adSize', 'revenue']),
-    );
+describe('Android source facts this suite relies on', () => {
+  it('the rewarded loaded and load-failed callbacks send the types JS subscribes to', () => {
+    expect(rewardedEventName()).toBe('google_mobile_ads_rewarded_event');
+    expect(loadCallbackType('onAdLoaded')).toBe('rewarded_loaded');
+    expect(loadCallbackType('onAdFailedToLoad')).toBe('error');
+    expect(jsEventPrefix()).toBe('rnapp_');
+    expect(eventBodyKeys()).toEqual(['body', 'requestId', 'adUnitId', 'eventName']);
+    expect(errorMapKeys()).toEqual(expect.arrayContaining(['code', 'message', 'phase']));
+    expect(fullScreenKt).toMatch(/adErrorToMap\(loadAdError, "load"\)/);
   });
 });
 
-describe('native rewarded events through the real plugin JS (release build)', () => {
+describe('native rewarded events through the real package JS (release build)', () => {
   async function initialised() {
     const ads = loadAds();
     await ads.initAds();
     await flush();
-    // The real LevelPlayAdObjectManager created one rewarded ad and loaded it.
-    expect(mockNative.rewardedCreated).toHaveLength(1);
-    expect(mockNative.rewardedLoads).toEqual(mockNative.rewardedCreated);
-    return { ...ads, adId: mockNative.rewardedCreated[0] };
+    // The real RewardedAd was created once and loaded once, on Google's sample unit.
+    expect(mockNative.rewardedLoads).toHaveLength(1);
+    const { requestId, adUnitId } = mockNative.rewardedLoads[0];
+    expect(adUnitId).toBe('ca-app-pub-3940256099942544/5224354917');
+    return { ...ads, requestId, adUnitId };
   }
 
   it('stays not ready after init and a load request, until the loaded event', async () => {
@@ -219,45 +315,42 @@ describe('native rewarded events through the real plugin JS (release build)', ()
     expect(Ads.rewardedReady).toBe(false);
   });
 
-  it('a Kotlin-shaped onRewardedAdLoaded for our adId makes rewardedReady true, once', async () => {
-    const { Ads, adId } = await initialised();
+  it('a Kotlin-shaped rewarded_loaded for our request makes rewardedReady true, once', async () => {
+    const { Ads, requestId, adUnitId } = await initialised();
     const seen: boolean[] = [];
     Ads.subscribeRewardedReady((v) => seen.push(v));
 
-    emitNative(kotlinRewardedEvent('onAdLoaded'), { adId, adInfo: kotlinAdInfo() });
+    emitNative(requestId, adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
 
     expect(Ads.rewardedReady).toBe(true);
     expect(seen).toEqual([true]);
   });
 
-  it('a loaded event for another adId (e.g. the interstitial) changes nothing', async () => {
-    const { Ads, adId } = await initialised();
-    emitNative(kotlinRewardedEvent('onAdLoaded'), {
-      adId: `${adId}-other`,
-      adInfo: kotlinAdInfo(),
-    });
+  it('a loaded event for another request (e.g. the interstitial) changes nothing', async () => {
+    const { Ads, requestId, adUnitId } = await initialised();
+    emitNative(requestId + 1000, adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
     expect(Ads.rewardedReady).toBe(false);
   });
 
   it('load-failed, then the 15 s reload, then loaded: false, a second load, true', async () => {
-    const { Ads, adId } = await initialised();
-    emitNative(kotlinRewardedEvent('onAdLoaded'), { adId, adInfo: kotlinAdInfo() });
+    const { Ads, requestId, adUnitId } = await initialised();
+    emitNative(requestId, adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
     expect(Ads.rewardedReady).toBe(true);
 
-    emitNative(kotlinRewardedEvent('onAdLoadFailed'), {
-      adId,
-      error: { errorMessage: 'Mediation No fill', errorCode: 509, adUnitId: 'smim4g4z79173hcw' },
+    emitNative(requestId, adUnitId, loadCallbackType('onAdFailedToLoad'), {
+      error: kotlinLoadError(),
     });
     expect(Ads.rewardedReady).toBe(false);
 
+    const first = { requestId, adUnitId };
     jest.advanceTimersByTime(14999);
     await flush();
-    expect(mockNative.rewardedLoads).toEqual([adId]); // not before 15 s
+    expect(mockNative.rewardedLoads).toEqual([first]); // not before 15 s
     jest.advanceTimersByTime(1);
     await flush();
-    expect(mockNative.rewardedLoads).toEqual([adId, adId]); // same ad object reloaded
+    expect(mockNative.rewardedLoads).toEqual([first, first]); // same ad object reloaded
 
-    emitNative(kotlinRewardedEvent('onAdLoaded'), { adId, adInfo: kotlinAdInfo() });
+    emitNative(requestId, adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
     expect(Ads.rewardedReady).toBe(true);
   });
 
@@ -266,8 +359,12 @@ describe('native rewarded events through the real plugin JS (release build)', ()
     const { Ads, initAds } = loadAds();
     await initAds();
     await flush();
-    expect(mockNative.rewardedCreated).toHaveLength(0);
-    emitNative('onRewardedAdLoaded', { adId: '1', adInfo: kotlinAdInfo() });
+    expect(mockNative.rewardedLoads).toHaveLength(0);
+    for (let id = 0; id < 4; id++) {
+      emitNative(id, 'ca-app-pub-3940256099942544/5224354917', 'rewarded_loaded', {
+        data: REWARD_DATA,
+      });
+    }
     expect(Ads.rewardedReady).toBe(false);
   });
 });
