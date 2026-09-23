@@ -16,6 +16,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
+import { META_ZOOMED_CAMERA } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
@@ -26,6 +27,7 @@ import {
   SlitherPath,
   STROKE,
 } from './arrowGeometry';
+import { centreOn, initialCamera, panRange } from './boardCamera';
 import {
   EXIT_TRAIL_CLEANUP_MARGIN_MS,
   EXIT_TRAIL_STROKE_CELLS,
@@ -56,18 +58,7 @@ const AnimatedG = Animated.createAnimatedComponent(G);
 /** Board pixel size of one grid cell (the viewport scales, so this is arbitrary). */
 export const CELL = 40;
 
-// Pan/zoom feel, ported from BoardPanZoom.cs and then tuned for thumbs.
-const MAX_ZOOM_FACTOR = 3.5; // max zoom in, relative to fit-to-view ...
-/** ... but never less than this many screen points per cell: a 46-cell board
- * at 3.5x fit was still only 29 pt per cell, under every touch-target guide. */
-const MAX_ZOOM_CELL_PT = 64;
-const FIT_MARGIN = 0.94; // small border when fully zoomed out
-/**
- * Once zoomed past the viewport the board can be pulled this far inward, so
- * an arrow on the board's edge can sit under the thumb instead of against
- * the bezel. Fully zoomed out the board stays centred.
- */
-const EDGE_PAD_PT = 72;
+// Pan/zoom feel (fit, zoom limits, edge pad): see boardCamera.ts.
 /**
  * A tap has no distance limit of its own; the pan's activation distance IS
  * the tap slop. Android's own slop is 8 dp, but a thumb rolling on release
@@ -221,17 +212,6 @@ interface AnimatedArrowState {
   id: number;
 }
 
-/** Pan range along one axis for content of `size` in a `viewport`. */
-function panRange(size: number, viewport: number): [number, number] {
-  'worklet';
-  if (size <= viewport) {
-    const centred = (viewport - size) / 2;
-    return [centred, centred];
-  }
-  const pad = Math.min(EDGE_PAD_PT, viewport * 0.25);
-  return [viewport - size - pad, pad];
-}
-
 /** Resist dragging past [lo, hi] the way a scroll view does. */
 function rubberBand(value: number, lo: number, hi: number, dimension: number): number {
   'worklet';
@@ -354,15 +334,16 @@ export function BoardView({
   const fitToViewport = useCallback((vw: number, vh: number) => {
     if (vw < 1 || vh < 1) return;
     viewport.value = { w: vw, h: vh };
-    // Fully zoomed out shows the whole board / shape; the player pinches in.
-    const fit = Math.min(vw / boardW, vh / boardH) * FIT_MARGIN;
-    minScale.value = fit;
-    maxScale.value = Math.max(fit * MAX_ZOOM_FACTOR, MAX_ZOOM_CELL_PT / CELL);
+    // Fit (or, with META_ZOOMED_CAMERA, ~14 cells across); pinch-out reaches fit.
+    const camera = initialCamera(vw, vh, boardW, boardH, CELL, META_ZOOMED_CAMERA);
+    if (camera === null) return;
+    minScale.value = camera.minScale;
+    maxScale.value = camera.maxScale;
     cancelAnimation(tx);
     cancelAnimation(ty);
-    scale.value = fit;
-    tx.value = (vw - boardW * fit) / 2;
-    ty.value = (vh - boardH * fit) / 2;
+    scale.value = camera.scale;
+    tx.value = camera.tx;
+    ty.value = camera.ty;
   }, [boardW, boardH]);
 
   React.useLayoutEffect(() => {
@@ -415,10 +396,7 @@ export function BoardView({
     const s = scale.value;
     const { w: vw, h: vh } = viewport.value;
     if (vw < 1 || vh < 1) return;
-    const [xlo, xhi] = panRange(boardW * s, vw);
-    const [ylo, yhi] = panRange(boardH * s, vh);
-    const txT = Math.min(xhi, Math.max(xlo, vw / 2 - cx * s));
-    const tyT = Math.min(yhi, Math.max(ylo, vh / 2 - cy * s));
+    const { tx: txT, ty: tyT } = centreOn(cx, cy, s, vw, vh, boardW, boardH);
     cancelAnimation(tx);
     cancelAnimation(ty);
     // Vestibular horizontal recentring follows the player's system setting.

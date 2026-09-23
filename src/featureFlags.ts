@@ -38,3 +38,11 @@ export const META_EXIT_TO_SCREEN_EDGE = process.env.EXPO_PUBLIC_META_EXIT_TO_SCR
 
 /** Board polish R2/R4: dot grid (and "#" line toggle) across the visible screen. */
 export const META_BOARD_GRID = process.env.EXPO_PUBLIC_META_BOARD_GRID === '1';
+
+/**
+ * Board polish R1/R1a: a level opens zoomed to about 14 cells across the screen
+ * width (boards whose fit cell is already >= 23.5 dp open at fit). Pinch-out
+ * still reaches the whole board. The Android perf harness assumes the fit camera
+ * (scripts/perf/android/soak-utils.mjs cellCenterForBoard), so benchmark with it OFF.
+ */
+export const META_ZOOMED_CAMERA = process.env.EXPO_PUBLIC_META_ZOOMED_CAMERA === '1';
