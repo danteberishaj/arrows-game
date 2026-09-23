@@ -182,3 +182,69 @@ describe('two rewarded units (M3)', () => {
     );
   });
 });
+
+describe('ADMOB-B fix round 1: a rejected native show() on one placement', () => {
+  test('clears that placement, replaces its ad, and the next show works; the other placement is untouched', async () => {
+    const { Ads, sink } = await boot();
+    only(CONTINUE_UNIT).emit(RewardedAdEventType.LOADED);
+    only(HINT_UNIT).emit(RewardedAdEventType.LOADED);
+    const deadHint = only(HINT_UNIT);
+    const continueAd = only(CONTINUE_UNIT);
+
+    mockGma.config.showBehaviour.rewarded = 'reject';
+    await expect(Ads.showRewarded('hint')).resolves.toBe(false);
+    expect(sink.events.map((e) => e.name)).toEqual(['ad_request', 'ad_result', 'ad_reward']);
+    expect(sink.events[1]).toEqual(
+      expect.objectContaining({ placement: 'hint', outcome: 'display_failed' }),
+    );
+    expect(Ads.isRewardedReady('hint')).toBe(false); // the button stops offering it
+    expect(Ads.rewardedReady).toBe(true); // continue untouched
+    expect(deadHint.destroyed).toBe(true);
+    const freshHint = only(HINT_UNIT);
+    expect(freshHint).not.toBe(deadHint);
+    expect(freshHint.loads).toBe(1);
+    expect(only(CONTINUE_UNIT)).toBe(continueAd);
+
+    mockGma.config.showBehaviour.rewarded = 'manual';
+    freshHint.emit(RewardedAdEventType.LOADED);
+    expect(Ads.isRewardedReady('hint')).toBe(true);
+    const earned = Ads.showRewarded('hint');
+    await settle();
+    expect(freshHint.shows).toBe(1);
+    freshHint.emit(AdEventType.OPENED);
+    freshHint.emit(RewardedAdEventType.EARNED_REWARD, { type: 'reward', amount: 1 });
+    freshHint.emit(AdEventType.CLOSED);
+    await expect(earned).resolves.toBe(true);
+  });
+});
+
+describe('ADMOB-B fix round 1: the unit set is logged before any ad request', () => {
+  test('the unitSet= line precedes the first load', async () => {
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production'; // the release line is silenced only under jest
+    const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      mockGma.callLog.push(`log:${String(args[0])}`);
+    });
+    try {
+      await boot();
+    } finally {
+      log.mockRestore();
+      process.env.NODE_ENV = env;
+    }
+    const logAt = mockGma.callLog.findIndex((c) => c.startsWith('log:') && c.includes('unitSet=real'));
+    const firstLoad = mockGma.callLog.findIndex((c) => c.startsWith('load:'));
+    expect(logAt).toBeGreaterThanOrEqual(0);
+    expect(firstLoad).toBeGreaterThanOrEqual(0);
+    expect(logAt).toBeLessThan(firstLoad);
+  });
+
+  test('the release line is silent under jest', async () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await boot();
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+});

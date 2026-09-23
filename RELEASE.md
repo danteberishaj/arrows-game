@@ -26,13 +26,30 @@ from this repo:
 Keep that URL — the Play Console asks for it in two places (Store listing and Data
 safety).
 
-## 3. LevelPlay (ads) sanity check
+## 3. AdMob (ads) sanity check
 
-The keys in `src/ui/ads.tsx` came from the Unity app. In the LevelPlay dashboard
-confirm the Android app is registered with package **com.danteb.arrows** (it is, if
-this is the same app entry the Unity build used — Unity's package was also
-`com.danteb.arrows`). If you ever change the package name, register a new app there
-and swap `APP_KEY` / ad unit IDs at the top of `ads.tsx`.
+Ads are Google AdMob (`react-native-google-mobile-ads`, no mediation; LevelPlay is
+removed). The AdMob **app ID** is in `app.json` (the plugin's `androidAppId`) and the
+owner's **ad unit IDs** are in `src/ui/adUnits.ts` (interstitial, rewarded hint,
+rewarded continue). In the AdMob console confirm the Android app is registered with
+package **com.danteb.arrows** and that those units belong to it.
+
+Test ads vs real ads (ruling M1) — read before every build:
+- **A shipping build never sets `EXPO_PUBLIC_ADMOB_TEST_ADS`.** Only a release build
+  without it requests the real units. `__DEV__` builds and any build with
+  `EXPO_PUBLIC_ADMOB_TEST_ADS=1` use Google's sample units. Emulator and QA builds
+  always set the flag. Never install a real-unit build on an emulator, and never tap
+  a real ad (invalid traffic can suspend the AdMob account).
+- **Any flip of an `EXPO_PUBLIC_*` flag needs a cleared Metro cache.** Expo inlines
+  the value when a file is transformed, and Metro's cache key does not include env
+  values, so a stale cache can ship the previous value. Stop the Gradle daemon
+  (`./gradlew --stop`) and clear Metro (`npx expo export:embed … --reset-cache`, or
+  `npx expo start --clear`) before building, then grep the built bundle for the unit
+  IDs (ASCII and UTF-16) before installing it.
+- **Read the `unitSet=` line before any interaction.** On launch, logcat prints
+  `[ads] AdMob initialize resolved; adapters=N; unitSet=test|real` before any ad is
+  requested. On an emulator or QA device it must say `unitSet=test`; if it says
+  `real`, force-stop the app without touching anything.
 
 ## 4. Build
 
@@ -45,9 +62,10 @@ eas build -p android --profile production
 - Output is an `.aab` (app bundle) — the format Play requires.
 - Want to sanity-test the exact release build on your phone first?
   `eas build -p android --profile preview` produces an installable `.apk`.
-  **This is also the first build where REAL LevelPlay ads run** (Expo Go only ever
-  shows the simulated test ads), so test the interstitial, the +♥ continue, and the
-  hint before submitting.
+  **This is also the first build where REAL AdMob units are requested** (Expo Go only
+  ever shows the simulated test ads). Do not tap its ads; test the interstitial, the
+  +♥ continue and the hint on a `EXPO_PUBLIC_ADMOB_TEST_ADS=1` build instead
+  (section 3), and on the real build only confirm `unitSet=real` in logcat.
 
 ## 5. Play Console
 
@@ -75,7 +93,10 @@ install via the opt-in link, and play a few levels.
   "Calm arrow puzzles. Spot the clear arrows, clear the shape, keep your streak."
 - Privacy policy URL: from step 2.
 
-**Data safety** form — declare honestly (this matches the LevelPlay SDK):
+**Data safety** form — declare honestly. This list was written for the removed
+LevelPlay SDK; the owner must re-check it against the Google Mobile Ads SDK
+(ADMOB-A found 4 new merged permissions: WAKE_LOCK, ACCESS_ADSERVICES_AD_ID,
+ACCESS_ADSERVICES_TOPICS, FOREGROUND_SERVICE):
 - Collects data: **Yes**
 - Device or other IDs → Advertising ID: collected, **shared** (with ad partners),
   purpose **Advertising or marketing**, optional: **No**, ephemeral: **No**

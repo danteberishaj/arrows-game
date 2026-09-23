@@ -168,3 +168,52 @@ No package file changed, so `npm ci --dry-run` was not needed.
 - Decide whether to handle ad expiry proactively (decision 5).
 - iOS needs its own AdMob app ID and units before any iOS build (ADMOB-A "What iOS needs later").
 - Shipping builds must be made **without** `EXPO_PUBLIC_ADMOB_TEST_ADS`, and only they request the owner units. Never install one on an emulator or tap its ads.
+
+## Fix round 1 (2026-09-24, after review of c7e2d55)
+
+### Finding 1: a dead placement after a rejected native `show()` (fixed)
+- **Premise confirmed (INFERRED from the source; not run on a device):**
+  - `ReactNativeGoogleMobileAdsFullScreenAdModule.kt` `show()` rejects with `null-activity` / `not-ready` and sends no event.
+  - `MobileAd.show()` sets `_showRequested = true` and returns that promise uncaught, so `_loaded` and `_showRequested` both stay true.
+  - The old `presentAd` only resolved `display_failed`. The ad object stayed dead: every later `show()` threw synchronously and `load()` was ignored. The rewarded readiness also stayed `true`.
+- **The fake was wrong:** its `reject` mode reset `showRequested = false`, unlike the real SDK. It now keeps `showRequested` and `loaded` true and emits no event (`helpers/fakeGoogleMobileAds.ts`).
+- **The fix (`src/ui/ads.tsx`):**
+  - `createAds` is split into `createInterstitialSlot` / `createRewardedSlot` over one `liveConfig` (module, units, request options).
+  - `presentAd(slot, failedValue, onRefused)` calls `onRefused` on a synchronous throw or a native rejection. It skips the rejection when an `ERROR(show)` event already settled the show, because that path already fetches a fresh ad.
+  - `onRefused` is `replaceInterstitial()` or `replaceRewarded(placement)`. It releases and destroys only that ad object, clears only that placement's readiness, creates a fresh object on the same unit and options, and requests it.
+  - Telemetry is unchanged (`ad_request` → `ad_result display_failed` → `ad_reward earned:false`). The pacing counter is untouched on this path.
+- **TDD (EXECUTED):**
+  - RED (`artifacts/ADMOB-B/fix1-tdd-red.txt`):
+    - pacing "next due show after a rejection…": `Expected: 2, Received: 1` (the second show threw synchronously);
+    - two-units "a rejected native show() on one placement…": `Expected: false, Received: true` (hint readiness stayed true).
+    - With the faithful fake, every pre-existing test still passed.
+  - GREEN: 84/84 ad tests (`fix1-tdd-green.txt`).
+  - Mutation (`fix1-mutation-checks.txt`): removing the `onRefused()` call on rejection fails both new tests. ads.tsx was restored and `cmp` confirmed it identical.
+
+### Finding 2: M1 and the Metro cache (fixed in code and docs)
+- **The unit-set line now prints inside `createAds`, before the first `requestLoad`:** `[ads] AdMob initialize resolved; adapters=N; unitSet=test|real`. A consent-driven recreate prints `[ads] AdMob ads recreated after a consent change; unitSet=…`.
+  - Test "the unitSet= line precedes the first load" uses one shared call log of fake `load:` calls and console lines. RED: `Expected: < 4, Received: 7`; GREEN.
+  - Mutation: moving the line after the loads fails it.
+- **The ordering on a device is UNVERIFIED-DEVICE.** The controller made the emulator run optional, and I did not run it.
+- **`RELEASE.md` section 3** is now "AdMob (ads) sanity check". It covers:
+  - where the app ID and the units live;
+  - **a shipping build never sets `EXPO_PUBLIC_ADMOB_TEST_ADS`**;
+  - **any EXPO_PUBLIC flag flip needs `./gradlew --stop` plus a cleared Metro cache, then a bundle grep (ASCII and UTF-16) before installing**;
+  - **read the `unitSet=` line before any interaction**; if it says `real` on an emulator or QA device, force-stop without touching anything.
+
+  Section 4 no longer tells anyone to try real ads on the preview build. The Data safety list is marked as written for LevelPlay and must be re-checked for Google Mobile Ads (M7).
+- **`docs/remote-config.md`:** every `LevelPlay.init` reference now describes AdMob. A kill means no AdMob JS load, no `initialize()` and no ad request; a lifted per-format kill re-requests idle ads.
+
+### Minors (done)
+- **The release log is silent under jest:** `releaseLog()` checks `process.env.NODE_ENV !== 'test'`, and Metro inlines `"production"` in a release bundle. A test asserts no `console.log` under jest, and `grep -c console.` over the ad suites' output is 0.
+  - INFERRED, not rebuilt this round: the release bundle still prints the line.
+- **The fake's `auto` mode now uses the real order:** interstitial OPENED, CLOSED; rewarded OPENED, EARNED_REWARD, CLOSED. All old tests pass with it.
+
+### Gates (EXECUTED)
+- `npx jest`: **51 suites, 840 tests, all pass** (+4: 2 for finding 1, 2 for finding 2 and the jest-silence minor).
+- `npx tsc --noEmit`: exit 0.
+- `npx jest --selectProjects ui`: 3 suites, 7 tests.
+- Test-body identity vs c7e2d55 (`fix1-test-body-identity.txt`): every existing body in the 6 ad suites is identical; only new tests were added.
+
+### Files changed this round
+`src/ui/ads.tsx`, `src/ui/__tests__/helpers/fakeGoogleMobileAds.ts`, `src/ui/__tests__/adPacing.test.ts`, `src/ui/__tests__/adsTwoRewardedUnits.test.ts`, `RELEASE.md`, `docs/remote-config.md`, and this report. No emulator, build, package or git-state change.

@@ -43,10 +43,13 @@ export type FakeAdKind = 'interstitial' | 'rewarded';
 
 /**
  * - `manual`: `show()` resolves and nothing else happens (the test emits events).
- * - `auto`: the SDK "plays" the ad on the next tick, with the event sequence the
- *   old LevelPlay fakes used (interstitial: displayed + closed; rewarded:
- *   rewarded + closed).
- * - `reject`: the `show()` promise rejects and no event follows.
+ * - `auto`: the SDK "plays" the ad on the next tick, in the real SDK's order:
+ *   interstitial OPENED, CLOSED; rewarded OPENED, EARNED_REWARD, CLOSED.
+ * - `reject`: the native show promise rejects (null-activity / not-ready,
+ *   ReactNativeGoogleMobileAdsFullScreenAdModule.kt `show`) and NO event
+ *   follows. Like the real MobileAd.show(), `showRequested` stays true and
+ *   `loaded` stays true, so this ad object is dead: every later show() throws
+ *   synchronously and load() is ignored.
  */
 export type ShowBehaviour = 'manual' | 'auto' | 'reject';
 
@@ -85,7 +88,7 @@ export interface FakeGma {
   /** Calls that must precede initialize (setRequestConfiguration, openAdInspector). */
   preInitCalls: number;
   requestConfigurations: Record<string, unknown>[];
-  /** Order of SDK-wide calls: 'setRequestConfiguration' | 'initialize' | 'create:<kind>'. */
+  /** Order of SDK calls: 'setRequestConfiguration' | 'initialize' | 'create:<kind>' | 'load:<kind>'. */
   callLog: string[];
   /** How many times the package module was evaluated (required). */
   moduleLoads: number;
@@ -194,6 +197,7 @@ function createFakeAd(
       if (ad.destroyed || eventLoaded || loadInFlight) return;
       loadInFlight = true;
       ad.loads += 1;
+      gma.callLog.push(`load:${kind}`);
     },
     show() {
       if (ad.destroyed) throw new Error('show() The requested ad has been destroyed.');
@@ -203,13 +207,15 @@ function createFakeAd(
       ad.shows += 1;
       const behaviour = gma.config.showBehaviour[kind];
       if (behaviour === 'reject') {
-        showRequested = false;
-        return Promise.reject(new Error('show failed'));
+        // MobileAd.show() returns the native promise with no catch: nothing resets.
+        return Promise.reject(new Error('[googleMobileAds/null-activity] Ad attempted to show but the current Activity was null.'));
       }
       if (behaviour === 'auto') {
         setImmediate(() => {
-          if (kind === 'interstitial') ad.emit(AdEventType.OPENED);
-          else ad.emit(RewardedAdEventType.EARNED_REWARD, { type: 'reward', amount: 1 });
+          ad.emit(AdEventType.OPENED);
+          if (kind === 'rewarded') {
+            ad.emit(RewardedAdEventType.EARNED_REWARD, { type: 'reward', amount: 1 });
+          }
           ad.emit(AdEventType.CLOSED);
         });
       }

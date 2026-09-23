@@ -399,3 +399,31 @@ describe('ADMOB-B: which AdMob event resets the counter', () => {
     expect(disk.get(KEY)).toBe(0);
   });
 });
+
+describe('ADMOB-B fix round 1: a rejected native show() leaves no dead interstitial', () => {
+  test('the next due show after a rejection displays and resets the counter', async () => {
+    sdk.showRejects = true;
+    const disk = new Map<string, number>([[KEY, 2]]);
+    const { ads, telemetrySink } = boot(disk);
+    await ads.initAds();
+    await settle();
+
+    await ads.Ads.showInterstitialIfDue(); // native show rejects, no event follows
+    expect(disk.get(KEY)).toBe(2); // pacing rule: nothing displayed, count kept
+
+    sdk.showRejects = false;
+    const shown = ads.Ads.showInterstitialIfDue();
+    await settle();
+    expect(sdk.shows).toBe(2); // a fresh ad object was shown, not a sync throw
+    sdk.interstitialListener!.onAdDisplayed({});
+    sdk.interstitialListener!.onAdClosed({});
+    await shown;
+    expect(disk.get(KEY)).toBe(0);
+    expect(telemetrySink.events.map((e) => [e.name, (e as { outcome?: string }).outcome])).toEqual([
+      ['ad_request', undefined],
+      ['ad_result', 'display_failed'],
+      ['ad_request', undefined],
+      ['ad_result', 'shown'],
+    ]);
+  });
+});

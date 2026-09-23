@@ -15,7 +15,7 @@ import { adDecision, type AdFormat } from './adGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
-import { OWNER_AD_UNITS, selectAdUnits, type AdUnitSet } from './adUnits';
+import { OWNER_AD_UNITS, selectAdUnits, type AdUnitIds, type AdUnitSet } from './adUnits';
 import {
   applyPrivacy,
   encodeConsent,
@@ -318,26 +318,33 @@ function isShowError(error: unknown): boolean {
 }
 
 /**
- * Shows `ad` and resolves with `closedValue` from the slot's close callback
+ * Shows the slot's ad and resolves with the value its close callback receives
  * (CLOSED, or ERROR with phase 'show'), or with `failedValue` when the show is
- * refused. `show()` throws synchronously when the ad is not loaded or already
- * showing; then nothing started and the slot's callback is left alone.
+ * refused. A refusal is either a synchronous throw from `show()` or a rejected
+ * native show promise (null-activity / not-ready): 17.1.0 then emits no event
+ * and leaves the JS ad object "loaded" and "show requested", so it can never be
+ * shown or reloaded again. `onRefused` replaces that one ad object.
  */
 function presentAd<T>(
   slot: { ad: FullScreenAd; onClosed: ((value: T) => void) | null },
   failedValue: T,
+  onRefused: () => void,
 ): Promise<T> {
   return new Promise<T>((resolve) => {
     let shown: Promise<void>;
     try {
       shown = Promise.resolve(slot.ad.show());
     } catch {
+      onRefused();
       resolve(failedValue);
       return;
     }
     slot.onClosed = resolve;
     shown.catch(() => {
-      if (slot.onClosed === resolve) slot.onClosed = null;
+      // Already settled by an ERROR(show) event: that path fetched a fresh ad.
+      if (slot.onClosed !== resolve) return;
+      slot.onClosed = null;
+      onRefused();
       resolve(failedValue);
     });
   });
@@ -352,25 +359,25 @@ function requestOptions(): RequestOptions {
   return options;
 }
 
-/**
- * Creates the interstitial and one rewarded ad per placement, each on its own
- * unit, wires their events, then starts the first loads. Handles are assigned
- * before any load, so a failed first load never takes the SDK offline for the
- * session; the reloaders recover from load failures.
- */
-function createAds(gma: AdMobModule): void {
-  const { AdEventType, InterstitialAd, RewardedAd, RewardedAdEventType } = gma;
-  const selected = selectAdUnits({
-    isDev: __DEV__,
-    testAdsFlag: process.env.EXPO_PUBLIC_ADMOB_TEST_ADS,
-    ownerUnits: OWNER_AD_UNITS,
-    testIds: gma.TestIds,
-  });
-  unitSet = selected.set;
-  const { units } = selected;
-  const options = requestOptions();
-  liveOptionsKey = JSON.stringify(options);
+/** Everything needed to (re)create one ad object with the live configuration. */
+interface LiveAdConfig {
+  gma: AdMobModule;
+  units: AdUnitIds;
+  options: RequestOptions;
+}
 
+let liveConfig: LiveAdConfig | null = null;
+
+/**
+ * Release-build log line, silent under jest so test output stays clean.
+ * Metro inlines NODE_ENV as "production" in a release bundle.
+ */
+function releaseLog(message: string): void {
+  if (process.env.NODE_ENV !== 'test') console.log(message);
+}
+
+function createInterstitialSlot({ gma, units, options }: LiveAdConfig): InterstitialSlot {
+  const { AdEventType, InterstitialAd } = gma;
   const inter = InterstitialAd.createForAdRequest(units.interstitial, options);
   const interSlot: InterstitialSlot = { ad: inter, displayed: false, onClosed: null, unsubscribe: [] };
   const loadInterstitial = () => requestLoad(inter, 'interstitial');
@@ -401,57 +408,113 @@ function createAds(gma: AdMobModule): void {
       loadInterstitial(); // keep one preloaded
     }),
   );
+  return interSlot;
+}
 
+function createRewardedSlot(
+  { gma, units, options }: LiveAdConfig,
+  placement: RewardedPlacement,
+): RewardedSlot {
+  const { AdEventType, RewardedAd, RewardedAdEventType } = gma;
+  const unit = placement === 'hint' ? units.rewardedHint : units.rewardedContinue;
+  const ad = RewardedAd.createForAdRequest(unit, options);
+  const slot: RewardedSlot = { ad, displayed: false, earned: false, onClosed: null, unsubscribe: [] };
+  const load = () => requestLoad(ad, 'rewarded');
+  const reload = createReloader(`rewarded-${placement}`, load);
+  const finish = (earned: boolean) => {
+    const done = slot.onClosed;
+    slot.onClosed = null;
+    done?.(earned);
+  };
+  slot.unsubscribe.push(
+    ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      adLog(`[ads] rewarded-${placement} loaded`);
+      setRewardedLoaded(placement, true);
+    }),
+    ad.addAdEventListener(AdEventType.ERROR, (error) => {
+      adLog(`[ads] rewarded-${placement} error:`, error);
+      setRewardedLoaded(placement, false);
+      if (!isShowError(error)) {
+        reload();
+        return;
+      }
+      finish(false); // display failed: nothing granted
+      load(); // the SDK dropped the failed ad; fetch a fresh one
+    }),
+    ad.addAdEventListener(AdEventType.OPENED, () => {
+      slot.displayed = true;
+      setRewardedLoaded(placement, false); // the loaded ad is consumed
+    }),
+    ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+      adLog(`[ads] rewarded-${placement}: reward earned`);
+      slot.earned = true;
+    }),
+    ad.addAdEventListener(AdEventType.CLOSED, () => {
+      adLog(`[ads] rewarded-${placement} closed, earned =`, slot.earned);
+      setRewardedLoaded(placement, false);
+      const earned = slot.earned;
+      slot.earned = false;
+      finish(earned);
+      load(); // keep one preloaded
+    }),
+  );
+  return slot;
+}
+
+/** Unsubscribes and destroys one ad object (its pending show is not resolved here). */
+function releaseSlot(slot: { ad: FullScreenAd; unsubscribe: Array<() => void> }): void {
+  slot.unsubscribe.forEach((off) => off());
+  slot.ad.destroy();
+}
+
+/** A refused show left the interstitial object dead: replace it and request a new ad. */
+function replaceInterstitial(): void {
+  const old = interstitial;
+  if (!old || !liveConfig) return;
+  releaseSlot(old);
+  interstitial = createInterstitialSlot(liveConfig);
+  requestLoad(interstitial.ad, 'interstitial');
+}
+
+/** A refused show left this placement's ad dead: clear its readiness, replace it. */
+function replaceRewarded(placement: RewardedPlacement): void {
+  const old = rewarded[placement];
+  if (!old || !liveConfig) return;
+  releaseSlot(old);
+  rewarded[placement] = createRewardedSlot(liveConfig, placement);
+  setRewardedLoaded(placement, false);
+  requestLoad(rewarded[placement]!.ad, 'rewarded');
+}
+
+/**
+ * Creates the interstitial and one rewarded ad per placement, each on its own
+ * unit, then starts the first loads. The unit-set line is printed BEFORE any
+ * ad request, so a build that would request the wrong set can be stopped from
+ * its log before anything is loaded or shown (ruling M1). Handles are assigned
+ * before any load, so a failed first load never takes the SDK offline for the
+ * session; the reloaders recover from load failures.
+ */
+function createAds(gma: AdMobModule, reason: string): void {
+  const selected = selectAdUnits({
+    isDev: __DEV__,
+    testAdsFlag: process.env.EXPO_PUBLIC_ADMOB_TEST_ADS,
+    ownerUnits: OWNER_AD_UNITS,
+    testIds: gma.TestIds,
+  });
+  unitSet = selected.set;
+  const options = requestOptions();
+  liveOptionsKey = JSON.stringify(options);
+  liveConfig = { gma, units: selected.units, options };
+  // Unconditional in release: names the unit set (never the IDs themselves).
+  releaseLog(`[ads] ${reason}; unitSet=${unitSet}`);
+
+  interstitial = createInterstitialSlot(liveConfig);
   for (const placement of REWARDED_PLACEMENTS) {
-    const unit = placement === 'hint' ? units.rewardedHint : units.rewardedContinue;
-    const ad = RewardedAd.createForAdRequest(unit, options);
-    const slot: RewardedSlot = { ad, displayed: false, earned: false, onClosed: null, unsubscribe: [] };
-    const load = () => requestLoad(ad, 'rewarded');
-    const reload = createReloader(`rewarded-${placement}`, load);
-    const finish = (earned: boolean) => {
-      const done = slot.onClosed;
-      slot.onClosed = null;
-      done?.(earned);
-    };
-    slot.unsubscribe.push(
-      ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
-        adLog(`[ads] rewarded-${placement} loaded`);
-        setRewardedLoaded(placement, true);
-      }),
-      ad.addAdEventListener(AdEventType.ERROR, (error) => {
-        adLog(`[ads] rewarded-${placement} error:`, error);
-        setRewardedLoaded(placement, false);
-        if (!isShowError(error)) {
-          reload();
-          return;
-        }
-        finish(false); // display failed: nothing granted
-        load(); // the SDK dropped the failed ad; fetch a fresh one
-      }),
-      ad.addAdEventListener(AdEventType.OPENED, () => {
-        slot.displayed = true;
-        setRewardedLoaded(placement, false); // the loaded ad is consumed
-      }),
-      ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
-        adLog(`[ads] rewarded-${placement}: reward earned`);
-        slot.earned = true;
-      }),
-      ad.addAdEventListener(AdEventType.CLOSED, () => {
-        adLog(`[ads] rewarded-${placement} closed, earned =`, slot.earned);
-        setRewardedLoaded(placement, false);
-        const earned = slot.earned;
-        slot.earned = false;
-        finish(earned);
-        load(); // keep one preloaded
-      }),
-    );
-    rewarded[placement] = slot;
+    rewarded[placement] = createRewardedSlot(liveConfig, placement);
   }
-
-  interstitial = interSlot;
   syncRewardedReady();
 
-  loadInterstitial();
+  requestLoad(interstitial.ad, 'interstitial');
   for (const placement of REWARDED_PLACEMENTS) requestLoad(rewarded[placement]!.ad, 'rewarded');
 }
 
@@ -460,8 +523,7 @@ function destroyAds(): void {
   const inter = interstitial;
   interstitial = null;
   if (inter) {
-    inter.unsubscribe.forEach((off) => off());
-    inter.ad.destroy();
+    releaseSlot(inter);
     const done = inter.onClosed;
     inter.onClosed = null;
     done?.();
@@ -471,8 +533,7 @@ function destroyAds(): void {
     rewarded[placement] = null;
     rewardedLoaded[placement] = false;
     if (!slot) continue;
-    slot.unsubscribe.forEach((off) => off());
-    slot.ad.destroy();
+    releaseSlot(slot);
     const done = slot.onClosed;
     slot.onClosed = null;
     done?.(false);
@@ -484,7 +545,7 @@ function destroyAds(): void {
 function refreshAdsAfterConsent(gma: AdMobModule): void {
   if (JSON.stringify(requestOptions()) !== liveOptionsKey) {
     destroyAds();
-    createAds(gma);
+    createAds(gma, 'AdMob ads recreated after a consent change');
     return;
   }
   loadIdleAds();
@@ -565,12 +626,9 @@ async function initAdMobOnce(): Promise<void | 'declined'> {
   // a rejection is a failed attempt the controller retries.
   const adapters = await gma.MobileAds().initialize();
   sdkInitialized = true;
-  createAds(gma);
-  // Unconditional (release too): the one startup line that proves init resolved
-  // and names the unit set this build requests (never the IDs themselves).
-  console.log(
-    `[ads] AdMob initialize resolved; adapters=${adapters.length}; unitSet=${unitSet}`,
-  );
+  // The startup line (release too) proves init resolved and names the unit set;
+  // createAds prints it before the first ad request.
+  createAds(gma, `AdMob initialize resolved; adapters=${adapters.length}`);
 }
 
 /** Retries a failed init; see adInit.ts for the policy. */
@@ -698,7 +756,7 @@ export const Ads = {
         } else if (slot.onClosed === null) {
           slot.displayed = false;
           // No reset here: OPENED resets, so a failed show keeps the count.
-          await presentAd<void>(slot, undefined);
+          await presentAd<void>(slot, undefined, replaceInterstitial);
           outcome = slot.displayed ? 'shown' : 'display_failed';
         } // else: one is already on screen; this call shows nothing (display_failed)
       } catch {
@@ -768,7 +826,7 @@ export const Ads = {
         }
         slot.earned = false;
         slot.displayed = false;
-        const earned = await presentAd<boolean>(slot, false);
+        const earned = await presentAd<boolean>(slot, false, () => replaceRewarded(placement));
         const outcome: AdResultOutcome = earned
           ? 'shown'
           : slot.displayed ? 'dismissed' : 'display_failed';

@@ -39,7 +39,7 @@ A perf-harness build (`EXPO_PUBLIC_PERF_LEVEL` set) never makes the request.
 | Key | Type | Default when missing | Meaning of a literal `false` | When the value is wrong |
 |---|---|---|---|---|
 | `configVersion` | safe integer ≥ 1 | none: the whole file is ignored | Not applicable | `0`, a negative number, a fraction, a string such as `"2"`, or a number above 2^53−1: the **whole file is ignored** and the cached state stays. |
-| `adsEnabled` | boolean | enabled | No `LevelPlay.init` (no contact with the ad network), no interstitial, and rewarded reports "not ready" | Anything other than a literal `false` (for example `"false"`, `0` or `null`) leaves ads **enabled**. |
+| `adsEnabled` | boolean | enabled | The AdMob JS is not loaded, `MobileAds().initialize()` is not called and no ad is requested; no interstitial, and rewarded reports "not ready" | Anything other than a literal `false` (for example `"false"`, `0` or `null`) leaves ads **enabled**. |
 | `interstitialsEnabled` | boolean | enabled | No interstitial. Rewarded is unaffected. | Same rule: only a literal `false` acts. |
 | `rewardedEnabled` | boolean | enabled | Rewarded reports "not ready", so the player sees "No ad available right now — Retry is free". No hint and no heart is granted. Interstitials are unaffected. | Same rule. |
 | `telemetryEnabled` | boolean | enabled | The telemetry transport stays off (the consumer is W6-14). It has no effect on ads. | Same rule. |
@@ -67,12 +67,13 @@ A perf-harness build (`EXPO_PUBLIC_PERF_LEVEL` set) never makes the request.
   interstitials, bit 2 rewarded, bit 3 telemetry) and `arrows_rc_version`. Neither key is part of
   `resetProgress()`.
 - **A kill fetched mid-session** applies to the next ad decision in that session. A loaded rewarded
-  ad turns "not ready" at once. If `LevelPlay.init` already ran in that session, the SDK stays
-  initialised, but it shows nothing.
+  ad turns "not ready" at once. If AdMob was already initialised in that session, the SDK stays
+  initialised, but it shows nothing and requests no new ad for the killed format.
 - **A cached kill** applies from the first ad decision of the next cold start, even offline.
-  `LevelPlay.init` is not called: `App.tsx` starts ads only after the saved data has loaded and the
+  AdMob is not initialised: `App.tsx` starts ads only after the saved data has loaded and the
   persisted bits have seeded the kill-switch getters.
-- **A re-enable** fetched mid-session starts the blocked `LevelPlay.init` in the same session.
+- **A re-enable** fetched mid-session starts the blocked AdMob init in the same session (a lifted
+  per-format kill re-requests that format's idle ads).
   Otherwise it starts on the next timed or app-active init retry, or on the next cold start.
 - The measured time from publish to device is W6-03's to record here, against the real host.
 
