@@ -28,3 +28,13 @@ export const CONSENT_GATE = process.env.EXPO_PUBLIC_CONSENT_GATE === '1';
 
 /** W4-02 forgiving day streak with free automatic freezes. */
 export const META_STREAK_FREEZE = process.env.EXPO_PUBLIC_META_STREAK_FREEZE === '1';
+
+/**
+ * Board polish R3: the exit trail runs past the board edge to the screen edge.
+ * With it (or META_BOARD_GRID) on, the Android board wrapper stops clipping to
+ * the board rectangle so the native view can paint beyond its own bounds.
+ */
+export const META_EXIT_TO_SCREEN_EDGE = process.env.EXPO_PUBLIC_META_EXIT_TO_SCREEN_EDGE === '1';
+
+/** Board polish R2/R4: dot grid (and "#" line toggle) across the visible screen. */
+export const META_BOARD_GRID = process.env.EXPO_PUBLIC_META_BOARD_GRID === '1';

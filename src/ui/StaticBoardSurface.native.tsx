@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
 import { PERF_MODE } from '../perfMode';
+import { BOARD_WRAPPER_OVERFLOW } from './boardOverflow';
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS,
@@ -71,7 +72,9 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
     top: 0,
     width: boardW,
     height: boardH,
-    overflow: 'hidden' as const,
+    // POLISH-T1: 'visible' only when a board-polish flag needs the native
+    // board to paint past the board edge; flags off keep today's clip.
+    overflow: BOARD_WRAPPER_OVERFLOW,
     transformOrigin: '0 0 0',
   }), [boardW, boardH]);
   const boardTransformStyle = useAnimatedStyle(() => ({
