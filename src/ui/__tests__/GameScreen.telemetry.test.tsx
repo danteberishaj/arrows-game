@@ -17,6 +17,7 @@ jest.mock('../BoardView', () => ({
 jest.mock('../ads', () => ({
   Ads: {
     rewardedReady: false,
+    isRewardedReady: () => false,
     subscribeRewardedReady: () => () => {},
     registerGameFinished: jest.fn(),
     showInterstitialIfDue: jest.fn(),

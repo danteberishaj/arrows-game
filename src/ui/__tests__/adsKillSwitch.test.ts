@@ -1,26 +1,65 @@
 /**
- * W6-02: ads.tsx honours the remote kill switch (release build, fake LevelPlay
- * SDK of the same shape as adPacing.test.ts / adsRewardedReadiness.test.ts).
+ * W6-02: ads.tsx honours the remote kill switch (release build, fake AdMob SDK:
+ * ./helpers/fakeGoogleMobileAds, shared with the other ad suites).
  *
  * The flag is mocked ON and the URL set, because the committed flag is OFF and
  * then no kill can ever act (remoteConfig.test.ts pins that). Each boot() is a
  * fresh process over the same "disk" Map, so a kill persisted by one process is
  * the cached kill the next process seeds at boot.
  *
+ * ADMOB-B: the LevelPlay fake became an AdMob fake. Test bodies are unchanged:
+ * `sdk` below reads the same counters from the AdMob fake, and its listeners
+ * send each LevelPlay callback as the AdMob event ads.tsx maps it to.
+ *
  * Outside this test: App.tsx's boot order (initAds only after initSaveSystem
  * settles) and the real fetch, both checked on the emulator (W6-02 report).
  */
+import {
+  AdEventType,
+  createFakeGma,
+  legacyListener,
+  type FakeAdKind,
+  type LegacyListener,
+} from './helpers/fakeGoogleMobileAds';
 
-type Listener = Record<string, (...args: unknown[]) => void>;
+const mockGma = createFakeGma();
 
+function listenerFor(kind: FakeAdKind): LegacyListener | null {
+  return mockGma.live(kind).length > 0 ? legacyListener(() => mockGma.live(kind)) : null;
+}
+
+function showsOf(kind: FakeAdKind): number {
+  return mockGma.ads.filter((ad) => ad.kind === kind).reduce((n, ad) => n + ad.shows, 0);
+}
+
+/**
+ * The LevelPlay-era counters, read from the AdMob fake. `rewardedListener`
+ * reaches both rewarded ads (hint and continue units, M3): the old single
+ * rewarded ad served both placements.
+ */
 const sdk = {
-  inits: 0,
-  metaData: 0,
-  initOutcome: 'success' as 'success' | 'failed',
-  interstitialListener: null as Listener | null,
-  rewardedListener: null as Listener | null,
-  interstitialShows: 0,
-  rewardedShows: 0,
+  get inits() {
+    return mockGma.inits;
+  },
+  set inits(value: number) {
+    mockGma.inits = value;
+  },
+  /** Pre-init SDK calls: was LevelPlay.setMetaData, now setRequestConfiguration / openAdInspector. */
+  get metaData() {
+    return mockGma.preInitCalls;
+  },
+  get interstitialListener() {
+    return listenerFor('interstitial');
+  },
+  get rewardedListener() {
+    return listenerFor('rewarded');
+  },
+  get interstitialShows() {
+    return showsOf('interstitial');
+  },
+  get rewardedShows() {
+    return showsOf('rewarded');
+  },
 };
 
 jest.mock('../../featureFlags', () => ({ REMOTE_KILL_SWITCH: true }));
@@ -38,61 +77,9 @@ jest.mock('expo-constants', () => ({
   default: { executionEnvironment: 'standalone' },
 }));
 
-jest.mock('../admobFacade', () => ({
-  LevelPlay: {
-    setMetaData: () => {
-      sdk.metaData += 1;
-      return Promise.resolve();
-    },
-    init: (_req: unknown, cb: { onInitSuccess: () => void; onInitFailed: (e: unknown) => void }) => {
-      sdk.inits += 1;
-      if (sdk.initOutcome === 'success') cb.onInitSuccess();
-      else cb.onInitFailed({ errorCode: 2070 });
-      return Promise.resolve();
-    },
-    launchTestSuite: () => Promise.resolve(),
-  },
-  LevelPlayInitRequest: { builder: () => ({ build: () => ({}) }) },
-  LevelPlayInterstitialAd: class {
-    setListener(l: Listener) {
-      sdk.interstitialListener = l;
-    }
-    loadAd() {
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(true);
-    }
-    showAd() {
-      sdk.interstitialShows += 1;
-      // The SDK displays and closes the ad.
-      setImmediate(() => {
-        sdk.interstitialListener?.onAdDisplayed({});
-        sdk.interstitialListener?.onAdClosed({});
-      });
-      return Promise.resolve();
-    }
-  },
-  LevelPlayRewardedAd: class {
-    setListener(l: Listener) {
-      sdk.rewardedListener = l;
-    }
-    loadAd() {
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(true);
-    }
-    showAd() {
-      sdk.rewardedShows += 1;
-      setImmediate(() => {
-        sdk.rewardedListener?.onAdRewarded({});
-        sdk.rewardedListener?.onAdClosed({});
-      });
-      return Promise.resolve();
-    }
-  },
-}));
+// The SDK displays and closes each ad it is asked to show (the old fakes'
+// showAd), and reports every ad as loaded (the old isAdReady() -> true).
+jest.mock('react-native-google-mobile-ads', () => mockGma.module());
 
 type AdsModule = typeof import('../ads');
 type SaveModule = typeof import('../../core/saveSystem');
@@ -164,13 +151,10 @@ const settle = async () => {
 };
 
 beforeEach(() => {
-  sdk.inits = 0;
-  sdk.metaData = 0;
-  sdk.initOutcome = 'success';
-  sdk.interstitialListener = null;
-  sdk.rewardedListener = null;
-  sdk.interstitialShows = 0;
-  sdk.rewardedShows = 0;
+  mockGma.reset();
+  mockGma.config.loadedOverride = { interstitial: true, rewarded: true };
+  mockGma.config.showBehaviour = { interstitial: 'auto', rewarded: 'auto' };
+  jest.resetModules(); // the lazily required SDK module is evaluated afresh per test
   // Init retries and ad reloads schedule timers; setImmediate stays real.
   jest.useFakeTimers({ doNotFake: ['setImmediate'] });
 });
@@ -366,5 +350,70 @@ describe('re-enable', () => {
     sdk.inits = 0;
     await boot(disk); // cold start, offline fetch
     expect(sdk.inits).toBe(1);
+  });
+});
+
+describe('ADMOB-B: no AdMob contact while killed', () => {
+  test('a killed boot never loads the AdMob JS, initialises, or creates or loads an ad', async () => {
+    const { ads } = await boot(
+      new Map<string, number>([
+        [BITS, 1],
+        [VERSION, 2],
+      ]),
+    );
+    jest.advanceTimersByTime(5000 + 15000 + 45000);
+    await settle();
+    ads.adInitController.onAppActive();
+    await settle();
+    expect(mockGma.moduleLoads).toBe(0);
+    expect(mockGma.inits).toBe(0);
+    expect(mockGma.preInitCalls).toBe(0);
+    expect(mockGma.ads).toHaveLength(0);
+  });
+
+  test('control: an unkilled boot loads it once, initialises once and requests each ad once', async () => {
+    await boot(new Map());
+    expect(mockGma.moduleLoads).toBe(1);
+    expect(mockGma.inits).toBe(1);
+    expect(mockGma.ads.map((ad) => [ad.kind, ad.loads])).toEqual([
+      ['interstitial', 1],
+      ['rewarded', 1],
+      ['rewarded', 1],
+    ]);
+  });
+
+  const rewardedKilledDisk = () =>
+    new Map<string, number>([
+      [BITS, 4], // KillBit.rewarded
+      [VERSION, 2],
+    ]);
+
+  test('rewarded killed (cached at boot): no rewarded request, even after close/fail events', async () => {
+    mockGma.config.loadedOverride = {}; // event-driven `loaded`, like the real SDK
+    const { ads } = await boot(rewardedKilledDisk());
+    expect(mockGma.inits).toBe(1); // interstitials are not killed, so the SDK starts
+    const [inter, ...rewardedAds] = mockGma.ads;
+    expect(inter.loads).toBe(1);
+    expect(rewardedAds.map((ad) => ad.loads)).toEqual([0, 0]);
+
+    for (const ad of rewardedAds) ad.emit(AdEventType.ERROR, { phase: 'load' });
+    for (const ad of rewardedAds) ad.emit(AdEventType.CLOSED);
+    jest.advanceTimersByTime(15000);
+    await settle();
+    expect(rewardedAds.map((ad) => ad.loads)).toEqual([0, 0]);
+    expect(ads.Ads.rewardedReady).toBe(false);
+    expect(ads.Ads.isRewardedReady('hint')).toBe(false);
+  });
+
+  test('rewarded killed (cached at boot): a fetch that lifts the kill requests both rewarded ads', async () => {
+    mockGma.config.loadedOverride = {};
+    const lift = gatedFetch({ configVersion: 3, rewardedEnabled: true });
+    const { fetched } = await boot(rewardedKilledDisk(), lift.fetchImpl);
+    const rewardedAds = mockGma.live('rewarded');
+    expect(rewardedAds.map((ad) => ad.loads)).toEqual([0, 0]);
+
+    lift.release();
+    expect(await fetched).toBe('accepted');
+    expect(rewardedAds.map((ad) => ad.loads)).toEqual([1, 1]);
   });
 });

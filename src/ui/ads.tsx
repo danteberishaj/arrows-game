@@ -2,11 +2,10 @@ import Constants from 'expo-constants';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type {
-  LevelPlayInterstitialAd,
-  LevelPlayInterstitialAdListener,
-  LevelPlayRewardedAd,
-  LevelPlayRewardedAdListener,
-} from './admobFacade';
+  InterstitialAd,
+  RequestOptions,
+  RewardedAd,
+} from 'react-native-google-mobile-ads';
 import { RemoteConfig } from '../config/remoteConfig';
 import { SaveSystem } from '../core/saveSystem';
 import { CONSENT_GATE } from '../featureFlags';
@@ -16,6 +15,7 @@ import { adDecision, type AdFormat } from './adGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
+import { OWNER_AD_UNITS, selectAdUnits, type AdUnitSet } from './adUnits';
 import {
   applyPrivacy,
   encodeConsent,
@@ -26,45 +26,38 @@ import {
 import { Fonts, Palette } from './theme';
 
 /**
- * Ads, ported from the Unity AdManager (LevelPlay): one preloaded
- * interstitial paced to every Nth finished game (shown only after a clear)
- * and one rewarded ad for the "+1 heart continue" and the hint.
+ * Ads on Google AdMob (react-native-google-mobile-ads, classic API, no
+ * mediation): one preloaded interstitial paced to every Nth finished game
+ * (shown only after a clear) and two rewarded ads, one per placement: the
+ * "+1 heart continue" and the hint (ruling M3). Each rewarded placement has its
+ * own ad unit and its own readiness, so one being unready never blocks the other.
  *
- * The native LevelPlay SDK (unity-levelplay-mediation) only exists in a dev
- * build (`npx expo run:android` / EAS) — Expo Go and web can't load it.
- * Where it's missing in a DEVELOPMENT build (`__DEV__`: web preview, Expo Go,
- * debug builds), a simulated "test ad" modal (countdown, then claim/skip)
- * stands in, so every ad-gated flow stays testable. A release build never
- * simulates: without the native SDK it behaves as "no fill". Like Unity,
- * every call degrades gracefully: no ad ready => interstitial skipped,
- * rewarded reports failure, gameplay never soft-locks.
+ * Ad units (ruling M1, src/ui/adUnits.ts): Google's sample units in every
+ * `__DEV__` build and in any build made with EXPO_PUBLIC_ADMOB_TEST_ADS=1; the
+ * owner's units only in a shipping build.
  *
- * Rewarded readiness (`Ads.rewardedReady`) comes only from SDK callbacks, so a
- * button can say "no ad right now" instead of silently doing nothing. Init is
+ * The native SDK only exists in a dev build (`npx expo run:android` / EAS) —
+ * Expo Go and web can't load it. Where it's missing in a DEVELOPMENT build
+ * (`__DEV__`: web preview, Expo Go, debug builds), a simulated "test ad" modal
+ * (countdown, then claim/skip) stands in, so every ad-gated flow stays
+ * testable. A release build never simulates: without the native SDK it behaves
+ * as "no fill". Every call degrades gracefully: no ad ready => interstitial
+ * skipped, rewarded reports failure, gameplay never soft-locks.
+ *
+ * Rewarded readiness (`Ads.rewardedReady` = the continue placement,
+ * `Ads.isRewardedReady(placement)`) comes only from SDK events, so a button can
+ * say "no ad right now" instead of silently doing nothing (W0-02). Init is
  * retried (timed, and whenever the app becomes active) until it succeeds.
  *
  * Remote kill switch (W6-02, src/config/remoteConfig.ts): every ad decision
- * reads the kill bits at call time. A kill can only take ads away: no init, no
+ * reads the kill bits at call time. A kill can only take ads away: no SDK
+ * module load, no `initialize()`, no ad request for a killed format, no
  * interstitial, rewarded reported not ready. It never touches the pacing counter.
  *
  * The `import type` above is erased at compile time (zero runtime cost), so it
  * cannot break the Expo Go / web bundle where the native module is absent — the
- * only real load happens through the guarded dynamic `require` in initAds().
- *
- * ADMOB-A: LevelPlay is removed. The "LevelPlay" names below now come from
- * ./admobFacade, a temporary LevelPlay-shaped facade over AdMob
- * (react-native-google-mobile-ads) that requests Google's sample units only.
- * ADMOB-B replaces it with a direct AdMob adapter.
+ * only real load happens through the guarded dynamic `require` in loadAdMob().
  */
-
-// =====================  EDIT THESE  (from the LevelPlay dashboard)  =========
-// Same app key / ad units as the Unity Android build. If the RN app ships
-// under its own package name, register it in LevelPlay and swap these in.
-// ADMOB-A: legacy LevelPlay values; admobFacade ignores them (TestIds only).
-const APP_KEY = '27012eed5';
-const INTERSTITIAL_AD_UNIT = 'tme2lh9p1pkvk1bl';
-const REWARDED_AD_UNIT = 'smim4g4z79173hcw';
-// ============================================================================
 
 /**
  * Show an interstitial once this many games have finished (win or loss).
@@ -186,24 +179,57 @@ export function AdHost({ palette }: { palette: Palette }) {
   );
 }
 
-// ---- LevelPlay adapter ------------------------------------------------------
+// ---- AdMob adapter ----------------------------------------------------------
 
-type LevelPlayModule = typeof import('./admobFacade');
+type AdMobModule = typeof import('react-native-google-mobile-ads');
+type FullScreenAd = InterstitialAd | RewardedAd;
+type RewardedPlacement = EventProps<'ad_reward'>['placement'];
 
-let lpInterstitial: LevelPlayInterstitialAd | null = null;
-let lpRewarded: LevelPlayRewardedAd | null = null;
-let levelPlayApi: LevelPlayModule['LevelPlay'] | null = null;
-let levelPlayModule: LevelPlayModule | null = null;
+const REWARDED_PLACEMENTS: readonly RewardedPlacement[] = ['continue', 'hint'];
+
+interface InterstitialSlot {
+  ad: InterstitialAd;
+  /** OPENED fired since the current show began. */
+  displayed: boolean;
+  onClosed: (() => void) | null;
+  unsubscribe: Array<() => void>;
+}
+
+interface RewardedSlot {
+  ad: RewardedAd;
+  displayed: boolean;
+  earned: boolean;
+  onClosed: ((earned: boolean) => void) | null;
+  unsubscribe: Array<() => void>;
+}
+
+let adMob: AdMobModule | null = null;
+let adMobUnavailable = false;
+let sdkInitialized = false;
+let unitSet: AdUnitSet | null = null;
+let interstitial: InterstitialSlot | null = null;
+const rewarded: Record<RewardedPlacement, RewardedSlot | null> = { continue: null, hint: null };
+
 let consentSource: ConsentSource | undefined;
 let consentAllowsAdSurfaces = !CONSENT_GATE;
-let rewardEarned = false;
-let rewardedDisplayed = false;
-let interstitialDisplayed = false;
-let onRewardedClosed: ((earned: boolean) => void) | null = null;
-let onInterstitialClosed: (() => void) | null = null;
+/**
+ * Privacy signals carried by every ad request. Only the consent gate sets them
+ * (through PrivacyApi); with the gate OFF every request is a default request,
+ * exactly as before. AdMob fixes a request's options when the ad object is
+ * created, so a change recreates the ad objects (refreshAdsAfterConsent).
+ */
+let requestNonPersonalized = false;
+let ccpaOptOut = false;
+/** The request options the live ad objects were created with. */
+let liveOptionsKey: string | null = null;
 
 function nativeAvailable(): boolean {
-  return consentAllowsAdSurfaces && lpInterstitial !== null && lpRewarded !== null;
+  return (
+    consentAllowsAdSurfaces &&
+    interstitial !== null &&
+    rewarded.continue !== null &&
+    rewarded.hint !== null
+  );
 }
 
 /** Remote kill for one ad format, read at call time (never captured at load). */
@@ -211,24 +237,29 @@ function killed(format: AdFormat): boolean {
   return adDecision(format, RemoteConfig.killBits()) === 'killed';
 }
 
-/** Native: the last rewarded SDK callback left a loaded, unconsumed ad. */
-let rewardedLoaded = false;
-const rewardedReadiness = createReadiness(false);
+/** Native, per placement: the last rewarded SDK event left a loaded, unconsumed ad. */
+const rewardedLoaded: Record<RewardedPlacement, boolean> = { continue: false, hint: false };
+const rewardedReadiness = {
+  continue: createReadiness(false),
+  hint: createReadiness(false),
+};
 
 /**
- * Readiness = native SDK state once the handles exist. Without them, only a
+ * Readiness = native SDK state once the ad objects exist. Without them, only a
  * development build with the simulated host mounted can "serve" an ad; a
  * release build without the native SDK is never ready.
  */
 function syncRewardedReady(): void {
-  if (!consentAllowsAdSurfaces || killed('rewarded')) {
-    // Refused or killed: the button shows W0-02's "no ad available" state.
-    rewardedReadiness.set(false);
-    return;
+  for (const placement of REWARDED_PLACEMENTS) {
+    if (!consentAllowsAdSurfaces || killed('rewarded')) {
+      // Refused or killed: the button shows W0-02's "no ad available" state.
+      rewardedReadiness[placement].set(false);
+      continue;
+    }
+    rewardedReadiness[placement].set(
+      nativeAvailable() ? rewardedLoaded[placement] : __DEV__ && fakeAdListener !== null,
+    );
   }
-  rewardedReadiness.set(
-    nativeAvailable() ? rewardedLoaded : __DEV__ && fakeAdListener !== null,
-  );
 }
 
 function setConsentAllowsAdSurfaces(allowed: boolean): void {
@@ -236,62 +267,278 @@ function setConsentAllowsAdSurfaces(allowed: boolean): void {
   syncRewardedReady();
 }
 
-function setRewardedLoaded(loaded: boolean): void {
-  rewardedLoaded = loaded;
+function setRewardedLoaded(placement: RewardedPlacement, loaded: boolean): void {
+  rewardedLoaded[placement] = loaded;
   syncRewardedReady();
 }
 
 /**
- * One pending reload per ad: a rejected `loadAd()` and an `onAdLoadFailed`
- * for the same request schedule a single retry, after RELOAD_DELAY_MS.
+ * The one place an ad request is made. Nothing is requested for a killed
+ * format or while consent keeps ad surfaces closed (W6-02, W7-01); AdMob itself
+ * ignores a load while that ad is loaded or already loading.
  */
-function createReloader(label: string, load: () => Promise<void>): () => void {
+function requestLoad(ad: FullScreenAd, format: AdFormat): void {
+  if (!consentAllowsAdSurfaces || killed(format)) return;
+  ad.load();
+}
+
+/** Re-requests every idle ad, e.g. after a kill lifted or consent returned. */
+function loadIdleAds(): void {
+  if (interstitial) requestLoad(interstitial.ad, 'interstitial');
+  for (const placement of REWARDED_PLACEMENTS) {
+    const slot = rewarded[placement];
+    if (slot) requestLoad(slot.ad, 'rewarded');
+  }
+}
+
+/**
+ * One pending reload per ad: repeated load failures for the same ad schedule a
+ * single retry, after RELOAD_DELAY_MS. Load errors arrive as ERROR events.
+ */
+function createReloader(label: string, load: () => void): () => void {
   let pending: ReturnType<typeof setTimeout> | null = null;
   const schedule = () => {
     if (pending !== null) return;
     adLog(`[ads] ${label} reload scheduled in ${RELOAD_DELAY_MS} ms`);
     pending = setTimeout(() => {
       pending = null;
-      load().catch(schedule);
+      try {
+        load();
+      } catch {
+        schedule();
+      }
     }, RELOAD_DELAY_MS);
   };
   return schedule;
 }
 
+/** v17 reports a presentation failure as ERROR with `phase: 'show'`. */
+function isShowError(error: unknown): boolean {
+  return (error as { phase?: unknown } | undefined)?.phase === 'show';
+}
+
+/**
+ * Shows `ad` and resolves with `closedValue` from the slot's close callback
+ * (CLOSED, or ERROR with phase 'show'), or with `failedValue` when the show is
+ * refused. `show()` throws synchronously when the ad is not loaded or already
+ * showing; then nothing started and the slot's callback is left alone.
+ */
+function presentAd<T>(
+  slot: { ad: FullScreenAd; onClosed: ((value: T) => void) | null },
+  failedValue: T,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let shown: Promise<void>;
+    try {
+      shown = Promise.resolve(slot.ad.show());
+    } catch {
+      resolve(failedValue);
+      return;
+    }
+    slot.onClosed = resolve;
+    shown.catch(() => {
+      if (slot.onClosed === resolve) slot.onClosed = null;
+      resolve(failedValue);
+    });
+  });
+}
+
+function requestOptions(): RequestOptions {
+  const options: RequestOptions = {};
+  if (requestNonPersonalized) options.requestNonPersonalizedAdsOnly = true;
+  // Google's "restricted data processing" key; RNGMA can only send it as a
+  // string extra (the documented Android value is the int 1): UNVERIFIED.
+  if (ccpaOptOut) options.networkExtras = { rdp: '1' };
+  return options;
+}
+
+/**
+ * Creates the interstitial and one rewarded ad per placement, each on its own
+ * unit, wires their events, then starts the first loads. Handles are assigned
+ * before any load, so a failed first load never takes the SDK offline for the
+ * session; the reloaders recover from load failures.
+ */
+function createAds(gma: AdMobModule): void {
+  const { AdEventType, InterstitialAd, RewardedAd, RewardedAdEventType } = gma;
+  const selected = selectAdUnits({
+    isDev: __DEV__,
+    testAdsFlag: process.env.EXPO_PUBLIC_ADMOB_TEST_ADS,
+    ownerUnits: OWNER_AD_UNITS,
+    testIds: gma.TestIds,
+  });
+  unitSet = selected.set;
+  const { units } = selected;
+  const options = requestOptions();
+  liveOptionsKey = JSON.stringify(options);
+
+  const inter = InterstitialAd.createForAdRequest(units.interstitial, options);
+  const interSlot: InterstitialSlot = { ad: inter, displayed: false, onClosed: null, unsubscribe: [] };
+  const loadInterstitial = () => requestLoad(inter, 'interstitial');
+  const reloadInterstitial = createReloader('interstitial', loadInterstitial);
+  const finishInterstitial = () => {
+    const done = interSlot.onClosed;
+    interSlot.onClosed = null;
+    done?.();
+  };
+  interSlot.unsubscribe.push(
+    inter.addAdEventListener(AdEventType.ERROR, (error) => {
+      if (!isShowError(error)) {
+        reloadInterstitial();
+        return;
+      }
+      // Display failed: nothing was shown, so the pacing counter is kept.
+      finishInterstitial();
+      loadInterstitial(); // the SDK dropped the failed ad; fetch a fresh one
+    }),
+    // OPENED = "the ad opened and is currently visible". The only place the
+    // W0-05 pacing counter resets: an interstitial really displayed.
+    inter.addAdEventListener(AdEventType.OPENED, () => {
+      interSlot.displayed = true;
+      markInterstitialDisplayed();
+    }),
+    inter.addAdEventListener(AdEventType.CLOSED, () => {
+      finishInterstitial();
+      loadInterstitial(); // keep one preloaded
+    }),
+  );
+
+  for (const placement of REWARDED_PLACEMENTS) {
+    const unit = placement === 'hint' ? units.rewardedHint : units.rewardedContinue;
+    const ad = RewardedAd.createForAdRequest(unit, options);
+    const slot: RewardedSlot = { ad, displayed: false, earned: false, onClosed: null, unsubscribe: [] };
+    const load = () => requestLoad(ad, 'rewarded');
+    const reload = createReloader(`rewarded-${placement}`, load);
+    const finish = (earned: boolean) => {
+      const done = slot.onClosed;
+      slot.onClosed = null;
+      done?.(earned);
+    };
+    slot.unsubscribe.push(
+      ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        adLog(`[ads] rewarded-${placement} loaded`);
+        setRewardedLoaded(placement, true);
+      }),
+      ad.addAdEventListener(AdEventType.ERROR, (error) => {
+        adLog(`[ads] rewarded-${placement} error:`, error);
+        setRewardedLoaded(placement, false);
+        if (!isShowError(error)) {
+          reload();
+          return;
+        }
+        finish(false); // display failed: nothing granted
+        load(); // the SDK dropped the failed ad; fetch a fresh one
+      }),
+      ad.addAdEventListener(AdEventType.OPENED, () => {
+        slot.displayed = true;
+        setRewardedLoaded(placement, false); // the loaded ad is consumed
+      }),
+      ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+        adLog(`[ads] rewarded-${placement}: reward earned`);
+        slot.earned = true;
+      }),
+      ad.addAdEventListener(AdEventType.CLOSED, () => {
+        adLog(`[ads] rewarded-${placement} closed, earned =`, slot.earned);
+        setRewardedLoaded(placement, false);
+        const earned = slot.earned;
+        slot.earned = false;
+        finish(earned);
+        load(); // keep one preloaded
+      }),
+    );
+    rewarded[placement] = slot;
+  }
+
+  interstitial = interSlot;
+  syncRewardedReady();
+
+  loadInterstitial();
+  for (const placement of REWARDED_PLACEMENTS) requestLoad(rewarded[placement]!.ad, 'rewarded');
+}
+
+/** Releases every ad object; a show still waiting resolves as not shown. */
+function destroyAds(): void {
+  const inter = interstitial;
+  interstitial = null;
+  if (inter) {
+    inter.unsubscribe.forEach((off) => off());
+    inter.ad.destroy();
+    const done = inter.onClosed;
+    inter.onClosed = null;
+    done?.();
+  }
+  for (const placement of REWARDED_PLACEMENTS) {
+    const slot = rewarded[placement];
+    rewarded[placement] = null;
+    rewardedLoaded[placement] = false;
+    if (!slot) continue;
+    slot.unsubscribe.forEach((off) => off());
+    slot.ad.destroy();
+    const done = slot.onClosed;
+    slot.onClosed = null;
+    done?.(false);
+  }
+  syncRewardedReady();
+}
+
+/** Consent changed while the SDK runs: new request options need new ad objects. */
+function refreshAdsAfterConsent(gma: AdMobModule): void {
+  if (JSON.stringify(requestOptions()) !== liveOptionsKey) {
+    destroyAds();
+    createAds(gma);
+    return;
+  }
+  loadIdleAds();
+}
+
+/** The AdMob JS, loaded on first use; null where the native module is missing. */
+function loadAdMob(): AdMobModule | null {
+  if (adMob || adMobUnavailable) return adMob;
+  try {
+    // Dynamic require: the native module exists only in a dev/release build,
+    // so loading the package throws (and is caught) anywhere else.
+    adMob = require('react-native-google-mobile-ads') as AdMobModule;
+  } catch (e) {
+    adMobUnavailable = true;
+    adLog('[ads] native ads unavailable:', e);
+  }
+  return adMob;
+}
+
 let initAttemptCount = 0;
 
 /**
- * One init attempt: when the consent gate is on, gather and persist consent,
- * stop on a refusal, then apply privacy. From there the existing order remains
- * LevelPlay.init, assign the handles, then start the first loads (un-awaited).
- * Rejects when gathering, privacy application or init fails, so the controller
- * retries without treating an error as consent.
+ * One init attempt: the kill check first (a killed session never loads the
+ * AdMob JS, calls `initialize()` or requests an ad). When the consent gate is
+ * on, gather and persist consent, stop on a refusal, then apply privacy. From
+ * there: `MobileAds().initialize()`, create the ad objects, start the first
+ * loads. Rejects when gathering, privacy application or init fails, so the
+ * controller retries without treating an error as consent.
  */
-async function initLevelPlayOnce(): Promise<void | 'declined'> {
-  const lp = levelPlayModule;
-  if (!lp) throw new Error('LevelPlay module missing');
-  // Remote kill: no LevelPlay contact at all. Thrown as a failed attempt, so the
+async function initAdMobOnce(): Promise<void | 'declined'> {
+  // Remote kill: no AdMob contact at all. Thrown as a failed attempt, so the
   // controller's timed and app-active retries re-check this same gate.
   if (RemoteConfig.adsKilled()) {
-    adLog('[ads] LevelPlay init skipped: ads killed by remote config');
+    adLog('[ads] AdMob init skipped: ads killed by remote config');
     throw new Error('ads killed by remote config');
   }
-  const {
-    LevelPlay,
-    LevelPlayInitRequest,
-    LevelPlayInterstitialAd,
-    LevelPlayPrivacySettings,
-    LevelPlayRewardedAd,
-  } = lp;
+  const gma = loadAdMob();
+  if (!gma) throw new Error('AdMob module missing');
 
   if (CONSENT_GATE) {
     if (!consentSource) throw new Error('Consent source missing');
     const state = await consentSource.gather();
     SaveSystem.setConsentBits(encodeConsent(state));
     const privacyApi: PrivacyApi = {
-      setCOPPA: (value) => LevelPlayPrivacySettings.setCOPPA(value),
-      setCCPA: (value) => LevelPlayPrivacySettings.setCCPA(value),
-      setConsent: (value) => LevelPlay.setConsent(value),
+      // COPPA: the SDK-wide request configuration, applied before initialize().
+      setCOPPA: (value) =>
+        gma.MobileAds().setRequestConfiguration({ tagForChildDirectedTreatment: value }),
+      // CCPA and personalisation are per-request options on AdMob.
+      setCCPA: async (value) => {
+        ccpaOptOut = value;
+      },
+      setConsent: async (value) => {
+        requestNonPersonalized = !value;
+      },
     };
 
     const allowed = mayInitAds(state);
@@ -299,131 +546,54 @@ async function initLevelPlayOnce(): Promise<void | 'declined'> {
       // Keep an already-running SDK process, but close every ad surface before
       // awaiting its privacy update so withdrawal takes effect immediately.
       setConsentAllowsAdSurfaces(false);
-      if (levelPlayApi) await applyPrivacy(state, privacyApi);
+      if (sdkInitialized) await applyPrivacy(state, privacyApi);
       return 'declined';
     }
 
     await applyPrivacy(state, privacyApi);
     setConsentAllowsAdSurfaces(true);
-    if (levelPlayApi) return;
+    if (sdkInitialized) {
+      refreshAdsAfterConsent(gma);
+      return;
+    }
   }
 
   initAttemptCount += 1;
-  adLog('[ads] LevelPlay init attempt', initAttemptCount);
+  adLog('[ads] AdMob init attempt', initAttemptCount);
 
-  // Enable the LevelPlay Test Suite in dev builds only (must precede init).
-  if (__DEV__) {
-    await LevelPlay.setMetaData('is_test_suite', ['enable']);
-  }
-
-  // 9.x init request: no legacy ad formats — appKey (+ optional userId) only.
-  // LevelPlay.init()'s promise resolves when the call is dispatched, NOT when
-  // init finishes — loading an ad before onInitSuccess fails with error 625,
-  // so gate ad creation on the actual callback. A second init after
-  // onInitFailed succeeds once the network is back (W0-02 premise check).
-  const request = LevelPlayInitRequest.builder(APP_KEY).build();
-  await new Promise<void>((resolve, reject) => {
-    LevelPlay.init(request, {
-      onInitSuccess: () => {
-        adLog('[ads] LevelPlay init success');
-        resolve();
-      },
-      onInitFailed: (error) => {
-        adLog('[ads] LevelPlay init failed:', error);
-        reject(new Error('LevelPlay init failed'));
-      },
-    }).catch(reject);
-  });
-
-  const inter = new LevelPlayInterstitialAd(INTERSTITIAL_AD_UNIT);
-  const rew = new LevelPlayRewardedAd(REWARDED_AD_UNIT);
-  const reloadInterstitial = createReloader('interstitial', () => inter.loadAd());
-  const reloadRewarded = createReloader('rewarded', () => rew.loadAd());
-
-  const interListener: LevelPlayInterstitialAdListener = {
-    onAdLoaded: () => {},
-    onAdLoadFailed: () => reloadInterstitial(),
-    // The only place the pacing counter resets: an interstitial really displayed.
-    onAdDisplayed: () => {
-      interstitialDisplayed = true;
-      markInterstitialDisplayed();
-    },
-    onAdClosed: () => {
-      onInterstitialClosed?.();
-      onInterstitialClosed = null;
-      inter.loadAd().catch(reloadInterstitial); // keep one preloaded
-    },
-    onAdDisplayFailed: () => {
-      onInterstitialClosed?.();
-      onInterstitialClosed = null;
-    },
-  };
-  inter.setListener(interListener);
-
-  const rewListener: LevelPlayRewardedAdListener = {
-    onAdLoaded: () => {
-      adLog('[ads] rewarded onAdLoaded');
-      setRewardedLoaded(true);
-    },
-    onAdLoadFailed: (error) => {
-      adLog('[ads] rewarded onAdLoadFailed:', error);
-      setRewardedLoaded(false);
-      reloadRewarded();
-    },
-    onAdDisplayed: () => {
-      rewardedDisplayed = true;
-      setRewardedLoaded(false); // the loaded ad is consumed
-    },
-    onAdRewarded: () => {
-      adLog('[ads] rewarded: reward earned');
-      rewardEarned = true;
-    },
-    onAdClosed: () => {
-      adLog('[ads] rewarded closed, earned =', rewardEarned);
-      setRewardedLoaded(false);
-      onRewardedClosed?.(rewardEarned);
-      onRewardedClosed = null;
-      rewardEarned = false;
-      rew.loadAd().catch(reloadRewarded); // keep one preloaded
-    },
-    onAdDisplayFailed: () => {
-      setRewardedLoaded(false);
-      onRewardedClosed?.(false);
-      onRewardedClosed = null;
-    },
-  };
-  rew.setListener(rewListener);
-
-  // Handles first, so a failed first load can never take the SDK offline for
-  // the session; the reload listeners above recover from load failures.
-  lpInterstitial = inter;
-  lpRewarded = rew;
-  levelPlayApi = LevelPlay;
-  syncRewardedReady();
-
-  inter.loadAd().catch(reloadInterstitial);
-  rew.loadAd().catch(reloadRewarded);
+  // Resolves once the SDK and its adapters initialised (or its own timeout);
+  // a rejection is a failed attempt the controller retries.
+  const adapters = await gma.MobileAds().initialize();
+  sdkInitialized = true;
+  createAds(gma);
+  // Unconditional (release too): the one startup line that proves init resolved
+  // and names the unit set this build requests (never the IDs themselves).
+  console.log(
+    `[ads] AdMob initialize resolved; adapters=${adapters.length}; unitSet=${unitSet}`,
+  );
 }
 
 /** Retries a failed init; see adInit.ts for the policy. */
 export const adInitController = createAdInitController({
-  attempt: initLevelPlayOnce,
+  attempt: initAdMobOnce,
   delaysMs: AD_INIT_RETRY_DELAYS_MS,
   setTimer: (fn, ms) => setTimeout(fn, ms),
   clearTimer: (handle) => clearTimeout(handle),
 });
 
 // An accepted remote config changes readiness at once (a kill turns a loaded
-// rewarded ad not-ready), and a re-enable retries an init the kill blocked.
-// onAppActive() only starts an attempt after a failed one, so it is a no-op
-// before initAds() ran and after init succeeded.
+// rewarded ad not-ready), a lifted per-format kill re-requests the idle ads, and
+// a re-enable retries an init the kill blocked. onAppActive() only starts an
+// attempt after a failed one, so it is a no-op before initAds() ran and after
+// init succeeded.
 RemoteConfig.subscribe(() => {
   syncRewardedReady();
+  loadIdleAds();
   if (!RemoteConfig.adsKilled()) adInitController.onAppActive();
 });
 
 /**
- * Initializes LevelPlay when the native module exists (dev build). In Expo
+ * Initializes AdMob when the native module exists (dev/release build). In Expo
  * Go / web this quietly leaves the simulated path active. Safe to call more
  * than once; a failed init is retried by `adInitController`.
  */
@@ -433,28 +603,21 @@ export async function initAds(source?: ConsentSource): Promise<void> {
 
   if (CONSENT_GATE) consentSource = source;
 
-  if (!levelPlayModule) {
-    try {
-      // Dynamic require: the AdMob native module exists only in a dev/release
-      // build, so loading the facade throws (and is caught) anywhere else.
-      levelPlayModule = require('./admobFacade') as LevelPlayModule;
-    } catch (e) {
-      adLog('[ads] native ads unavailable:', e);
-      return; // no native module: nothing to retry
-    }
-  }
+  // Killed at boot: the AdMob JS is not even loaded here; the attempt loads it
+  // only once ads are allowed again.
+  if (!RemoteConfig.adsKilled() && loadAdMob() === null) return; // no native module: nothing to retry
   await adInitController.start();
 }
 
 /**
- * Launches the LevelPlay Test Suite (ad-unit validation / mediation debug) when
- * the native SDK is present; a no-op on the simulated path (Expo Go / web).
- * Not wired to any UI — call from a dev affordance when needed.
+ * Opens AdMob's Ad Inspector (ad-unit and request debugging) once the SDK is
+ * initialised; a no-op on the simulated path (Expo Go / web). Not wired to any
+ * UI — call from a dev affordance when needed.
  */
 export async function launchAdTestSuite(): Promise<void> {
-  if (!levelPlayApi) return;
+  if (!adMob || !sdkInitialized) return;
   try {
-    await levelPlayApi.launchTestSuite();
+    await adMob.MobileAds().openAdInspector();
   } catch {
     /* degrade gracefully */
   }
@@ -464,8 +627,8 @@ export async function launchAdTestSuite(): Promise<void> {
 
 // The pacing counter is persisted (SaveSystem, `arrows_finished_games`), so a
 // cold start does not reset it. It resets only when an interstitial was
-// displayed; a skipped, unavailable or failed show keeps it, and the next
-// finished game's "Next level" tries again.
+// displayed (AdMob OPENED); a skipped, unavailable or failed show keeps it, and
+// the next finished game's "Next level" tries again.
 
 function finishedGames(): number {
   return sanitizeCounter(SaveSystem.finishedGames);
@@ -476,7 +639,6 @@ function markInterstitialDisplayed(): void {
 }
 
 type AdResultOutcome = EventProps<'ad_result'>['outcome'];
-type RewardedPlacement = EventProps<'ad_reward'>['placement'];
 
 function emitAdRequest(
   format: EventProps<'ad_request'>['format'],
@@ -527,23 +689,18 @@ export const Ads = {
       return;
     }
 
-    if (nativeAvailable()) {
+    const slot = interstitial;
+    if (nativeAvailable() && slot) {
       let outcome: AdResultOutcome = 'display_failed';
       try {
-        if (!(await lpInterstitial!.isAdReady())) {
+        if (!slot.ad.loaded) {
           outcome = 'not_ready'; // skip without resetting the pacing counter
-        } else {
-          interstitialDisplayed = false;
-          // No reset here: onAdDisplayed resets, so a failed show keeps the count.
-          await new Promise<void>((resolve) => {
-            onInterstitialClosed = resolve;
-            lpInterstitial!.showAd().catch(() => {
-              onInterstitialClosed = null;
-              resolve();
-            });
-          });
-          outcome = interstitialDisplayed ? 'shown' : 'display_failed';
-        }
+        } else if (slot.onClosed === null) {
+          slot.displayed = false;
+          // No reset here: OPENED resets, so a failed show keeps the count.
+          await presentAd<void>(slot, undefined);
+          outcome = slot.displayed ? 'shown' : 'display_failed';
+        } // else: one is already on screen; this call shows nothing (display_failed)
       } catch {
         outcome = 'display_failed';
       }
@@ -564,19 +721,33 @@ export const Ads = {
   },
 
   /**
-   * Shows the rewarded ad ("continue" / hint). Resolves with whether the
-   * user actually earned the reward; false when no ad is available.
+   * Whether the CONTINUE placement's rewarded ad can be shown right now (from
+   * SDK events only). The hint placement is `isRewardedReady('hint')`.
    */
-  /** Whether a rewarded ad can be shown right now (from SDK callbacks only). */
   get rewardedReady(): boolean {
-    return rewardedReadiness.get();
+    return rewardedReadiness.continue.get();
   },
 
-  /** Notifies on every readiness change; returns an unsubscribe function. */
-  subscribeRewardedReady(cb: (ready: boolean) => void): () => void {
-    return rewardedReadiness.subscribe(cb);
+  /** Whether one placement's rewarded ad can be shown right now (M3). */
+  isRewardedReady(placement: RewardedPlacement): boolean {
+    return rewardedReadiness[placement].get();
   },
 
+  /**
+   * Notifies on every readiness change of one placement (default: continue);
+   * returns an unsubscribe function.
+   */
+  subscribeRewardedReady(
+    cb: (ready: boolean) => void,
+    placement: RewardedPlacement = 'continue',
+  ): () => void {
+    return rewardedReadiness[placement].subscribe(cb);
+  },
+
+  /**
+   * Shows the placement's own rewarded ad ("continue" / hint). Resolves with
+   * whether the user actually earned the reward; false when no ad is available.
+   */
   async showRewarded(placement: RewardedPlacement = 'continue'): Promise<boolean> {
     emitAdRequest('rewarded', placement);
     if (killed('rewarded')) {
@@ -585,23 +756,22 @@ export const Ads = {
     if (!consentAllowsAdSurfaces) {
       return finishRewarded(placement, 'not_ready', false);
     }
-    if (nativeAvailable()) {
+    const slot = rewarded[placement];
+    if (nativeAvailable() && slot) {
       try {
-        if (!(await lpRewarded!.isAdReady())) {
+        if (!slot.ad.loaded) {
           return finishRewarded(placement, 'not_ready', false);
         }
-        rewardEarned = false;
-        rewardedDisplayed = false;
-        const earned = await new Promise<boolean>((resolve) => {
-          onRewardedClosed = resolve;
-          lpRewarded!.showAd().catch(() => {
-            onRewardedClosed = null;
-            resolve(false);
-          });
-        });
+        if (slot.onClosed !== null) {
+          // This placement's ad is already on screen: nothing more to show.
+          return finishRewarded(placement, 'display_failed', false);
+        }
+        slot.earned = false;
+        slot.displayed = false;
+        const earned = await presentAd<boolean>(slot, false);
         const outcome: AdResultOutcome = earned
           ? 'shown'
-          : rewardedDisplayed ? 'dismissed' : 'display_failed';
+          : slot.displayed ? 'dismissed' : 'display_failed';
         return finishRewarded(placement, outcome, earned);
       } catch {
         return finishRewarded(placement, 'display_failed', false);

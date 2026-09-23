@@ -1,26 +1,43 @@
 /**
- * W0-02 fix round 1: the native rewarded listener in ads.tsx drives
- * `Ads.rewardedReady`. The SDK module is replaced by a fake that records the
- * listener ads.tsx registers, so these tests call the SAME listener object the
- * native event emitter calls on device (LevelPlayAdObjectManager.ts routes
- * `onRewardedAdLoaded` to `listener.onAdLoaded`). Only the native-to-JS event
- * delivery is outside this test.
+ * W0-02 fix round 1: the native rewarded events in ads.tsx drive
+ * `Ads.rewardedReady`. The SDK module is replaced by a fake AdMob SDK
+ * (./helpers/fakeGoogleMobileAds) whose ads deliver events to the SAME
+ * listeners ads.tsx registers with `addAdEventListener`, as the package's
+ * native event fan-out does on device. Only the native-to-JS event delivery is
+ * outside this test (adsRewardedNativeEvent.test.ts covers it).
+ *
+ * ADMOB-B: test bodies are unchanged. `sdk.rewardedListener` sends each
+ * LevelPlay callback as the AdMob event ads.tsx maps it to, to both rewarded
+ * ads (hint and continue units, M3: the old single rewarded ad served both);
+ * `Ads.rewardedReady` is the continue placement, so `sdk.rewardedLoads` counts
+ * the continue unit's load requests. adsTwoRewardedUnits.test.ts covers the
+ * placements separately.
  */
+import { createFakeGma, legacyListener } from './helpers/fakeGoogleMobileAds';
 
 type Listener = Record<string, (...args: unknown[]) => void>;
 
-interface FakeSdk {
-  rewardedListener: Listener | null;
-  interstitialListener: Listener | null;
-  initOutcome: 'success' | 'failed';
-  rewardedLoads: number;
-}
+const CONTINUE_UNIT = 'ca-app-pub-9813131856455133/3505414519';
 
-const sdk: FakeSdk = {
-  rewardedListener: null,
-  interstitialListener: null,
-  initOutcome: 'success',
-  rewardedLoads: 0,
+const mockGma = createFakeGma();
+
+const sdk = {
+  get rewardedListener(): Listener | null {
+    return mockGma.live('rewarded').length > 0
+      ? legacyListener(() => mockGma.live('rewarded'))
+      : null;
+  },
+  get initOutcome() {
+    return mockGma.config.initOutcome;
+  },
+  set initOutcome(value: 'success' | 'failed') {
+    mockGma.config.initOutcome = value;
+  },
+  get rewardedLoads() {
+    return mockGma.ads
+      .filter((ad) => ad.kind === 'rewarded' && ad.unitId === CONTINUE_UNIT)
+      .reduce((n, ad) => n + ad.loads, 0);
+  },
 };
 
 jest.mock('react-native', () => ({
@@ -36,47 +53,8 @@ jest.mock('expo-constants', () => ({
   default: { executionEnvironment: 'standalone' },
 }));
 
-jest.mock('../admobFacade', () => ({
-  LevelPlay: {
-    setMetaData: () => Promise.resolve(),
-    init: (_req: unknown, cb: { onInitSuccess: () => void; onInitFailed: (e: unknown) => void }) => {
-      if (sdk.initOutcome === 'success') cb.onInitSuccess();
-      else cb.onInitFailed({ errorCode: 2070 });
-      return Promise.resolve();
-    },
-    launchTestSuite: () => Promise.resolve(),
-  },
-  LevelPlayInitRequest: { builder: () => ({ build: () => ({}) }) },
-  LevelPlayInterstitialAd: class {
-    setListener(l: Listener) {
-      sdk.interstitialListener = l;
-    }
-    loadAd() {
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(false);
-    }
-    showAd() {
-      return Promise.resolve();
-    }
-  },
-  LevelPlayRewardedAd: class {
-    setListener(l: Listener) {
-      sdk.rewardedListener = l;
-    }
-    loadAd() {
-      sdk.rewardedLoads += 1;
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(false);
-    }
-    showAd() {
-      return Promise.resolve();
-    }
-  },
-}));
+// No ad reports loaded unless an event says so (the old isAdReady() -> false).
+jest.mock('react-native-google-mobile-ads', () => mockGma.module());
 
 type AdsModule = typeof import('../ads');
 
@@ -93,10 +71,9 @@ function loadAds(): AdsModule {
 const flush = () => new Promise((r) => setImmediate(r));
 
 beforeEach(() => {
-  sdk.rewardedListener = null;
-  sdk.interstitialListener = null;
+  mockGma.reset();
+  mockGma.config.loadedOverride = { interstitial: false };
   sdk.initOutcome = 'success';
-  sdk.rewardedLoads = 0;
   jest.useRealTimers();
 });
 

@@ -35,7 +35,7 @@ export const REMOTE_CONFIG_TIMEOUT_MS = 3000; // OWNER-PICKED STARTING VALUE
 
 /** Kill bits, persisted as one int. Bits are a save format: never renumber. */
 export const KillBit = Object.freeze({
-  /** `adsEnabled: false`: no LevelPlay init, no interstitial, no rewarded. */
+  /** `adsEnabled: false`: no AdMob init, no interstitial, no rewarded. */
   ads: 1,
   /** `interstitialsEnabled: false`. */
   interstitials: 2,

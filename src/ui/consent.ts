@@ -66,7 +66,7 @@ export async function applyPrivacy(state: ConsentState, api: PrivacyApi): Promis
  * - GDPR applicability from the CMP's own geography check;
  * - the player's consent result;
  * - a re-prompt entry point for privacy choices; and
- * - the TCF storage that the mediation layer can read directly.
+ * - the TCF storage that the ad SDK (AdMob) can read directly.
  */
 export interface ConsentSource {
   gather(): Promise<ConsentState>;

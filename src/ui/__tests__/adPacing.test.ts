@@ -2,13 +2,18 @@
  * W0-05: the interstitial pacing counter.
  *
  * Part 1 covers the pure rules in adPacing.ts. Part 2 drives ads.tsx as a
- * release build over a fake LevelPlay SDK (the same shape as
- * adsRewardedReadiness.test.ts) to pin where the counter is written: every
- * finished game goes through SaveSystem, and only the interstitial listener's
- * onAdDisplayed resets it. Native-to-JS event delivery and a real displayed
- * interstitial stay outside this test (UNVERIFIED-DEVICE in the W0-05 report).
+ * release build over a fake ad SDK (./helpers/fakeGoogleMobileAds, shared with
+ * the other ad suites) to pin where the counter is written: every finished game
+ * goes through SaveSystem, and only a displayed interstitial resets it.
+ *
+ * ADMOB-B: the SDK is AdMob. "onAdDisplayed" in the test bodies is sent as
+ * AdMob's OPENED event ("the ad opened and is currently visible"), the event
+ * ads.tsx resets the counter on; "onAdDisplayFailed" is ERROR with phase
+ * 'show'. Test bodies are unchanged. Native-to-JS event delivery stays outside
+ * this test; the ADMOB-B report has the emulator run.
  */
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from '../adPacing';
+import { createFakeGma, legacyListener, type LegacyListener } from './helpers/fakeGoogleMobileAds';
 
 describe('adPacing (pure)', () => {
   test('due at exactly perInterstitial, not due one below it', () => {
@@ -60,16 +65,38 @@ describe('adPacing (pure)', () => {
   });
 });
 
-// ---- ads.tsx wiring (release build, fake LevelPlay SDK) ---------------------
+// ---- ads.tsx wiring (release build, fake AdMob SDK) -------------------------
 
-type Listener = Record<string, (...args: unknown[]) => void>;
+const mockGma = createFakeGma();
 
+/** The LevelPlay-era knobs and counters, read from / written to the AdMob fake. */
 const sdk = {
-  interstitialListener: null as Listener | null,
-  initOutcome: 'success' as 'success' | 'failed',
-  interstitialReady: true,
-  shows: 0,
-  showRejects: false,
+  get interstitialListener(): LegacyListener | null {
+    return mockGma.live('interstitial').length > 0
+      ? legacyListener(() => mockGma.live('interstitial'))
+      : null;
+  },
+  get initOutcome() {
+    return mockGma.config.initOutcome;
+  },
+  set initOutcome(value: 'success' | 'failed') {
+    mockGma.config.initOutcome = value;
+  },
+  /** Was the interstitial's isAdReady(); now pins `InterstitialAd.loaded`. */
+  get interstitialReady() {
+    return mockGma.config.loadedOverride.interstitial === true;
+  },
+  set interstitialReady(value: boolean) {
+    mockGma.config.loadedOverride.interstitial = value;
+  },
+  get shows() {
+    return mockGma.ads
+      .filter((ad) => ad.kind === 'interstitial')
+      .reduce((n, ad) => n + ad.shows, 0);
+  },
+  set showRejects(value: boolean) {
+    mockGma.config.showBehaviour.interstitial = value ? 'reject' : 'manual';
+  },
 };
 
 jest.mock('react-native', () => ({
@@ -85,45 +112,8 @@ jest.mock('expo-constants', () => ({
   default: { executionEnvironment: 'standalone' },
 }));
 
-jest.mock('../admobFacade', () => ({
-  LevelPlay: {
-    setMetaData: () => Promise.resolve(),
-    init: (_req: unknown, cb: { onInitSuccess: () => void; onInitFailed: (e: unknown) => void }) => {
-      if (sdk.initOutcome === 'success') cb.onInitSuccess();
-      else cb.onInitFailed({ errorCode: 2070 });
-      return Promise.resolve();
-    },
-    launchTestSuite: () => Promise.resolve(),
-  },
-  LevelPlayInitRequest: { builder: () => ({ build: () => ({}) }) },
-  LevelPlayInterstitialAd: class {
-    setListener(l: Listener) {
-      sdk.interstitialListener = l;
-    }
-    loadAd() {
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(sdk.interstitialReady);
-    }
-    showAd() {
-      sdk.shows += 1;
-      return sdk.showRejects ? Promise.reject(new Error('show failed')) : Promise.resolve();
-    }
-  },
-  LevelPlayRewardedAd: class {
-    setListener() {}
-    loadAd() {
-      return Promise.resolve();
-    }
-    isAdReady() {
-      return Promise.resolve(false);
-    }
-    showAd() {
-      return Promise.resolve();
-    }
-  },
-}));
+// Rewarded ads never report loaded here (the old rewarded isAdReady() -> false).
+jest.mock('react-native-google-mobile-ads', () => mockGma.module());
 
 type AdsModule = typeof import('../ads');
 type SaveModule = typeof import('../../core/saveSystem');
@@ -163,10 +153,10 @@ const settle = async () => {
 const KEY = 'arrows_finished_games';
 
 beforeEach(() => {
-  sdk.interstitialListener = null;
+  mockGma.reset();
   sdk.initOutcome = 'success';
   sdk.interstitialReady = true;
-  sdk.shows = 0;
+  mockGma.config.loadedOverride.rewarded = false;
   sdk.showRejects = false;
   jest.useFakeTimers(); // init retries and ad reloads schedule timers
 });
@@ -345,5 +335,67 @@ describe('ads.tsx pacing counter (release build)', () => {
     const disk = new Map<string, number>([[KEY, -7]]);
     boot(disk).ads.Ads.registerGameFinished();
     expect(disk.get(KEY)).toBe(1);
+  });
+});
+
+describe('ADMOB-B: which AdMob event resets the counter', () => {
+  const interstitialAd = () => mockGma.live('interstitial')[0];
+
+  test('IMPRESSION and CLICKED do not reset it; OPENED does', async () => {
+    const disk = new Map<string, number>([[KEY, 2]]);
+    const { ads } = boot(disk);
+    await ads.initAds();
+    await settle();
+
+    const shown = ads.Ads.showInterstitialIfDue();
+    await settle();
+    interstitialAd().emit('impression');
+    interstitialAd().emit('clicked');
+    expect(disk.get(KEY)).toBe(2);
+    interstitialAd().emit('opened');
+    expect(disk.get(KEY)).toBe(0);
+    interstitialAd().emit('closed');
+    await shown;
+  });
+
+  test('CLOSED without OPENED: display_failed and the count is kept', async () => {
+    const disk = new Map<string, number>([[KEY, 2]]);
+    const { ads, telemetrySink } = boot(disk);
+    await ads.initAds();
+    await settle();
+
+    const shown = ads.Ads.showInterstitialIfDue();
+    await settle();
+    interstitialAd().emit('closed');
+    await shown;
+    expect(disk.get(KEY)).toBe(2);
+    expect(telemetrySink.events[1]).toEqual(
+      expect.objectContaining({ outcome: 'display_failed' }),
+    );
+  });
+
+  test('a second show while one is on screen is display_failed; the first still resolves', async () => {
+    const disk = new Map<string, number>([[KEY, 2]]);
+    const { ads, telemetrySink } = boot(disk);
+    await ads.initAds();
+    await settle();
+
+    const first = ads.Ads.showInterstitialIfDue();
+    await settle();
+    // A second show while the first is still on screen (AdMob would throw synchronously).
+    await ads.Ads.showInterstitialIfDue();
+    interstitialAd().emit('opened');
+    interstitialAd().emit('closed');
+    await first;
+    expect(interstitialAd().shows).toBe(1);
+    expect(telemetrySink.events.map((e) => e.name)).toEqual([
+      'ad_request',
+      'ad_request',
+      'ad_result',
+      'ad_result',
+    ]);
+    expect(telemetrySink.events[2]).toEqual(expect.objectContaining({ outcome: 'display_failed' }));
+    expect(telemetrySink.events[3]).toEqual(expect.objectContaining({ outcome: 'shown' }));
+    expect(disk.get(KEY)).toBe(0);
   });
 });

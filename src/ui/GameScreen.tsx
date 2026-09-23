@@ -119,7 +119,9 @@ export function GameScreen({
   const [terminalPending, setTerminalPending] = useState(false);
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
   const [adBusy, setAdBusy] = useState(false);
+  // Continue (lose panel) and hint each have their own rewarded unit (M3).
   const rewardedReady = useSyncExternalStore(Ads.subscribeRewardedReady, readRewardedReady);
+  const hintReady = useSyncExternalStore(subscribeHintReady, readHintReady);
   // A rewarded show was attempted and resolved false. Cleared by the next
   // readiness change or board tap (no timer).
   const [adShowFailed, setAdShowFailed] = useState(false);
@@ -192,7 +194,15 @@ export function GameScreen({
   // Subscribed directly (not via an effect on `rewardedReady`) so the clear
   // runs synchronously at the SDK callback, before a failed show's
   // `setAdShowFailed(true)` that follows it.
-  useEffect(() => Ads.subscribeRewardedReady(() => setAdShowFailed(false)), []);
+  useEffect(() => {
+    const clear = () => setAdShowFailed(false);
+    const offContinue = Ads.subscribeRewardedReady(clear);
+    const offHint = Ads.subscribeRewardedReady(clear, 'hint');
+    return () => {
+      offContinue();
+      offHint();
+    };
+  }, []);
   useEffect(() => {
     if (!feedbackEnabled) return undefined;
     prepareFeedback(SaveSystem.soundOn);
@@ -527,7 +537,7 @@ export function GameScreen({
               palette={p}
               onPress={onHint}
               active={!terminalPending && !adBusy}
-              disabled={!rewardedReady || terminalPending || adBusy}
+              disabled={!hintReady || terminalPending || adBusy}
             />
           )}
         </View>
@@ -630,6 +640,8 @@ function initialTutorialLine(tutorialId: TutorialId | undefined): string {
 }
 
 const readRewardedReady = () => Ads.rewardedReady;
+const subscribeHintReady = (cb: (ready: boolean) => void) => Ads.subscribeRewardedReady(cb, 'hint');
+const readHintReady = () => Ads.isRewardedReady('hint');
 
 /**
  * Keep the per-level words out of the per-tap counter paragraph. React

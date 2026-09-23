@@ -2,11 +2,18 @@
  * W0-02 fix round 2: a native rewarded "loaded" EVENT drives
  * `Ads.rewardedReady`, through the real ad-SDK JS.
  *
- * ADMOB-A: LevelPlay is removed, so this suite now runs through the real
+ * ADMOB-A: LevelPlay is removed, so this suite runs through the real
  * react-native-google-mobile-ads JS (MobileAds, RewardedAd, MobileAd and the
- * shared event fan-out) and the real ./admobFacade, instead of the real
- * unity-levelplay-mediation JS. The assertions are the same ones the LevelPlay
- * version made; only the event plumbing below JS changed.
+ * shared event fan-out) instead of the real unity-levelplay-mediation JS. The
+ * assertions are the same ones the LevelPlay version made; only the event
+ * plumbing below JS changed.
+ *
+ * ADMOB-B: ads.tsx now talks to the package directly (the ADMOB-A facade is
+ * gone) and creates TWO rewarded ads, one per placement (ruling M3). This is a
+ * release build with the test flag unset, so they load the owner's hint and
+ * continue units; `Ads.rewardedReady` is the continue placement, so the events
+ * below target the continue ad's request. A flag-on build loads Google's
+ * sample unit for both (last test).
  *
  * Round 1 (adsRewardedReadiness.test.ts) replaced the whole SDK and called the
  * listener object directly. This suite keeps the package's real JS and replaces
@@ -266,6 +273,8 @@ function kotlinLoadError(): Record<string, unknown> {
 }
 
 const REWARD_DATA = { type: 'coins', amount: 1 };
+const CONTINUE_UNIT = 'ca-app-pub-9813131856455133/3505414519';
+const HINT_UNIT = 'ca-app-pub-9813131856455133/7549521178';
 
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
@@ -303,10 +312,14 @@ describe('native rewarded events through the real package JS (release build)', (
     const ads = loadAds();
     await ads.initAds();
     await flush();
-    // The real RewardedAd was created once and loaded once, on Google's sample unit.
-    expect(mockNative.rewardedLoads).toHaveLength(1);
-    const { requestId, adUnitId } = mockNative.rewardedLoads[0];
-    expect(adUnitId).toBe('ca-app-pub-3940256099942544/5224354917');
+    // Two real RewardedAds (M3), each loaded once on its own owner unit.
+    expect(mockNative.rewardedLoads).toHaveLength(2);
+    expect(mockNative.rewardedLoads.map((l) => l.adUnitId).sort()).toEqual(
+      [CONTINUE_UNIT, HINT_UNIT].sort(),
+    );
+    const { requestId, adUnitId } = mockNative.rewardedLoads.find(
+      (l) => l.adUnitId === CONTINUE_UNIT,
+    )!;
     return { ...ads, requestId, adUnitId };
   }
 
@@ -343,12 +356,14 @@ describe('native rewarded events through the real package JS (release build)', (
     expect(Ads.rewardedReady).toBe(false);
 
     const first = { requestId, adUnitId };
+    // M3: the hint ad's load is in the list too; these lines read the continue ad's.
+    const continueLoads = () => mockNative.rewardedLoads.filter((l) => l.requestId === requestId);
     jest.advanceTimersByTime(14999);
     await flush();
-    expect(mockNative.rewardedLoads).toEqual([first]); // not before 15 s
+    expect(continueLoads()).toEqual([first]); // not before 15 s
     jest.advanceTimersByTime(1);
     await flush();
-    expect(mockNative.rewardedLoads).toEqual([first, first]); // same ad object reloaded
+    expect(continueLoads()).toEqual([first, first]); // same ad object reloaded
 
     emitNative(requestId, adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
     expect(Ads.rewardedReady).toBe(true);
@@ -364,7 +379,34 @@ describe('native rewarded events through the real package JS (release build)', (
       emitNative(id, 'ca-app-pub-3940256099942544/5224354917', 'rewarded_loaded', {
         data: REWARD_DATA,
       });
+      emitNative(id, CONTINUE_UNIT, 'rewarded_loaded', { data: REWARD_DATA });
+      emitNative(id, HINT_UNIT, 'rewarded_loaded', { data: REWARD_DATA });
     }
     expect(Ads.rewardedReady).toBe(false);
+    expect(Ads.isRewardedReady('hint')).toBe(false);
+  });
+
+  it('M3: a loaded event for the hint ad makes only the hint ready', async () => {
+    const { Ads } = await initialised();
+    const hint = mockNative.rewardedLoads.find((l) => l.adUnitId === HINT_UNIT)!;
+    emitNative(hint.requestId, hint.adUnitId, loadCallbackType('onAdLoaded'), { data: REWARD_DATA });
+    expect(Ads.isRewardedReady('hint')).toBe(true);
+    expect(Ads.rewardedReady).toBe(false);
+  });
+
+  it('M1: a build with EXPO_PUBLIC_ADMOB_TEST_ADS=1 loads Google\'s sample unit for both placements', async () => {
+    process.env.EXPO_PUBLIC_ADMOB_TEST_ADS = '1';
+    try {
+      const { initAds } = loadAds();
+      await initAds();
+      await flush();
+    } finally {
+      delete process.env.EXPO_PUBLIC_ADMOB_TEST_ADS;
+    }
+    expect(mockNative.rewardedLoads.map((l) => l.adUnitId)).toEqual([
+      'ca-app-pub-3940256099942544/5224354917',
+      'ca-app-pub-3940256099942544/5224354917',
+    ]);
+    expect(new Set(mockNative.rewardedLoads.map((l) => l.requestId)).size).toBe(2);
   });
 });

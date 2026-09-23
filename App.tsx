@@ -113,8 +113,8 @@ export default function App() {
     if (PERF_MODE) return;
     let httpSink: HttpSink | null = null;
     // Ads start only after hydration settles, so a remote kill persisted by an
-    // earlier session is already seeded when initAds() decides whether to call
-    // LevelPlay.init (W6-02). Before hydration SaveSystem reads its in-memory
+    // earlier session is already seeded when initAds() decides whether to start
+    // AdMob (W6-02). Before hydration SaveSystem reads its in-memory
     // store, where every kill bit is 0. The remote config fetch never blocks it.
     const startAfterHydration = () => {
       initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
