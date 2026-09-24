@@ -19,6 +19,14 @@ export const PERF_MODE = PERF_LEVEL_INDEX !== null;
 export const PERF_FEEDBACK =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_FEEDBACK === '1';
 
+/**
+ * POLISH-T8 A/B switch: EXPO_PUBLIC_PERF_GRID_POINTS=1 makes a PERF build draw
+ * the META_BOARD_GRID grid with the POLISH-T4 drawPoints path instead of the
+ * repeating tile. Never set in a shipped build (PERF_MODE is false there).
+ */
+export const PERF_GRID_POINTS =
+  PERF_MODE && process.env.EXPO_PUBLIC_PERF_GRID_POINTS === '1';
+
 export type PerfScreen = 'splash' | 'menu' | 'game';
 
 /**

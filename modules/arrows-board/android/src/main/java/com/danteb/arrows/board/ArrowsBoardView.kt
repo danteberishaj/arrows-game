@@ -1,11 +1,15 @@
 package com.danteb.arrows.board
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathMeasure
+import android.graphics.Shader
 import android.os.Trace
 import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
@@ -16,8 +20,9 @@ import kotlin.math.roundToInt
  * Retained renderer for the board's static arrow art plus the slither exit.
  *
  * Geometry is parsed only when the board geometry prop changes. The cached
- * arrow paths are never mutated after parsing; the two compound paths are the
- * only paths rebuilt when visibility changes. Exits are two fixed slots driven
+ * arrow paths are never mutated after parsing; the compound paths are the
+ * only paths rebuilt when visibility changes, at most once per props commit
+ * (POLISH-T8: setters mark them dirty, OnViewDidUpdateProps rebuilds). Exits are two fixed slots driven
  * from the frame clock in onDraw, so they follow the same curve as the web
  * slither (SlitherExit.cs) regardless of the system animator scale.
  */
@@ -31,7 +36,14 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var id = -1L
     var head: Path? = null
     var trail: Path? = null
-    var intervals = FloatArray(2)
+    // POLISH-T8 (#8): the visible body is trail[travelled, travelled + bodyLength], cut with a
+    // PathMeasure built once per exit into a reused Path. Skia's dash effect cuts its dashes
+    // with the same SkPathMeasure::getSegment, so the geometry matches the DashPathEffect
+    // (intervals [body, total + body], phase -travelled) it replaces, without a per-frame
+    // Java + native SkPathEffect allocation or a dash pass over the whole trail.
+    var measure: PathMeasure? = null
+    val segment = Path()
+    var bodyLength = 0f
     var totalLength = 0f
     var directionX = 0f
     var directionY = 0f
@@ -48,6 +60,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       id = -1L
       head = null
       trail = null
+      measure = null
+      segment.rewind()
+      bodyLength = 0f
       totalLength = 0f
       directionX = 0f
       directionY = 0f
@@ -102,13 +117,30 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   }
   private var gridValue = ""
   private var gridStyleValue = ""
-  // Dots in square blocks of GRID_BLOCK_CELLS cells, one drawPoints op per block, so
-  // the replayed display list quick-rejects the (mostly off-screen) extent block by
-  // block instead of rasterising every dot on every pan frame.
+  private var gridExtent: GridExtent? = null
+  // PERF-only POLISH-T4 path (a 3-token gridStyle, EXPO_PUBLIC_PERF_GRID_POINTS): dots in
+  // square blocks of GRID_BLOCK_CELLS cells, one drawPoints op per block, so the replayed
+  // display list quick-rejects the (mostly off-screen) extent block by block. Built lazily,
+  // only when that path is selected.
   private var gridPoints: Array<FloatArray>? = null
   private var gridLineSegments: FloatArray? = null
   private var gridStyled = false
   private var gridLinesOn = false
+  private var gridDotRadius = 0f
+  private var gridLineWidth = 0f
+  // POLISH-T8 (#3, the shipped path): the zoom the stroke sizes were sent for (4-token
+  // gridStyle). The grid is one drawRect over the extent, filled with a one-cell tile
+  // (dot, plus the two lane lines when "#" is on) repeated by a BitmapShader whose local
+  // matrix maps one tile onto one cell at the grid origin: one textured quad per frame,
+  // whatever the number of dots on screen. 0 = the points path.
+  private var gridTileScale = 0f
+  private var gridTile: Bitmap? = null
+  private val gridTilePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+  private val gridTileMatrix = Matrix()
+  private var pathsDirty = false
+  // dashSpan() output (UI thread, onDraw only).
+  private var dashFrom = 0f
+  private var dashTo = 0f
 
   private var visibleMask = ""
   private var markMask = ""
@@ -141,7 +173,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         arrowPaths.addAll(parsed)
         geometryIsValid = true
       }
-      rebuildCompoundPathsLocked()
+      pathsDirty = true
     }
     postInvalidateOnAnimation()
   }
@@ -153,7 +185,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     try {
       synchronized(stateLock) {
         visibleMask = value
-        rebuildCompoundPathsLocked()
+        pathsDirty = true
       }
       postInvalidateOnAnimation()
     } finally {
@@ -168,11 +200,23 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     try {
       synchronized(stateLock) {
         markMask = value
-        rebuildCompoundPathsLocked()
+        pathsDirty = true
       }
       postInvalidateOnAnimation()
     } finally {
       Trace.endSection()
+    }
+  }
+
+  /**
+   * POLISH-T8 (#9): called once after every props commit (OnViewDidUpdateProps). A commit that
+   * sets both visibleMask and markMask (a charging blocked tap, a marked arrow's exit) now
+   * rebuilds the compound paths once instead of twice. onDraw rebuilds too if a draw ever
+   * comes first, so a missed hook can never show stale paths.
+   */
+  internal fun commitProps() {
+    synchronized(stateLock) {
+      if (pathsDirty) rebuildCompoundPathsLocked()
     }
   }
 
@@ -282,10 +326,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.id = id
       slot.head = arrowPaths[arrowIndex].head
       slot.trail = trail
-      // One dash the length of the body, then a gap long enough that no
-      // second dash ever appears on the path (matches the Skia/SVG intervals).
-      slot.intervals[0] = bodyLength
-      slot.intervals[1] = totalLength + bodyLength
+      // The body is one segment of the trail (the Skia/SVG side draws the same span as one
+      // dash of intervals [body, total + body]); see ExitSlot.measure.
+      slot.measure = PathMeasure(trail, false)
+      slot.bodyLength = bodyLength
       slot.totalLength = totalLength
       slot.directionX = directionX
       slot.directionY = directionY
@@ -306,25 +350,26 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
    */
   internal fun setGrid(value: String) {
     if (value == gridValue) return
-    val parsed = if (value.isBlank()) null else parseGrid(value)
+    val parsed = if (value.isBlank()) null else parseGridExtent(value)
     synchronized(stateLock) {
       gridValue = value
-      if (parsed == null) {
-        gridPoints = null
-        gridLineSegments = null
-      } else {
-        gridPoints = parsed.points
-        gridLineSegments = parsed.lines
+      gridExtent = parsed
+      gridPoints = null
+      gridLineSegments = null
+      if (parsed != null) {
         gridDotPaint.color = parsed.dotColor
         gridLinePaint.color = parsed.lineColor
       }
+      rebuildGridLocked()
     }
     postInvalidateOnAnimation()
   }
 
   /**
-   * POLISH-T4 grid stroke: `dotRadius,lineWidth,lines(0|1)` in board points,
-   * re-sent by JS only on a 2^(1/4) zoom step or the "#" toggle.
+   * Grid stroke: `dotRadius,lineWidth,lines(0|1)[,scale]` in board points, re-sent by JS
+   * only on a 2^(1/4) zoom step, at pinch end, on fit or on the "#" toggle. With the 4th
+   * token (POLISH-T8, shipped) the grid is the repeating tile rasterised for that zoom;
+   * without it (PERF_GRID_POINTS builds only) it is the POLISH-T4 drawPoints path.
    */
   internal fun setGridStyle(value: String) {
     if (value == gridStyleValue) return
@@ -332,20 +377,76 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     val radius = tokens.getOrNull(0)?.toFloatOrNull()
     val lineWidth = tokens.getOrNull(1)?.toFloatOrNull()
     val lines = tokens.getOrNull(2)
-    val valid = tokens.size == GRID_STYLE_TOKEN_COUNT &&
+    val scale = if (tokens.size == GRID_STYLE_TILE_TOKEN_COUNT) tokens[3].toFloatOrNull() else 0f
+    val valid = (tokens.size == GRID_STYLE_TOKEN_COUNT || tokens.size == GRID_STYLE_TILE_TOKEN_COUNT) &&
       radius != null && radius.isFinite() && radius > 0f &&
       lineWidth != null && lineWidth.isFinite() && lineWidth > 0f &&
-      (lines == "0" || lines == "1")
+      (lines == "0" || lines == "1") &&
+      scale != null && scale.isFinite() && scale >= 0f
     synchronized(stateLock) {
       gridStyleValue = value
       gridStyled = valid
       if (valid) {
-        gridDotPaint.strokeWidth = radius!! * 2f
-        gridLinePaint.strokeWidth = lineWidth!!
+        gridDotRadius = radius!!
+        gridLineWidth = lineWidth!!
+        gridDotPaint.strokeWidth = radius * 2f
+        gridLinePaint.strokeWidth = lineWidth
         gridLinesOn = lines == "1"
+        gridTileScale = scale!!
       }
+      rebuildGridLocked()
     }
     postInvalidateOnAnimation()
+  }
+
+  /**
+   * Rebuilds whichever grid representation the current extent + style select. Runs only
+   * from setGrid / setGridStyle, i.e. per level/theme/layout, per zoom step and per toggle.
+   */
+  private fun rebuildGridLocked() {
+    val extent = gridExtent
+    if (extent == null || !gridStyled) {
+      gridTile = null
+      gridTilePaint.shader = null
+      return
+    }
+    if (gridTileScale <= 0f) {
+      gridTile = null
+      gridTilePaint.shader = null
+      if (gridPoints == null) {
+        gridPoints = gridPointBlocks(extent)
+        gridLineSegments = gridLines(extent)
+      }
+      return
+    }
+    Trace.beginSection("ArrowsBoard.rebuildGridTile")
+    try {
+      val cell = extent.cell
+      // One cell at the sent zoom, in device px (JS zoom is dp per board unit).
+      val tilePx = (cell * gridTileScale * logicalPointScale).roundToInt()
+        .coerceIn(1, MAX_GRID_TILE_PX)
+      val k = tilePx / cell // tile px per board unit
+      val tile = Bitmap.createBitmap(tilePx, tilePx, Bitmap.Config.ARGB_8888)
+      val c = Canvas(tile)
+      val mid = tilePx / 2f
+      // Bottom to top, as the points path: lines, then the dot (opaque colours).
+      if (gridLinesOn) {
+        val linePaint = Paint(gridLinePaint).apply { strokeWidth = gridLineWidth * k }
+        c.drawLine(0f, mid, tilePx.toFloat(), mid, linePaint)
+        c.drawLine(mid, 0f, mid, tilePx.toFloat(), linePaint)
+      }
+      val dotPaint = Paint(gridDotPaint).apply { strokeWidth = gridDotRadius * 2f * k }
+      c.drawPoint(mid, mid, dotPaint)
+      val shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+      gridTileMatrix.setScale(cell / tilePx, cell / tilePx)
+      gridTileMatrix.postTranslate(extent.minCol * cell, extent.minRow * cell)
+      shader.setLocalMatrix(gridTileMatrix)
+      // The old tile is dropped, not recycled: a recorded display list may still hold it.
+      gridTile = tile
+      gridTilePaint.shader = shader
+    } finally {
+      Trace.endSection()
+    }
   }
 
   internal fun clearPaths() {
@@ -363,20 +464,28 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       hasVisibleArrows = false
       gridValue = ""
       gridStyleValue = ""
+      gridExtent = null
       gridPoints = null
       gridLineSegments = null
       gridStyled = false
+      gridTileScale = 0f
+      gridTile = null
+      gridTilePaint.shader = null
+      pathsDirty = false
     }
   }
 
   override fun onDraw(canvas: Canvas) {
     var keepAnimating = false
     synchronized(stateLock) {
+      if (pathsDirty) rebuildCompoundPathsLocked()
       val hasActiveExit = exitSlots.any { it.active }
       val drawArrows = geometryIsValid && (hasVisibleArrows || hasActiveExit)
       // POLISH-T4: the grid stays on a cleared board until the level ends.
-      val pointBlocks = if (gridStyled) gridPoints else null
-      if (!drawArrows && pointBlocks == null) {
+      val extent = if (gridStyled) gridExtent else null
+      val tileOn = extent != null && gridTilePaint.shader != null
+      val pointBlocks = if (extent != null && !tileOn) gridPoints else null
+      if (!drawArrows && !tileOn && pointBlocks == null) {
         return
       }
 
@@ -386,7 +495,15 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       // display density exactly once at the native drawing boundary.
       val saveCount = canvas.save()
       canvas.scale(logicalPointScale, logicalPointScale)
-      if (pointBlocks != null) {
+      if (tileOn) {
+        // Bottom to top: the grid tile (lines + dot per cell), then every arrow layer.
+        val cell = extent!!.cell
+        canvas.drawRect(
+          extent.minCol * cell, extent.minRow * cell,
+          (extent.maxCol + 1) * cell, (extent.maxRow + 1) * cell,
+          gridTilePaint,
+        )
+      } else if (pointBlocks != null) {
         // Bottom to top: lines, dots, then every arrow layer.
         val lines = gridLineSegments
         if (gridLinesOn && lines != null) canvas.drawLines(lines, gridLinePaint)
@@ -418,7 +535,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
   /** Draws one slither frame; returns true while the slot still needs frames. */
   private fun drawExitSlot(canvas: Canvas, slot: ExitSlot, nowMs: Long): Boolean {
-    val trail = slot.trail ?: return false
+    if (slot.trail == null) return false
     val head = slot.head ?: return false
     val progress = ((nowMs - slot.startTimeMs).toFloat() / slot.durationMs.toFloat())
       .coerceIn(0f, 1f)
@@ -447,17 +564,50 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     val alpha = (opacity * 255f).roundToInt().coerceIn(0, 255)
 
     trailPaint.strokeWidth = slot.trailStrokeWidth
-    trailPaint.pathEffect = DashPathEffect(slot.intervals, -travelled)
     trailPaint.alpha = alpha
     exitHeadPaint.alpha = alpha
-    canvas.drawPath(trail, trailPaint)
-    trailPaint.pathEffect = null
+    val measure = slot.measure ?: return false
+    slot.segment.rewind()
+    dashSpan(travelled, slot.bodyLength, slot.totalLength)
+    if (dashFrom < measure.length) {
+      measure.getSegment(dashFrom, dashTo, slot.segment, true)
+      canvas.drawPath(slot.segment, trailPaint)
+    }
 
     val saveCount = canvas.save()
     canvas.translate(slot.directionX * travelled, slot.directionY * travelled)
     canvas.drawPath(head, exitHeadPaint)
     canvas.restoreToCount(saveCount)
     return true
+  }
+
+  /**
+   * POLISH-T8 (#8): the span [dashFrom, dashTo) of the one visible dash of
+   * DashPathEffect([body, total + body], -travelled), with Skia's own float arithmetic
+   * (SkDashPath::CalcDashParameters + InternalFilter), so the segment is bit-identical to the dash it
+   * replaces. Cutting at plain `travelled` differs by float rounding: the on-device check
+   * (artifacts/POLISH-T8/scripts/ExitDashCheck.java) showed that as <= 9 px in 10 of 1842 frames.
+   */
+  private fun dashSpan(travelled: Float, body: Float, total: Float) {
+    val gap = total + body
+    val intervalLength = body + gap
+    // phase = -travelled < 0: Skia negates it, wraps it and flips it.
+    var phase = travelled
+    if (phase > intervalLength) phase %= intervalLength
+    phase = intervalLength - phase
+    if (phase == intervalLength) phase = 0f
+    // Skia walks the intervals to the one the phase falls in.
+    if (!(phase > body || (phase == body && body != 0f))) {
+      dashFrom = 0f; dashTo = body - phase // starts inside the dash
+      return
+    }
+    phase -= body
+    if (phase > gap || (phase == gap && gap != 0f)) {
+      dashFrom = 0f; dashTo = body // rounding overflow: Skia restarts at dash 0
+      return
+    }
+    dashFrom = gap - phase // after the leading gap
+    dashTo = dashFrom + body
   }
 
   private fun clearExitAnimations() {
@@ -470,6 +620,17 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   }
 
   private fun rebuildCompoundPathsLocked() {
+    // POLISH-T8 (#9): one section per rebuild, so a trace shows one rebuild per commit.
+    Trace.beginSection("ArrowsBoard.rebuildCompoundPaths")
+    try {
+      rebuildCompoundPathsTraced()
+    } finally {
+      Trace.endSection()
+    }
+  }
+
+  private fun rebuildCompoundPathsTraced() {
+    pathsDirty = false
     compoundShaft.reset()
     compoundHead.reset()
     compoundMarkShaft.reset()
@@ -499,14 +660,17 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     }
   }
 
-  private class ParsedGrid(
-    val points: Array<FloatArray>,
-    val lines: FloatArray,
+  private class GridExtent(
+    val cell: Float,
+    val minCol: Int,
+    val minRow: Int,
+    val maxCol: Int,
+    val maxRow: Int,
     val dotColor: Int,
     val lineColor: Int,
   )
 
-  private fun parseGrid(value: String): ParsedGrid? {
+  private fun parseGridExtent(value: String): GridExtent? {
     val tokens = value.split(',')
     if (tokens.size != GRID_TOKEN_COUNT) return null
     val cell = tokens[0].toFloatOrNull() ?: return null
@@ -521,14 +685,19 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     if (cols * rows > MAX_GRID_POINTS) return null
     val dotColor = try { Color.parseColor(tokens[5]) } catch (_: IllegalArgumentException) { return null }
     val lineColor = try { Color.parseColor(tokens[6]) } catch (_: IllegalArgumentException) { return null }
+    return GridExtent(cell, minCol, minRow, maxCol, maxRow, dotColor, lineColor)
+  }
 
+  /** PERF-only points path: cell-centre dots in GRID_BLOCK_CELLS x GRID_BLOCK_CELLS blocks. */
+  private fun gridPointBlocks(e: GridExtent): Array<FloatArray> {
+    val cell = e.cell
     val blocks = ArrayList<FloatArray>()
-    var blockRow = minRow
-    while (blockRow <= maxRow) {
-      val rowEnd = minOf(maxRow, blockRow + GRID_BLOCK_CELLS - 1)
-      var blockCol = minCol
-      while (blockCol <= maxCol) {
-        val colEnd = minOf(maxCol, blockCol + GRID_BLOCK_CELLS - 1)
+    var blockRow = e.minRow
+    while (blockRow <= e.maxRow) {
+      val rowEnd = minOf(e.maxRow, blockRow + GRID_BLOCK_CELLS - 1)
+      var blockCol = e.minCol
+      while (blockCol <= e.maxCol) {
+        val colEnd = minOf(e.maxCol, blockCol + GRID_BLOCK_CELLS - 1)
         val block = FloatArray((rowEnd - blockRow + 1) * (colEnd - blockCol + 1) * 2)
         var i = 0
         for (row in blockRow..rowEnd) {
@@ -543,22 +712,29 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       }
       blockRow = rowEnd + 1
     }
-    val points = blocks.toTypedArray()
-    val left = minCol * cell
-    val right = (maxCol + 1) * cell
-    val top = minRow * cell
-    val bottom = (maxRow + 1) * cell
-    val lines = FloatArray(((rows + cols) * 4L).toInt())
+    return blocks.toTypedArray()
+  }
+
+  /** PERF-only points path: one line per row and per column, through the cell centres. */
+  private fun gridLines(e: GridExtent): FloatArray {
+    val cell = e.cell
+    val left = e.minCol * cell
+    val right = (e.maxCol + 1) * cell
+    val top = e.minRow * cell
+    val bottom = (e.maxRow + 1) * cell
+    val rows = e.maxRow - e.minRow + 1
+    val cols = e.maxCol - e.minCol + 1
+    val lines = FloatArray((rows + cols) * 4)
     var j = 0
-    for (row in minRow..maxRow) {
+    for (row in e.minRow..e.maxRow) {
       val y = (row + 0.5f) * cell
       lines[j++] = left; lines[j++] = y; lines[j++] = right; lines[j++] = y
     }
-    for (col in minCol..maxCol) {
+    for (col in e.minCol..e.maxCol) {
       val x = (col + 0.5f) * cell
       lines[j++] = x; lines[j++] = top; lines[j++] = x; lines[j++] = bottom
     }
-    return ParsedGrid(points, lines, dotColor, lineColor)
+    return lines
   }
 
   private fun parseGeometry(value: String): ArrayList<ArrowPaths>? {
@@ -636,6 +812,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val EXIT_FADE_START = 0.55f
     const val GRID_TOKEN_COUNT = 7
     const val GRID_STYLE_TOKEN_COUNT = 3
+    const val GRID_STYLE_TILE_TOKEN_COUNT = 4
+    // Guards a malformed scale; the largest real tile is ~40 dp x 1.7 zoom x 3.5 density = 238 px.
+    const val MAX_GRID_TILE_PX = 1024 // OWNER-PICKED STARTING VALUE (bounds memory at 4 MB)
     const val MAX_GRID_AXIS_CELLS = 1024L
     const val MAX_GRID_POINTS = 100_000L
     const val GRID_BLOCK_CELLS = 8 // OWNER-PICKED STARTING VALUE (POLISH-T4 frame-cost fix)

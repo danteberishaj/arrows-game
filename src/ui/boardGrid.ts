@@ -13,7 +13,9 @@ import type { Palette } from './theme';
  * list (ArrowsBoardView.kt), which pan and zoom only replay, so the grid must
  * cover a board-space EXTENT that bounds every camera position in advance
  * (research-grid-camera-exit.md section 3). Only the stroke sizes follow the
- * zoom, and only in 2^(1/4) steps.
+ * zoom, and only in 2^(1/4) steps. POLISH-T8: Android draws that extent as one
+ * rect with a repeating one-cell tile (one textured quad per frame, whatever the
+ * dot count); the POLISH-T4 point path stays reachable only in PERF builds.
  */
 
 /** Dots: `border` at 40% over `bg` (ruling R4a). */
@@ -158,6 +160,9 @@ export interface BoardGrid {
   /** Board units for the last zoom step; 0 until a zoom has been sent. */
   dotRadius: number;
   lineWidth: number;
+  /** POLISH-T8: the zoom (dp per board unit) the stroke sizes were computed for; 0 = none yet.
+   * Android rasterises its grid tile at round(cell x strokeScale x density) px. */
+  strokeScale: number;
 }
 
 /**
@@ -209,6 +214,7 @@ export function boardGridFor(input: {
     linesOn: input.linesOn,
     dotRadius: stroke.dotRadius,
     lineWidth: stroke.lineWidth,
+    strokeScale: input.strokeScale > 0 ? input.strokeScale : 0,
   };
 }
 
@@ -220,11 +226,20 @@ export function serializeGridExtent(grid: BoardGrid): string {
   return `${num(grid.cell)},${minCol},${minRow},${maxCol},${maxRow},${grid.dotColor},${grid.lineColor}`;
 }
 
-/** Native `gridStyle` prop: `dotRadius,lineWidth,lines(0|1)` in board units;
- * empty until a zoom has been sent. */
-export function serializeGridStyle(grid: BoardGrid): string {
+/**
+ * Native `gridStyle` prop, in board units; empty until a zoom has been sent.
+ * - `tile` (POLISH-T8, the shipped renderer): `dotRadius,lineWidth,lines(0|1),strokeScale`. Android draws
+ *   the grid as one rect filled with a repeating one-cell bitmap tile rasterised for `strokeScale`.
+ * - `points` (PERF-only A/B switch, EXPO_PUBLIC_PERF_GRID_POINTS): the POLISH-T4 3-token form, which
+ *   Android draws with `drawPoints` / `drawLines` exactly as before.
+ */
+export type GridRenderer = 'tile' | 'points';
+
+export function serializeGridStyle(grid: BoardGrid, renderer: GridRenderer = 'tile'): string {
   if (!(grid.dotRadius > 0 && grid.lineWidth > 0)) return '';
-  return `${num(grid.dotRadius)},${num(grid.lineWidth)},${grid.linesOn ? 1 : 0}`;
+  const points = `${num(grid.dotRadius)},${num(grid.lineWidth)},${grid.linesOn ? 1 : 0}`;
+  if (renderer === 'points' || !(grid.strokeScale > 0)) return points;
+  return `${points},${num(grid.strokeScale)}`;
 }
 
 /**
@@ -234,8 +249,9 @@ export function serializeGridStyle(grid: BoardGrid): string {
 export function nativeGridProps(
   grid: BoardGrid | null,
   enabled: boolean,
+  renderer: GridRenderer = 'tile',
 ): Record<string, never> | { grid: string; gridStyle: string } {
   if (!enabled) return {};
   if (grid === null) return { grid: '', gridStyle: '' };
-  return { grid: serializeGridExtent(grid), gridStyle: serializeGridStyle(grid) };
+  return { grid: serializeGridExtent(grid), gridStyle: serializeGridStyle(grid, renderer) };
 }

@@ -46,6 +46,11 @@ class ArrowsBoardModule : Module() {
         view.setMarkColor(markColor)
       }
 
+      // POLISH-T8 (#9): once per props commit, after every setter of that commit ran.
+      OnViewDidUpdateProps { view: ArrowsBoardView ->
+        view.commitProps()
+      }
+
       OnViewDestroys { view: ArrowsBoardView ->
         view.clearPaths()
       }

@@ -16,7 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
-import { PERF_MODE } from '../perfMode';
+import { PERF_GRID_POINTS, PERF_MODE } from '../perfMode';
 import { grownTriangleD } from './arrowGeometry';
 import { nativeGridProps } from './boardGrid';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
@@ -106,7 +106,11 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
     [nativeExitAnimation],
   );
   // POLISH-T4: flag off spreads {}, so the native props are exactly today's.
-  const gridProps = useMemo(() => nativeGridProps(grid, BOARD_GRID_ENABLED), [grid]);
+  // POLISH-T8: the tile renderer, or the POLISH-T4 points in a PERF A/B build.
+  const gridProps = useMemo(
+    () => nativeGridProps(grid, BOARD_GRID_ENABLED, PERF_GRID_POINTS ? 'points' : 'tile'),
+    [grid],
+  );
   // POLISH-T5: flag off spreads {}, so the native props are exactly today's.
   const markProps = useMemo(
     () => nativeMissedMarkProps(nativeMarkMask, markColor, MISSED_MARK_ENABLED),

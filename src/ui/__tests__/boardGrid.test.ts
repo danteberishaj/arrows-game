@@ -229,12 +229,16 @@ describe('native payload', () => {
     expect(tokens.slice(1, 5).every((t) => /^-?\d+$/.test(t))).toBe(true);
     expect(tokens.slice(5)).toEqual(['#D2CCE8', '#E3DFF1']);
     const style = serializeGridStyle(grid);
-    const [r, w, lines] = style.split(',');
+    // POLISH-T8: a 4th token, the zoom the stroke sizes were sent for, selects the native tile renderer
+    // and sizes its tile (round(cell x scale x density) px).
+    const [r, w, lines, scale, ...rest] = style.split(',');
     // strokeScale 0.48 -> cell 19.2 dp -> radius 1.344 dp -> 2.8 board units
     expect(Number(r)).toBeCloseTo(1.344 / 0.48, 3);
     expect(Number(w)).toBeCloseTo(1 / 0.48, 3);
     expect(lines).toBe('0');
-    expect(serializeGridStyle({ ...grid, linesOn: true }).endsWith(',1')).toBe(true);
+    expect(scale).toBe('0.48');
+    expect(rest).toEqual([]);
+    expect(serializeGridStyle({ ...grid, linesOn: true }).split(',')[2]).toBe('1');
     expect(nativeGridProps(grid, true)).toEqual({ grid: ext, gridStyle: style });
   });
 
@@ -247,5 +251,29 @@ describe('native payload', () => {
   it('flag ON, no stroke scale yet: extent is sent, style is empty', () => {
     const grid = boardGridFor({ ...base, enabled: true, strokeScale: 0 })!;
     expect(serializeGridStyle(grid)).toBe('');
+  });
+
+  it('POLISH-T8 PERF points switch: the 3-token POLISH-T4 style (drawPoints path), same stroke sizes', () => {
+    const grid = boardGridFor({ ...base, enabled: true })!;
+    const tile = serializeGridStyle(grid);
+    const points = serializeGridStyle(grid, 'points');
+    expect(points.split(',')).toHaveLength(3);
+    expect(tile.startsWith(`${points},`)).toBe(true);
+    expect(nativeGridProps(grid, true, 'points')).toEqual({ grid: serializeGridExtent(grid), gridStyle: points });
+    expect(nativeGridProps(grid, true, 'tile')).toEqual(nativeGridProps(grid, true));
+    // Flag OFF stays an empty object whatever the renderer, and no stroke scale stays empty.
+    expect(nativeGridProps(null, false, 'points')).toEqual({});
+    expect(serializeGridStyle({ ...grid, dotRadius: 0 }, 'points')).toBe('');
+  });
+
+  it('POLISH-T8: the stroke scale token is the zoom the stroke sizes came from', () => {
+    for (const strokeScale of [0.2477, 0.734694, 1.6]) {
+      const grid = boardGridFor({ ...base, enabled: true, strokeScale })!;
+      const [r, w, , scale] = serializeGridStyle(grid).split(',').map(Number);
+      expect(scale).toBeCloseTo(strokeScale, 4);
+      expect(w).toBeCloseTo(1 / strokeScale, 3);
+      expect(r * strokeScale).toBeGreaterThanOrEqual(0.9 - 1e-3);
+      expect(r * strokeScale).toBeLessThanOrEqual(1.75 + 1e-3);
+    }
   });
 });
