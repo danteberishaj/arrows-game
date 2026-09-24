@@ -62,6 +62,12 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private val arrowPaths = ArrayList<ArrowPaths>()
   private val compoundShaft = Path()
   private val compoundHead = Path()
+  // POLISH-T5 (META_MISSED_MARK): visible arrows whose `markMask` char is '1' are
+  // recorded here instead of the ink paths and drawn in the mark colour. The JS
+  // side never sets markMask/markColor with the flag off, so these stay empty
+  // and onDraw draws exactly what it drew before.
+  private val compoundMarkShaft = Path()
+  private val compoundMarkHead = Path()
   private val logicalPointScale = resources.displayMetrics.density
 
   private val shaftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -75,6 +81,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     style = Paint.Style.FILL
     color = Color.BLACK
   }
+  private val markShaftPaint = Paint(shaftPaint)
+  private val markHeadPaint = Paint(headPaint)
   private val trailPaint = Paint(shaftPaint)
   private val exitHeadPaint = Paint(headPaint)
   private val exitSlots = Array(MAX_CONCURRENT_EXITS) { ExitSlot() }
@@ -103,6 +111,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private var gridLinesOn = false
 
   private var visibleMask = ""
+  private var markMask = ""
+  private var hasMarkedArrows = false
   private var geometryIsValid = false
   private var hasVisibleArrows = false
   private var nextExitSlot = 0
@@ -151,6 +161,35 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     }
   }
 
+  /** POLISH-T5: one char per arrow, '1' = draw this (visible) arrow in the mark colour. */
+  internal fun setMarkMask(value: String) {
+    if (value == markMask) return
+    Trace.beginSection("ArrowsBoard.setMarkMask")
+    try {
+      synchronized(stateLock) {
+        markMask = value
+        rebuildCompoundPathsLocked()
+      }
+      postInvalidateOnAnimation()
+    } finally {
+      Trace.endSection()
+    }
+  }
+
+  /** POLISH-T5: opaque #RRGGBB; malformed input falls back to the ink colour. */
+  internal fun setMarkColor(value: String) {
+    synchronized(stateLock) {
+      val color = try {
+        Color.parseColor(value)
+      } catch (_: IllegalArgumentException) {
+        shaftPaint.color
+      }
+      markShaftPaint.color = color
+      markHeadPaint.color = color
+    }
+    postInvalidateOnAnimation()
+  }
+
   internal fun setInk(value: String) {
     val color = try {
       Color.parseColor(value)
@@ -176,6 +215,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
     synchronized(stateLock) {
       shaftPaint.strokeWidth = strokeWidth
+      markShaftPaint.strokeWidth = strokeWidth
     }
     postInvalidateOnAnimation()
   }
@@ -314,7 +354,11 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       arrowPaths.clear()
       compoundShaft.reset()
       compoundHead.reset()
+      compoundMarkShaft.reset()
+      compoundMarkHead.reset()
       visibleMask = ""
+      markMask = ""
+      hasMarkedArrows = false
       geometryIsValid = false
       hasVisibleArrows = false
       gridValue = ""
@@ -351,6 +395,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       if (drawArrows && hasVisibleArrows) {
         canvas.drawPath(compoundShaft, shaftPaint)
         canvas.drawPath(compoundHead, headPaint)
+        if (hasMarkedArrows) {
+          canvas.drawPath(compoundMarkShaft, markShaftPaint)
+          canvas.drawPath(compoundMarkHead, markHeadPaint)
+        }
       }
       if (drawArrows && hasActiveExit) {
         val now = AnimationUtils.currentAnimationTimeMillis()
@@ -424,7 +472,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private fun rebuildCompoundPathsLocked() {
     compoundShaft.reset()
     compoundHead.reset()
+    compoundMarkShaft.reset()
+    compoundMarkHead.reset()
     hasVisibleArrows = false
+    hasMarkedArrows = false
 
     if (!geometryIsValid) {
       return
@@ -436,8 +487,14 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       }
 
       val paths = arrowPaths[index]
-      compoundShaft.addPath(paths.shaft)
-      compoundHead.addPath(paths.head)
+      if (index < markMask.length && markMask[index] == '1') {
+        compoundMarkShaft.addPath(paths.shaft)
+        compoundMarkHead.addPath(paths.head)
+        hasMarkedArrows = true
+      } else {
+        compoundShaft.addPath(paths.shaft)
+        compoundHead.addPath(paths.head)
+      }
       hasVisibleArrows = true
     }
   }

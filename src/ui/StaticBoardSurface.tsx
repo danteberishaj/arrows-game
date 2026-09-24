@@ -23,6 +23,9 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   ink,
   strokeWidth,
   grid,
+  markShaftD,
+  markHeadD,
+  markColor,
 }: StaticBoardSurfaceProps) {
   const boardProps = useAnimatedProps(() => ({
     transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
@@ -57,6 +60,18 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
             />
           )}
           {headD !== '' && <Path d={headD} fill={ink} />}
+          {/* POLISH-T5: marked arrows (empty unless META_MISSED_MARK marked one). */}
+          {markShaftD !== '' && (
+            <Path
+              d={markShaftD}
+              stroke={markColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          )}
+          {markHeadD !== '' && <Path d={markHeadD} fill={markColor} />}
         </G>
       </AnimatedG>
     </Svg>

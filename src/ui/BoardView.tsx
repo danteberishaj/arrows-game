@@ -50,6 +50,15 @@ import {
 } from './feedbackCurves';
 import { FirstPaintCleanupTimer } from './firstPaintCleanup';
 import { ArrowHitTester, TAP_RADIUS_PT } from './hitTest';
+import { MISSED_MARK_ENABLED } from './missedMarkFlag';
+import {
+  marksAfterBlockedTap,
+  marksAfterRemoval,
+  missedMarkColor,
+  missedMarkMask,
+  NO_MARKS,
+  settleColor,
+} from './missedMarks';
 import { StaticBoardSurface } from './StaticBoardSurface';
 import type { ExitMotion } from './nativeExitAnimation';
 import type { NativeExitAnimation } from './StaticBoardSurface.types';
@@ -190,9 +199,11 @@ export interface BoardViewProps {
   /**
    * A blocked arrow was tapped. `costsHeart` is false when this arrow has
    * already been charged this level (a probe or an echoed touch, not a new
-   * mistake): shake it, nudge the player, keep the heart.
+   * mistake): shake it, nudge the player, keep the heart. Returns whether the
+   * tap finally charged a heart (after tutorial grace / assist); only those
+   * arrows get the POLISH-T5 missed mark.
    */
-  onBlocked: (costsHeart: boolean) => void;
+  onBlocked: (costsHeart: boolean) => boolean;
   /** One aggregate counter increment for every unlocked tap attempt. */
   onTapOutcome?: (outcome: TapOutcome) => void;
   /** Ignore taps (win/lose overlay up). */
@@ -262,6 +273,8 @@ export function BoardView({
   const [shaking, setShaking] = useState<AnimatedArrowState | null>(null);
   const [blocker, setBlocker] = useState<AnimatedArrowState | null>(null);
   const [pressed, setPressed] = useState<AnimatedArrowState | null>(null);
+  // POLISH-T5 (META_MISSED_MARK): arrows whose blocked tap cost a heart.
+  const [marked, setMarked] = useState<ReadonlySet<ArrowPath>>(NO_MARKS);
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   const nextId = useRef(1);
   const nextExitSlot = useRef(0);
@@ -410,6 +423,7 @@ export function BoardView({
     setShaking(null);
     setBlocker(null);
     setPressed(null);
+    setMarked(NO_MARKS);
     const measured = measuredLayout.current;
     fitToViewport(measured.w, measured.h);
   }, [board, fitToViewport]);
@@ -540,6 +554,7 @@ export function BoardView({
         setShaking(null);
       }
       setBlocker((current) => (current?.arrow === owner ? null : current));
+      if (MISSED_MARK_ENABLED) setMarked((current) => marksAfterRemoval(current, owner));
       const id = nextId.current++;
       const animationKind = exitAnimationKind(
         PERF_NO_EXIT_TRAILS,
@@ -629,7 +644,12 @@ export function BoardView({
         });
         setBlocker({ arrow: blocking, id: blockerId });
       }
-      onBlocked(blockedLedger.charge(owner));
+      const charged = onBlocked(blockedLedger.charge(owner));
+      // Same commit as the bump, so the static twin is already in the mark
+      // colour when the overlay (settling heart -> mark) unmounts.
+      if (MISSED_MARK_ENABLED) {
+        setMarked((current) => marksAfterBlockedTap(current, owner, charged));
+      }
     }
   }, [
     arrowArtCache,
@@ -804,6 +824,7 @@ export function BoardView({
           hint={hint}
           reducedMotion={reducedMotion}
           grid={grid}
+          marked={marked}
         />
       </View>
     </GestureDetector>
@@ -830,6 +851,7 @@ function BoardContent(props: {
   hint: { arrow: ArrowPath; id: number } | null;
   reducedMotion: boolean;
   grid: BoardGrid | null;
+  marked: ReadonlySet<ArrowPath>;
 }) {
   const {
     scale,
@@ -850,6 +872,7 @@ function BoardContent(props: {
     hint,
     reducedMotion,
     grid,
+    marked,
   } = props;
 
   const arrowCount = board.count();
@@ -866,10 +889,23 @@ function BoardContent(props: {
   const arrows = board.arrows();
   const staticArt = useMemo(
     () => Platform.OS === 'web'
-      ? arrowArtCache.batch(arrows, excludedArrows)
+      ? arrowArtCache.batch(arrows, withMarked(excludedArrows, marked))
       : { shaftD: '', headD: '' },
-    [arrows, arrowArtCache, arrowCount, excludedArrows],
+    [arrows, arrowArtCache, arrowCount, excludedArrows, marked],
   );
+  // POLISH-T5: marked arrows get their own batch (web) or mask (native), drawn
+  // in the mark colour. With no marks (always, flag off) both are empty.
+  const markArt = useMemo(
+    () => Platform.OS === 'web' && marked.size > 0
+      ? arrowArtCache.batch(arrows.filter((arrow) => marked.has(arrow)), excludedArrows)
+      : EMPTY_ART,
+    [arrows, arrowArtCache, arrowCount, excludedArrows, marked],
+  );
+  const nativeMarkMask = useMemo(
+    () => missedMarkMask(arrowArtCache, marked),
+    [arrowArtCache, marked],
+  );
+  const markColor = useMemo(() => missedMarkColor(palette), [palette]);
   const nativeGeometry = useMemo(
     () => arrowArtCache.geometryForNativeView(),
     [arrowArtCache],
@@ -893,7 +929,13 @@ function BoardContent(props: {
     pressed !== null ||
     exiting.some((trail) => trail !== null);
   const shakingArt = shaking
-    ? { id: shaking.id, ...arrowArtCache.artFor(shaking.arrow), ...dirVec(shaking.arrow.headDir) }
+    ? {
+      id: shaking.id,
+      ...arrowArtCache.artFor(shaking.arrow),
+      ...dirVec(shaking.arrow.headDir),
+      // R6a: a marked arrow's heart mix ends at the mark, not ink.
+      ...(marked.has(shaking.arrow) ? { settle: markColor } : null),
+    }
     : null;
   const blockerArt = blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null;
   const pressedArt = pressed ? { id: pressed.id, ...arrowArtCache.artFor(pressed.arrow) } : null;
@@ -927,6 +969,10 @@ function BoardContent(props: {
         nativeExitAnimation={nativeExitAnimation}
         reducedMotion={reducedMotion}
         grid={grid}
+        markShaftD={markArt.shaftD}
+        markHeadD={markArt.headD}
+        nativeMarkMask={nativeMarkMask}
+        markColor={markColor}
       />
       {Platform.OS === 'web' && hasDynamicLayer && (
         <WebDynamicBoardLayer
@@ -944,10 +990,22 @@ function BoardContent(props: {
           pressed={pressed}
           hint={hint}
           reducedMotion={reducedMotion}
+          shakingSettle={shaking ? settleColor(palette, marked, shaking.arrow) : palette.ink}
         />
       )}
     </>
   );
+}
+
+const EMPTY_ART = { shaftD: '', headD: '' };
+
+/** The static ink batch leaves marked arrows to the mark batch. Same set when none. */
+function withMarked(
+  excluded: ReadonlySet<ArrowPath>,
+  marked: ReadonlySet<ArrowPath>,
+): ReadonlySet<ArrowPath> {
+  if (marked.size === 0) return excluded;
+  return new Set([...excluded, ...marked]);
 }
 
 /** Web-only feedback layer. Keeping its animated SVG mapper inside this child
@@ -967,6 +1025,7 @@ function WebDynamicBoardLayer({
   pressed,
   hint,
   reducedMotion,
+  shakingSettle,
 }: {
   scale: SharedValue<number>;
   tx: SharedValue<number>;
@@ -982,6 +1041,8 @@ function WebDynamicBoardLayer({
   pressed: AnimatedArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
   reducedMotion: boolean;
+  /** POLISH-T5: the colour the blocked bump settles to (mark or ink). */
+  shakingSettle: string;
 }) {
   const boardProps = useAnimatedProps(() => ({
     transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
@@ -1030,6 +1091,7 @@ function WebDynamicBoardLayer({
               arrow={shaking.arrow}
               id={shaking.id}
               palette={palette}
+              settle={shakingSettle}
               reducedMotion={reducedMotion}
             />
           )}
@@ -1124,11 +1186,14 @@ function ShakingArrow({
   arrow,
   id,
   palette,
+  settle,
   reducedMotion,
 }: {
   arrow: ArrowPath;
   id: number;
   palette: Palette;
+  /** End colour of the mix: ink, or the missed mark (POLISH-T5, R6a). */
+  settle: string;
   reducedMotion: boolean;
 }) {
   const art = useMemo(() => arrowArt(arrow, CELL), [arrow]);
@@ -1150,11 +1215,12 @@ function ShakingArrow({
 
   const colorAt = (kv: number) => {
     'worklet';
-    // easeOutQuad: flash red, settle to ink (held red under Reduce Motion)
+    // easeOutQuad: flash red, settle to ink or the missed mark (held red
+    // under Reduce Motion)
     return interpolateColor(
       blockedFlashMixAt(kv, reducedMotion),
       [0, 1],
-      [palette.heart, palette.ink],
+      [palette.heart, settle],
     );
   };
 

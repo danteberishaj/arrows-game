@@ -14,6 +14,8 @@ export interface BumpingArrowArt extends AnimatedArrowArt {
   /** Unit exit direction in board space (y down). */
   x: number;
   y: number;
+  /** POLISH-T5 (R6a): end colour of the heart mix when the arrow is marked; absent = ink. */
+  settle?: string;
 }
 
 export interface AnimatedExitTrail {
@@ -56,4 +58,11 @@ export interface StaticBoardSurfaceProps {
   reducedMotion: boolean;
   /** POLISH-T4 dot grid (and "#" lines), under the arrows; null = none. */
   grid: BoardGrid | null;
+  /** POLISH-T5 web: batched marked arrows (empty when none), drawn in `markColor`. */
+  markShaftD: string;
+  markHeadD: string;
+  /** POLISH-T5 native: one character per initial arrow, `1` = marked; '' = none. */
+  nativeMarkMask: string;
+  /** Opaque deep-rose missed-mark colour (missedMarks.ts). */
+  markColor: string;
 }

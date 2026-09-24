@@ -54,3 +54,11 @@ export const META_ZOOMED_CAMERA = process.env.EXPO_PUBLIC_META_ZOOMED_CAMERA ===
  * until an ad has loaded.
  */
 export const META_BANNER = process.env.EXPO_PUBLIC_META_BANNER === '1';
+
+/**
+ * Board polish R6/R6a: an arrow whose blocked tap actually cost a heart stays
+ * drawn in a steady deep-rose "missed" mark for the rest of the level (the
+ * blocked colour change ends at the mark instead of ink). Android + web; iOS
+ * is gated off in missedMarkFlag.ts.
+ */
+export const META_MISSED_MARK = process.env.EXPO_PUBLIC_META_MISSED_MARK === '1';

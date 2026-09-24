@@ -37,6 +37,15 @@ class ArrowsBoardModule : Module() {
         view.setGridStyle(gridStyle)
       }
 
+      // POLISH-T5 (META_MISSED_MARK): never set by JS while the flag is off.
+      Prop("markMask") { view: ArrowsBoardView, markMask: String ->
+        view.setMarkMask(markMask)
+      }
+
+      Prop("markColor") { view: ArrowsBoardView, markColor: String ->
+        view.setMarkColor(markColor)
+      }
+
       OnViewDestroys { view: ArrowsBoardView ->
         view.clearPaths()
       }

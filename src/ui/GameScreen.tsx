@@ -372,9 +372,11 @@ export function GameScreen({
     ],
   );
 
-  const onBlocked = useCallback((ledgerCharge: boolean) => {
+  // Returns whether this blocked tap charged a heart; BoardView marks only those
+  // arrows (POLISH-T5, META_MISSED_MARK). Grace and assist taps cost nothing.
+  const onBlocked = useCallback((ledgerCharge: boolean): boolean => {
     setAdShowFailed(false);
-    if (terminalTransition.isPending) return;
+    if (terminalTransition.isPending) return false;
     exitCombo.current = null;
 
     const mode = activeTutorialId === 'T2'
@@ -411,7 +413,7 @@ export function GameScreen({
       if (feedbackEnabled) {
         feedback(cost.consumeGrace ? 'blocked' : 'nudge', SaveSystem.soundOn);
       }
-      return;
+      return false;
     }
     if (feedbackEnabled) {
       feedback('blocked', SaveSystem.soundOn);
@@ -429,6 +431,7 @@ export function GameScreen({
         Ads.registerGameFinished(); // a loss counts toward the pacing too
       }
     }
+    return true;
   }, [
     activeTutorialId,
     benchmarkMode,

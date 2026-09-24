@@ -17,4 +17,11 @@ export type ArrowsBoardViewProps = {
   grid?: string;
   /** POLISH-T4: `dotRadius,lineWidth,lines(0|1)` in board points; omitted while the flag is off. */
   gridStyle?: string;
+  /**
+   * POLISH-T5 (META_MISSED_MARK, Android only): one character per arrow, `1` draws a
+   * visible arrow in `markColor` instead of `ink`; '' = no marks. Omitted while the flag is off.
+   */
+  markMask?: string;
+  /** POLISH-T5: opaque missed-mark colour in #RRGGBB form; omitted while the flag is off. */
+  markColor?: string;
 } & ViewProps;

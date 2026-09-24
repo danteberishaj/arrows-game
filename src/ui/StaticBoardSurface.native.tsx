@@ -20,6 +20,8 @@ import { PERF_MODE } from '../perfMode';
 import { nativeGridProps } from './boardGrid';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import { BOARD_WRAPPER_OVERFLOW } from './boardOverflow';
+import { MISSED_MARK_ENABLED } from './missedMarkFlag';
+import { nativeMissedMarkProps } from './missedMarks';
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS,
@@ -68,6 +70,8 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   nativeExitAnimation,
   reducedMotion,
   grid,
+  nativeMarkMask,
+  markColor,
 }: StaticBoardSurfaceProps) {
   const boardStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -95,6 +99,11 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   );
   // POLISH-T4: flag off spreads {}, so the native props are exactly today's.
   const gridProps = useMemo(() => nativeGridProps(grid, BOARD_GRID_ENABLED), [grid]);
+  // POLISH-T5: flag off spreads {}, so the native props are exactly today's.
+  const markProps = useMemo(
+    () => nativeMissedMarkProps(nativeMarkMask, markColor, MISSED_MARK_ENABLED),
+    [nativeMarkMask, markColor],
+  );
 
   return (
     <>
@@ -116,6 +125,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
             strokeWidth={strokeWidth}
             exitAnimation={exitAnimation}
             {...gridProps}
+            {...markProps}
             style={StyleSheet.absoluteFill}
           />
         )}
@@ -302,8 +312,9 @@ function BlockerArrow({
   );
 }
 
-/** Blocked bump: lunge into the lane, spring back, flash red to ink. Under
- * Reduce Motion it stays still and solid heart until it unmounts. */
+/** Blocked bump: lunge into the lane, spring back, flash red to ink (or, for a
+ * marked arrow, to the missed mark: POLISH-T5 R6a). Under Reduce Motion it
+ * stays still and solid heart until it unmounts. */
 function ShakingArrow({
   art,
   ink,
@@ -320,6 +331,7 @@ function ShakingArrow({
   reducedMotion: boolean;
 }) {
   const progress = useSharedValue(0);
+  const settle = art.settle ?? ink;
 
   React.useEffect(() => {
     progress.value = 0;
@@ -333,7 +345,7 @@ function ShakingArrow({
     return [{ translateX: art.x * d }, { translateY: art.y * d }];
   });
   const color = useDerivedValue(() =>
-    interpolateColors(blockedFlashMixAt(progress.value, reducedMotion), [0, 1], [heart, ink]),
+    interpolateColors(blockedFlashMixAt(progress.value, reducedMotion), [0, 1], [heart, settle]),
   );
 
   return (
