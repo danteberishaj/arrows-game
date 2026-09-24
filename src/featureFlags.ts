@@ -77,3 +77,12 @@ export const META_PRESS_SPRING = process.env.EXPO_PUBLIC_META_PRESS_SPRING === '
  * the level in one frame, exactly as before.
  */
 export const META_LEVEL_TRANSITION = process.env.EXPO_PUBLIC_META_LEVEL_TRANSITION === '1';
+
+/**
+ * W2-05: the win and lose panels enter (scrim + panel fade in, panel scales
+ * 0.94 -> 1: win 180 ms, loss 260 ms provisional) and the continue-with-ad
+ * dismissal fades out (180 ms) instead of vanishing (src/ui/overlayPresence.ts,
+ * src/ui/PanelPresence.tsx). OFF: the panel appears and disappears in one
+ * frame, exactly as before.
+ */
+export const META_PANEL_MOTION = process.env.EXPO_PUBLIC_META_PANEL_MOTION === '1';

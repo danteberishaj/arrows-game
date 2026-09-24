@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withSpring,
@@ -20,7 +21,7 @@ import {
   appLevelAggregator,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
-import { META_LEVEL_TRANSITION } from '../featureFlags';
+import { META_LEVEL_TRANSITION, META_PANEL_MOTION } from '../featureFlags';
 import { Ads } from './ads';
 import { BoardView } from './BoardView';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
@@ -65,6 +66,14 @@ import {
   showAdThenPanelBeat,
   type LevelScrimTransition,
 } from './ScreenScrim';
+import {
+  FIRST_STAR_DELAY_MS,
+  PANEL_EXIT_MS,
+  PANEL_LOSS_ENTER_MS,
+  PANEL_WIN_ENTER_MS,
+  type PresenceState,
+} from './overlayPresence';
+import { createPanelPresence, PanelOverlayFrame, type PanelPresence } from './PanelPresence';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
@@ -183,6 +192,21 @@ export function GameScreen({
   }
   const levelScrim = levelScrimRef.current;
   const nextPendingRef = useRef(false);
+  // W2-05 (META_PANEL_MOTION): the win / lose panel enters, and the
+  // continue-with-ad dismissal fades out. OFF: no latch; the panel appears and
+  // disappears in one frame, as before.
+  const reducedMotion = useReducedMotion();
+  const panelPresenceValue = useSharedValue(0);
+  const panelPresenceRef = useRef<PanelPresence | null>(null);
+  if (META_PANEL_MOTION && panelPresenceRef.current === null) {
+    panelPresenceRef.current = createPanelPresence(panelPresenceValue);
+  }
+  const panelPresence = panelPresenceRef.current;
+  const panelState = useSyncExternalStore(
+    panelPresence?.subscribe ?? subscribeNoPresence,
+    panelPresence?.getSnapshot ?? readNoPresence,
+  );
+  const panelExiting = panelState === 'exiting';
   heartsRef.current = hearts;
   const clearHint = useCallback(() => setHint(null), []);
 
@@ -236,6 +260,7 @@ export function GameScreen({
   }, [session]);
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
   useEffect(() => () => levelScrim?.dispose(), [levelScrim]);
+  useEffect(() => () => panelPresence?.dispose(), [panelPresence]);
   // The new session is committed: the scrim may uncover one frame later.
   useEffect(() => {
     levelScrim?.contentCommitted();
@@ -280,19 +305,31 @@ export function GameScreen({
     stallHintTimer,
   ]);
 
+  /** The win / lose panel's commit; with W2-05 on, its entrance starts in the same render. */
+  const commitTerminalPhase = useCallback((next: TerminalPhase) => {
+    panelPresence?.show(
+      reducedMotion ? 0 : next === 'won' ? PANEL_WIN_ENTER_MS : PANEL_LOSS_ENTER_MS,
+    );
+    setPhase(next);
+  }, [panelPresence, reducedMotion]);
+
   const beginTerminalTransition = useCallback(
     (
       nextPhase: TerminalPhase,
       delayMs: number,
       commit?: (phase: TerminalPhase) => void,
     ) => {
-      const accepted = terminalTransition.begin(nextPhase, delayMs, commit ?? setPhase);
+      const accepted = terminalTransition.begin(
+        nextPhase,
+        delayMs,
+        commit ?? (panelPresence ? commitTerminalPhase : setPhase),
+      );
       if (!accepted) return false;
       cancelStallHint();
       setTerminalPending(true);
       return true;
     },
-    [cancelStallHint, terminalTransition],
+    [cancelStallHint, commitTerminalPhase, panelPresence, terminalTransition],
   );
 
   const loadSession = useCallback((next: LevelSession) => {
@@ -306,6 +343,8 @@ export function GameScreen({
       Date.now(),
     );
     terminalTransition.reset();
+    // W2-05: Next / Retry unmount the panel at once (under W2-04's scrim when on).
+    panelPresence?.hideNow();
     setTerminalPending(false);
     setSession(next);
     heartsRef.current = next.level.hearts;
@@ -319,7 +358,7 @@ export function GameScreen({
     setPhase('playing');
     setHint(null);
     setAdShowFailed(false);
-  }, [cancelStallHint, terminalTransition]);
+  }, [cancelStallHint, panelPresence, terminalTransition]);
 
   const loadLevel = useCallback((index: number) => {
     revisionRef.current += 1;
@@ -537,6 +576,8 @@ export function GameScreen({
   const onContinueWithAd = useCallback(async () => {
     // W2-04: a Retry is already swapping the level under the scrim.
     if (levelScrim?.busy) return;
+    // W2-05: the panel is already fading out after an earned continue.
+    if (panelPresence?.state === 'exiting') return;
     setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
     const earned = await Ads.showRewarded('continue');
@@ -547,11 +588,14 @@ export function GameScreen({
     }
     levelAggregatorRef.current.resume();
     terminalTransition.reset();
+    // W2-05: the panel stays mounted (touch-transparent, board locked) while
+    // it fades out over the board it returns to.
+    panelPresence?.hide(reducedMotion ? 0 : PANEL_EXIT_MS);
     setTerminalPending(false);
     heartsRef.current = 1;
     setHearts(1);
     setPhase('playing');
-  }, [levelScrim, terminalTransition]);
+  }, [levelScrim, panelPresence, reducedMotion, terminalTransition]);
 
   /** Rewarded hint: pulse an arrow that can slither out right now. */
   const onHint = useCallback(async () => {
@@ -572,10 +616,89 @@ export function GameScreen({
     if (fresh) setHint({ arrow: fresh, id: hintId.current++ });
   }, [phase, terminalPending, adBusy, level]);
 
+  // W2-05: while the panel fades out (phase is already 'playing') it keeps
+  // showing the lose panel. It also keeps the ad state the player pressed
+  // Continue on: the shown rewarded ad is consumed (not ready) before the
+  // reward resolves, which would otherwise flip the fading panel to "No ad
+  // available". OFF (no latch): these equal phase / rewardedReady / adShowFailed.
+  const lastPanelPhaseRef = useRef<TerminalPhase>('lost');
+  if (phase !== 'playing') lastPanelPhaseRef.current = phase;
+  const panelPhase: TerminalPhase = phase !== 'playing' ? phase : lastPanelPhaseRef.current;
+  const holdPressedAdState = panelPresence !== null && (adBusy || panelExiting);
+  const panelRewardedReady = holdPressedAdState || rewardedReady;
+  const panelAdShowFailed = !holdPressedAdState && adShowFailed;
+  const overlayMounted = !activeTutorialId && (phase !== 'playing' || panelExiting);
+  const overlayScrimColor = panelPhase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)';
+
   const diffColor =
     level.difficulty === Difficulty.SuperHard ? p.heartText
     : level.difficulty === Difficulty.Hard ? p.accentText
     : p.inkDim;
+
+  const panelContent = overlayMounted ? (
+    <>
+      <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart }]}>
+        {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
+      </Text>
+      {panelPhase === 'won' && (
+        <Stars
+          earned={Math.max(1, hearts)}
+          total={level.hearts}
+          palette={p}
+          feedbackEnabled={feedbackEnabled}
+        />
+      )}
+      <Text style={[styles.panelSub, { color: p.inkDim }]}>
+        {panelPhase === 'won'
+          ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
+          : !panelRewardedReady || panelAdShowFailed
+            ? 'No ad available right now — Retry is free'
+            : 'The shape got the better of you.'}
+      </Text>
+      {panelPhase === 'lost' && (
+        <PressScale
+          disabled={!panelRewardedReady || adBusy}
+          accessibilityState={{ disabled: !panelRewardedReady || adBusy }}
+          style={({ pressed }) => [
+            styles.button,
+            {
+              backgroundColor: !panelRewardedReady
+                ? p.bg // inactive well; keeps the inkDim label ≥4.5:1 (W0-06)
+                : pressed ? p.accentDeep : p.accent,
+              marginBottom: 12,
+              transform: pressSnapTransform(pressed),
+            },
+          ]}
+          onPress={onContinueWithAd}
+        >
+          <Text style={[styles.buttonText, { color: panelRewardedReady ? p.inkOnAccent : p.inkDim }]}>
+            Continue +♥ (ad)
+          </Text>
+        </PressScale>
+      )}
+      <PressScale
+        testID={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
+        accessibilityLabel={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
+        disabled={adBusy}
+        style={({ pressed }) => [
+          styles.button,
+          { transform: pressSnapTransform(pressed) },
+          panelPhase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
+          panelPhase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
+        ]}
+        onPress={() => (panelPhase === 'won' ? onNextLevel() : onRetry())}
+      >
+        <Text style={[styles.buttonText, { color: panelPhase === 'won' ? p.inkOnAccent : p.inkDim }]}>
+          {panelPhase === 'won' ? 'Next level' : 'Retry'}
+        </Text>
+      </PressScale>
+      {panelPhase === 'won' && SaveSystem.perfectStreak > 1 && (
+        <Text style={[styles.streak, { color: p.accentText }]}>
+          ✦ {SaveSystem.perfectStreak} perfect in a row
+        </Text>
+      )}
+    </>
+  ) : null;
 
   return (
     <View
@@ -636,8 +759,8 @@ export function GameScreen({
               label="💡"
               palette={p}
               onPress={onHint}
-              active={!terminalPending && !adBusy}
-              disabled={!hintReady || terminalPending || adBusy}
+              active={!terminalPending && !adBusy && !panelExiting}
+              disabled={!hintReady || terminalPending || adBusy || panelExiting}
             />
           )}
         </View>
@@ -650,7 +773,7 @@ export function GameScreen({
         onRemoved={onRemoved}
         onBlocked={onBlocked}
         onTapOutcome={onTapOutcome}
-        locked={phase !== 'playing' || terminalPending || adBusy}
+        locked={phase !== 'playing' || terminalPending || adBusy || panelExiting}
         hint={hint}
         clearHint={clearHint}
         testID={benchmarkMode ? 'perf-board' : undefined}
@@ -680,78 +803,27 @@ export function GameScreen({
       )}
 
       {/* Win / lose overlays */}
-      {!activeTutorialId && phase !== 'playing' && (
+      {overlayMounted && (panelPresence ? (
+        <PanelOverlayFrame
+          testID={benchmarkMode ? 'perf-terminal-overlay' : undefined}
+          presence={panelPresenceValue}
+          state={panelState}
+          scrimColor={overlayScrimColor}
+          overlayStyle={styles.overlay}
+          panelStyle={[styles.panel, { backgroundColor: p.surface, borderColor: p.border }]}
+        >
+          {panelContent}
+        </PanelOverlayFrame>
+      ) : (
         <View
           testID={benchmarkMode ? 'perf-terminal-overlay' : undefined}
-          style={[
-            styles.overlay,
-            { backgroundColor: phase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)' },
-          ]}
+          style={[styles.overlay, { backgroundColor: overlayScrimColor }]}
         >
           <View style={[styles.panel, { backgroundColor: p.surface, borderColor: p.border }]}>
-            <Text style={[styles.panelTitle, { color: phase === 'won' ? p.accent : p.heart }]}>
-              {phase === 'won' ? 'Cleared!' : 'Out of hearts'}
-            </Text>
-            {phase === 'won' && (
-              <Stars
-                earned={Math.max(1, hearts)}
-                total={level.hearts}
-                palette={p}
-                feedbackEnabled={feedbackEnabled}
-              />
-            )}
-            <Text style={[styles.panelSub, { color: p.inkDim }]}>
-              {phase === 'won'
-                ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
-                : !rewardedReady || adShowFailed
-                  ? 'No ad available right now — Retry is free'
-                  : 'The shape got the better of you.'}
-            </Text>
-            {phase === 'lost' && (
-              <PressScale
-                disabled={!rewardedReady || adBusy}
-                accessibilityState={{ disabled: !rewardedReady || adBusy }}
-                style={({ pressed }) => [
-                  styles.button,
-                  {
-                    backgroundColor: !rewardedReady
-                      ? p.bg // inactive well; keeps the inkDim label ≥4.5:1 (W0-06)
-                      : pressed ? p.accentDeep : p.accent,
-                    marginBottom: 12,
-                    transform: pressSnapTransform(pressed),
-                  },
-                ]}
-                onPress={onContinueWithAd}
-              >
-                <Text style={[styles.buttonText, { color: rewardedReady ? p.inkOnAccent : p.inkDim }]}>
-                  Continue +♥ (ad)
-                </Text>
-              </PressScale>
-            )}
-            <PressScale
-              testID={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
-              accessibilityLabel={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
-              disabled={adBusy}
-              style={({ pressed }) => [
-                styles.button,
-                { transform: pressSnapTransform(pressed) },
-                phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
-                phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
-              ]}
-              onPress={() => (phase === 'won' ? onNextLevel() : onRetry())}
-            >
-              <Text style={[styles.buttonText, { color: phase === 'won' ? p.inkOnAccent : p.inkDim }]}>
-                {phase === 'won' ? 'Next level' : 'Retry'}
-              </Text>
-            </PressScale>
-            {phase === 'won' && SaveSystem.perfectStreak > 1 && (
-              <Text style={[styles.streak, { color: p.accentText }]}>
-                ✦ {SaveSystem.perfectStreak} perfect in a row
-              </Text>
-            )}
+            {panelContent}
           </View>
         </View>
-      )}
+      ))}
 
       {/* W2-04: last child, so it covers the header, board and panel. */}
       {levelScrim && <ScreenScrim color={p.bg} opacity={scrimOpacity} />}
@@ -766,6 +838,8 @@ function initialTutorialLine(tutorialId: TutorialId | undefined): string {
 }
 
 const readRewardedReady = () => Ads.rewardedReady;
+const subscribeNoPresence = () => () => undefined;
+const readNoPresence = (): PresenceState => 'hidden';
 const subscribeHintReady = (cb: (ready: boolean) => void) => Ads.subscribeRewardedReady(cb, 'hint');
 const readHintReady = () => Ads.isRewardedReady('hint');
 
@@ -891,7 +965,7 @@ function Stars({
           key={i}
           filled={i < earned}
           big={i === Math.floor(total / 2)}
-          delay={250 + i * 170}
+          delay={FIRST_STAR_DELAY_MS + i * 170}
           palette={palette}
           feedbackEnabled={feedbackEnabled}
         />

@@ -17,6 +17,7 @@ const NAMED_META_FLAGS = [
   'META_MISSED_MARK',
   'META_PRESS_SPRING',
   'META_LEVEL_TRANSITION', // W2-04
+  'META_PANEL_MOTION', // W2-05
 ];
 
 const savedEnv = { ...process.env };
