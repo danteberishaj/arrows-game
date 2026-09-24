@@ -20,6 +20,7 @@ import {
   appLevelAggregator,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
+import { META_LEVEL_TRANSITION } from '../featureFlags';
 import { Ads } from './ads';
 import { BoardView } from './BoardView';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
@@ -58,6 +59,12 @@ import {
 } from './ftueRoute';
 import { FtueStallTimer } from './ftueStallTimer';
 import { readGridLines, setGridLines, subscribeGridLines } from './gridLinesSession';
+import {
+  createLevelScrimTransition,
+  ScreenScrim,
+  showAdThenPanelBeat,
+  type LevelScrimTransition,
+} from './ScreenScrim';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
@@ -167,6 +174,15 @@ export function GameScreen({
     terminalTransitionRef.current = new TerminalTransitionGuard();
   }
   const terminalTransition = terminalTransitionRef.current;
+  // W2-04 (META_LEVEL_TRANSITION): Next and Retry swap the level under a flat
+  // bg scrim. OFF: no scrim, no sequencer; both presses swap in one frame.
+  const scrimOpacity = useSharedValue(0);
+  const levelScrimRef = useRef<LevelScrimTransition | null>(null);
+  if (META_LEVEL_TRANSITION && levelScrimRef.current === null) {
+    levelScrimRef.current = createLevelScrimTransition(scrimOpacity);
+  }
+  const levelScrim = levelScrimRef.current;
+  const nextPendingRef = useRef(false);
   heartsRef.current = hearts;
   const clearHint = useCallback(() => setHint(null), []);
 
@@ -219,6 +235,11 @@ export function GameScreen({
     }, 0));
   }, [session]);
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
+  useEffect(() => () => levelScrim?.dispose(), [levelScrim]);
+  // The new session is committed: the scrim may uncover one frame later.
+  useEffect(() => {
+    levelScrim?.contentCommitted();
+  }, [levelScrim, session.revision]);
   useEffect(() => () => {
     levelAggregatorRef.current.end('abandoned', heartsRef.current, Date.now());
     onTelemetryProbeUnmount?.();
@@ -467,6 +488,29 @@ export function GameScreen({
 
   /** "Next level" after a clear: the paced interstitial slots in between. */
   const onNextLevel = useCallback(async () => {
+    if (levelScrim) {
+      // A press while a transition (or its ad) runs is ignored, before any ad
+      // is asked for.
+      if (levelScrim.busy || nextPendingRef.current) return;
+      nextPendingRef.current = true;
+      try {
+        if (!benchmarkMode) {
+          setAdBusy(true);
+          try {
+            // After a shown ad the panel is seen again (the button stays
+            // disabled) before the cover starts.
+            await showAdThenPanelBeat(() => Ads.showInterstitialIfDue());
+          } finally {
+            setAdBusy(false);
+          }
+        }
+        // The ad (if any) has closed and the panel is back: cover, swap, uncover.
+        levelScrim.start(() => loadLevel(levelIndex + 1));
+      } finally {
+        nextPendingRef.current = false;
+      }
+      return;
+    }
     if (benchmarkMode) {
       loadLevel(levelIndex + 1);
       return;
@@ -478,10 +522,21 @@ export function GameScreen({
       setAdBusy(false);
     }
     loadLevel(levelIndex + 1);
-  }, [benchmarkMode, levelIndex, loadLevel]);
+  }, [benchmarkMode, levelIndex, levelScrim, loadLevel]);
+
+  /** "Retry" on the lose panel. */
+  const onRetry = useCallback(() => {
+    if (levelScrim) {
+      levelScrim.start(() => restartLevel(levelIndex));
+      return;
+    }
+    restartLevel(levelIndex);
+  }, [levelIndex, levelScrim, restartLevel]);
 
   /** Rewarded "+1 heart continue" from the lose panel. */
   const onContinueWithAd = useCallback(async () => {
+    // W2-04: a Retry is already swapping the level under the scrim.
+    if (levelScrim?.busy) return;
     setAdShowFailed(false); // the label describes the latest attempt only
     setAdBusy(true);
     const earned = await Ads.showRewarded('continue');
@@ -496,7 +551,7 @@ export function GameScreen({
     heartsRef.current = 1;
     setHearts(1);
     setPhase('playing');
-  }, [terminalTransition]);
+  }, [levelScrim, terminalTransition]);
 
   /** Rewarded hint: pulse an arrow that can slither out right now. */
   const onHint = useCallback(async () => {
@@ -683,7 +738,7 @@ export function GameScreen({
                 phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
                 phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
               ]}
-              onPress={() => (phase === 'won' ? onNextLevel() : restartLevel(levelIndex))}
+              onPress={() => (phase === 'won' ? onNextLevel() : onRetry())}
             >
               <Text style={[styles.buttonText, { color: phase === 'won' ? p.inkOnAccent : p.inkDim }]}>
                 {phase === 'won' ? 'Next level' : 'Retry'}
@@ -697,6 +752,9 @@ export function GameScreen({
           </View>
         </View>
       )}
+
+      {/* W2-04: last child, so it covers the header, board and panel. */}
+      {levelScrim && <ScreenScrim color={p.bg} opacity={scrimOpacity} />}
     </View>
   );
 }

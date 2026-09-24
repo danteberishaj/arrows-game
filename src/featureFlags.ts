@@ -69,3 +69,11 @@ export const META_MISSED_MARK = process.env.EXPO_PUBLIC_META_MISSED_MARK === '1'
  * every button's pressed style is today's, scale snap included.
  */
 export const META_PRESS_SPRING = process.env.EXPO_PUBLIC_META_PRESS_SPRING === '1';
+
+/**
+ * W2-04: level -> level (Next, Retry) runs under a flat background-coloured
+ * scrim: cover 180 ms, swap under full cover, uncover 180 ms
+ * (src/ui/scrimTransition.ts, src/ui/ScreenScrim.tsx). OFF: both presses swap
+ * the level in one frame, exactly as before.
+ */
+export const META_LEVEL_TRANSITION = process.env.EXPO_PUBLIC_META_LEVEL_TRANSITION === '1';
