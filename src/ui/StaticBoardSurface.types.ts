@@ -16,6 +16,12 @@ export interface BumpingArrowArt extends AnimatedArrowArt {
   y: number;
   /** POLISH-T5 (R6a): end colour of the heart mix when the arrow is marked; absent = ink. */
   settle?: string;
+  /**
+   * POLISH-T6 (native): background colour painted, unmoved, over the arrow's
+   * static twin under the bump. The retained board keeps drawing the arrow
+   * (no hide/show hand-off between the two render pipelines); this covers it.
+   */
+  cover?: string;
 }
 
 export interface AnimatedExitTrail {

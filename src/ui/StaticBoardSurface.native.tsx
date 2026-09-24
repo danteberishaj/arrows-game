@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { PixelRatio, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Group,
@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
 import { PERF_MODE } from '../perfMode';
+import { grownTriangleD } from './arrowGeometry';
 import { nativeGridProps } from './boardGrid';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import { BOARD_WRAPPER_OVERFLOW } from './boardOverflow';
@@ -43,6 +44,13 @@ const PERF_EMPTY_BOARD =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1';
 const PERF_OPAQUE_SURFACE =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_OPAQUE_SURFACE === '1';
+/**
+ * POLISH-T6: how far (device px) the blocked arrow's cover reaches past the
+ * static stroke's edge, so the native anti-aliased fringe is covered at every
+ * zoom. The cover is background-coloured, so the reach is invisible.
+ */
+const COVER_OUTSET_PX = 1.5; // OWNER-PICKED STARTING VALUE
+const PIXEL_RATIO = PixelRatio.get();
 
 /**
  * Native retained board (static arrows + slither exits) with a small Skia
@@ -222,6 +230,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
             <ShakingArrow
               key={shaking.id}
               art={shaking}
+              scale={scale}
               ink={ink}
               heart={heart}
               cellSize={cellSize}
@@ -317,6 +326,7 @@ function BlockerArrow({
  * stays still and solid heart until it unmounts. */
 function ShakingArrow({
   art,
+  scale,
   ink,
   heart,
   cellSize,
@@ -324,6 +334,7 @@ function ShakingArrow({
   reducedMotion,
 }: {
   art: BumpingArrowArt;
+  scale: StaticBoardSurfaceProps['scale'];
   ink: string;
   heart: string;
   cellSize: number;
@@ -347,19 +358,47 @@ function ShakingArrow({
   const color = useDerivedValue(() =>
     interpolateColors(blockedFlashMixAt(progress.value, reducedMotion), [0, 1], [heart, settle]),
   );
+  // Board units per COVER_OUTSET_PX device px at the zoom the tap landed at,
+  // read once on the JS thread: the cover is plain numbers, no extra worklet.
+  const [coverOutset] = React.useState(
+    () => COVER_OUTSET_PX / (Math.max(scale.value, 1e-3) * PIXEL_RATIO),
+  );
+  const coverStrokeWidth = strokeWidth + 2 * coverOutset;
+  // The head's cover is the head triangle grown by the outset, filled: the
+  // same draw type as every head. A stroked head outline (and a Skia path-op
+  // union) each delayed the first overlay paint after launch by about one
+  // frame on the emulator (artifacts/POLISH-T6/cold).
+  const [coverHead] = React.useState(() => grownTriangleD(art.headD, coverOutset));
 
   return (
-    <Group transform={transform}>
-      <Path
-        path={art.shaftD}
-        color={color}
-        style="stroke"
-        strokeWidth={strokeWidth}
-        strokeCap="round"
-        strokeJoin="round"
-      />
-      <Path path={art.headD} color={color} />
-    </Group>
+    <>
+      {art.cover !== undefined && (
+        // POLISH-T6: the static twin stays drawn by the native board; this
+        // unmoved background-coloured copy hides it under the bump.
+        <Group>
+          <Path
+            path={art.shaftD}
+            color={art.cover}
+            style="stroke"
+            strokeWidth={coverStrokeWidth}
+            strokeCap="round"
+            strokeJoin="round"
+          />
+          <Path path={coverHead} color={art.cover} />
+        </Group>
+      )}
+      <Group transform={transform}>
+        <Path
+          path={art.shaftD}
+          color={color}
+          style="stroke"
+          strokeWidth={strokeWidth}
+          strokeCap="round"
+          strokeJoin="round"
+        />
+        <Path path={art.headD} color={color} />
+      </Group>
+    </>
   );
 }
 

@@ -340,3 +340,27 @@ export function slitherPath(
 }
 
 const round = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * POLISH-T6: a head triangle path (`M x y L x y L x y Z`, as `arrowArt` writes
+ * it) with every edge moved `outset` outwards, as one triangle again: scaled
+ * about its incentre by 1 + outset / inradius. Anything else comes back as is.
+ */
+export function grownTriangleD(d: string, outset: number): string {
+  const n = d.match(/-?\d+(?:\.\d+)?/g);
+  if (!/^M[^MLZ]+L[^MLZ]+L[^MLZ]+Z$/.test(d.trim()) || n === null || n.length !== 6) return d;
+  const v = [0, 2, 4].map((i) => ({ x: Number(n[i]), y: Number(n[i + 1]) }));
+  const side = (p: Pt, q: Pt) => Math.hypot(q.x - p.x, q.y - p.y);
+  const a = side(v[1], v[2]), b = side(v[2], v[0]), c = side(v[0], v[1]);
+  const perimeter = a + b + c;
+  const area = Math.abs((v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[2].x - v[0].x) * (v[1].y - v[0].y)) / 2;
+  if (!(area > 1e-9) || !(perimeter > 0)) return d;
+  const inradius = (2 * area) / perimeter;
+  const ic = {
+    x: (a * v[0].x + b * v[1].x + c * v[2].x) / perimeter,
+    y: (a * v[0].y + b * v[1].y + c * v[2].y) / perimeter,
+  };
+  const k = 1 + outset / inradius;
+  const g = v.map((p) => ({ x: round(ic.x + (p.x - ic.x) * k), y: round(ic.y + (p.y - ic.y) * k) }));
+  return `M${g[0].x} ${g[0].y} L${g[1].x} ${g[1].y} L${g[2].x} ${g[2].y} Z`;
+}

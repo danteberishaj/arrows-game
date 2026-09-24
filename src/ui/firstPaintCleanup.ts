@@ -7,6 +7,12 @@ interface StagedCleanup {
   id: number;
   durationMs: number;
   onElapsed: () => void;
+  /**
+   * POLISH-T6: an earlier step on the same first-paint clock, for handing a
+   * feedback arrow's final look back to the static layer while the overlay
+   * still covers it. Superseded or cleared with its stage, like the cleanup.
+   */
+  handBack?: { atMs: number; run: () => void };
 }
 
 const defaultClock: FirstPaintCleanupClock = {
@@ -22,6 +28,7 @@ const defaultClock: FirstPaintCleanupClock = {
 export class FirstPaintCleanupTimer {
   private staged: StagedCleanup | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private handBackTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly clock: FirstPaintCleanupClock = defaultClock) {}
 
@@ -42,6 +49,16 @@ export class FirstPaintCleanupTimer {
       current.onElapsed();
     }, cleanup.durationMs);
     this.timer = timer;
+
+    const handBack = cleanup.handBack;
+    if (handBack) {
+      const handBackTimer = this.clock.setTimer(() => {
+        if (this.handBackTimer === handBackTimer) this.handBackTimer = null;
+        if (this.staged?.id !== id) return;
+        handBack.run();
+      }, handBack.atMs);
+      this.handBackTimer = handBackTimer;
+    }
   }
 
   clear(id?: number): void {
@@ -54,6 +71,10 @@ export class FirstPaintCleanupTimer {
     if (this.timer !== null) {
       this.clock.clearTimer(this.timer);
       this.timer = null;
+    }
+    if (this.handBackTimer !== null) {
+      this.clock.clearTimer(this.handBackTimer);
+      this.handBackTimer = null;
     }
   }
 }

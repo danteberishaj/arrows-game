@@ -104,9 +104,9 @@ const PERF_MASK_TIMING = process.env.EXPO_PUBLIC_PERF_MASK_TIMING === '1';
 const MASK_TIMING_LOG_EVERY = 50;
 /**
  * A PERF run force-stops the app between samples, so the board never
- * unmounts and a blocked-tap sample makes only 3 rebuilds. Log once the
- * rebuilds have been quiet this long: after both rebuilds of a blocked tap
- * (300 + 40 ms apart) and after the harness's 540 ms frame window.
+ * unmounts. Log once the rebuilds have been quiet this long (a blocked tap
+ * rebuilt twice, 300 + 40 ms apart, before POLISH-T6; now it rebuilds only a
+ * new mark, 170 ms in) and after the harness's 540 ms frame window.
  */
 const MASK_TIMING_QUIET_LOG_MS = 750; // OWNER-PICKED STARTING VALUE
 const maskTimingAllMs: number[] = [];
@@ -230,6 +230,30 @@ interface AnimatedArrowState {
   id: number;
 }
 
+/**
+ * POLISH-T6: the blocked arrow's overlay (Skia) and the retained native board
+ * are separate render pipelines, so a commit that changes both for one arrow
+ * can show a frame where neither draws it. On native the board therefore
+ * never hides a shaking arrow: the overlay paints a background-coloured cover
+ * over its static twin and moves on top of it. The one native change a
+ * blocked tap makes, a new missed mark (POLISH-T5), is held back while the
+ * overlay mounts and handed to the board mid-flash, under the cover.
+ */
+interface ShakingArrowState extends AnimatedArrowState {
+  /** Native: the board keeps drawing this arrow unmarked until the hand-back. */
+  holdMark: boolean;
+}
+
+/**
+ * When a newly marked arrow's mark goes to the native board: halfway through
+ * the overlay's life (170 ms after its first paint), which leaves the most
+ * room on both sides: the overlay has painted long before (it is one or two
+ * frames behind a commit), and the board has redrawn long before the overlay
+ * unmounts (its mask change lands a frame or two after the commit).
+ */
+const BLOCKED_MARK_HAND_BACK_MS = (BLOCKED_BUMP_MS + FEEDBACK_CLEANUP_MARGIN_MS) / 2;
+const NO_ARROWS: ReadonlySet<ArrowPath> = new Set();
+
 /** Resist dragging past [lo, hi] the way a scroll view does. */
 function rubberBand(value: number, lo: number, hi: number, dimension: number): number {
   'worklet';
@@ -270,7 +294,7 @@ export function BoardView({
   );
   const [nativeExitAnimation, setNativeExitAnimation] =
     useState<NativeExitAnimation | null>(null);
-  const [shaking, setShaking] = useState<AnimatedArrowState | null>(null);
+  const [shaking, setShaking] = useState<ShakingArrowState | null>(null);
   const [blocker, setBlocker] = useState<AnimatedArrowState | null>(null);
   const [pressed, setPressed] = useState<AnimatedArrowState | null>(null);
   // POLISH-T5 (META_MISSED_MARK): arrows whose blocked tap cost a heart.
@@ -283,7 +307,7 @@ export function BoardView({
   ).current;
   const shakeCleanup = useRef(new FirstPaintCleanupTimer()).current;
   const blockerCleanup = useRef(new FirstPaintCleanupTimer()).current;
-  const shakingRef = useRef<AnimatedArrowState | null>(null);
+  const shakingRef = useRef<ShakingArrowState | null>(null);
   const pressedRef = useRef<ArrowPath | null>(null);
   const nullTapOutcomeRef = useRef<Extract<TapOutcome, 'ghost' | 'miss'>>('miss');
   const pressPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -616,20 +640,6 @@ export function BoardView({
         else onTapOutcome('blocked');
       }
       const id = nextId.current++;
-      const nextShaking = { arrow: owner, id };
-      shakingRef.current = nextShaking;
-      shakeCleanup.stage({
-        id,
-        durationMs: BLOCKED_BUMP_MS + FEEDBACK_CLEANUP_MARGIN_MS,
-        onElapsed: () => {
-          setShaking((current) => {
-            if (current?.id !== id) return current;
-            shakingRef.current = null;
-            return null;
-          });
-        },
-      });
-      setShaking(nextShaking);
 
       // Show WHY: the first arrow in the lane lights up for a moment.
       const blocking = board.blockerOf(owner);
@@ -645,11 +655,46 @@ export function BoardView({
         setBlocker({ arrow: blocking, id: blockerId });
       }
       const charged = onBlocked(blockedLedger.charge(owner));
-      // Same commit as the bump, so the static twin is already in the mark
-      // colour when the overlay (settling heart -> mark) unmounts.
+      // Same commit as the bump: the overlay (settling heart -> mark) and the
+      // web static batch read it at once. POLISH-T6: the native board gets a
+      // new mark later, at the hand-back, while the overlay covers the arrow.
       if (MISSED_MARK_ENABLED) {
         setMarked((current) => marksAfterBlockedTap(current, owner, charged));
       }
+      // A re-tap before the hand-back keeps holding: the overlay is replaced
+      // in the same commit, so the board must not change underneath it then.
+      const previous = shakingRef.current;
+      const holdMark = MISSED_MARK_ENABLED && Platform.OS !== 'web'
+        && (charged || (previous?.arrow === owner && previous.holdMark));
+      const nextShaking: ShakingArrowState = { arrow: owner, id, holdMark };
+      shakingRef.current = nextShaking;
+      shakeCleanup.stage({
+        id,
+        durationMs: BLOCKED_BUMP_MS + FEEDBACK_CLEANUP_MARGIN_MS,
+        onElapsed: () => {
+          setShaking((current) => {
+            if (current?.id !== id) return current;
+            shakingRef.current = null;
+            return null;
+          });
+        },
+        ...(holdMark
+          ? {
+            handBack: {
+              atMs: BLOCKED_MARK_HAND_BACK_MS,
+              run: () => {
+                if (shakingRef.current?.id === id) {
+                  shakingRef.current = { ...shakingRef.current, holdMark: false };
+                }
+                setShaking((current) => (current?.id === id && current.holdMark
+                  ? { ...current, holdMark: false }
+                  : current));
+              },
+            },
+          }
+          : null),
+      });
+      setShaking(nextShaking);
     }
   }, [
     arrowArtCache,
@@ -845,7 +890,7 @@ function BoardContent(props: {
   palette: Palette;
   exiting: (ExitingTrail | null)[];
   nativeExitAnimation: NativeExitAnimation | null;
-  shaking: AnimatedArrowState | null;
+  shaking: ShakingArrowState | null;
   blocker: AnimatedArrowState | null;
   pressed: AnimatedArrowState | null;
   hint: { arrow: ArrowPath; id: number } | null;
@@ -876,16 +921,22 @@ function BoardContent(props: {
   } = props;
 
   const arrowCount = board.count();
-  // Only arrows that MOVE (bump) or change colour for good (hint) leave the
-  // static layer. The press preview and the blocker flash draw over their
-  // static twin with a wider stroke, so a touch never rebuilds the native
-  // board (on iOS that is a full board-sized redraw).
+  // Web (one SVG pipeline): only arrows that MOVE (bump) or change colour for
+  // good (hint) leave the static batch. Native: only the hint leaves the
+  // retained board; the bump draws over its static twin behind a cover
+  // (POLISH-T6), like the press preview and the blocker flash, so a blocked
+  // tap never rebuilds the native board (on iOS a full board-sized redraw).
   const excludedArrows = useMemo(() => {
     const excluded = new Set<ArrowPath>();
     if (shaking) excluded.add(shaking.arrow);
     if (hint) excluded.add(hint.arrow);
     return excluded;
   }, [shaking?.arrow, hint?.arrow]);
+  const nativeExcludedArrows = useMemo(
+    () => hint ? new Set<ArrowPath>([hint.arrow]) : NO_ARROWS,
+    [hint?.arrow],
+  );
+  const heldMarkArrow = shaking?.holdMark ? shaking.arrow : null;
   const arrows = board.arrows();
   const staticArt = useMemo(
     () => Platform.OS === 'web'
@@ -902,8 +953,8 @@ function BoardContent(props: {
     [arrows, arrowArtCache, arrowCount, excludedArrows, marked],
   );
   const nativeMarkMask = useMemo(
-    () => missedMarkMask(arrowArtCache, marked),
-    [arrowArtCache, marked],
+    () => missedMarkMask(arrowArtCache, marksWithout(marked, heldMarkArrow)),
+    [arrowArtCache, marked, heldMarkArrow],
   );
   const markColor = useMemo(() => missedMarkColor(palette), [palette]);
   const nativeGeometry = useMemo(
@@ -912,9 +963,9 @@ function BoardContent(props: {
   );
   const nativeVisibilityMask = useMemo(
     PERF_MASK_TIMING
-      ? () => timeMaskBuild(() => arrowArtCache.visibilityMask(arrows, excludedArrows))
-      : () => arrowArtCache.visibilityMask(arrows, excludedArrows),
-    [arrows, arrowArtCache, arrowCount, excludedArrows],
+      ? () => timeMaskBuild(() => arrowArtCache.visibilityMask(arrows, nativeExcludedArrows))
+      : () => arrowArtCache.visibilityMask(arrows, nativeExcludedArrows),
+    [arrows, arrowArtCache, arrowCount, nativeExcludedArrows],
   );
   if (PERF_MASK_TIMING) {
     // PERF_MASK_TIMING is a build-time constant, so the hook order never
@@ -935,6 +986,8 @@ function BoardContent(props: {
       ...dirVec(shaking.arrow.headDir),
       // R6a: a marked arrow's heart mix ends at the mark, not ink.
       ...(marked.has(shaking.arrow) ? { settle: markColor } : null),
+      // POLISH-T6 (native): hides the static twin the bump moves off.
+      cover: palette.bg,
     }
     : null;
   const blockerArt = blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null;
@@ -998,6 +1051,17 @@ function BoardContent(props: {
 }
 
 const EMPTY_ART = { shaftD: '', headD: '' };
+
+/** `marks` without `arrow` (the same set when there is nothing to drop). */
+function marksWithout(
+  marks: ReadonlySet<ArrowPath>,
+  arrow: ArrowPath | null,
+): ReadonlySet<ArrowPath> {
+  if (arrow === null || !marks.has(arrow)) return marks;
+  const next = new Set(marks);
+  next.delete(arrow);
+  return next;
+}
 
 /** The static ink batch leaves marked arrows to the mark batch. Same set when none. */
 function withMarked(
