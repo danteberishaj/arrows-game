@@ -979,20 +979,41 @@ function BoardContent(props: {
     blocker !== null ||
     pressed !== null ||
     exiting.some((trail) => trail !== null);
-  const shakingArt = shaking
-    ? {
-      id: shaking.id,
-      ...arrowArtCache.artFor(shaking.arrow),
-      ...dirVec(shaking.arrow.headDir),
-      // R6a: a marked arrow's heart mix ends at the mark, not ink.
-      ...(marked.has(shaking.arrow) ? { settle: markColor } : null),
-      // POLISH-T6 (native): hides the static twin the bump moves off.
-      cover: palette.bg,
-    }
-    : null;
-  const blockerArt = blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null;
-  const pressedArt = pressed ? { id: pressed.id, ...arrowArtCache.artFor(pressed.arrow) } : null;
-  const hintArt = hint ? { id: hint.id, ...arrowArtCache.artFor(hint.arrow) } : null;
+  // POLISH-T7 (audit #6): the feedback art is memoised on the feedback it
+  // draws, so an unrelated render (an exit tap while a hint is up, an ad
+  // readiness change) keeps the same objects and the memoised overlay skips
+  // its Skia reconcile, redraw and mapper restarts. The bump keys on its id
+  // (not the state object): the mid-flash mark hand-back (POLISH-T6) replaces
+  // the object but changes none of the art.
+  const shakingId = shaking?.id ?? null;
+  const shakingArrow = shaking?.arrow ?? null;
+  const shakingMarked = shakingArrow !== null && marked.has(shakingArrow);
+  const shakingArt = useMemo(
+    () => shakingId !== null && shakingArrow !== null
+      ? {
+        id: shakingId,
+        ...arrowArtCache.artFor(shakingArrow),
+        ...dirVec(shakingArrow.headDir),
+        // R6a: a marked arrow's heart mix ends at the mark, not ink.
+        ...(shakingMarked ? { settle: markColor } : null),
+        // POLISH-T6 (native): hides the static twin the bump moves off.
+        cover: palette.bg,
+      }
+      : null,
+    [shakingId, shakingArrow, arrowArtCache, shakingMarked, markColor, palette.bg],
+  );
+  const blockerArt = useMemo(
+    () => blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null,
+    [blocker, arrowArtCache],
+  );
+  const pressedArt = useMemo(
+    () => pressed ? { id: pressed.id, ...arrowArtCache.artFor(pressed.arrow) } : null,
+    [pressed, arrowArtCache],
+  );
+  const hintArt = useMemo(
+    () => hint ? { id: hint.id, ...arrowArtCache.artFor(hint.arrow) } : null,
+    [hint, arrowArtCache],
+  );
 
   return (
     <>

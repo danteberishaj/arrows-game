@@ -175,7 +175,47 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   pressed,
   hint,
   reducedMotion,
-}: Pick<
+}: FeedbackLayerProps) {
+  // POLISH-T7 (audit #2): the camera transform group lives in a child that
+  // is mounted only while some feedback is up. With every slot null the Skia
+  // tree is empty, so Skia starts no mapper on the camera shared values and
+  // does not replay and present an empty picture on every pan/pinch frame.
+  // The Canvas stays mounted: its TextureView is never recreated.
+  const anyFeedback =
+    !PERF_EMPTY_BOARD &&
+    (pressed !== null || blocker !== null || shaking !== null || hint !== null);
+
+  return (
+    <Canvas
+      colorSpace="srgb"
+      opaque={false}
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+    >
+      {anyFeedback && (
+        <FeedbackLayer
+          scale={scale}
+          tx={tx}
+          ty={ty}
+          boardW={boardW}
+          boardH={boardH}
+          ink={ink}
+          accent={accent}
+          heart={heart}
+          cellSize={cellSize}
+          strokeWidth={strokeWidth}
+          shaking={shaking}
+          blocker={blocker}
+          pressed={pressed}
+          hint={hint}
+          reducedMotion={reducedMotion}
+        />
+      )}
+    </Canvas>
+  );
+});
+
+type FeedbackLayerProps = Pick<
   StaticBoardSurfaceProps,
   | 'scale'
   | 'tx'
@@ -192,7 +232,27 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   | 'pressed'
   | 'hint'
   | 'reducedMotion'
->) {
+>;
+
+/** The feedback arrows in board space, under the camera transform. Mounted
+ * only while at least one feedback slot is non-null (POLISH-T7). */
+function FeedbackLayer({
+  scale,
+  tx,
+  ty,
+  boardW,
+  boardH,
+  ink,
+  accent,
+  heart,
+  cellSize,
+  strokeWidth,
+  shaking,
+  blocker,
+  pressed,
+  hint,
+  reducedMotion,
+}: FeedbackLayerProps) {
   const boardTransform = useDerivedValue((): Transforms3d => [
     { translateX: tx.value },
     { translateY: ty.value },
@@ -200,58 +260,53 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   ]);
   const boardClip = useMemo(() => rect(0, 0, boardW, boardH), [boardW, boardH]);
 
+  // Keys are prefixed per slot: hint ids (GameScreen) and press/blocker/bump
+  // ids (BoardView) come from separate counters and can be equal.
   return (
-    <Canvas
-      colorSpace="srgb"
-      opaque={false}
-      pointerEvents="none"
-      style={StyleSheet.absoluteFill}
-    >
-      <Group transform={boardTransform}>
-        <Group clip={boardClip}>
-          {!PERF_EMPTY_BOARD && pressed !== null && (
-            <PressedArrow
-              key={pressed.id}
-              art={pressed}
-              accent={accent}
-              strokeWidth={strokeWidth}
-            />
-          )}
-          {!PERF_EMPTY_BOARD && blocker !== null && (
-            <BlockerArrow
-              key={blocker.id}
-              art={blocker}
-              heart={heart}
-              strokeWidth={strokeWidth}
-              reducedMotion={reducedMotion}
-            />
-          )}
-          {!PERF_EMPTY_BOARD && shaking !== null && (
-            <ShakingArrow
-              key={shaking.id}
-              art={shaking}
-              scale={scale}
-              ink={ink}
-              heart={heart}
-              cellSize={cellSize}
-              strokeWidth={strokeWidth}
-              reducedMotion={reducedMotion}
-            />
-          )}
-          {!PERF_EMPTY_BOARD && hint !== null && (
-            <HintArrow
-              key={hint.id}
-              art={hint}
-              accent={accent}
-              strokeWidth={strokeWidth}
-              reducedMotion={reducedMotion}
-            />
-          )}
-        </Group>
+    <Group transform={boardTransform}>
+      <Group clip={boardClip}>
+        {pressed !== null && (
+          <PressedArrow
+            key={`p${pressed.id}`}
+            art={pressed}
+            accent={accent}
+            strokeWidth={strokeWidth}
+          />
+        )}
+        {blocker !== null && (
+          <BlockerArrow
+            key={`b${blocker.id}`}
+            art={blocker}
+            heart={heart}
+            strokeWidth={strokeWidth}
+            reducedMotion={reducedMotion}
+          />
+        )}
+        {shaking !== null && (
+          <ShakingArrow
+            key={`s${shaking.id}`}
+            art={shaking}
+            scale={scale}
+            ink={ink}
+            heart={heart}
+            cellSize={cellSize}
+            strokeWidth={strokeWidth}
+            reducedMotion={reducedMotion}
+          />
+        )}
+        {hint !== null && (
+          <HintArrow
+            key={`h${hint.id}`}
+            art={hint}
+            accent={accent}
+            strokeWidth={strokeWidth}
+            reducedMotion={reducedMotion}
+          />
+        )}
       </Group>
-    </Canvas>
+    </Group>
   );
-});
+}
 
 /** Touch-down preview: accent, bolder, drawn over the static arrow. Static
  * on purpose so it appears on the next frame and never moves. */
