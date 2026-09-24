@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
@@ -17,6 +17,7 @@ import { FTUE_ENABLED } from './ftueConfig';
 import { ftueRoute } from './ftueRoute';
 import { HeaderButton } from './HeaderButton';
 import { MenuBanner } from './MenuBanner';
+import { PressScale, pressSnapTransform } from './PressScale';
 import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
@@ -63,6 +64,19 @@ export function HomeScreen({
       }) === 'real',
   );
   const [bannerHeight, setBannerHeight] = useState(0);
+  // POLISH-T9 (audit #10): when the loaded banner's height arrives or leaves, the
+  // stats line glides by transform instead of teleporting (its `bottom` stays put,
+  // so there is no re-layout and no space reserved before a load). Reduce motion:
+  // instant.
+  const statsLiftStyle = useAnimatedStyle(() => ({
+    transform: [{
+      translateY: withTiming(bannerHeight > 0 ? -bannerHeight : 0, {
+        duration: BANNER_GLIDE_MS,
+        easing: Easing.out(Easing.cubic),
+        reduceMotion: ReduceMotion.System,
+      }),
+    }],
+  }), [bannerHeight]);
 
   useEffect(() => {
     if (META_STREAK_FREEZE && SaveSystem.streakSavedDay !== 0) {
@@ -114,31 +128,42 @@ export function HomeScreen({
         </Text>
       </View>
 
+      {/* The breathing scale (this view) and PressScale's press scale (its own
+          nested view when META_PRESS_SPRING is on) multiply. */}
       <Animated.View style={pulseStyle}>
-        <Pressable
+        <PressScale
           onPress={onPlay}
           style={({ pressed }) => [
             styles.play,
             {
               backgroundColor: pressed ? p.accentDeep : p.accent,
-              transform: [{ scale: pressed ? 0.94 : 1 }],
+              transform: pressSnapTransform(pressed),
             },
           ]}
         >
           <Text style={[styles.playText, { color: p.inkOnAccent }]}>Play</Text>
-        </Pressable>
+        </PressScale>
       </Animated.View>
 
-      <Text
-        style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + bannerHeight + 32 }]}
-      >
-        {statsLine}
-      </Text>
+      {showBanner ? (
+        <Animated.Text style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + 32 }, statsLiftStyle]}>
+          {statsLine}
+        </Animated.Text>
+      ) : (
+        <Text
+          style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + bannerHeight + 32 }]}
+        >
+          {statsLine}
+        </Text>
+      )}
 
       {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
     </View>
   );
 }
+
+/** POLISH-T9: the stats line's glide when the banner's height arrives or leaves. */
+const BANNER_GLIDE_MS = 220; // OWNER-PICKED STARTING VALUE
 
 /** Lifetime stats line (GameManager.BuildStatsLine): empty until the first solve. */
 function buildStatsLine(streakSaved: boolean): string {

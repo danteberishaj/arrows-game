@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   ReduceMotion,
@@ -34,6 +34,7 @@ import {
   type FtueSessionLogEvent,
 } from './ftueSessionLog';
 import { HeaderButton } from './HeaderButton';
+import { PressScale, pressSnapTransform } from './PressScale';
 import {
   createLevelSession, createTutorialSession,
   LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS,
@@ -65,6 +66,27 @@ import { Fonts, Palette } from './theme';
 const GRID_TOGGLE_SIZE_PT = 44; // OWNER-PICKED STARTING VALUE (design spec A)
 const GRID_TOGGLE_INSET_PT = 16; // OWNER-PICKED STARTING VALUE (design spec A)
 
+/**
+ * POLISH-T9 (smoothness audit #4): the tutorial header line is a constant
+ * two-line box, so T1, T2, the blocked line and the emptied line all give the
+ * same header height and BoardView's onLayout never re-fits (jumps) the board.
+ * Fredoka Bold 18's natural line measured 22.14 dp (411 dp) and 22.33 dp
+ * (360 dp) from the [board-viewport] deltas (W1-05, POLISH-T9 part 1); 23 dp
+ * keeps every glyph inside its line.
+ */
+export const TUTORIAL_LINE_HEIGHT = 23; // OWNER-PICKED STARTING VALUE
+
+/**
+ * Height of two tutorial lines as the text will lay out: lineHeight scales with
+ * the font scale, and Android rounds each line UP to whole pixels
+ * (CustomLineHeightSpan: ceil), e.g. 23 dp at 3.5x = 80.5 px -> 81 px. A
+ * minHeight of plain 2 x 23 = 46 dp let a two-line label measure 46.29 dp and
+ * still move the board by one pixel (POLISH-T9 part 1, first post-fix run).
+ */
+export function tutorialLineBoxHeight(fontScale: number, pixelRatio: number): number {
+  return (2 * Math.ceil(TUTORIAL_LINE_HEIGHT * fontScale * pixelRatio)) / pixelRatio;
+}
+
 // Keep the playtest logger callable in release builds, where direct console.log
 // calls in application code are removed by the production transform.
 const writeFtueSessionLog = console.log.bind(console);
@@ -93,6 +115,7 @@ export function GameScreen({
 }) {
   const p = palette;
   const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
+  const { fontScale } = useWindowDimensions(); // POLISH-T9: tutorial line box height
 
   const revisionRef = useRef(0);
   const levelAggregatorRef = useRef(appLevelAggregator);
@@ -509,12 +532,22 @@ export function GameScreen({
         <View style={[styles.headerLeft, activeTutorialId && styles.tutorialHeaderLeft]}>
           <HeaderButton label="‹" palette={p} onPress={onHomePress} />
           {activeTutorialId ? (
-            <Text
-              numberOfLines={2}
-              style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentText }]}
+            // A box two lines tall at the player's font scale (lineHeight scales
+            // with it); one line sits centred in it, level with the buttons.
+            <View
+              testID="tutorial-line-box"
+              style={[
+                styles.tutorialLabelBox,
+                { minHeight: tutorialLineBoxHeight(fontScale, PixelRatio.get()) },
+              ]}
             >
-              {tutorialLine}
-            </Text>
+              <Text
+                numberOfLines={2}
+                style={[styles.levelLabel, styles.tutorialLabel, { color: p.accentText }]}
+              >
+                {tutorialLine}
+              </Text>
+            </View>
           ) : (
             <View>
               <Text style={[styles.levelLabel, { color: p.accentLight }]}>
@@ -620,7 +653,7 @@ export function GameScreen({
                   : 'The shape got the better of you.'}
             </Text>
             {phase === 'lost' && (
-              <Pressable
+              <PressScale
                 disabled={!rewardedReady || adBusy}
                 accessibilityState={{ disabled: !rewardedReady || adBusy }}
                 style={({ pressed }) => [
@@ -630,7 +663,7 @@ export function GameScreen({
                       ? p.bg // inactive well; keeps the inkDim label ≥4.5:1 (W0-06)
                       : pressed ? p.accentDeep : p.accent,
                     marginBottom: 12,
-                    transform: [{ scale: pressed ? 0.94 : 1 }],
+                    transform: pressSnapTransform(pressed),
                   },
                 ]}
                 onPress={onContinueWithAd}
@@ -638,15 +671,15 @@ export function GameScreen({
                 <Text style={[styles.buttonText, { color: rewardedReady ? p.inkOnAccent : p.inkDim }]}>
                   Continue +♥ (ad)
                 </Text>
-              </Pressable>
+              </PressScale>
             )}
-            <Pressable
+            <PressScale
               testID={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
               accessibilityLabel={benchmarkMode && phase === 'won' ? 'perf-next-level' : undefined}
               disabled={adBusy}
               style={({ pressed }) => [
                 styles.button,
-                { transform: [{ scale: pressed ? 0.94 : 1 }] },
+                { transform: pressSnapTransform(pressed) },
                 phase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
                 phase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
               ]}
@@ -655,7 +688,7 @@ export function GameScreen({
               <Text style={[styles.buttonText, { color: phase === 'won' ? p.inkOnAccent : p.inkDim }]}>
                 {phase === 'won' ? 'Next level' : 'Retry'}
               </Text>
-            </Pressable>
+            </PressScale>
             {phase === 'won' && SaveSystem.perfectStreak > 1 && (
               <Text style={[styles.streak, { color: p.accentText }]}>
                 ✦ {SaveSystem.perfectStreak} perfect in a row
@@ -895,9 +928,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
+  tutorialLabelBox: {
+    flexShrink: 1,
+    justifyContent: 'center',
+  },
   tutorialLabel: {
     flexShrink: 1,
     fontSize: 18,
+    lineHeight: TUTORIAL_LINE_HEIGHT,
   },
   diffLabel: {
     fontSize: 12,

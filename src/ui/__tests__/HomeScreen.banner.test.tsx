@@ -5,12 +5,19 @@
  * - Allowed: the banner mounts at the bottom inset but reserves no space until
  *   an ad has loaded; then the stats line moves above it.
  * - A withdrawal or kill (the store flips to not allowed) removes it at once.
+ * - POLISH-T9: the stats line's move is a translateY driven by a 220 ms ease-out
+ *   timing (its `bottom` never changes), following the system reduce-motion setting.
+ *   The banner itself is never faded or hidden while loaded (a hidden ad view risks
+ *   AdMob's hidden-ad policy). The Reanimated jest mock
+ *   resolves a timing to its target at once, so these tests read end states.
  * - While the player is still in the tutorial the menu shows no banner.
  * Layout and pixels are NOT verified here (jest cannot): emulator screenshots
  * in artifacts/ADMOB-C/ close that.
  */
 import { act, render } from '@testing-library/react-native';
 import React from 'react';
+import { StyleSheet } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 import { SaveSystem, type IntStore } from '../../core/saveSystem';
 import { HomeScreen } from '../HomeScreen';
 import { Daylight } from '../theme';
@@ -115,12 +122,24 @@ const props = {
 let store: MapStore;
 let previousStore: IntStore;
 
-function statsBottom(menu: ReturnType<typeof render>): number {
+function statsStyle(menu: ReturnType<typeof render>): Record<string, unknown> {
   const style = [menu.getByText('3 puzzles solved').props.style].flat(Infinity) as Array<
     Record<string, unknown>
   >;
-  const merged = Object.assign({}, ...style.filter(Boolean));
-  return merged.bottom as number;
+  return Object.assign({}, ...style.filter(Boolean));
+}
+
+/** The stats line's distance from the screen bottom as drawn: its `bottom` minus any
+ * translateY (POLISH-T9 moves it by transform, not by layout). */
+function statsBottom(menu: ReturnType<typeof render>): number {
+  const merged = statsStyle(menu);
+  const transform = (merged.transform as Array<{ translateY?: number }> | undefined) ?? [];
+  const translateY = transform.reduce((sum, t) => sum + (t.translateY ?? 0), 0);
+  return (merged.bottom as number) - translateY;
+}
+
+function bannerOpacity(menu: ReturnType<typeof render>): number | undefined {
+  return (StyleSheet.flatten(menu.getByTestId('menu-banner').props.style) as { opacity?: number }).opacity;
 }
 
 beforeEach(() => {
@@ -169,6 +188,29 @@ test('allowed: the test banner mounts, reserves no space until loaded, then the 
 
   act(() => mockBanner.lastProps!.onAdFailedToLoad(new Error('no fill')));
   expect(statsBottom(menu)).toBe(32);
+});
+
+test('POLISH-T9: the stats line glides by transform (220 ms ease-out); the banner is never hidden', () => {
+  const timing = jest.spyOn(Reanimated, 'withTiming');
+  mockBanner.allowed = true;
+  const menu = render(<HomeScreen {...props} />);
+  expect(bannerOpacity(menu)).toBeUndefined(); // never faded or hidden
+
+  timing.mockClear();
+  act(() => mockBanner.lastProps!.onAdLoaded({ width: 411, height: 57.2 }));
+  expect(statsStyle(menu).bottom).toBe(32); // layout untouched: no reserved space, no re-layout
+  expect(statsBottom(menu)).toBe(58 + 32);
+  expect(timing).toHaveBeenCalledWith(-58, expect.objectContaining({
+    duration: 220,
+    reduceMotion: Reanimated.ReduceMotion.System,
+  }));
+  expect(bannerOpacity(menu)).toBeUndefined();
+
+  timing.mockClear();
+  act(() => mockBanner.lastProps!.onAdFailedToLoad(new Error('no fill')));
+  expect(timing).toHaveBeenCalledWith(0, expect.objectContaining({ duration: 220 }));
+  expect(statsBottom(menu)).toBe(32);
+  timing.mockRestore();
 });
 
 test('a withdrawal or kill removes the banner at once and gives the space back', () => {

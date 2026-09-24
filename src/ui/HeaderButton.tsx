@@ -1,6 +1,7 @@
 import React from 'react';
-import { Pressable, Text, View, type AccessibilityRole } from 'react-native';
+import { Text, View, type AccessibilityRole } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
+import { PressScale, pressSnapTransform } from './PressScale';
 import { Palette } from './theme';
 
 /** Disabled glyph opacity. OWNER-PICKED STARTING VALUE (not measured). */
@@ -48,7 +49,7 @@ export const HeaderButton = React.memo(function HeaderButton({
   const glyphColor = active && !off && !disabled ? palette.accentCore : palette.glyphOff;
   const inner = size - 2 * BORDER_WIDTH; // absolute children sit inside the border
   return (
-    <Pressable
+    <PressScale
       onPress={onPress}
       disabled={disabled}
       accessibilityState={checked === undefined ? { disabled } : { checked, disabled }}
@@ -66,7 +67,7 @@ export const HeaderButton = React.memo(function HeaderButton({
         justifyContent: 'center',
         backgroundColor: pressed ? palette.heartLost : palette.surface,
         borderColor: palette.border,
-        transform: [{ scale: pressed ? 0.94 : 1 }], // ButtonPress.cs press-feel
+        transform: pressSnapTransform(pressed), // ButtonPress.cs press-feel (POLISH-T9: eased when META_PRESS_SPRING)
       })}
     >
       <Text
@@ -98,6 +99,6 @@ export const HeaderButton = React.memo(function HeaderButton({
           </Svg>
         </View>
       )}
-    </Pressable>
+    </PressScale>
   );
 });

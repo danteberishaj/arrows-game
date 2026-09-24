@@ -62,3 +62,10 @@ export const META_BANNER = process.env.EXPO_PUBLIC_META_BANNER === '1';
  * is gated off in missedMarkFlag.ts.
  */
 export const META_MISSED_MARK = process.env.EXPO_PUBLIC_META_MISSED_MARK === '1';
+
+/**
+ * POLISH-T9 (smoothness audit #7): buttons ease into the press (0.94 over 90 ms)
+ * and spring back on release instead of snapping (src/ui/PressScale.tsx). OFF:
+ * every button's pressed style is today's, scale snap included.
+ */
+export const META_PRESS_SPRING = process.env.EXPO_PUBLIC_META_PRESS_SPRING === '1';
