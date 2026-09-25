@@ -22,6 +22,12 @@ export interface NativeExitAnimation {
 export interface ExitMotion {
   fadeStart: number;
   launch: number;
+  /**
+   * POLISH-T10 fix round 1: the exit clock (ms, < durationMs) at which the Android view stops, because by then the
+   * whole arrow is past the extent (screen + pan margin); it runs on to durationMs if the camera moved meanwhile.
+   * Absent = durationMs, as before. The web and iOS renderers run to durationMs.
+   */
+  endMs?: number;
 }
 
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -29,8 +35,8 @@ const round = (value: number) => Math.round(value * 100) / 100;
 /**
  * Compact event string parsed by ArrowsBoardView.kt / .swift:
  * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...,x(n-1),y(n-1)`
- * optionally followed by `,fadeStart,launch` (POLISH-T3). The parsers tell the
- * two forms apart from n: 10 + 2n tokens (defaults 0.55 / 0) or 12 + 2n.
+ * optionally followed by `,fadeStart,launch` (POLISH-T3) and then `,endMs` (POLISH-T10 fix round 1). The parsers
+ * tell the forms apart from n: 10 + 2n tokens (defaults 0.55 / 0), 12 + 2n or 13 + 2n.
  * The trail polyline is sent explicitly so native never has to know the cell
  * size or re-derive the exit ray; everything stays in board point space.
  */
@@ -49,6 +55,9 @@ export function serializeNativeExitAnimation(event: NativeExitAnimation): string
     path.points.length,
   ];
   for (const point of path.points) values.push(round(point.x), round(point.y));
-  if (event.motion) values.push(round(event.motion.fadeStart), round(event.motion.launch));
+  if (event.motion) {
+    values.push(round(event.motion.fadeStart), round(event.motion.launch));
+    if (event.motion.endMs !== undefined) values.push(Math.round(event.motion.endMs));
+  }
   return values.join(',');
 }

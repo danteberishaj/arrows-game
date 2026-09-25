@@ -288,6 +288,8 @@ export function slitherPath(
   rows: number,
   cols: number,
   extent?: BoardRect,
+  /** POLISH-T10: extra straight ray past the usual end (board points; 0 = unchanged). */
+  overrun = 0,
 ): SlitherPath {
   const d = dirVec(arrow.headDir);
   const headCenter = center(arrow.head.r, arrow.head.c, cell);
@@ -311,7 +313,7 @@ export function slitherPath(
   else if (d.y > 0) toEdge = boardH - headCenter.y;
   else toEdge = headCenter.y;
 
-  const rayLen = toEdge + bodyLen + cell;
+  const rayLen = toEdge + bodyLen + cell + Math.max(0, overrun);
   const end = { x: headCenter.x + d.x * rayLen, y: headCenter.y + d.y * rayLen };
   pts.push(end);
 

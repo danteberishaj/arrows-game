@@ -11,9 +11,11 @@ import android.graphics.Path
 import android.graphics.PathMeasure
 import android.graphics.Shader
 import android.os.Trace
+import android.view.View
 import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -53,6 +55,11 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var reducedMotion = false
     var fadeStart = EXIT_FADE_START
     var launch = 0f
+    var endMs = Long.MAX_VALUE
+    // POLISH-T10 fix round 1: the camera (the parent view's transform) when the exit started.
+    var cameraX = 0f
+    var cameraY = 0f
+    var cameraScale = 1f
 
     val active: Boolean get() = trail != null
 
@@ -70,6 +77,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       reducedMotion = false
       fadeStart = EXIT_FADE_START
       launch = 0f
+      endMs = Long.MAX_VALUE
+      cameraX = 0f
+      cameraY = 0f
+      cameraScale = 1f
     }
   }
 
@@ -268,14 +279,24 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
    * Starts one of two bounded slither exits. Event format (board points):
    * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
    * optionally followed by `,fadeStart,launch` (POLISH-T3, META_EXIT_TO_SCREEN_EDGE):
-   * 10 + 2n tokens keep today's fade start (0.55) and k^2 travel; 12 + 2n set them.
+   * 10 + 2n tokens keep today's fade start (0.55) and k^2 travel; 12 + 2n set them. POLISH-T10: launch may be up
+   * to 2 (an ease-out), and 13 + 2n adds `,endMs`, the clock at which the exit stops. The start timing is unchanged
+   * for every payload.
    */
   internal fun setExitAnimation(value: String) {
     if (value.isBlank()) {
       clearExitAnimations()
       return
     }
+    Trace.beginSection("ArrowsBoard.setExitAnimation")
+    try {
+      startExitAnimation(value)
+    } finally {
+      Trace.endSection()
+    }
+  }
 
+  private fun startExitAnimation(value: String) {
     val tokens = value.split(',')
     if (tokens.size < EXIT_HEADER_TOKEN_COUNT) return
     val id = tokens[0].toLongOrNull() ?: return
@@ -297,13 +318,20 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     val pointTokenEnd = EXIT_HEADER_TOKEN_COUNT + pointCount * 2
     var fadeStart = EXIT_FADE_START
     var launch = 0f
+    var endMs = Long.MAX_VALUE
     when (tokens.size) {
       pointTokenEnd -> Unit
-      pointTokenEnd + EXIT_MOTION_TOKEN_COUNT -> {
+      pointTokenEnd + EXIT_MOTION_TOKEN_COUNT, pointTokenEnd + EXIT_MOTION_TOKEN_COUNT + 1 -> {
         fadeStart = tokens[pointTokenEnd].toFloatOrNull() ?: return
         launch = tokens[pointTokenEnd + 1].toFloatOrNull() ?: return
         if (!fadeStart.isFinite() || fadeStart < 0f || fadeStart >= 1f) return
-        if (!launch.isFinite() || launch < 0f || launch > 1f) return
+        // launch*k + (1-launch)*k^2 is increasing on [0, 1] for launch in [0, 2]; above 1 it is an ease-out.
+        if (!launch.isFinite() || launch < 0f || launch > MAX_EXIT_LAUNCH) return
+        if (tokens.size == pointTokenEnd + EXIT_MOTION_TOKEN_COUNT + 1) {
+          // POLISH-T10 fix round 1: the clock (ms) at which the whole arrow is past the pan-margin extent.
+          endMs = tokens[pointTokenEnd + 2].toLongOrNull() ?: return
+          if (endMs < 1L || endMs > durationMs) return
+        }
       }
       else -> return
     }
@@ -339,7 +367,19 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.reducedMotion = reducedMotion
       slot.fadeStart = fadeStart
       slot.launch = launch
+      slot.endMs = endMs
+      val camera = parent as? View
+      if (camera != null) {
+        slot.cameraX = camera.translationX
+        slot.cameraY = camera.translationY
+        slot.cameraScale = camera.scaleX
+      } else {
+        slot.endMs = Long.MAX_VALUE // no camera to watch: run the whole ray
+      }
     }
+    // POLISH-T10 (measured, not shipped): drawing this in the mount frame instead (invalidate() + a one-frame clock
+    // head start) shows the first motion one frame sooner, but that frame then also re-rasterises the whole board and
+    // exceeds 16.7 ms in 46% of exits (BASE 13%); docs/next-level/reports/POLISH-T10.md, "Part 2".
     postInvalidateOnAnimation()
   }
 
@@ -543,9 +583,22 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.clear()
       return false
     }
+    // POLISH-T10 fix round 1: a flag-ON exit stops (and stops invalidating) at endMs, once the whole arrow is past
+    // the pan-margin extent of the camera it started under; every frame before that is unchanged. Checked once, at
+    // endMs: if the board was panned or zoomed meanwhile, the margin may be on screen, so the exit runs its whole ray
+    // as before. Without the token endMs is Long.MAX_VALUE and this never runs.
+    if (nowMs - slot.startTimeMs >= slot.endMs) {
+      if (cameraMoved(slot)) {
+        slot.endMs = Long.MAX_VALUE
+      } else {
+        slot.clear()
+        return false
+      }
+    }
 
     // Same curve as ExitTrail (exitTravelFraction): launch*k + (1-launch)*k^2, which is
-    // exactly k^2 at the default launch 0; fades past fadeStart (default 55%).
+    // exactly k^2 at the default launch 0 and an ease-out for launch > 1 (POLISH-T10);
+    // fades past fadeStart (default 55%).
     val launch = slot.launch
     val travelled = if (slot.reducedMotion) {
       0f
@@ -608,6 +661,13 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     }
     dashFrom = gap - phase // after the leading gap
     dashTo = dashFrom + body
+  }
+
+  private fun cameraMoved(slot: ExitSlot): Boolean {
+    val camera = parent as? View ?: return true
+    return abs(camera.translationX - slot.cameraX) > CAMERA_STILL_PX ||
+      abs(camera.translationY - slot.cameraY) > CAMERA_STILL_PX ||
+      abs(camera.scaleX - slot.cameraScale) > CAMERA_STILL_SCALE
   }
 
   private fun clearExitAnimations() {
@@ -810,6 +870,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val MIN_EXIT_DURATION_MS = 160L
     const val MAX_EXIT_DURATION_MS = 1000L
     const val EXIT_FADE_START = 0.55f
+    const val MAX_EXIT_LAUNCH = 2f
+    // POLISH-T10 fix round 1: camera changes below these count as "still" (half a device px; float noise on scale).
+    const val CAMERA_STILL_PX = 0.5f // OWNER-PICKED STARTING VALUE
+    const val CAMERA_STILL_SCALE = 1e-4f // OWNER-PICKED STARTING VALUE
     const val GRID_TOKEN_COUNT = 7
     const val GRID_STYLE_TOKEN_COUNT = 3
     const val GRID_STYLE_TILE_TOKEN_COUNT = 4

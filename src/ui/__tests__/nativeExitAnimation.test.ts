@@ -76,4 +76,14 @@ describe('POLISH-T3: flag-OFF payload is byte-identical to the pre-T3 serializer
     // Parsers tell the variants apart from n (token 9): 10 + 2n (defaults) or 12 + 2n.
     expect(tokens.length).toBe(12 + tokens[9] * 2);
   });
+
+  it('POLISH-T10 fix round 1: an end clock appends ,endMs as a whole ms (13 + 2n tokens)', () => {
+    const path = slitherPath(right, 40, 6, 8);
+    const encoded = serializeNativeExitAnimation({
+      id: 7, arrowIndex: 3, durationMs: 214, reducedMotion: false,
+      path, trailStrokeWidth: 0.26 * 40, motion: { fadeStart: 0.85, launch: 1.15, endMs: 150 },
+    });
+    expect(encoded).toBe(`${PRE_T3_RIGHT},0.85,1.15,150`);
+    expect(encoded.split(',').length).toBe(13 + 7 * 2);
+  });
 });

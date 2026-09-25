@@ -103,7 +103,8 @@ class ArrowsBoardView: ExpoView {
           directionX.isFinite, directionY.isFinite,
           pointCount >= 2, pointCount <= 4098,
           tokens.count == headerCount + pointCount * 2
-            || tokens.count == headerCount + pointCount * 2 + 2,
+            || tokens.count == headerCount + pointCount * 2 + 2
+            || tokens.count == headerCount + pointCount * 2 + 3,
           arrows.indices.contains(arrowIndex),
           id != lastExitId else {
       return
@@ -124,13 +125,16 @@ class ArrowsBoardView: ExpoView {
       }
     }
     // POLISH-T3 motion tokens (fade start, launch speed), validated like the header.
+    // POLISH-T10: launch up to 2 (an ease-out; the Bezier below stays exact, its y values within [0, 1]).
+    // POLISH-T10 fix round 1: a 13 + 2n payload adds `,endMs` (the Android view stops there); iOS accepts it and runs
+    // the same frames to durationMs.
     var motion: (fadeStart: Double, launch: Double)?
-    if tokens.count == headerCount + pointCount * 2 + 2 {
+    if tokens.count >= headerCount + pointCount * 2 + 2 {
       let motionIndex = headerCount + pointCount * 2
       guard let fadeStart = Double(tokens[motionIndex]), fadeStart.isFinite,
             fadeStart >= 0, fadeStart < 1,
             let launch = Double(tokens[motionIndex + 1]), launch.isFinite,
-            launch >= 0, launch <= 1 else {
+            launch >= 0, launch <= 2 else {
         return
       }
       motion = (fadeStart, launch)

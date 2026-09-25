@@ -5,7 +5,9 @@ import {
   EXIT_EDGE_FADE_START,
   EXIT_EDGE_LAUNCH,
   EXIT_EDGE_MARGIN_FRACTION,
+  EXIT_EDGE_ONSCREEN_MAX,
   EXIT_FADE_START_DEFAULT,
+  exitClockAt,
   exitExtent,
   exitFadeAt,
   exitTravelFraction,
@@ -27,13 +29,26 @@ const down = new ArrowPath([{ r: 12, c: 15 }, { r: 13, c: 15 }, { r: 14, c: 15 }
 
 // A 20x20 board (800x800 board points) seen at half scale, slightly panned.
 const camera = { tx: 10, ty: 20, scale: 0.5, viewportW: 400, viewportH: 800 };
-const expectedDuration = (onScreen: number, s: number) =>
-  Math.min(320, Math.max(180, Math.round(120 + 0.35 * onScreen * s)));
+// POLISH-T10 durations for the five fixed cases below (the R3a curve gave 256, 180, 214, 320, 256).
+const SEEN_T10 = [306, 310, 242, 329, 306];
+/**
+ * POLISH-T10 flag-ON duration, re-derived here: the visible run R = E + B + tail cap (0.13 cell) takes
+ * clamp(55 + 0.3 x R x scale, 88, 185) ms and ends at the clock where 1.15k - 0.15k^2 = R / travel.
+ */
+const expectedDuration = (onScreen: number, body: number, travel: number, s: number) => {
+  const run = onScreen + body + 5.2;
+  const visibleMs = Math.min(185, Math.max(88, 55 + 0.3 * run * s));
+  const f = run / travel;
+  const k = (1.15 - Math.sqrt(1.15 * 1.15 - 4 * 0.15 * f)) / (2 * 0.15);
+  return Math.min(1000, Math.max(180, Math.round(visibleMs / k)));
+};
 
-describe('owner-picked constants (R3, R3a, design spec B)', () => {
-  it('uses the ruled fade start, launch and margin', () => {
+describe('owner-picked constants (R3, design spec B, POLISH-T10)', () => {
+  it('uses the ruled fade start and margin, and the POLISH-T10 launch and on-screen share', () => {
     expect(EXIT_EDGE_FADE_START).toBe(0.85);
-    expect(EXIT_EDGE_LAUNCH).toBe(0.35);
+    // POLISH-T10 replaced R3a's ease-in (launch 0.35) with an ease-out.
+    expect(EXIT_EDGE_LAUNCH).toBe(1.15);
+    expect(EXIT_EDGE_ONSCREEN_MAX).toBe(0.6);
     expect(EXIT_EDGE_MARGIN_FRACTION).toBe(0.25);
     expect(EXIT_FADE_START_DEFAULT).toBe(0.55);
   });
@@ -58,14 +73,24 @@ describe('exitTravelFraction (R3a)', () => {
     }
   });
 
-  it('launch 0.35 is 0.35k + 0.65k^2: moving on the tap frame, reaching 1 at k = 1', () => {
-    expect(exitTravelFraction(0, 0.35)).toBe(0);
-    expect(exitTravelFraction(1, 0.35)).toBeCloseTo(1, 12);
-    expect(exitTravelFraction(0.5, 0.35)).toBeCloseTo(0.35 * 0.5 + 0.65 * 0.25, 12);
-    // Initial speed 0.35x average, final speed 1.65x average.
+  it('launch 1.15 (POLISH-T10) is 1.15k - 0.15k^2: an ease-out from 1.15x to 0.85x the average speed', () => {
+    expect(exitTravelFraction(0, 1.15)).toBe(0);
+    expect(exitTravelFraction(1, 1.15)).toBeCloseTo(1, 12);
+    expect(exitTravelFraction(0.5, 1.15)).toBeCloseTo(1.15 * 0.5 - 0.15 * 0.25, 12);
     const h = 1e-6;
-    expect(exitTravelFraction(h, 0.35) / h).toBeCloseTo(0.35, 4);
-    expect((1 - exitTravelFraction(1 - h, 0.35)) / h).toBeCloseTo(1.65, 4);
+    expect(exitTravelFraction(h, 1.15) / h).toBeCloseTo(1.15, 4);
+    expect((1 - exitTravelFraction(1 - h, 1.15)) / h).toBeCloseTo(0.85, 4);
+  });
+
+  it('exitClockAt inverts the curve for the ease-in, linear and ease-out launches', () => {
+    for (const launch of [0, 0.35, 1, 1.15, 2]) {
+      for (let i = 0; i <= 20; i += 1) {
+        const k = i / 20;
+        expect(exitClockAt(exitTravelFraction(k, launch), launch)).toBeCloseTo(k, 9);
+      }
+    }
+    expect(exitClockAt(-1, 1.15)).toBe(0);
+    expect(exitClockAt(2, 1.15)).toBeCloseTo(1, 12);
   });
 });
 
@@ -78,6 +103,7 @@ describe('exitFadeAt', () => {
     expect(exitFadeAt(0.54, 0.55)).toBe(1);
     expect(exitFadeAt(1, 0.55)).toBeCloseTo(0, 10);
   });
+
 });
 
 describe('planExit', () => {
@@ -100,39 +126,47 @@ describe('planExit', () => {
     expect(event(rm)).toBe(event(off));
   });
 
-  it('flag ON: the ray ends body + one cell past the extended extent, with the ruled motion', () => {
-    const plan = planExit(right, CELL, 20, 20, camera, { toScreenEdge: true, reducedMotion: false });
+  it('flag ON: the ray ends body + one cell past the extended extent when that keeps the visible run <= 60%', () => {
+    // Head centre (140,140), visible maxX 780: R = 640 + 136.8 + 5.2 = 782; minimum travel = 136.8 + (840 + 136.8
+    // + 40) = 1153.6, so R / travel = 0.68 > 0.6 and the ray is lengthened to travel R / 0.6 = 1303.33.
+    const plan = planExit(right, CELL, 20, 20, camera, { toScreenEdge: true, reducedMotion: false, truncate: false });
     const last = plan.path.points[plan.path.points.length - 1];
-    expect(last.x).toBeCloseTo(980 + 136.8 + 40, 6);
+    expect(plan.path.totalLen).toBeCloseTo(782 / 0.6, 6);
+    expect(last.x).toBeCloseTo(140 + 782 / 0.6 - 136.8, 6);
+    expect(last.x).toBeGreaterThan(980 + 136.8 + 40);
     expect(last.y).toBe(140);
-    expect(plan.motion).toEqual({ fadeStart: 0.85, launch: 0.35 });
+    expect(plan.motion).toEqual({ fadeStart: 0.85, launch: 1.15 });
+    // A run that is already <= 60% keeps today's ray: body + one cell past the extent.
+    const upPlan = planExit(up, CELL, 20, 20, camera, { toScreenEdge: true, reducedMotion: false, truncate: false });
+    const upLast = upPlan.path.points[upPlan.path.points.length - 1];
+    expect(upLast.y).toBeCloseTo(-440 - 96.8 - 40, 6);
   });
 
-  it('flag ON: duration comes from the ON-SCREEN run (E + B) x scale, five fixed cases', () => {
+  it('flag ON: duration puts the last pixel off screen at the visible-run time, five fixed cases', () => {
     const tall = { tx: 10, ty: -100, scale: 0.8, viewportW: 400, viewportH: 900 };
     const cases: [ArrowPath, number, number, typeof camera][] = [
       // arrow, E = head centre -> VISIBLE edge (board units, no margin), B = body, camera
       [right, 780 - 140, 136.8, camera], // head (3,3) centre x 140; visible maxX 780
-      [up, 140 - -40, 96.8, camera], // head (3,4) centre y 140; visible minY -40 -> clamps to 180
+      [up, 140 - -40, 96.8, camera], // head (3,4) centre y 140; visible minY -40
       [left, 460 - -20, 56.8, camera], // head (10,11) centre x 460; visible minX -20
-      [down, 1250 - 580, 96.8, tall], // head (14,15) centre y 580; visible maxY 1250 -> clamps to 320
+      [down, 1250 - 580, 96.8, tall], // head (14,15) centre y 580; visible maxY 1250
       [right, 1300 - 140, 136.8, { ...camera, scale: 0.3 }], // visible maxX (400-10)/0.3 = 1300
     ];
     const seen: number[] = [];
     for (const [arrow, e, b, cam] of cases) {
-      const plan = planExit(arrow, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false });
+      const plan = planExit(arrow, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false, truncate: false });
       expect(plan.path.bodyLen).toBeCloseTo(b, 6);
-      expect(plan.durationMs).toBe(expectedDuration(e + b, cam.scale));
+      expect(plan.durationMs).toBe(expectedDuration(e, b, plan.path.totalLen, cam.scale));
       seen.push(plan.durationMs);
     }
-    expect(seen).toEqual([256, 180, 214, 320, 256]);
+    expect(seen).toEqual(SEEN_T10);
   });
 
   it('flag ON: a head already past the visible edge gets E = 0 and still clears the extent', () => {
     // Visible x range is 500..900 at scale 1; the left-pointing head centre (x 460) is off-screen.
     const cam = { tx: -500, ty: 20, scale: 1, viewportW: 400, viewportH: 800 };
-    const plan = planExit(left, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false });
-    expect(plan.durationMs).toBe(expectedDuration(0 + 56.8, 1));
+    const plan = planExit(left, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false, truncate: false });
+    expect(plan.durationMs).toBe(expectedDuration(0, 56.8, plan.path.totalLen, 1));
     const last = plan.path.points[plan.path.points.length - 1];
     // Extent minX = 500 - 0.25*400 = 400: toEdge = 60, ray = 60 + body 56.8 + one cell.
     expect(last.x).toBeCloseTo(460 - (60 + 56.8 + 40), 6);
