@@ -263,6 +263,7 @@ describe('META_PRESS_SPRING on', () => {
       damping: 15,
       stiffness: 400,
       mass: 1, // Reanimated 4 defaults mass to 4: twice as bouncy, ~5 s of frames per release
+      energyThreshold: 1e-4, // POLISH-T11: stop at ~0.61 s instead of ~1.26 s of redraws
       reduceMotion: Reanimated.ReduceMotion.System,
     }));
   });

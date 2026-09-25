@@ -31,6 +31,15 @@ const RELEASE_STIFFNESS = 400; // OWNER-PICKED STARTING VALUE
  * threshold ends it (POLISH-T9, measured with dumpsys gfxinfo on emulator-5556).
  */
 const RELEASE_MASS = 1;
+/**
+ * POLISH-T11: when the release spring stops (relative energy). Reanimated's
+ * default 6e-9 keeps this spring (energy decays as e^-15t) redrawing for ~1.26 s
+ * after every release (POLISH-T11: 77-80 frames where the snap drew 2). At 1e-4
+ * it stops at ~0.61 s, with a leftover of sqrt(1e-4) x 0.06 = 0.0006 scale
+ * (~0.1 px on a 200 px button) that the final snap removes unseen. Computed, not
+ * measured on a device.
+ */
+const RELEASE_ENERGY_THRESHOLD = 1e-4;
 
 /**
  * The snap-scale transform a button's pressed-style function carries while
@@ -78,6 +87,7 @@ function SpringPress({ onPressIn, onPressOut, ...rest }: PressScaleProps) {
       damping: RELEASE_DAMPING,
       stiffness: RELEASE_STIFFNESS,
       mass: RELEASE_MASS,
+      energyThreshold: RELEASE_ENERGY_THRESHOLD,
       reduceMotion: ReduceMotion.System,
     });
     onPressOut?.(e);
