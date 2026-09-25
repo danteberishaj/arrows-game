@@ -12,6 +12,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
+import { useStopWhenScreenLeaves } from './screenHandoff';
 import { createSplashBackstop, type SplashBackstop } from './splashBackstop';
 import { Palette } from './theme';
 import { Wordmark } from './Wordmark';
@@ -44,6 +45,9 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
   const draw = useSharedValue(0); // arrow self-draw 0..1
   const head = useSharedValue(0); // arrowhead pop
   const out = useSharedValue(0); // whole-screen fade-out
+  // PERF-DEADTAG: the wordmark and arrowhead springs are still settling when the
+  // splash hands over; every value stops when it starts leaving (screenHandoff.tsx).
+  useStopWhenScreenLeaves(mark, draw, head, out);
 
   // Underline arrow geometry: run under the wordmark, one playful Z-bend.
   const w = Math.min(width * 0.62, 340);

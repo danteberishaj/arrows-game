@@ -16,6 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { META_PRESS_SPRING } from '../featureFlags';
+import { useStopWhenScreenLeaves } from './screenHandoff';
 
 /** Held scale of a pressed button (ButtonPress.cs press-feel, DESIGN.md). */
 export const PRESS_SCALE = 0.94; // OWNER-PICKED STARTING VALUE
@@ -73,23 +74,31 @@ export function PressScale(props: PressScaleProps) {
 
 function SpringPress({ onPressIn, onPressOut, ...rest }: PressScaleProps) {
   const scale = useSharedValue(1);
+  // PERF-DEADTAG: a press that leaves the screen still animates this button; the
+  // animation stops when the screen starts leaving, and a release that arrives
+  // after that (Pressability delays onPressOut) starts nothing (screenHandoff.tsx).
+  const isLeaving = useStopWhenScreenLeaves(scale);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const pressIn = (e: GestureResponderEvent) => {
-    scale.value = withTiming(PRESS_SCALE, {
-      duration: PRESS_IN_MS,
-      easing: Easing.out(Easing.quad),
-      reduceMotion: ReduceMotion.System,
-    });
+    if (!isLeaving()) {
+      scale.value = withTiming(PRESS_SCALE, {
+        duration: PRESS_IN_MS,
+        easing: Easing.out(Easing.quad),
+        reduceMotion: ReduceMotion.System,
+      });
+    }
     onPressIn?.(e);
   };
   const pressOut = (e: GestureResponderEvent) => {
-    scale.value = withSpring(1, {
-      damping: RELEASE_DAMPING,
-      stiffness: RELEASE_STIFFNESS,
-      mass: RELEASE_MASS,
-      energyThreshold: RELEASE_ENERGY_THRESHOLD,
-      reduceMotion: ReduceMotion.System,
-    });
+    if (!isLeaving()) {
+      scale.value = withSpring(1, {
+        damping: RELEASE_DAMPING,
+        stiffness: RELEASE_STIFFNESS,
+        mass: RELEASE_MASS,
+        energyThreshold: RELEASE_ENERGY_THRESHOLD,
+        reduceMotion: ReduceMotion.System,
+      });
+    }
     onPressOut?.(e);
   };
   return (

@@ -25,6 +25,7 @@ import { ftueRoute } from './ftueRoute';
 import { HeaderButton } from './HeaderButton';
 import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
+import { useStopWhenScreenLeaves } from './screenHandoff';
 import { Fonts, Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
@@ -136,6 +137,9 @@ export function HomeScreen({
       ReduceMotion.System,
     );
   }, []);
+  // PERF-DEADTAG: the breathing never ends on its own; it stops when the menu
+  // starts leaving, before its views are removed (screenHandoff.tsx).
+  useStopWhenScreenLeaves(pulse);
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 + 0.03 * pulse.value }],
   }));

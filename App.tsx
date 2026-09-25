@@ -3,11 +3,11 @@ import { Fredoka_700Bold } from '@expo-google-fonts/fredoka/700Bold';
 import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { SaveSystem } from './src/core/saveSystem';
@@ -24,6 +24,7 @@ import { AdHost, adInitController, initAds, playerConsentSource } from './src/ui
 import { GalleryScreen } from './src/ui/GalleryScreen';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
+import { ScreenSlot, useLeavingScreen } from './src/ui/screenHandoff';
 import { SplashScreen } from './src/ui/SplashScreen';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
@@ -233,74 +234,94 @@ export default function App() {
 
   const p = paletteFor(dark);
 
+  // PERF-DEADTAG: the screen being left stays mounted, invisible and untouchable,
+  // until the UI thread has drawn its successor's first frame (screenHandoff.tsx).
+  const { leaving, slotKey } = useLeavingScreen(screen);
+  const onSplashDone = useCallback(() => showScreen('menu'), [showScreen]);
+  const onGameHome = useCallback(() => showScreen('menu'), [showScreen]);
+  // Each screen's element is memoised, so the commits that keep the leaving screen
+  // and then drop it re-render neither screen.
+  const splashScreen = useMemo(
+    () => <SplashScreen palette={p} onDone={onSplashDone} />,
+    [p, onSplashDone],
+  );
+  const menuScreen = useMemo(
+    () => (
+      <HomeScreen
+        palette={p}
+        dark={dark}
+        soundOn={soundOn}
+        onPlay={onPlay}
+        onDaily={onDaily}
+        onGallery={onGallery}
+        onToggleSound={toggleSound}
+        onToggleTheme={toggleTheme}
+      />
+    ),
+    [p, dark, soundOn, onPlay, onDaily, onGallery, toggleSound, toggleTheme],
+  );
+  const gameScreen = useMemo(
+    () => (
+      <GameScreen
+        palette={p}
+        tutorialId={tutorialId}
+        initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
+        benchmarkMode={PERF_MODE}
+        feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
+        onTelemetryProbeUnmount={perfTelemetryUnmountProbe}
+        onHome={onGameHome}
+      />
+    ),
+    [p, tutorialId, onGameHome],
+  );
+  const dailyScreen = useMemo(
+    () =>
+      dailyDay === null ? null : (
+        <GameScreen
+          palette={p}
+          daily={{ day: dailyDay }}
+          benchmarkMode={PERF_MODE}
+          feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
+          onHome={onGameHome}
+        />
+      ),
+    [p, dailyDay, onGameHome],
+  );
+  const galleryScreen = useMemo(
+    () => <GalleryScreen palette={p} onBack={onGalleryBack} />,
+    [p, onGalleryBack],
+  );
+  const inSlot = (s: Screen) => screen === s || leaving === s;
+
   if (!ready || !fontsReady) {
     return <View accessibilityLabel={diagLabel} style={{ flex: 1, backgroundColor: p.bg }} />;
   }
 
-  // Screens cross-fade (~180 ms) instead of hard-cutting (DESIGN.md "Motion").
+  // Screens cross-fade in (~180 ms) instead of hard-cutting (DESIGN.md "Motion").
   return (
     <SafeAreaProvider>
     <GestureHandlerRootView accessibilityLabel={diagLabel} style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      {screen === 'splash' && <SplashScreen palette={p} onDone={() => showScreen('menu')} />}
-      {screen === 'menu' && (
-        // Decorative screen fades follow the player's system reduced-motion setting.
-        <Animated.View
-          style={{ flex: 1 }}
-          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
-        >
-          <HomeScreen
-            palette={p}
-            dark={dark}
-            soundOn={soundOn}
-            onPlay={onPlay}
-            onDaily={onDaily}
-            onGallery={onGallery}
-            onToggleSound={toggleSound}
-            onToggleTheme={toggleTheme}
-          />
-        </Animated.View>
+      {inSlot('splash') && (
+        <ScreenSlot key={slotKey('splash')} leaving={leaving === 'splash'} fadeIn={false}>
+          {splashScreen}
+        </ScreenSlot>
       )}
-      {screen === 'game' && (
-        // Decorative screen fades follow the player's system reduced-motion setting.
-        <Animated.View
-          style={{ flex: 1 }}
-          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
-        >
-          <GameScreen
-            palette={p}
-            tutorialId={tutorialId}
-            initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
-            benchmarkMode={PERF_MODE}
-            feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
-            onTelemetryProbeUnmount={perfTelemetryUnmountProbe}
-            onHome={() => showScreen('menu')}
-          />
-        </Animated.View>
+      {/* Screens cross-fade in (~180 ms, ScreenSlot); the left one is removed a frame later. */}
+      {inSlot('menu') && (
+        <ScreenSlot key={slotKey('menu')} leaving={leaving === 'menu'}>{menuScreen}</ScreenSlot>
       )}
-      {screen === 'daily' && dailyDay !== null && (
+      {inSlot('game') && (
+        <ScreenSlot key={slotKey('game')} leaving={leaving === 'game'}>{gameScreen}</ScreenSlot>
+      )}
+      {inSlot('daily') && dailyScreen !== null && (
         // W4-06: the same GameScreen on today's shared board; Done / ‹ return to the menu.
-        <Animated.View
-          style={{ flex: 1 }}
-          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
-        >
-          <GameScreen
-            palette={p}
-            daily={{ day: dailyDay }}
-            benchmarkMode={PERF_MODE}
-            feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
-            onHome={() => showScreen('menu')}
-          />
-        </Animated.View>
+        <ScreenSlot key={slotKey('daily')} leaving={leaving === 'daily'}>{dailyScreen}</ScreenSlot>
       )}
-      {META_GALLERY && screen === 'gallery' && (
-        // W4-09: the board is unmounted here (one screen at a time).
-        <Animated.View
-          style={{ flex: 1 }}
-          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
-        >
-          <GalleryScreen palette={p} onBack={onGalleryBack} />
-        </Animated.View>
+      {META_GALLERY && inSlot('gallery') && (
+        // W4-09: the board is unmounted here (one screen at a time; a left screen
+        // only lingers, invisible, until the next UI frame).
+        <ScreenSlot key={slotKey('gallery')} leaving={leaving === 'gallery'}>{galleryScreen}</ScreenSlot>
       )}
       {!PERF_MODE && __DEV__ && <AdHost palette={p} />}
     </GestureHandlerRootView>
