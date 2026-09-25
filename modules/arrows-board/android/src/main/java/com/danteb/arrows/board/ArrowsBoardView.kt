@@ -10,21 +10,24 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PathMeasure
 import android.graphics.Shader
+import android.os.Looper
 import android.os.Trace
 import android.view.View
 import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
  * Retained renderer for the board's static arrow art plus the slither exit.
  *
  * Geometry is parsed only when the board geometry prop changes. The cached
- * arrow paths are never mutated after parsing; the compound paths are the
+ * arrow paths are never mutated after parsing; the per-strip compound paths are the
  * only paths rebuilt when visibility changes, at most once per props commit
- * (POLISH-T8: setters mark them dirty, OnViewDidUpdateProps rebuilds). Exits are two fixed slots driven
+ * (POLISH-T8: setters mark them dirty, OnViewDidUpdateProps rebuilds), and only for the strips whose
+ * membership changed (POLISH-T12, see [Strip]). Exits are two fixed slots driven
  * from the frame clock in onDraw, so they follow the same curve as the web
  * slither (SlitherExit.cs) regardless of the system animator scale.
  */
@@ -32,7 +35,32 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private data class ArrowPaths(
     val shaft: Path,
     val head: Path,
+    /** POLISH-T12: centre of the arrow's point bounding box (board points, y down); picks its strip. */
+    val centreY: Float,
   )
+
+  /**
+   * POLISH-T12: one horizontal strip of the static art, a full board width tall [STRIP_HEIGHT_PT]. Arrows belong to
+   * the strip holding their bounding-box centre and are drawn whole (never clipped at a strip edge), so there are no
+   * seams. Each strip keeps its own compound shaft / head (and mark) paths; a visibleMask / markMask change rebuilds
+   * only the strips whose members changed layer. The unchanged strips keep their Path generation id, so HWUI's Skia
+   * reuses their cached anti-aliased masks: an exit re-rasterises one strip instead of the whole board (BASE uploaded
+   * two board-sized 1850x1851 masks per exit, docs/next-level/reports/POLISH-T10.md).
+   *
+   * Why full-width strips and not square tiles (measured, POLISH-T12 report): during pans at the opening camera,
+   * square tiles at the screen's left/right edges were re-rasterised and re-uploaded in most frames while the
+   * whole-board mask was not (TileHarness + Perfetto). A strip spans the board's whole width, like BASE's mask, and
+   * pans measured at BASE's cost.
+   */
+  private class Strip(val members: IntArray) {
+    val shaft = Path()
+    val head = Path()
+    val markShaft = Path()
+    val markHead = Path()
+    var hasInk = false
+    var hasMark = false
+    var dirty = true
+  }
 
   private class ExitSlot {
     var id = -1L
@@ -86,14 +114,15 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
   private val stateLock = Any()
   private val arrowPaths = ArrayList<ArrowPaths>()
-  private val compoundShaft = Path()
-  private val compoundHead = Path()
+  // POLISH-T12: the static art per horizontal strip (top to bottom), each arrow's strip, and the layer each arrow was
+  // last recorded in (LAYER_*), so a rebuild can find the strips whose membership changed.
   // POLISH-T5 (META_MISSED_MARK): visible arrows whose `markMask` char is '1' are
-  // recorded here instead of the ink paths and drawn in the mark colour. The JS
-  // side never sets markMask/markColor with the flag off, so these stay empty
+  // recorded in a strip's mark paths instead of its ink paths and drawn in the mark colour. The JS
+  // side never sets markMask/markColor with the flag off, so those stay empty
   // and onDraw draws exactly what it drew before.
-  private val compoundMarkShaft = Path()
-  private val compoundMarkHead = Path()
+  private var strips: Array<Strip> = emptyArray()
+  private var stripOf = IntArray(0)
+  private var arrowLayer = ByteArray(0)
   private val logicalPointScale = resources.displayMetrics.density
 
   private val shaftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -184,6 +213,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         arrowPaths.addAll(parsed)
         geometryIsValid = true
       }
+      partitionStripsLocked()
       pathsDirty = true
     }
     postInvalidateOnAnimation()
@@ -280,8 +310,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
    * `id,index,durationMs,reducedMotion,trailStrokeWidth,bodyLen,totalLen,dirX,dirY,n,x0,y0,...`
    * optionally followed by `,fadeStart,launch` (POLISH-T3, META_EXIT_TO_SCREEN_EDGE):
    * 10 + 2n tokens keep today's fade start (0.55) and k^2 travel; 12 + 2n set them. POLISH-T10: launch may be up
-   * to 2 (an ease-out), and 13 + 2n adds `,endMs`, the clock at which the exit stops. The start timing is unchanged
-   * for every payload.
+   * to 2 (an ease-out), and 13 + 2n adds `,endMs`, the clock at which the exit stops. POLISH-T12 (the POLISH-T10
+   * same-frame start): a 12 + 2n or 13 + 2n exit starts one display frame ahead and draws in the frame that mounts it;
+   * a 10 + 2n exit (flag OFF, reduced motion) keeps the old timing exactly.
    */
   internal fun setExitAnimation(value: String) {
     if (value.isBlank()) {
@@ -319,6 +350,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var fadeStart = EXIT_FADE_START
     var launch = 0f
     var endMs = Long.MAX_VALUE
+    var hasMotion = false
     when (tokens.size) {
       pointTokenEnd -> Unit
       pointTokenEnd + EXIT_MOTION_TOKEN_COUNT, pointTokenEnd + EXIT_MOTION_TOKEN_COUNT + 1 -> {
@@ -327,6 +359,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         if (!fadeStart.isFinite() || fadeStart < 0f || fadeStart >= 1f) return
         // launch*k + (1-launch)*k^2 is increasing on [0, 1] for launch in [0, 2]; above 1 it is an ease-out.
         if (!launch.isFinite() || launch < 0f || launch > MAX_EXIT_LAUNCH) return
+        hasMotion = true
         if (tokens.size == pointTokenEnd + EXIT_MOTION_TOKEN_COUNT + 1) {
           // POLISH-T10 fix round 1: the clock (ms) at which the whole arrow is past the pan-margin extent.
           endMs = tokens[pointTokenEnd + 2].toLongOrNull() ?: return
@@ -363,7 +396,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.directionY = directionY
       slot.trailStrokeWidth = trailStrokeWidth
       slot.durationMs = durationMs
-      slot.startTimeMs = AnimationUtils.currentAnimationTimeMillis()
+      // POLISH-T12 (motion tokens only): the tap happened at least one frame before this mount, so the clock starts
+      // one display frame back and the first frame drawn already shows the launch step, not the resting arrow.
+      slot.startTimeMs = AnimationUtils.currentAnimationTimeMillis() -
+        if (hasMotion) frameIntervalMs() else 0L
       slot.reducedMotion = reducedMotion
       slot.fadeStart = fadeStart
       slot.launch = launch
@@ -377,10 +413,23 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         slot.endMs = Long.MAX_VALUE // no camera to watch: run the whole ray
       }
     }
-    // POLISH-T10 (measured, not shipped): drawing this in the mount frame instead (invalidate() + a one-frame clock
-    // head start) shows the first motion one frame sooner, but that frame then also re-rasterises the whole board and
-    // exceeds 16.7 ms in 46% of exits (BASE 13%); docs/next-level/reports/POLISH-T10.md, "Part 2".
-    postInvalidateOnAnimation()
+    if (hasMotion && Looper.myLooper() == Looper.getMainLooper()) {
+      // POLISH-T12 (POLISH-T10 Part 2): Fabric mounts inside the Choreographer's animation callbacks, where
+      // postInvalidateOnAnimation lands on the NEXT frame (traced: the board redrew one frame after the mount).
+      // invalidate() joins this frame's traversal, so the exit starts in the same frame as the rest of the commit.
+      // POLISH-T10 measured it too heavy while every exit re-rasterised the whole board; with the per-strip static
+      // art (above) that frame re-rasterises one strip.
+      invalidate()
+    } else {
+      postInvalidateOnAnimation()
+    }
+  }
+
+  /** One display refresh in ms (16 at 60 Hz), for the exit head start. */
+  private fun frameIntervalMs(): Long {
+    val rate = display?.refreshRate ?: 0f
+    val hz = if (rate.isFinite() && rate >= MIN_REFRESH_HZ) rate else DEFAULT_REFRESH_HZ
+    return (1000f / hz).roundToInt().toLong()
   }
 
   /**
@@ -493,10 +542,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     clearExitAnimations()
     synchronized(stateLock) {
       arrowPaths.clear()
-      compoundShaft.reset()
-      compoundHead.reset()
-      compoundMarkShaft.reset()
-      compoundMarkHead.reset()
+      strips = emptyArray()
+      stripOf = IntArray(0)
+      arrowLayer = ByteArray(0)
       visibleMask = ""
       markMask = ""
       hasMarkedArrows = false
@@ -550,11 +598,14 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         for (block in pointBlocks) canvas.drawPoints(block, gridDotPaint)
       }
       if (drawArrows && hasVisibleArrows) {
-        canvas.drawPath(compoundShaft, shaftPaint)
-        canvas.drawPath(compoundHead, headPaint)
+        // POLISH-T12: BASE's layer order (every shaft, every head, every marked shaft, every marked head), each layer
+        // now one path per strip, top to bottom.
+        val all = strips
+        for (strip in all) if (strip.hasInk) canvas.drawPath(strip.shaft, shaftPaint)
+        for (strip in all) if (strip.hasInk) canvas.drawPath(strip.head, headPaint)
         if (hasMarkedArrows) {
-          canvas.drawPath(compoundMarkShaft, markShaftPaint)
-          canvas.drawPath(compoundMarkHead, markHeadPaint)
+          for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markShaft, markShaftPaint)
+          for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markHead, markHeadPaint)
         }
       }
       if (drawArrows && hasActiveExit) {
@@ -691,10 +742,6 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
   private fun rebuildCompoundPathsTraced() {
     pathsDirty = false
-    compoundShaft.reset()
-    compoundHead.reset()
-    compoundMarkShaft.reset()
-    compoundMarkHead.reset()
     hasVisibleArrows = false
     hasMarkedArrows = false
 
@@ -702,22 +749,75 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       return
     }
 
+    // POLISH-T12: find the strips whose members changed layer (hidden / ink / mark) since the last rebuild ...
     for (index in arrowPaths.indices) {
-      if (index >= visibleMask.length || visibleMask[index] != '1') {
-        continue
+      val layer = when {
+        index >= visibleMask.length || visibleMask[index] != '1' -> LAYER_HIDDEN
+        index < markMask.length && markMask[index] == '1' -> LAYER_MARK
+        else -> LAYER_INK
       }
-
-      val paths = arrowPaths[index]
-      if (index < markMask.length && markMask[index] == '1') {
-        compoundMarkShaft.addPath(paths.shaft)
-        compoundMarkHead.addPath(paths.head)
-        hasMarkedArrows = true
-      } else {
-        compoundShaft.addPath(paths.shaft)
-        compoundHead.addPath(paths.head)
+      if (arrowLayer[index] != layer) {
+        arrowLayer[index] = layer
+        strips[stripOf[index]].dirty = true
       }
-      hasVisibleArrows = true
     }
+    // ... and rebuild only those, adding their arrows in board order (BASE's order within the strip). An unchanged
+    // strip's paths are not touched, so their generation ids (and Skia's cached masks) survive.
+    for (strip in strips) {
+      if (strip.dirty) rebuildStripLocked(strip)
+      if (strip.hasInk || strip.hasMark) hasVisibleArrows = true
+      if (strip.hasMark) hasMarkedArrows = true
+    }
+  }
+
+  private fun rebuildStripLocked(strip: Strip) {
+    Trace.beginSection("ArrowsBoard.rebuildStrip")
+    try {
+      strip.dirty = false
+      strip.shaft.reset()
+      strip.head.reset()
+      strip.markShaft.reset()
+      strip.markHead.reset()
+      strip.hasInk = false
+      strip.hasMark = false
+      for (index in strip.members) {
+        val paths = arrowPaths[index]
+        when (arrowLayer[index]) {
+          LAYER_INK -> {
+            strip.shaft.addPath(paths.shaft)
+            strip.head.addPath(paths.head)
+            strip.hasInk = true
+          }
+          LAYER_MARK -> {
+            strip.markShaft.addPath(paths.shaft)
+            strip.markHead.addPath(paths.head)
+            strip.hasMark = true
+          }
+        }
+      }
+    } finally {
+      Trace.endSection()
+    }
+  }
+
+  /**
+   * POLISH-T12: assigns every arrow of the (new) geometry to the strip holding its bounding-box centre. Strips with no
+   * arrow are not created; the rest are ordered top to bottom and start dirty, so the next rebuild records them all.
+   */
+  private fun partitionStripsLocked() {
+    val count = arrowPaths.size
+    val row = IntArray(count) { floor(arrowPaths[it].centreY / STRIP_HEIGHT_PT).toInt() }
+    val rows = row.distinct().sorted()
+    val sizes = IntArray(rows.size)
+    stripOf = IntArray(count) { index -> rows.binarySearch(row[index]).also { sizes[it]++ } }
+    val members = Array(rows.size) { IntArray(sizes[it]) }
+    val filled = IntArray(rows.size)
+    for (index in 0 until count) {
+      val strip = stripOf[index]
+      members[strip][filled[strip]++] = index
+    }
+    strips = Array(rows.size) { Strip(members[it]) }
+    arrowLayer = ByteArray(count) { LAYER_UNSET }
   }
 
   private class GridExtent(
@@ -856,11 +956,29 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       close()
     }
 
-    return ArrowPaths(shaft, head)
+    // POLISH-T12: the strip key, from every shaft and head point (y values sit at odd coordinate indices).
+    var minY = Float.POSITIVE_INFINITY
+    var maxY = Float.NEGATIVE_INFINITY
+    for (coordinateIndex in 1 until coordinates.size step 2) {
+      minY = minOf(minY, coordinates[coordinateIndex])
+      maxY = maxOf(maxY, coordinates[coordinateIndex])
+    }
+
+    return ArrowPaths(shaft, head, (minY + maxY) / 2f)
   }
 
   private companion object {
     const val DEFAULT_STROKE_WIDTH = 1f
+    // POLISH-T12: strip height in board points (6.7 cells at BoardView's CELL = 40: level 1's 20 rows make 3 strips).
+    // Measured, not picked (docs/next-level/reports/POLISH-T12.md, "Strip height"): every strip costs two more draws
+    // per frame (~5 us each on the emulator's RenderThread; 160 pt = 5 strips put fit pans +0.08 ms over BASE, at the
+    // edge of the null spread), and taller strips re-rasterise more per exit (TileHarness cost-sweep3/4: exit frame
+    // 4.1 ms at 160 pt, 4.5 at 267, 5.7 at 400, BASE 8.7).
+    const val STRIP_HEIGHT_PT = 267f
+    const val LAYER_UNSET: Byte = -1
+    const val LAYER_HIDDEN: Byte = 0
+    const val LAYER_INK: Byte = 1
+    const val LAYER_MARK: Byte = 2
     const val MAX_SHAFT_POINTS = 4096f
     const val MAX_TRAIL_POINTS = 4098
     const val HEAD_COORDINATE_COUNT = 6
@@ -871,6 +989,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val MAX_EXIT_DURATION_MS = 1000L
     const val EXIT_FADE_START = 0.55f
     const val MAX_EXIT_LAUNCH = 2f
+    const val DEFAULT_REFRESH_HZ = 60f
+    const val MIN_REFRESH_HZ = 20f
     // POLISH-T10 fix round 1: camera changes below these count as "still" (half a device px; float noise on scale).
     const val CAMERA_STILL_PX = 0.5f // OWNER-PICKED STARTING VALUE
     const val CAMERA_STILL_SCALE = 1e-4f // OWNER-PICKED STARTING VALUE
