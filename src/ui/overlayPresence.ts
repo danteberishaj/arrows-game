@@ -29,7 +29,7 @@
 export const PANEL_WIN_ENTER_MS = 180; // OWNER-PICKED STARTING VALUE
 /** The three loss-entrance candidates shown to the owner in one capture (loss >= win). */
 export const PANEL_LOSS_ENTER_CANDIDATES_MS = [180, 260, 340] as const; // OWNER-PICKED STARTING VALUE candidates
-// OWNER-PICKED STARTING VALUE: provisional middle candidate, owner picks from
+// OWNER PICK 2026-09-25 ("keep 260"), chosen from
 // artifacts/W2-05/owner/loss-entrance-candidates-180-260-340.mp4
 export const PANEL_LOSS_ENTER_MS = 260;
 /** The continue-with-ad dismissal fades over the win-entrance duration (brief). */
