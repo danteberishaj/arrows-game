@@ -159,6 +159,26 @@ const frameScheduler: FrameScheduler<number> = {
   now: () => performance.now(),
 };
 
+/** The fold over the real SaveSystem; `onSlice` (optional) runs after every slice. */
+function saveSystemSync(onSlice?: () => void) {
+  return (maxSteps: number, shouldStop: () => boolean): SyncSlice => {
+    const before = SaveSystem.shapesThroughLevel;
+    const pending = SaveSystem.syncCollection(maxSteps, shouldStop);
+    onSlice?.();
+    return { folded: Math.max(0, SaveSystem.shapesThroughLevel - before), pending };
+  };
+}
+
+function startSlicedFold(onSlice?: () => void): () => void {
+  return startCollectionSync({
+    sync: saveSystemSync(onSlice),
+    scheduler: frameScheduler,
+    budgetSteps: COLLECTION_SYNC_BUDGET_STEPS,
+    chunkSteps: COLLECTION_SYNC_CHUNK_STEPS,
+    sliceMs: COLLECTION_SYNC_SLICE_MS,
+  });
+}
+
 /**
  * HomeScreen's mount effect: starts the sliced fold COLLECTION_SYNC_START_DELAY_MS
  * after the mount and returns a stop function for the unmount (it cancels the
@@ -170,17 +190,7 @@ export function startMenuCollectionSync(): () => void {
   let stopped = false;
   const delay = setTimeout(() => {
     if (stopped) return;
-    stopFold = startCollectionSync({
-      sync: (maxSteps, shouldStop) => {
-        const before = SaveSystem.shapesThroughLevel;
-        const pending = SaveSystem.syncCollection(maxSteps, shouldStop);
-        return { folded: Math.max(0, SaveSystem.shapesThroughLevel - before), pending };
-      },
-      scheduler: frameScheduler,
-      budgetSteps: COLLECTION_SYNC_BUDGET_STEPS,
-      chunkSteps: COLLECTION_SYNC_CHUNK_STEPS,
-      sliceMs: COLLECTION_SYNC_SLICE_MS,
-    });
+    stopFold = startSlicedFold();
   }, COLLECTION_SYNC_START_DELAY_MS);
   return () => {
     stopped = true;
@@ -188,4 +198,18 @@ export function startMenuCollectionSync(): () => void {
     stopFold?.();
     stopFold = null;
   };
+}
+
+/**
+ * W4-09: GalleryScreen's mount effect. The same sliced fold (slice budget,
+ * chunk cap, backoff, per-mount budget), but from the first frame after the
+ * mount: the menu's fold only starts 2 s after the menu mounts, so a player
+ * who opens the gallery quickly would otherwise see an incomplete wall.
+ * `onSlice` runs after every slice (inside that frame's callback) so the wall
+ * can show the bits as they arrive. Returns the stop function for the unmount.
+ * A no-op with the kill constant off.
+ */
+export function startGalleryCollectionSync(onSlice: () => void): () => void {
+  if (!COLLECTION_SYNC_ENABLED) return () => undefined;
+  return startSlicedFold(onSlice);
 }

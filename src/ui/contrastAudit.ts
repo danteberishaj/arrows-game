@@ -194,9 +194,10 @@ export function gateFor(u: Pick<Usage, 'kind' | 'sizePx' | 'weight'>): number {
 const HB = 'src/ui/HeaderButton.tsx';
 const HS = 'src/ui/HomeScreen.tsx';
 const GS = 'src/ui/GameScreen.tsx';
+const GAL = 'src/ui/GalleryScreen.tsx';
 
 export const USAGES: ReadonlyArray<Usage> = [
-  // Header buttons (menu theme + sound toggles HomeScreen.tsx:122-123, game back GameScreen.tsx:536).
+  // Header buttons (menu theme + sound toggles HomeScreen.tsx:147-148, game back GameScreen.tsx:536).
   // The Ink Night theme toggle ☀ and the 💡 hint are emoji: no token reaches them.
   { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:49` },
   { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:49`, note: 'pressed fill is `heartLost` (HeaderButton.tsx:67)' },
@@ -205,14 +206,15 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'header-button-hairline-on-bg', fgRole: 'border', bgRole: 'bg', kind: 'boundary', site: `${HB}:69` },
 
   // Menu
-  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:151`, sizeSite: `${HS}:270` },
-  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:115`, sizeSite: `${HS}:276` },
-  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:114`, sizeSite: `${HS}:276` },
-  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:113`, sizeSite: `${HS}:276` },
-  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:172`, sizeSite: `${HS}:289` },
-  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:172`, sizeSite: `${HS}:289` },
-  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:190`, sizeSite: `${HS}:295`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:180)" },
-  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:216`, sizeSite: `${HS}:308`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:161`, sizeSite: `${HS}:313` },
+  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:121`, sizeSite: `${HS}:319` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:120`, sizeSite: `${HS}:319` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:119`, sizeSite: `${HS}:319` },
+  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:182`, sizeSite: `${HS}:332` },
+  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:182`, sizeSite: `${HS}:332` },
+  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:213`, sizeSite: `${HS}:338`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:208)" },
+  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:239`, sizeSite: `${HS}:351`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:271`, sizeSite: `${HS}:351`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35' },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
@@ -240,6 +242,13 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:764` },
   { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:902` },
   { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:776`, sizeSite: `${GS}:1211` },
+
+  // Shape gallery (W4-09, META_GALLERY), on `bg`. Filled versus outlined carries
+  // collected versus not, so the colours only have to be legible (PRODUCT.md:63).
+  { id: 'gallery-count', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${GAL}:105`, sizeSite: `${GAL}:259`, note: 'the "N of M" count line' },
+  { id: 'gallery-name', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GAL}:238`, sizeSite: `${GAL}:277`, note: "a collected shape's display name" },
+  { id: 'gallery-tile-collected', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: `${GAL}:192`, note: 'collected silhouette, filled (even-odd)' },
+  { id: 'gallery-tile-outline', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GAL}:201`, note: 'not-collected silhouette, outline only (no fill)' },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
   { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1033' },

@@ -1,4 +1,6 @@
+import { SHAPE_CATALOGUE, shapeDefFor } from '../../core/shapeCatalogue';
 import { ShapeDef, ShapeLibrary } from '../../core/shapeLibrary';
+import { GALLERY_TILE_DP, galleryRasterSize, galleryTilePath } from '../galleryLayout';
 import { silhouettePath } from '../silhouette';
 
 type Point = readonly [number, number];
@@ -72,14 +74,17 @@ function pointInEvenOddPath(point: Point, loops: readonly (readonly Point[])[]):
   return inside;
 }
 
-function expectPathToReproduceMask(mask: readonly (readonly boolean[])[]): void {
+function expectPathToReproduceMask(
+  mask: readonly (readonly boolean[])[],
+  drawn?: { path: string; size: number },
+): void {
   const rows = mask.length;
   const cols = Math.max(...mask.map((row) => row.length));
-  const size = Math.max(rows, cols);
+  const size = drawn?.size ?? Math.max(rows, cols);
   const cell = size / Math.max(rows, cols);
   const offsetX = (size - cols * cell) / 2;
   const offsetY = (size - rows * cell) / 2;
-  const loops = parseLoops(silhouettePath(mask, size));
+  const loops = parseLoops(drawn?.path ?? silhouettePath(mask, size));
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -99,6 +104,25 @@ test('all generator shapes round-trip through an even-odd silhouette path', () =
   for (const shape of shapes) {
     for (const [rows, cols] of [[20, 20], [37, 37], [46, 31]] as const) {
       expectPathToReproduceMask(shape.rasterize(rows, cols));
+    }
+  }
+});
+
+test('W4-09 gallery: every catalogue shape at the gallery raster round-trips through the tile path it draws', () => {
+  // The owner's picks (14 rows, cols = round(14 x aspect); 40 dp tiles) and the
+  // exact string GalleryScreen renders with fillRule="evenodd": every cell
+  // centre is inside the even-odd path exactly when rasterize() filled it.
+  expect(SHAPE_CATALOGUE).toHaveLength(26);
+  for (const id of SHAPE_CATALOGUE) {
+    const def = shapeDefFor(id);
+    expect(def).not.toBeNull();
+    const { rows, cols } = galleryRasterSize(def!.aspect);
+    expect(rows).toBe(14);
+    const mask = def!.rasterize(rows, cols);
+    for (const size of [GALLERY_TILE_DP, GALLERY_TILE_DP - 1.5]) {
+      const path = galleryTilePath(id, size);
+      expect(path).toBe(silhouettePath(mask, size));
+      expectPathToReproduceMask(mask, { path, size });
     }
   }
 });

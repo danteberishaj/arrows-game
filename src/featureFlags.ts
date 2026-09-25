@@ -106,3 +106,13 @@ export const META_PANEL_MOTION = process.env.EXPO_PUBLIC_META_PANEL_MOTION === '
  * the 'daily' route is unreachable; the stored key sits inert.
  */
 export const META_DAILY = process.env.EXPO_PUBLIC_META_DAILY === '1';
+
+/**
+ * W4-09: a quiet `Gallery` control beside the daily line opens a calm,
+ * non-tappable wall of the shapes the player has solved (src/ui/GalleryScreen.tsx):
+ * collected shapes filled in ink with their name, the rest outlined, no level
+ * numbers, no route into a board. Opening it catches the collection up
+ * (W4-07's sliced fold). OFF: the menu renders as before and the 'gallery'
+ * route is unreachable; the collection keeps accruing harmlessly.
+ */
+export const META_GALLERY = process.env.EXPO_PUBLIC_META_GALLERY === '1';

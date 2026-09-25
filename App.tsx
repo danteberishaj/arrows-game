@@ -11,7 +11,7 @@ import Animated, { FadeIn, ReduceMotion, useReducedMotion } from 'react-native-r
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { SaveSystem } from './src/core/saveSystem';
-import { CONSENT_GATE, TELEMETRY_TRANSPORT } from './src/featureFlags';
+import { CONSENT_GATE, META_GALLERY, TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
   PERF_FEEDBACK,
@@ -21,6 +21,7 @@ import {
   reducedMotionDiagLabel,
 } from './src/perfMode';
 import { AdHost, adInitController, initAds, playerConsentSource } from './src/ui/ads';
+import { GalleryScreen } from './src/ui/GalleryScreen';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { SplashScreen } from './src/ui/SplashScreen';
@@ -40,7 +41,8 @@ import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
 import { ftueRoute } from './src/ui/ftueRoute';
 
-type Screen = 'splash' | 'menu' | 'game' | 'daily';
+// W4-09: 'gallery' is reachable only through HomeScreen's META_GALLERY control.
+type Screen = 'splash' | 'menu' | 'game' | 'daily' | 'gallery';
 
 let currentTelemetryScreen: FatalScreen = 'splash';
 let fatalHandlerInstalled = false;
@@ -62,13 +64,13 @@ if (perfTelemetrySink) {
   }));
 }
 
-function telemetryScreen(screen: Screen | 'gallery'): 'splash' | 'menu' | 'game' {
+function telemetryScreen(screen: Screen): 'splash' | 'menu' | 'game' {
   if (screen === 'daily') return 'game';
   if (screen === 'gallery') return 'menu';
   return screen;
 }
 
-function emitScreenView(screen: Screen | 'gallery'): void {
+function emitScreenView(screen: Screen): void {
   currentTelemetryScreen = telemetryScreen(screen);
   Telemetry.emit('screen_view', { screen: currentTelemetryScreen });
 }
@@ -211,6 +213,10 @@ export default function App() {
     showScreen('daily');
   }, [showScreen]);
 
+  // W4-09 (META_GALLERY): the shape gallery; ‹ and Android back return to the menu.
+  const onGallery = useCallback(() => showScreen('gallery'), [showScreen]);
+  const onGalleryBack = useCallback(() => showScreen('menu'), [showScreen]);
+
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       SaveSystem.soundOn = !on;
@@ -249,6 +255,7 @@ export default function App() {
             soundOn={soundOn}
             onPlay={onPlay}
             onDaily={onDaily}
+            onGallery={onGallery}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
           />
@@ -284,6 +291,15 @@ export default function App() {
             feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
             onHome={() => showScreen('menu')}
           />
+        </Animated.View>
+      )}
+      {META_GALLERY && screen === 'gallery' && (
+        // W4-09: the board is unmounted here (one screen at a time).
+        <Animated.View
+          style={{ flex: 1 }}
+          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+        >
+          <GalleryScreen palette={p} onBack={onGalleryBack} />
         </Animated.View>
       )}
       {!PERF_MODE && __DEV__ && <AdHost palette={p} />}

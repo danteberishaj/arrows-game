@@ -11,7 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
-import { META_BANNER, META_DAILY, META_STREAK_FREEZE } from '../featureFlags';
+import { META_BANNER, META_DAILY, META_GALLERY, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import { startMenuCollectionSync } from './collectionSync';
 import {
@@ -39,6 +39,7 @@ export function HomeScreen({
   soundOn,
   onPlay,
   onDaily,
+  onGallery,
   onToggleSound,
   onToggleTheme,
 }: {
@@ -48,6 +49,8 @@ export function HomeScreen({
   onPlay: () => void;
   /** W4-06 (META_DAILY): "Today's board" was pressed. */
   onDaily?: () => void;
+  /** W4-09 (META_GALLERY): "Gallery" was pressed. */
+  onGallery?: () => void;
   onToggleSound: () => void;
   onToggleTheme: () => void;
 }) {
@@ -85,6 +88,9 @@ export function HomeScreen({
       })
       : 'hidden',
   );
+  // W4-09: the gallery control, from the first solve (ruling W4-7), read once
+  // per mount like the daily entry. The menu does no other gallery work.
+  const [showGallery] = useState(() => META_GALLERY && SaveSystem.totalSolved >= 1);
   // POLISH-T9 (audit #10): when the loaded banner's height arrives or leaves, the
   // stats line glides by transform instead of teleporting (its `bottom` stays put,
   // so there is no re-layout and no space reserved before a load). Reduce motion:
@@ -142,10 +148,14 @@ export function HomeScreen({
         <HeaderButton label="♪" off={!soundOn} palette={p} onPress={onToggleSound} size={44} />
       </View>
 
-      {/* W4-06: with the daily entry shown the upper block sits 20 dp closer to the
-          pill, so the pill + entry fit above the stats line and the banner at
-          360x640 dp (flag OFF / hidden: the exact BASE style object). */}
-      <View style={dailyState === 'hidden' ? styles.upper : [styles.upper, styles.upperWithDaily]}>
+      {/* W4-06: with the daily entry (or W4-09's gallery control) shown the upper
+          block sits 20 dp closer to the pill, so the pill + entry fit above the stats
+          line and the banner at 360x640 dp (flags OFF / hidden: the BASE style object). */}
+      <View
+        style={dailyState === 'hidden' && !showGallery
+          ? styles.upper
+          : [styles.upper, styles.upperWithDaily]}
+      >
         <Wordmark size={56} palette={p} />
 
         <Text style={[styles.levelLabel, { color: p.accentLight }]}>
@@ -173,7 +183,20 @@ export function HomeScreen({
         </PressScale>
       </Animated.View>
 
-      {dailyState !== 'hidden' && (
+      {showGallery ? (
+        // W4-09: beside the daily line, in one row, so the column does not grow
+        // (W4-10 owns the final placement).
+        <View testID="menu-entry-row" style={styles.entryRow}>
+          {dailyState !== 'hidden' && (
+            <DailyEntry
+              state={dailyState}
+              palette={p}
+              onOpen={dailyState === 'available' ? onDaily : undefined}
+            />
+          )}
+          <GalleryEntry palette={p} onOpen={onGallery} />
+        </View>
+      ) : dailyState !== 'hidden' && (
         <DailyEntry
           state={dailyState}
           palette={p}
@@ -226,6 +249,26 @@ function DailyEntry({
       style={({ pressed }) => [styles.daily, { transform: pressSnapTransform(pressed) }]}
     >
       {label}
+    </PressScale>
+  );
+}
+
+/** W4-09: the menu control's copy. OWNER-PICKED STARTING VALUE (copy). */
+const GALLERY_ENTRY_LABEL = 'Gallery'; // OWNER-PICKED STARTING VALUE
+
+/**
+ * W4-09 (META_GALLERY): the daily entry's quiet style (inkDim, the brand font,
+ * no pill) in the same >= 44 x 44 dp box. Opens the shape gallery.
+ */
+function GalleryEntry({ palette, onOpen }: { palette: Palette; onOpen?: () => void }) {
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={GALLERY_ENTRY_LABEL}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.daily, { transform: pressSnapTransform(pressed) }]}
+    >
+      <Text style={[styles.dailyText, { color: palette.inkDim }]}>{GALLERY_ENTRY_LABEL}</Text>
     </PressScale>
   );
 }
@@ -308,5 +351,11 @@ const styles = StyleSheet.create({
     fontSize: 15, // OWNER-PICKED STARTING VALUE (the tier label's size)
     fontFamily: Fonts.semi,
     letterSpacing: 0.5,
+  },
+  // W4-09: the daily line and the gallery control side by side.
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
