@@ -352,3 +352,92 @@ describe('W4-02 SaveSystem day-chain wiring', () => {
     }
   });
 });
+
+describe('W4-06 daily clear', () => {
+  // Injected clock: 2026-09-25 12:00 local, the day this task was written.
+  const NOON = new Date(2026, 8, 25, 12, 0, 0);
+  let previousClock: () => Date;
+
+  beforeEach(() => {
+    previousClock = SaveSystem.useClock(() => NOON);
+  });
+
+  afterEach(() => {
+    SaveSystem.useClock(previousClock);
+  });
+
+  test('dailyLastDay reads 0 when absent, the stored day after a clear, and 0 when corrupt', () => {
+    expect(SaveSystem.dailyLastDay).toBe(0);
+    SaveSystem.registerDailyClear(SaveSystem.today());
+    expect(SaveSystem.dailyLastDay).toBe(dayNumberOf(NOON));
+    for (const corrupt of [-3, Number.NaN]) {
+      store.setInt('arrows_daily_last_day', corrupt);
+      expect(SaveSystem.dailyLastDay).toBe(0);
+    }
+  });
+
+  test('registerDailyClear(day) writes only arrows_daily_last_day, and never reads the clock', () => {
+    const set = jest.spyOn(store, 'setInt');
+    const del = jest.spyOn(store, 'deleteKey');
+    const today = SaveSystem.today();
+
+    // The board's own day: entered just before midnight, cleared after it.
+    SaveSystem.registerDailyClear(today - 1);
+
+    expect(set.mock.calls).toEqual([['arrows_daily_last_day', today - 1]]);
+    expect(del).not.toHaveBeenCalled();
+    expect([...store.map.keys()]).toEqual(['arrows_daily_last_day']);
+  });
+
+  test('a daily clear leaves currentLevel unchanged, adds one solve and advances the day streak as a campaign solve does', () => {
+    const today = SaveSystem.today();
+    const seedStore = (s: RecordingStore) => {
+      s.setInt('arrows_current_level', 7);
+      s.setInt('arrows_total_solved', 20);
+      s.setInt('arrows_perfect_streak', 2);
+      s.setInt('arrows_best_perfect_streak', 5);
+      s.setInt('arrows_day_streak', 4);
+      s.setInt('arrows_last_play_day', today - 1);
+    };
+
+    // Campaign solve (GameScreen's campaign branch, minus the ad counter).
+    const campaign = new RecordingStore();
+    seedStore(campaign);
+    SaveSystem.useStore(campaign);
+    SaveSystem.registerSolve(true);
+    SaveSystem.setCurrentLevel(SaveSystem.currentLevel + 1);
+
+    // Daily clear (GameScreen's daily branch).
+    const daily = new RecordingStore();
+    seedStore(daily);
+    SaveSystem.useStore(daily);
+    SaveSystem.registerSolve(true);
+    SaveSystem.registerDailyClear(today);
+
+    expect(daily.getInt('arrows_current_level', -1)).toBe(7);
+    expect(campaign.getInt('arrows_current_level', -1)).toBe(8);
+    expect(daily.getInt('arrows_total_solved', -1)).toBe(21);
+    expect(daily.getInt('arrows_day_streak', -1)).toBe(5);
+    expect(daily.getInt('arrows_last_play_day', -1)).toBe(today);
+    expect(daily.getInt('arrows_daily_last_day', -1)).toBe(today);
+
+    // Every key other than the campaign pointer and the daily key is identical.
+    const others = (s: RecordingStore) =>
+      [...s.map.entries()]
+        .filter(([key]) => key !== 'arrows_current_level' && key !== 'arrows_daily_last_day')
+        .sort(([a], [b]) => a.localeCompare(b));
+    expect(others(daily)).toEqual(others(campaign));
+    expect(campaign.map.has('arrows_daily_last_day')).toBe(false);
+  });
+
+  test('resetProgress leaves the daily key (the entry is hidden again by totalSolved = 0)', () => {
+    SaveSystem.registerSolve(true);
+    SaveSystem.registerDailyClear(SaveSystem.today());
+
+    SaveSystem.resetProgress();
+
+    expect(store.deleted).not.toContain('arrows_daily_last_day');
+    expect(SaveSystem.dailyLastDay).toBe(SaveSystem.today());
+    expect(SaveSystem.totalSolved).toBe(0);
+  });
+});

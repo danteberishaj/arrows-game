@@ -18,6 +18,7 @@ const NAMED_META_FLAGS = [
   'META_PRESS_SPRING',
   'META_LEVEL_TRANSITION', // W2-04
   'META_PANEL_MOTION', // W2-05
+  'META_DAILY', // W4-06
 ];
 
 const savedEnv = { ...process.env };

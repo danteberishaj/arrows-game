@@ -86,3 +86,12 @@ export const META_LEVEL_TRANSITION = process.env.EXPO_PUBLIC_META_LEVEL_TRANSITI
  * frame, exactly as before.
  */
 export const META_PANEL_MOTION = process.env.EXPO_PUBLIC_META_PANEL_MOTION === '1';
+
+/**
+ * W4-06: "Today's board" under the menu's Play pill opens the day's shared
+ * board (src/core/dailyBoard.ts). A daily clear counts as a solve (streak and
+ * totals) and records `arrows_daily_last_day`; it never advances the campaign
+ * and never counts toward the interstitial. OFF: the menu renders as before and
+ * the 'daily' route is unreachable; the stored key sits inert.
+ */
+export const META_DAILY = process.env.EXPO_PUBLIC_META_DAILY === '1';

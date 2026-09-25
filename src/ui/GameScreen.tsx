@@ -38,7 +38,7 @@ import {
 import { HeaderButton } from './HeaderButton';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
-  createLevelSession, createTutorialSession,
+  createDailySession, createLevelSession, createTutorialSession,
   LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS,
   TerminalTransitionGuard,
   type GamePhase,
@@ -92,6 +92,11 @@ const GRID_TOGGLE_INSET_PT = 16; // OWNER-PICKED STARTING VALUE (design spec A)
  */
 export const TUTORIAL_LINE_HEIGHT = 23; // OWNER-PICKED STARTING VALUE
 
+/** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
+const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
+const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
+const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
+
 /**
  * Height of two tutorial lines as the text will lay out: lineHeight scales with
  * the font scale, and Android rounds each line UP to whole pixels
@@ -117,6 +122,7 @@ export function GameScreen({
   onHome,
   tutorialId,
   initialLevelIndex,
+  daily,
   benchmarkMode = false,
   feedbackEnabled = true,
   onTelemetryProbeUnmount,
@@ -125,6 +131,12 @@ export function GameScreen({
   onHome: () => void;
   tutorialId?: TutorialId;
   initialLevelIndex?: number;
+  /**
+   * W4-06: play the shared board of `day` (fixed by the caller when the screen
+   * is entered). A clear records the solve and the day, never the campaign
+   * pointer or the interstitial counter; the win panel's button is "Done".
+   */
+  daily?: { day: number };
   benchmarkMode?: boolean;
   feedbackEnabled?: boolean;
   onTelemetryProbeUnmount?: () => void;
@@ -137,9 +149,11 @@ export function GameScreen({
   const levelAggregatorRef = useRef(appLevelAggregator);
   const [session, setSession] = useState(() => {
     const index = initialLevelIndex ?? SaveSystem.currentLevel;
-    const initial = tutorialId
-      ? createTutorialSession(tutorialId, revisionRef.current)
-      : createLevelSession(index, revisionRef.current);
+    const initial = daily
+      ? createDailySession(daily.day, revisionRef.current)
+      : tutorialId
+        ? createTutorialSession(tutorialId, revisionRef.current)
+        : createLevelSession(index, revisionRef.current);
     levelAggregatorRef.current.start(
       initial.index,
       initial.level.arrowCount,
@@ -153,6 +167,8 @@ export function GameScreen({
   const ftueBoardMountedAtRef = useRef(Date.now());
   const ftueMountedSessionRef = useRef<LevelSession | null>(null);
   const { index: levelIndex, level, tutorialId: activeTutorialId } = session;
+  // W4-06: the daily board's own day; null on campaign and tutorial boards.
+  const dailyDay = session.day;
   const tutorialGraceAvailableRef = useRef(activeTutorialId === 'T2');
   const removalsThisBoardRef = useRef(0);
   // W4-11 reads this at the delayed won-phase commit. Keep the stage-2
@@ -384,6 +400,13 @@ export function GameScreen({
     loadTutorial(id);
   }, [loadTutorial, logFtueEvent]);
 
+  /** W4-06 daily Retry: the same day's board, rebuilt from generateDaily(day). */
+  const restartDaily = useCallback((day: number) => {
+    logFtueEvent({ type: 'restart' });
+    revisionRef.current += 1;
+    loadSession(createDailySession(day, revisionRef.current));
+  }, [loadSession, logFtueEvent]);
+
   const onTapOutcome = useCallback((outcome: TapOutcome) => {
     levelAggregatorRef.current.tap(outcome);
   }, []);
@@ -434,8 +457,13 @@ export function GameScreen({
             SaveSystem.setFtueStage(DONE_STAGE);
           }
           SaveSystem.registerSolve(perfect); // perfect = no heart lost
-          SaveSystem.setCurrentLevel(levelIndex + 1);
-          Ads.registerGameFinished(); // counts toward the every-2-games interstitial
+          if (dailyDay !== null) {
+            // W4-06: a daily is not a campaign level and adds no ad exposure.
+            SaveSystem.registerDailyClear(dailyDay);
+          } else {
+            SaveSystem.setCurrentLevel(levelIndex + 1);
+            Ads.registerGameFinished(); // counts toward the every-2-games interstitial
+          }
         }
       }
       logFtueEvent({ type: 'clear', heartsLeft: heartsRef.current });
@@ -447,6 +475,7 @@ export function GameScreen({
       activeTutorialId,
       benchmarkMode,
       beginTerminalTransition,
+      dailyDay,
       feedbackEnabled,
       level,
       levelIndex,
@@ -514,8 +543,8 @@ export function GameScreen({
       : undefined;
     if (left <= 0 && beginTerminalTransition('lost', LOSE_PANEL_DELAY_MS, reloadTutorial)) {
       levelAggregatorRef.current.end('out_of_hearts', 0, Date.now());
-      if (!benchmarkMode && !activeTutorialId) {
-        Ads.registerGameFinished(); // a loss counts toward the pacing too
+      if (!benchmarkMode && !activeTutorialId && dailyDay === null) {
+        Ads.registerGameFinished(); // a loss counts toward the pacing too (never a daily, W4-06)
       }
     }
     return true;
@@ -523,6 +552,7 @@ export function GameScreen({
     activeTutorialId,
     benchmarkMode,
     beginTerminalTransition,
+    dailyDay,
     feedbackEnabled,
     logFtueEvent,
     restartTutorial,
@@ -567,14 +597,25 @@ export function GameScreen({
     loadLevel(levelIndex + 1);
   }, [benchmarkMode, levelIndex, levelScrim, loadLevel]);
 
-  /** "Retry" on the lose panel. */
+  /** "Done" after a daily clear (W4-06): back to the menu; no ad, no next board, no scrim. */
+  const dailyDonePressedRef = useRef(false);
+  const onDailyDone = useCallback(() => {
+    if (dailyDonePressedRef.current) return;
+    dailyDonePressedRef.current = true;
+    onHome();
+  }, [onHome]);
+
+  /** "Retry" on the lose panel (a daily rebuilds the same day's board). */
   const onRetry = useCallback(() => {
+    const restart = dailyDay !== null
+      ? () => restartDaily(dailyDay)
+      : () => restartLevel(levelIndex);
     if (levelScrim) {
-      levelScrim.start(() => restartLevel(levelIndex));
+      levelScrim.start(restart);
       return;
     }
-    restartLevel(levelIndex);
-  }, [levelIndex, levelScrim, restartLevel]);
+    restart();
+  }, [dailyDay, levelIndex, levelScrim, restartDaily, restartLevel]);
 
   /** Rewarded "+1 heart continue" from the lose panel. */
   const onContinueWithAd = useCallback(async () => {
@@ -654,7 +695,9 @@ export function GameScreen({
       )}
       <Text style={[styles.panelSub, { color: p.inkDim }]}>
         {panelPhase === 'won'
-          ? `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
+          ? dailyDay !== null
+            ? `${DAILY_WIN_PREFIX} · ${level.shapeName} · ${level.arrowCount} arrows`
+            : `Level ${levelIndex + 1} · ${level.shapeName} · ${level.arrowCount} arrows`
           : !panelRewardedReady || panelAdShowFailed
             ? 'No ad available right now — Retry is free'
             : 'The shape got the better of you.'}
@@ -690,10 +733,12 @@ export function GameScreen({
           panelPhase === 'lost' && { backgroundColor: 'transparent', borderWidth: 1, borderColor: p.border },
           panelPhase === 'won' && { backgroundColor: pressed ? p.accentDeep : p.accent },
         ]}
-        onPress={() => (panelPhase === 'won' ? onNextLevel() : onRetry())}
+        onPress={() => (
+          panelPhase === 'won' ? (dailyDay !== null ? onDailyDone() : onNextLevel()) : onRetry()
+        )}
       >
         <Text style={[styles.buttonText, { color: panelPhase === 'won' ? p.inkOnAccent : p.inkDim }]}>
-          {panelPhase === 'won' ? 'Next level' : 'Retry'}
+          {panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'}
         </Text>
       </PressScale>
       {panelPhase === 'won' && SaveSystem.perfectStreak > 1 && (
@@ -733,7 +778,7 @@ export function GameScreen({
           ) : (
             <View>
               <Text style={[styles.levelLabel, { color: p.accentLight }]}>
-                LEVEL {levelIndex + 1}
+                {dailyDay !== null ? DAILY_HEADER_LABEL : <>LEVEL {levelIndex + 1}</>}
               </Text>
               <View style={styles.missionLabelRow}>
                 {adShowFailed && phase === 'playing' ? (

@@ -462,6 +462,28 @@ export const SaveSystem = {
     if (next.savedToday) store.setInt(Keys.streakSavedDay, next.lastPlayDay);
   },
 
+  // ---- Daily board (W4-06) ---------------------------------------------
+
+  /**
+   * Local day number of the last daily clear; 0 = never (absent or corrupt).
+   * May be AFTER today (Auto Backup from a device whose clock ran ahead, or the
+   * clock moved back); src/ui/dailyEntryState.ts reads that as "available".
+   */
+  get dailyLastDay(): number {
+    return nonNegativeInt(store.getInt(Keys.dailyLastDay, 0));
+  },
+
+  /**
+   * Records a cleared daily board. Writes `arrows_daily_last_day` and nothing
+   * else, and never reads the clock: `day` is the board's own day, fixed when
+   * the daily screen was entered, so a clear after midnight still records it.
+   * The caller also calls registerSolve (streak and totals) and never
+   * setCurrentLevel: a daily is not a campaign level.
+   */
+  registerDailyClear(day: number): void {
+    store.setInt(Keys.dailyLastDay, nonNegativeInt(day));
+  },
+
   // ---- Preferences -----------------------------------------------------
 
   get soundOn(): boolean {

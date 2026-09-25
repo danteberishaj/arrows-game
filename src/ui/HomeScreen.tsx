@@ -11,8 +11,14 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
-import { META_BANNER, META_STREAK_FREEZE } from '../featureFlags';
+import { META_BANNER, META_DAILY, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
+import {
+  DAILY_ENTRY_DONE_LABEL,
+  DAILY_ENTRY_LABEL,
+  dailyEntryState,
+  type DailyEntryState,
+} from './dailyEntryState';
 import { FTUE_ENABLED } from './ftueConfig';
 import { ftueRoute } from './ftueRoute';
 import { HeaderButton } from './HeaderButton';
@@ -31,6 +37,7 @@ export function HomeScreen({
   dark,
   soundOn,
   onPlay,
+  onDaily,
   onToggleSound,
   onToggleTheme,
 }: {
@@ -38,6 +45,8 @@ export function HomeScreen({
   dark: boolean;
   soundOn: boolean;
   onPlay: () => void;
+  /** W4-06 (META_DAILY): "Today's board" was pressed. */
+  onDaily?: () => void;
   onToggleSound: () => void;
   onToggleTheme: () => void;
 }) {
@@ -64,6 +73,17 @@ export function HomeScreen({
       }) === 'real',
   );
   const [bannerHeight, setBannerHeight] = useState(0);
+  // W4-06: read once per mount, like the stats line (a menu left open past
+  // midnight keeps its label to the next mount; no timer text of any kind).
+  const [dailyState] = useState<DailyEntryState>(() =>
+    META_DAILY
+      ? dailyEntryState({
+        today: SaveSystem.today(),
+        dailyLastDay: SaveSystem.dailyLastDay,
+        totalSolved: SaveSystem.totalSolved,
+      })
+      : 'hidden',
+  );
   // POLISH-T9 (audit #10): when the loaded banner's height arrives or leaves, the
   // stats line glides by transform instead of teleporting (its `bottom` stays put,
   // so there is no re-layout and no space reserved before a load). Reduce motion:
@@ -117,7 +137,10 @@ export function HomeScreen({
         <HeaderButton label="♪" off={!soundOn} palette={p} onPress={onToggleSound} size={44} />
       </View>
 
-      <View style={styles.upper}>
+      {/* W4-06: with the daily entry shown the upper block sits 20 dp closer to the
+          pill, so the pill + entry fit above the stats line and the banner at
+          360x640 dp (flag OFF / hidden: the exact BASE style object). */}
+      <View style={dailyState === 'hidden' ? styles.upper : [styles.upper, styles.upperWithDaily]}>
         <Wordmark size={56} palette={p} />
 
         <Text style={[styles.levelLabel, { color: p.accentLight }]}>
@@ -145,6 +168,14 @@ export function HomeScreen({
         </PressScale>
       </Animated.View>
 
+      {dailyState !== 'hidden' && (
+        <DailyEntry
+          state={dailyState}
+          palette={p}
+          onOpen={dailyState === 'available' ? onDaily : undefined}
+        />
+      )}
+
       {showBanner ? (
         <Animated.Text style={[styles.stats, { color: p.inkDim, bottom: insets.bottom + 32 }, statsLiftStyle]}>
           {statsLine}
@@ -159,6 +190,38 @@ export function HomeScreen({
 
       {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
     </View>
+  );
+}
+
+/**
+ * W4-06 (META_DAILY): one quiet text control under the Play pill: inkDim, the
+ * brand font, no pill, no violet. `available` opens today's board; `done` is
+ * plain text in the same box (no replay). W4-10 owns its final placement.
+ */
+function DailyEntry({
+  state,
+  palette,
+  onOpen,
+}: {
+  state: Exclude<DailyEntryState, 'hidden'>;
+  palette: Palette;
+  onOpen?: () => void;
+}) {
+  const label = (
+    <Text style={[styles.dailyText, { color: palette.inkDim }]}>
+      {state === 'done' ? DAILY_ENTRY_DONE_LABEL : DAILY_ENTRY_LABEL}
+    </Text>
+  );
+  if (state === 'done') return <View style={styles.daily}>{label}</View>;
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityLabel={DAILY_ENTRY_LABEL}
+      onPress={onOpen}
+      style={({ pressed }) => [styles.daily, { transform: pressSnapTransform(pressed) }]}
+    >
+      {label}
+    </PressScale>
   );
 }
 
@@ -195,6 +258,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 56,
   },
+  upperWithDaily: {
+    marginBottom: 36, // OWNER-PICKED STARTING VALUE (W4-06; W4-10 owns the final menu layout)
+  },
   levelLabel: {
     fontSize: 24,
     fontFamily: Fonts.bold,
@@ -223,5 +289,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     fontSize: 13,
     fontFamily: Fonts.semi,
+  },
+  // W4-06: the >= 44 x 44 dp hit box doubles as the gap under the pill.
+  daily: {
+    minHeight: 44, // OWNER-PICKED STARTING VALUE (tap-target floor)
+    minWidth: 44, // OWNER-PICKED STARTING VALUE (tap-target floor)
+    marginTop: 4, // OWNER-PICKED STARTING VALUE
+    paddingHorizontal: 16, // OWNER-PICKED STARTING VALUE
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dailyText: {
+    fontSize: 15, // OWNER-PICKED STARTING VALUE (the tier label's size)
+    fontFamily: Fonts.semi,
+    letterSpacing: 0.5,
   },
 });

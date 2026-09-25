@@ -40,7 +40,7 @@ import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
 import { ftueRoute } from './src/ui/ftueRoute';
 
-type Screen = 'splash' | 'menu' | 'game';
+type Screen = 'splash' | 'menu' | 'game' | 'daily';
 
 let currentTelemetryScreen: FatalScreen = 'splash';
 let fatalHandlerInstalled = false;
@@ -62,13 +62,13 @@ if (perfTelemetrySink) {
   }));
 }
 
-function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu' | 'game' {
+function telemetryScreen(screen: Screen | 'gallery'): 'splash' | 'menu' | 'game' {
   if (screen === 'daily') return 'game';
   if (screen === 'gallery') return 'menu';
   return screen;
 }
 
-function emitScreenView(screen: Screen | 'daily' | 'gallery'): void {
+function emitScreenView(screen: Screen | 'gallery'): void {
   currentTelemetryScreen = telemetryScreen(screen);
   Telemetry.emit('screen_view', { screen: currentTelemetryScreen });
 }
@@ -99,6 +99,8 @@ export default function App() {
   // A PERF build opens on EXPO_PUBLIC_PERF_SCREEN (default game, P-02 Stage A).
   const [screen, setScreen] = useState<Screen>(PERF_MODE ? PERF_SCREEN : 'splash');
   const [tutorialId, setTutorialId] = useState<TutorialId | undefined>();
+  // W4-06: the daily board's day, fixed when the player enters it.
+  const [dailyDay, setDailyDay] = useState<number | null>(null);
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   // Capture diagnostic (P-02 Stage B, ruling F01): Reanimated's own value,
@@ -203,6 +205,12 @@ export default function App() {
     showScreen('game');
   }, [showScreen]);
 
+  // W4-06 (META_DAILY): HomeScreen offers this only while the entry is 'available'.
+  const onDaily = useCallback(() => {
+    setDailyDay(SaveSystem.today());
+    showScreen('daily');
+  }, [showScreen]);
+
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       SaveSystem.soundOn = !on;
@@ -240,6 +248,7 @@ export default function App() {
             dark={dark}
             soundOn={soundOn}
             onPlay={onPlay}
+            onDaily={onDaily}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
           />
@@ -258,6 +267,21 @@ export default function App() {
             benchmarkMode={PERF_MODE}
             feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
             onTelemetryProbeUnmount={perfTelemetryUnmountProbe}
+            onHome={() => showScreen('menu')}
+          />
+        </Animated.View>
+      )}
+      {screen === 'daily' && dailyDay !== null && (
+        // W4-06: the same GameScreen on today's shared board; Done / ‹ return to the menu.
+        <Animated.View
+          style={{ flex: 1 }}
+          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+        >
+          <GameScreen
+            palette={p}
+            daily={{ day: dailyDay }}
+            benchmarkMode={PERF_MODE}
+            feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
             onHome={() => showScreen('menu')}
           />
         </Animated.View>

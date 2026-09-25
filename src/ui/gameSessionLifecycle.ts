@@ -1,5 +1,6 @@
 import {
   buildTutorialLevel,
+  generateDaily,
   LevelGenerator,
   SaveSystem,
   type GeneratedLevel,
@@ -18,11 +19,19 @@ export type GamePhase = 'playing' | 'won' | 'lost';
 export type TerminalPhase = Exclude<GamePhase, 'playing'>;
 
 export interface LevelSession {
+  /**
+   * Campaign: the level index. Tutorial: the campaign level it returns to.
+   * Daily: the day number, which is also the board's telemetry `levelIndex`
+   * (ruling F09). Daily code paths never read it as a campaign index.
+   */
   index: number;
   revision: number;
   level: GeneratedLevel;
+  /** 'campaign' | 'tutorial' | 'daily' (ruling F08). */
   mode: LevelMode;
   tutorialId?: TutorialId;
+  /** W4-06: the daily board's own day number (fixed at entry); null otherwise. */
+  day: number | null;
 }
 
 /**
@@ -36,6 +45,7 @@ export function createLevelSession(index: number, revision: number): LevelSessio
     revision,
     level: LevelGenerator.generate(index),
     mode: 'campaign',
+    day: null,
   };
 }
 
@@ -47,6 +57,22 @@ export function createTutorialSession(id: TutorialId, revision: number): LevelSe
     level: buildTutorialLevel(id),
     mode: 'tutorial',
     tutorialId: id,
+    day: null,
+  };
+}
+
+/**
+ * W4-06: the shared board for `day` (SaveSystem.today()'s unit). Pure: the
+ * first load and every Retry of the same day build the identical board, and
+ * nothing here reads or writes campaign progress.
+ */
+export function createDailySession(day: number, revision: number): LevelSession {
+  return {
+    index: day,
+    revision,
+    level: generateDaily(day),
+    mode: 'daily',
+    day,
   };
 }
 
