@@ -174,6 +174,10 @@ export function GameScreen({
   // W4-11 reads this at the delayed won-phase commit. Keep the stage-2
   // snapshot even when this clear immediately advances persisted stage to 3.
   const assistedAtClearRef = useRef(false);
+  // W4-07: whether the last clear added a shape to the collection (its bit was
+  // 0). Data only, set on the clear path before the won panel; W5's silhouette
+  // celebration decides whether and how to show it.
+  const newlyDiscoveredRef = useRef(false);
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
   const [tutorialLine, setTutorialLine] = useState(() => initialTutorialLine(activeTutorialId));
@@ -459,9 +463,13 @@ export function GameScreen({
           SaveSystem.registerSolve(perfect); // perfect = no heart lost
           if (dailyDay !== null) {
             // W4-06: a daily is not a campaign level and adds no ad exposure.
-            SaveSystem.registerDailyClear(dailyDay);
+            // W4-07: it records the cleared board's shape in the collection.
+            newlyDiscoveredRef.current =
+              SaveSystem.registerDailyClear(dailyDay, level.shapeName).newlyDiscovered;
           } else {
             SaveSystem.setCurrentLevel(levelIndex + 1);
+            // W4-07: O(1) when the collection fold is caught up; else the menu folds it.
+            newlyDiscoveredRef.current = SaveSystem.recordCampaignClear(levelIndex).newlyDiscovered;
             Ads.registerGameFinished(); // counts toward the every-2-games interstitial
           }
         }

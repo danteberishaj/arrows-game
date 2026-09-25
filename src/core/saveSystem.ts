@@ -1,4 +1,13 @@
-import { META_STREAK_FREEZE } from '../featureFlags';
+import { COLLECTION_SYNC_ENABLED, META_STREAK_FREEZE } from '../featureFlags';
+import {
+  foldLevels,
+  hasSeen,
+  markSeen,
+  sanitizeMask,
+  type ShapeMasks,
+} from './collection';
+import { shapeNameForLevel } from './levelGenerator';
+import { catalogueIndexOf } from './shapeCatalogue';
 import {
   advanceStreak,
   readStreak,
@@ -171,6 +180,42 @@ function dayNumber(t: Date): number {
  */
 function nonNegativeInt(v: number): number {
   return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
+}
+
+/**
+ * W4-07: the shape campaign level `levelIndex` dealt, for the collection fold.
+ * v1 for every index until W3's generator-version seam exists; then W3-05
+ * routes it through core `resolveGenVersion(index, genSwitchLevel)` with no
+ * PERF/DEV override (ruling F11). Must equal LevelGenerator.generate(i)
+ * .shapeName (collection.test.ts, shapeCatalogue.test.ts).
+ */
+function campaignShapeName(levelIndex: number): string {
+  return shapeNameForLevel(levelIndex);
+}
+
+const NOT_NEW: { readonly newlyDiscovered: boolean } = Object.freeze({ newlyDiscovered: false });
+
+/**
+ * Collection writes are skipped while persistence is unhealthy: a failed
+ * hydrate reads every key as its default, and ORing into those defaults then
+ * writing through would overwrite the real collection on disk (P-01's rule for
+ * derived values). The kill constant stops every collection write.
+ */
+function collectionWritable(): boolean {
+  return COLLECTION_SYNC_ENABLED && persistenceHealthy;
+}
+
+function readShapeMasks(): ShapeMasks {
+  return {
+    lo: sanitizeMask(store.getInt(Keys.shapesSeenLo, 0)),
+    hi: sanitizeMask(store.getInt(Keys.shapesSeenHi, 0)),
+  };
+}
+
+/** Writes only a mask that gained a bit (the masks only ever grow). */
+function writeShapeMasks(before: ShapeMasks, after: ShapeMasks): void {
+  if (after.lo !== before.lo) store.setInt(Keys.shapesSeenLo, after.lo);
+  if (after.hi !== before.hi) store.setInt(Keys.shapesSeenHi, after.hi);
 }
 
 /** Only the four defined consent bits are valid; corrupt values fail closed. */
@@ -474,14 +519,84 @@ export const SaveSystem = {
   },
 
   /**
-   * Records a cleared daily board. Writes `arrows_daily_last_day` and nothing
-   * else, and never reads the clock: `day` is the board's own day, fixed when
-   * the daily screen was entered, so a clear after midnight still records it.
-   * The caller also calls registerSolve (streak and totals) and never
-   * setCurrentLevel: a daily is not a campaign level.
+   * Records a cleared daily board. Writes `arrows_daily_last_day` and (W4-07)
+   * the collection bit of `shapeName`, the cleared board's shape, and never
+   * reads the clock: `day` is the board's own day, fixed when the daily screen
+   * was entered, so a clear after midnight still records it. The caller also
+   * calls registerSolve (streak and totals) and never setCurrentLevel: a daily
+   * is not a campaign level. `newlyDiscovered` is true when the bit was 0.
    */
-  registerDailyClear(day: number): void {
+  registerDailyClear(day: number, shapeName: string): { newlyDiscovered: boolean } {
     store.setInt(Keys.dailyLastDay, nonNegativeInt(day));
+    // W4-07: the daily's shape joins the collection. The campaign fold pointer
+    // is untouched (a daily is not a campaign level).
+    if (!collectionWritable()) return NOT_NEW;
+    const index = catalogueIndexOf(shapeName);
+    const before = readShapeMasks();
+    if (index < 0 || hasSeen(before, index)) return NOT_NEW;
+    writeShapeMasks(before, markSeen(before, index));
+    return { newlyDiscovered: true };
+  },
+
+  // ---- Shape collection (W4-07) ----------------------------------------
+  // Pure bit logic: src/core/collection.ts. The only reader is the flagged
+  // gallery (W4-09); recording is invisible and ships ON behind the literal
+  // kill constant COLLECTION_SYNC_ENABLED (src/featureFlags.ts).
+
+  /** The collection masks, sanitized (corrupt values read as 0; see sanitizeMask). */
+  get shapesSeen(): ShapeMasks {
+    return readShapeMasks();
+  },
+
+  /** Campaign levels 0..N-1 already folded into the collection; corrupt or absent = 0. */
+  get shapesThroughLevel(): number {
+    return nonNegativeInt(store.getInt(Keys.shapesThroughLevel, 0));
+  },
+
+  /**
+   * Folds campaign levels [shapesThroughLevel, currentLevel), at most
+   * `maxSteps` of them, into the collection and writes the masks (only one that
+   * gained a bit) and the new pointer. Every level below currentLevel was
+   * solved (setCurrentLevel(i + 1) runs only on a clear), so the bits are
+   * reconstructed, not guessed. A cap delays bits and never drops them: the
+   * next call resumes at the pointer. Nothing to fold (pointer at or past the
+   * level, e.g. after a progress reset) reads two keys and writes nothing.
+   * `shouldStop` (optional, e.g. a time budget) ends the call early after at
+   * least one level; see foldLevels. Returns the levels still unfolded after
+   * this call (0 = caught up).
+   */
+  syncCollection(maxSteps: number, shouldStop?: () => boolean): number {
+    if (!collectionWritable()) return 0;
+    const target = this.currentLevel;
+    const through = this.shapesThroughLevel;
+    if (through >= target) return 0;
+    const before = readShapeMasks();
+    const folded = foldLevels(before, through, target, campaignShapeName, maxSteps, shouldStop);
+    if (folded.through === through) return target - through;
+    writeShapeMasks(before, folded);
+    store.setInt(Keys.shapesThroughLevel, folded.through);
+    return target - folded.through;
+  },
+
+  /**
+   * A campaign clear of `levelIndex`, called after setCurrentLevel(levelIndex
+   * + 1). The O(1) fast path: only when the fold pointer is exactly this level
+   * does it record the level's shape and move the pointer on. Otherwise (the
+   * menu fold is still behind, or the pointer leads after a reset) it writes
+   * nothing and the next menu mount's syncCollection catches up.
+   *
+   * `newlyDiscovered` is true only when this clear set a bit that was 0. It is
+   * false when deferred, because a bit the pending fold may set cannot be
+   * called new. Data only: W5 decides whether anything shows it.
+   */
+  recordCampaignClear(levelIndex: number): { newlyDiscovered: boolean } {
+    if (!collectionWritable()) return NOT_NEW;
+    if (this.shapesThroughLevel !== levelIndex) return NOT_NEW;
+    const before = readShapeMasks();
+    const folded = foldLevels(before, levelIndex, levelIndex + 1, campaignShapeName, 1);
+    writeShapeMasks(before, folded);
+    store.setInt(Keys.shapesThroughLevel, folded.through);
+    return { newlyDiscovered: folded.lo !== before.lo || folded.hi !== before.hi };
   },
 
   // ---- Preferences -----------------------------------------------------

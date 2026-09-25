@@ -1,4 +1,7 @@
+import { EMPTY_SHAPE_MASKS, countSeen, hasSeen, markSeen, type ShapeMasks } from '../collection';
+import { LevelGenerator, shapeNameForLevel } from '../levelGenerator';
 import { SaveSystem, type IntStore } from '../saveSystem';
+import { catalogueIndexOf } from '../shapeCatalogue';
 
 /**
  * Pure-core tests for SaveSystem over an in-memory IntStore (no AsyncStorage).
@@ -368,7 +371,7 @@ describe('W4-06 daily clear', () => {
 
   test('dailyLastDay reads 0 when absent, the stored day after a clear, and 0 when corrupt', () => {
     expect(SaveSystem.dailyLastDay).toBe(0);
-    SaveSystem.registerDailyClear(SaveSystem.today());
+    SaveSystem.registerDailyClear(SaveSystem.today(), 'Plus');
     expect(SaveSystem.dailyLastDay).toBe(dayNumberOf(NOON));
     for (const corrupt of [-3, Number.NaN]) {
       store.setInt('arrows_daily_last_day', corrupt);
@@ -376,17 +379,31 @@ describe('W4-06 daily clear', () => {
     }
   });
 
-  test('registerDailyClear(day) writes only arrows_daily_last_day, and never reads the clock', () => {
-    const set = jest.spyOn(store, 'setInt');
-    const del = jest.spyOn(store, 'deleteKey');
-    const today = SaveSystem.today();
+  test('registerDailyClear(day, shape) writes only arrows_daily_last_day and (W4-07) the shape\'s collection bit, and never reads the clock', () => {
+    const previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true);
+    const previousClock = SaveSystem.useClock(() => {
+      throw new Error('registerDailyClear read the clock');
+    });
+    try {
+      const set = jest.spyOn(store, 'setInt');
+      const del = jest.spyOn(store, 'deleteKey');
+      const today = dayNumberOf(NOON);
 
-    // The board's own day: entered just before midnight, cleared after it.
-    SaveSystem.registerDailyClear(today - 1);
+      // The board's own day: entered just before midnight, cleared after it.
+      SaveSystem.registerDailyClear(today - 1, 'Plus');
 
-    expect(set.mock.calls).toEqual([['arrows_daily_last_day', today - 1]]);
-    expect(del).not.toHaveBeenCalled();
-    expect([...store.map.keys()]).toEqual(['arrows_daily_last_day']);
+      // 'Plus' is catalogue index 5 (the W4-01 order lock): bit 5 of the low mask.
+      expect(set.mock.calls).toEqual([
+        ['arrows_daily_last_day', today - 1],
+        ['arrows_shapes_seen_lo', 1 << 5],
+      ]);
+      expect(del).not.toHaveBeenCalled();
+      expect([...store.map.keys()]).toEqual(['arrows_daily_last_day', 'arrows_shapes_seen_lo']);
+    } finally {
+      SaveSystem.useClock(previousClock);
+      SaveSystem.setPersistenceHealthy(previousHealthy);
+    }
   });
 
   test('a daily clear leaves currentLevel unchanged, adds one solve and advances the day streak as a campaign solve does', () => {
@@ -412,7 +429,7 @@ describe('W4-06 daily clear', () => {
     seedStore(daily);
     SaveSystem.useStore(daily);
     SaveSystem.registerSolve(true);
-    SaveSystem.registerDailyClear(today);
+    SaveSystem.registerDailyClear(today, 'Plus');
 
     expect(daily.getInt('arrows_current_level', -1)).toBe(7);
     expect(campaign.getInt('arrows_current_level', -1)).toBe(8);
@@ -432,12 +449,254 @@ describe('W4-06 daily clear', () => {
 
   test('resetProgress leaves the daily key (the entry is hidden again by totalSolved = 0)', () => {
     SaveSystem.registerSolve(true);
-    SaveSystem.registerDailyClear(SaveSystem.today());
+    SaveSystem.registerDailyClear(SaveSystem.today(), 'Plus');
 
     SaveSystem.resetProgress();
 
     expect(store.deleted).not.toContain('arrows_daily_last_day');
     expect(SaveSystem.dailyLastDay).toBe(SaveSystem.today());
     expect(SaveSystem.totalSolved).toBe(0);
+  });
+});
+
+describe('W4-07 shape collection', () => {
+  const COLLECTION_KEYS = [
+    'arrows_shapes_seen_lo',
+    'arrows_shapes_seen_hi',
+    'arrows_shapes_through_level',
+  ];
+  let previousHealthy: boolean;
+
+  beforeEach(() => {
+    previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true); // initSaveSystem() read the save
+  });
+
+  afterEach(() => {
+    SaveSystem.setPersistenceHealthy(previousHealthy);
+  });
+
+  /** Ground truth from the FULL generator: the masks levels [from, to) must produce. */
+  function truthMasks(from: number, to: number, start: ShapeMasks = EMPTY_SHAPE_MASKS): ShapeMasks {
+    let masks = start;
+    for (let i = from; i < to; i += 1) {
+      masks = markSeen(masks, catalogueIndexOf(LevelGenerator.generate(i).shapeName));
+    }
+    return masks;
+  }
+
+  function storedMasks(): ShapeMasks {
+    return {
+      lo: store.getInt('arrows_shapes_seen_lo', 0),
+      hi: store.getInt('arrows_shapes_seen_hi', 0),
+    };
+  }
+
+  test('a save at level 37 with no collection keys folds exactly the shapes of levels 0..36, writing only the three collection keys', () => {
+    store.setInt('arrows_current_level', 37);
+    const set = jest.spyOn(store, 'setInt');
+    const del = jest.spyOn(store, 'deleteKey');
+
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+
+    expect(storedMasks()).toEqual(truthMasks(0, 37));
+    expect(store.getInt('arrows_shapes_through_level', -1)).toBe(37);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(0, 37));
+    expect(SaveSystem.shapesThroughLevel).toBe(37);
+    for (const [key] of set.mock.calls) expect(COLLECTION_KEYS).toContain(key);
+    expect(del).not.toHaveBeenCalled();
+    expect(SaveSystem.currentLevel).toBe(37);
+  });
+
+  test('caps each call and resumes: 12000 levels behind at 5000 per call is three calls, then no work and no write', () => {
+    store.setInt('arrows_current_level', 12000);
+
+    expect(SaveSystem.syncCollection(5000)).toBe(7000);
+    expect(SaveSystem.shapesThroughLevel).toBe(5000);
+    expect(SaveSystem.syncCollection(5000)).toBe(2000);
+    expect(SaveSystem.shapesThroughLevel).toBe(10000);
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(SaveSystem.shapesThroughLevel).toBe(12000);
+
+    const set = jest.spyOn(store, 'setInt');
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(set).not.toHaveBeenCalled();
+
+    // Same bits as one uncapped pass over the cheap lookup (the full-generator
+    // equivalence for 0..299 is collection.test.ts; 0..599 is shapeCatalogue.test.ts).
+    let oneShot = EMPTY_SHAPE_MASKS;
+    for (let i = 0; i < 12000; i += 1) oneShot = markSeen(oneShot, catalogueIndexOf(shapeNameForLevel(i)));
+    expect(SaveSystem.shapesSeen).toEqual(oneShot);
+  });
+
+  test('syncCollection(maxSteps, shouldStop): any slicing of 0..299 ends at exactly the full-generator masks and through = 300', () => {
+    const truth = truthMasks(0, 300);
+    const stops: Array<[string, () => () => boolean]> = [
+      ['no predicate', () => () => false],
+      ['stop at every check', () => () => true],
+      ['stop at every 4th check', () => { let n = 0; return () => (n += 1) % 4 === 0; }],
+    ];
+    for (const cap of [1, 13, 200]) {
+      for (const [name, makeStop] of stops) {
+        store = new RecordingStore();
+        SaveSystem.useStore(store);
+        store.setInt('arrows_current_level', 300);
+        const stop = makeStop();
+        let pending = 300;
+        let calls = 0;
+        while (pending > 0) {
+          const before = SaveSystem.shapesThroughLevel;
+          pending = SaveSystem.syncCollection(cap, stop);
+          const folded = SaveSystem.shapesThroughLevel - before;
+          expect(folded).toBeGreaterThanOrEqual(1);
+          expect(folded).toBeLessThanOrEqual(cap);
+          expect(pending).toBe(300 - SaveSystem.shapesThroughLevel);
+          calls += 1;
+        }
+        expect([cap, name, SaveSystem.shapesSeen, SaveSystem.shapesThroughLevel]).toEqual([cap, name, truth, 300]);
+        expect(calls).toBeLessThanOrEqual(300);
+      }
+    }
+  });
+
+  test('a campaign clear on the fast path (through === levelIndex) records that level and says whether it was new', () => {
+    // Find the first campaign level whose shape an earlier level already dealt.
+    const names = Array.from({ length: 40 }, (_, i) => LevelGenerator.generate(i).shapeName);
+    const repeat = names.findIndex((name, i) => names.indexOf(name) < i);
+    expect(repeat).toBeGreaterThan(0);
+
+    for (let level = 0; level <= repeat; level += 1) {
+      SaveSystem.setCurrentLevel(level + 1);
+      const set = jest.spyOn(store, 'setInt');
+      const result = SaveSystem.recordCampaignClear(level);
+      const firstTime = names.indexOf(names[level]) === level;
+
+      expect([level, result.newlyDiscovered]).toEqual([level, firstTime]);
+      expect(SaveSystem.shapesThroughLevel).toBe(level + 1);
+      for (const [key] of set.mock.calls) expect(COLLECTION_KEYS).toContain(key);
+      // A repeat shape writes the pointer only; the masks are unchanged.
+      if (!firstTime) expect(set.mock.calls.map(([key]) => key)).toEqual(['arrows_shapes_through_level']);
+      set.mockRestore();
+    }
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(0, repeat + 1));
+  });
+
+  test('a campaign clear with the fold behind writes nothing and is not "new"; the next menu sync records it', () => {
+    store.setInt('arrows_current_level', 9);
+    store.setInt('arrows_shapes_through_level', 4); // e.g. Play pressed before the menu fold finished
+    SaveSystem.setCurrentLevel(10);
+    const set = jest.spyOn(store, 'setInt');
+
+    expect(SaveSystem.recordCampaignClear(9)).toEqual({ newlyDiscovered: false });
+    expect(set).not.toHaveBeenCalled();
+
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(SaveSystem.shapesThroughLevel).toBe(10);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(4, 10));
+  });
+
+  test('a replayed or reset-behind clear (through > levelIndex) writes nothing', () => {
+    store.setInt('arrows_shapes_through_level', 50);
+    store.setInt('arrows_shapes_seen_lo', 7);
+    SaveSystem.resetProgress();
+    SaveSystem.setCurrentLevel(1);
+    const set = jest.spyOn(store, 'setInt');
+
+    expect(SaveSystem.recordCampaignClear(0)).toEqual({ newlyDiscovered: false });
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(set).not.toHaveBeenCalled();
+    expect(SaveSystem.shapesThroughLevel).toBe(50);
+    expect(SaveSystem.shapesSeen).toEqual({ lo: 7, hi: 0 });
+  });
+
+  test('a daily clear marks the daily shape once; an unknown name sets nothing', () => {
+    const day = SaveSystem.today();
+    expect(SaveSystem.registerDailyClear(day, 'Butterfly')).toEqual({ newlyDiscovered: true });
+    expect(hasSeen(SaveSystem.shapesSeen, catalogueIndexOf('Butterfly'))).toBe(true);
+    expect(SaveSystem.registerDailyClear(day + 1, 'Butterfly')).toEqual({ newlyDiscovered: false });
+    expect(SaveSystem.registerDailyClear(day + 2, 'NotAShape')).toEqual({ newlyDiscovered: false });
+    expect(countSeen(SaveSystem.shapesSeen)).toBe(1);
+    // A daily never moves the campaign fold.
+    expect(store.map.has('arrows_shapes_through_level')).toBe(false);
+    expect(SaveSystem.dailyLastDay).toBe(day + 2);
+  });
+
+  test('corrupt stored values: a negative through refolds from 0; corrupt masks read as 0 and are rewritten only when a bit is added', () => {
+    store.setInt('arrows_current_level', 3);
+    store.setInt('arrows_shapes_through_level', -8);
+    store.setInt('arrows_shapes_seen_lo', -5);
+    store.setInt('arrows_shapes_seen_hi', 2 ** 30 + (1 << 25)); // a stray bit 30 plus a valid bit 25
+
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
+    expect(SaveSystem.shapesSeen).toEqual({ lo: 0, hi: 1 << 25 });
+
+    SaveSystem.syncCollection(5000);
+
+    const expected = truthMasks(0, 3, { lo: 0, hi: 1 << 25 });
+    expect(SaveSystem.shapesSeen).toEqual(expected);
+    expect(storedMasks().lo).toBe(expected.lo);
+    // Levels 0..2 are low-mask shapes, so the hi key keeps its raw value: no bit was added there.
+    expect(store.getInt('arrows_shapes_seen_hi', 0)).toBe(2 ** 30 + (1 << 25));
+    expect(SaveSystem.shapesThroughLevel).toBe(3);
+  });
+
+  test('persistence not healthy: sync, the campaign clear and the daily clear write no collection key', () => {
+    // A failed hydrate reads defaults; ORing into those and writing through
+    // would overwrite a real collection on disk (P-01's derived-value rule).
+    SaveSystem.setPersistenceHealthy(false);
+    store.setInt('arrows_current_level', 37);
+    const set = jest.spyOn(store, 'setInt');
+
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    SaveSystem.setCurrentLevel(1);
+    store.setInt('arrows_shapes_through_level', 0);
+    set.mockClear();
+    expect(SaveSystem.recordCampaignClear(0)).toEqual({ newlyDiscovered: false });
+    expect(SaveSystem.registerDailyClear(SaveSystem.today(), 'Heart')).toEqual({ newlyDiscovered: false });
+
+    expect(set.mock.calls.map(([key]) => key)).toEqual(['arrows_daily_last_day']);
+    expect(store.map.has('arrows_shapes_seen_lo')).toBe(false);
+    expect(store.map.has('arrows_shapes_seen_hi')).toBe(false);
+  });
+
+  test('kill switch COLLECTION_SYNC_ENABLED = false: no collection write anywhere, the stored ints sit inert', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../../featureFlags', () => ({
+        ...jest.requireActual('../../featureFlags'),
+        COLLECTION_SYNC_ENABLED: false,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { SaveSystem: Killed } = require('../saveSystem') as typeof import('../saveSystem');
+      const killedStore = new RecordingStore();
+      Killed.useStore(killedStore);
+      Killed.setPersistenceHealthy(true);
+      killedStore.setInt('arrows_current_level', 37);
+      killedStore.setInt('arrows_shapes_seen_lo', 5);
+      const set = jest.spyOn(killedStore, 'setInt');
+
+      expect(Killed.syncCollection(5000)).toBe(0);
+      Killed.setCurrentLevel(38);
+      expect(Killed.recordCampaignClear(37)).toEqual({ newlyDiscovered: false });
+      expect(Killed.registerDailyClear(Killed.today(), 'Heart')).toEqual({ newlyDiscovered: false });
+
+      expect(set.mock.calls.map(([key]) => key)).toEqual([
+        'arrows_current_level',
+        'arrows_daily_last_day',
+      ]);
+      expect(killedStore.getInt('arrows_shapes_seen_lo', -1)).toBe(5);
+      expect(killedStore.map.has('arrows_shapes_through_level')).toBe(false);
+    });
+    jest.dontMock('../../featureFlags');
+  });
+
+  test('resetProgress is unchanged by W4-07: it keeps the three collection keys', () => {
+    store.setInt('arrows_current_level', 12);
+    SaveSystem.syncCollection(5000);
+    const before = COLLECTION_KEYS.map((key) => store.getInt(key, -1));
+
+    SaveSystem.resetProgress();
+
+    for (const key of COLLECTION_KEYS) expect(store.deleted).not.toContain(key);
+    expect(COLLECTION_KEYS.map((key) => store.getInt(key, -1))).toEqual(before);
   });
 });

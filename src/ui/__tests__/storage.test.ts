@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SaveSystem, type IntStore } from '../../core';
+import { LevelGenerator, SaveSystem, catalogueIndexOf, type IntStore } from '../../core';
+import { EMPTY_SHAPE_MASKS, markSeen, type ShapeMasks } from '../../core/collection';
 import { initSaveSystem } from '../storage';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -362,4 +363,125 @@ test('W4-02: a live 14-day chain survives hydration and advances with absent fre
   } finally {
     SaveSystem.useClock(previousClock);
   }
+});
+
+// ---- W4-07: the shape collection over a Map-backed AsyncStorage -------------
+
+describe('W4-07 shape collection across cold starts', () => {
+  /** Ground truth from the FULL generator for campaign levels [from, to). */
+  function truthMasks(from: number, to: number, start: ShapeMasks = EMPTY_SHAPE_MASKS): ShapeMasks {
+    let masks = start;
+    for (let i = from; i < to; i += 1) {
+      masks = markSeen(masks, catalogueIndexOf(LevelGenerator.generate(i).shapeName));
+    }
+    return masks;
+  }
+
+  const SEEDED: ReadonlyArray<[string, string]> = [...LEGACY_SEED, ['arrows_schema_version', '1']];
+
+  test('level 37, no collection keys: the fold sets exactly levels 0..36 and through = 37, adds two keys, changes none, and a fresh store reads it back', async () => {
+    const disk = useMapBackedStorage(SEEDED);
+    await coldStart();
+    const before = new Map(disk);
+
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    await settlePersistence();
+
+    const expected = truthMasks(0, 37);
+    expect(expected.lo).toBeGreaterThan(0);
+    expect(expected.hi).toBe(0); // the 26-id catalogue lives entirely in the low mask
+    expect(disk.get('arrows_shapes_seen_lo')).toBe(String(expected.lo));
+    expect(disk.get('arrows_shapes_through_level')).toBe('37');
+    expect(disk.has('arrows_shapes_seen_hi')).toBe(false); // nothing to OR in: not written
+    for (const [key, value] of before) expect([key, disk.get(key)]).toEqual([key, value]);
+    expect([...disk.keys()].filter((key) => !before.has(key)).sort()).toEqual([
+      'arrows_shapes_seen_lo',
+      'arrows_shapes_through_level',
+    ]);
+    expect(storage.multiRemove).not.toHaveBeenCalled();
+
+    // Cold start: a fresh HydratedIntStore over the same disk.
+    const second = await coldStart();
+    expect(second.getInt('arrows_shapes_seen_lo', -1)).toBe(expected.lo);
+    expect(second.getInt('arrows_shapes_through_level', -1)).toBe(37);
+    expect(SaveSystem.shapesSeen).toEqual(expected);
+    expect(SaveSystem.shapesThroughLevel).toBe(37);
+
+    // The second launch has nothing to fold and writes nothing.
+    storage.multiSet.mockClear();
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    await settlePersistence();
+    expect(storage.multiSet).not.toHaveBeenCalled();
+    expect(storage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  test('fresh install: nothing to fold, and no collection key is written', async () => {
+    const disk = useMapBackedStorage([]);
+    await coldStart();
+
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    await settlePersistence();
+
+    expect([...disk.keys()]).toEqual(['arrows_schema_version']);
+    expect(storage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  test('a corrupt or partial collection (unparseable through, negative mask) is rebuilt from the generator', async () => {
+    const disk = useMapBackedStorage([
+      ...SEEDED,
+      ['arrows_shapes_through_level', 'garbage'],
+      ['arrows_shapes_seen_lo', '-5'],
+    ]);
+    await coldStart();
+
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
+    expect(SaveSystem.shapesSeen).toEqual({ lo: 0, hi: 0 });
+    SaveSystem.syncCollection(5000);
+    await settlePersistence();
+
+    expect(disk.get('arrows_shapes_seen_lo')).toBe(String(truthMasks(0, 37).lo));
+    expect(disk.get('arrows_shapes_through_level')).toBe('37');
+    expect(storage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  test('bits a FUTURE catalogue wrote (index 29 in lo, index 55 in hi) survive the fold untouched', async () => {
+    const disk = useMapBackedStorage([
+      ...SEEDED,
+      ['arrows_shapes_seen_lo', String(1 << 29)],
+      ['arrows_shapes_seen_hi', String(1 << 25)],
+      ['arrows_shapes_through_level', '0'],
+    ]);
+    await coldStart();
+
+    SaveSystem.syncCollection(5000);
+    await settlePersistence();
+
+    const expected = truthMasks(0, 37, { lo: 1 << 29, hi: 1 << 25 });
+    expect(disk.get('arrows_shapes_seen_lo')).toBe(String(expected.lo));
+    expect(expected.lo & (1 << 29)).toBe(1 << 29);
+    expect(disk.get('arrows_shapes_seen_hi')).toBe(String(1 << 25));
+    expect(disk.get('arrows_shapes_through_level')).toBe('37');
+  });
+
+  test('a failed hydrate leaves the collection on disk untouched (no fold over defaults)', async () => {
+    const seed: Array<[string, string]> = [
+      ...SEEDED,
+      ['arrows_shapes_seen_lo', '1023'],
+      ['arrows_shapes_through_level', '37'],
+    ];
+    const disk = useMapBackedStorage(seed);
+    storage.multiGet.mockRejectedValue(new Error('persistence unavailable'));
+    await coldStart();
+    expect(SaveSystem.persistenceHealthy).toBe(false);
+
+    SaveSystem.syncCollection(5000);
+    SaveSystem.setCurrentLevel(1);
+    SaveSystem.recordCampaignClear(0);
+    await settlePersistence();
+
+    expect(disk.get('arrows_shapes_seen_lo')).toBe('1023');
+    expect(disk.get('arrows_shapes_through_level')).toBe('37');
+    const writtenKeys = storage.multiSet.mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
+    expect(writtenKeys).toEqual(['arrows_current_level']);
+  });
 });

@@ -13,6 +13,7 @@ import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
 import { META_BANNER, META_DAILY, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
+import { startMenuCollectionSync } from './collectionSync';
 import {
   DAILY_ENTRY_DONE_LABEL,
   DAILY_ENTRY_LABEL,
@@ -103,6 +104,10 @@ export function HomeScreen({
       SaveSystem.clearStreakSavedDay();
     }
   }, []);
+
+  // W4-07: the collection catches up here (no board, no gameplay frame budget),
+  // in time-bounded slices from 2 s after the mount (collectionSync.ts); unmount stops it.
+  useEffect(() => startMenuCollectionSync(), []);
 
   const diffColor =
     difficulty === Difficulty.SuperHard ? p.heartText

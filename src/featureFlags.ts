@@ -21,6 +21,17 @@ export const REMOTE_KILL_SWITCH = false;
 export const TELEMETRY_TRANSPORT = false;
 
 /**
+ * W4-07 kill constant (literal, ruling F23): invisible shape-collection
+ * recording. ON: a campaign clear, a daily clear and the menu-mount fold record
+ * solved shapes into `arrows_shapes_seen_lo/_hi` and
+ * `arrows_shapes_through_level` (src/core/saveSystem.ts, src/core/collection.ts,
+ * src/ui/collectionSync.ts). The only reader is the flagged gallery (W4-09), so
+ * nothing on screen changes. OFF stops every collection write; the stored ints
+ * sit inert (rollback).
+ */
+export const COLLECTION_SYNC_ENABLED = true;
+
+/**
  * W7 consent gate. OFF keeps the W6-02 ad-init path unchanged while W7-03's
  * certified CMP source is not available.
  */
