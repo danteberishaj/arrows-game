@@ -27,6 +27,7 @@ import { SplashScreen } from './src/ui/SplashScreen';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
 import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
+import { withMeasureClearLog } from './src/telemetry/measureClearSink';
 import {
   createHttpSink,
   HTTP_SINK_CAP,
@@ -54,9 +55,11 @@ const perfTelemetrySink = PERF_TELEMETRY_TIMING
 if (perfTelemetrySink) {
   Telemetry.useSink(perfTelemetrySink);
 } else if (__DEV__) {
-  Telemetry.useSink((event) => {
+  // W4-04: withMeasureClearLog is a no-op passthrough unless
+  // EXPO_PUBLIC_MEASURE_CLEAR=1 (see src/telemetry/measureClearSink.ts).
+  Telemetry.useSink(withMeasureClearLog((event) => {
     console.log(`[telemetry] ${JSON.stringify(event)}`);
-  });
+  }));
 }
 
 function telemetryScreen(screen: Screen | 'daily' | 'gallery'): 'splash' | 'menu' | 'game' {
