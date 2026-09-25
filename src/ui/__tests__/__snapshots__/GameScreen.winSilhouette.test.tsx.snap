@@ -1,0 +1,471 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`flag OFF (default): the won panel is BASE f8125de campaign win 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 20,
+        "borderWidth": 1,
+        "minWidth": 280,
+        "paddingHorizontal": 32,
+        "paddingVertical": 28,
+      },
+      {
+        "backgroundColor": "#EFEDF8",
+        "borderColor": "#8E80C5",
+      },
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_700Bold",
+          "fontSize": 24,
+        },
+        {
+          "color": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    Cleared!
+  </Text>
+  <View
+    style={
+      {
+        "alignItems": "flex-end",
+        "flexDirection": "row",
+        "marginBottom": 2,
+        "marginTop": 10,
+        "minHeight": 52,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 34,
+            "lineHeight": 40,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 44,
+            "lineHeight": 50,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 34,
+            "lineHeight": 40,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 14,
+          "marginBottom": 20,
+          "marginTop": 6,
+        },
+        {
+          "color": "#6D6988",
+        },
+      ]
+    }
+  >
+    Level 8 · Diamond · 89 arrows
+  </Text>
+  <View
+    accessibilityState={
+      {
+        "busy": undefined,
+        "checked": undefined,
+        "disabled": false,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "borderRadius": 14,
+          "paddingHorizontal": 28,
+          "paddingVertical": 12,
+        },
+        {
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+        },
+        false,
+        {
+          "backgroundColor": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 16,
+          },
+          {
+            "color": "#FFFFFF",
+          },
+        ]
+      }
+    >
+      Next level
+    </Text>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 13,
+          "marginTop": 14,
+        },
+        {
+          "color": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    ✦ 
+    4
+     perfect in a row
+  </Text>
+</View>
+`;
+
+exports[`flag OFF (default): the won panel is BASE f8125de daily win 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "borderRadius": 20,
+        "borderWidth": 1,
+        "minWidth": 280,
+        "paddingHorizontal": 32,
+        "paddingVertical": 28,
+      },
+      {
+        "backgroundColor": "#EFEDF8",
+        "borderColor": "#8E80C5",
+      },
+    ]
+  }
+>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_700Bold",
+          "fontSize": 24,
+        },
+        {
+          "color": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    Cleared!
+  </Text>
+  <View
+    style={
+      {
+        "alignItems": "flex-end",
+        "flexDirection": "row",
+        "marginBottom": 2,
+        "marginTop": 10,
+        "minHeight": 52,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 34,
+            "lineHeight": 40,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 44,
+            "lineHeight": 50,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+    <View
+      style={
+        {
+          "opacity": 0,
+          "transform": [
+            {
+              "scale": 0,
+            },
+            {
+              "rotate": "-24deg",
+            },
+          ],
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#6D4AEF",
+            "fontSize": 34,
+            "lineHeight": 40,
+            "marginHorizontal": 6,
+          }
+        }
+      >
+        ★
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 14,
+          "marginBottom": 20,
+          "marginTop": 6,
+        },
+        {
+          "color": "#6D6988",
+        },
+      ]
+    }
+  >
+    Today · Plus · 63 arrows
+  </Text>
+  <View
+    accessibilityState={
+      {
+        "busy": undefined,
+        "checked": undefined,
+        "disabled": false,
+        "expanded": undefined,
+        "selected": undefined,
+      }
+    }
+    accessibilityValue={
+      {
+        "max": undefined,
+        "min": undefined,
+        "now": undefined,
+        "text": undefined,
+      }
+    }
+    accessible={true}
+    collapsable={false}
+    focusable={true}
+    onBlur={[Function]}
+    onClick={[Function]}
+    onFocus={[Function]}
+    onResponderGrant={[Function]}
+    onResponderMove={[Function]}
+    onResponderRelease={[Function]}
+    onResponderTerminate={[Function]}
+    onResponderTerminationRequest={[Function]}
+    onStartShouldSetResponder={[Function]}
+    style={
+      [
+        {
+          "borderRadius": 14,
+          "paddingHorizontal": 28,
+          "paddingVertical": 12,
+        },
+        {
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+        },
+        false,
+        {
+          "backgroundColor": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 16,
+          },
+          {
+            "color": "#FFFFFF",
+          },
+        ]
+      }
+    >
+      Done
+    </Text>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 13,
+          "marginTop": 14,
+        },
+        {
+          "color": "#6D4AEF",
+        },
+      ]
+    }
+  >
+    ✦ 
+    4
+     perfect in a row
+  </Text>
+</View>
+`;

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -23,6 +23,7 @@ import {
 } from '../telemetry/levelAggregator';
 import { META_LEVEL_TRANSITION, META_PANEL_MOTION } from '../featureFlags';
 import { Ads } from './ads';
+import { ART_WIN_SILHOUETTE_DP, ART_WIN_SILHOUETTE_ENABLED } from './artConfig';
 import { BoardView } from './BoardView';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
@@ -74,6 +75,7 @@ import {
   type PresenceState,
 } from './overlayPresence';
 import { createPanelPresence, PanelOverlayFrame, type PanelPresence } from './PanelPresence';
+import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
 
@@ -688,11 +690,32 @@ export function GameScreen({
     : level.difficulty === Difficulty.Hard ? p.accentText
     : p.inkDim;
 
+  // W5-04 (ART_WIN_SILHOUETTE_ENABLED): the cleared board's outline for the win
+  // panel. `level` is replaced on every loadSession (the board reference inside
+  // it is not), so the memo follows the level. '' for an empty mask (W1's
+  // tutorial boards) and whenever the flag is OFF, where it is never computed.
+  const winSilhouette = useMemo(
+    () => (ART_WIN_SILHOUETTE_ENABLED ? silhouettePath(level.mask, ART_WIN_SILHOUETTE_DP) : ''),
+    [level],
+  );
+
   const panelContent = overlayMounted ? (
     <>
       <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart }]}>
         {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
       </Text>
+      {panelPhase === 'won' && winSilhouette !== '' && (
+        // W5-04: no animation of its own; it enters with the panel (W2-05).
+        // The subline still names the shape, so the badge adds no text.
+        <Svg
+          testID="win-silhouette"
+          width={ART_WIN_SILHOUETTE_DP}
+          height={ART_WIN_SILHOUETTE_DP}
+          style={styles.winSilhouette}
+        >
+          <SvgPath d={winSilhouette} fill={p.accent} fillRule="evenodd" />
+        </Svg>
+      )}
       {panelPhase === 'won' && (
         <Stars
           earned={Math.max(1, hearts)}
@@ -1156,6 +1179,11 @@ const styles = StyleSheet.create({
   panelTitle: {
     fontSize: 24,
     fontFamily: Fonts.bold,
+  },
+  // W5-04: the stars row's own 10 dp top margin, so title, badge and stars
+  // are evenly spaced.
+  winSilhouette: {
+    marginTop: 10, // OWNER-PICKED STARTING VALUE
   },
   starsRow: {
     flexDirection: 'row',
