@@ -5,6 +5,8 @@
  * - flag OFF: no scrim is mounted and Retry / Next swap the board at once;
  * - flag ON: the scrim is the root's last child, the swap waits for the cover
  *   callback, and a second press while the transition runs does nothing.
+ * - flag ON + reduced motion (owner 2026-09-25: "skip the fade on reduced
+ *   motion"): no scrim, Retry / Next swap at once as with the flag OFF.
  */
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -13,6 +15,7 @@ import { Daylight } from '../theme';
 import type { ScrimDriver } from '../scrimTransition';
 
 let mockBoardViewProps: BoardViewProps | null = null;
+let mockReducedMotion = false;
 const mockFlags = { META_LEVEL_TRANSITION: false };
 const mockDriver: ScrimDriver & { calls: string[]; coverDone: (() => void) | null; uncoverDone: (() => void) | null } = {
   calls: [],
@@ -31,6 +34,11 @@ const mockDriver: ScrimDriver & { calls: string[]; coverDone: (() => void) | nul
   },
 };
 const mockShowInterstitial = jest.fn(async () => undefined);
+
+jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('react-native-reanimated/mock'),
+  useReducedMotion: () => mockReducedMotion,
+}));
 
 jest.mock('../BoardView', () => ({
   BoardView: (props: BoardViewProps) => {
@@ -121,6 +129,7 @@ beforeEach(() => {
   mockDriver.coverDone = null;
   mockDriver.uncoverDone = null;
   mockShowInterstitial.mockClear();
+  mockReducedMotion = false;
 });
 
 afterEach(() => {
@@ -226,5 +235,36 @@ describe('flag ON', () => {
       closeAd();
     });
     expect(mockDriver.calls).toEqual(['cover 180']);
+  });
+});
+
+describe('flag ON, reduced motion: the fade is skipped (owner 2026-09-25)', () => {
+  beforeEach(() => {
+    mockFlags.META_LEVEL_TRANSITION = true;
+    mockReducedMotion = true;
+  });
+
+  test('no scrim is mounted', () => {
+    const screen = renderGame();
+    expect(screen.queryByTestId('level-scrim')).toBeNull();
+  });
+
+  test('Retry swaps the board in the same press, with no driver call', () => {
+    const screen = renderGame();
+    const before = mockBoardViewProps!.board;
+    fireEvent.press(loseLevel(screen));
+    expect(mockBoardViewProps!.board).not.toBe(before);
+    expect(mockDriver.calls).toEqual([]);
+  });
+
+  test('Next swaps the board once the interstitial check resolves, with no driver call', async () => {
+    const screen = renderGame();
+    const next = winLevel(screen);
+    const before = mockBoardViewProps!.board;
+    await act(async () => {
+      fireEvent.press(next);
+    });
+    expect(mockBoardViewProps!.board).not.toBe(before);
+    expect(mockDriver.calls).toEqual([]);
   });
 });

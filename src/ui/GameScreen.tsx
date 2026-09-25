@@ -183,11 +183,16 @@ export function GameScreen({
     terminalTransitionRef.current = new TerminalTransitionGuard();
   }
   const terminalTransition = terminalTransitionRef.current;
+  // Reanimated reads the system reduce-motion setting once at app start, so
+  // this is constant for the screen's life.
+  const reducedMotion = useReducedMotion();
   // W2-04 (META_LEVEL_TRANSITION): Next and Retry swap the level under a flat
   // bg scrim. OFF: no scrim, no sequencer; both presses swap in one frame.
+  // Reduced motion skips the scrim too (owner 2026-09-25): an instant fade
+  // would only flash two flat frames, so the swap stays a plain cut.
   const scrimOpacity = useSharedValue(0);
   const levelScrimRef = useRef<LevelScrimTransition | null>(null);
-  if (META_LEVEL_TRANSITION && levelScrimRef.current === null) {
+  if (META_LEVEL_TRANSITION && !reducedMotion && levelScrimRef.current === null) {
     levelScrimRef.current = createLevelScrimTransition(scrimOpacity);
   }
   const levelScrim = levelScrimRef.current;
@@ -195,7 +200,6 @@ export function GameScreen({
   // W2-05 (META_PANEL_MOTION): the win / lose panel enters, and the
   // continue-with-ad dismissal fades out. OFF: no latch; the panel appears and
   // disappears in one frame, as before.
-  const reducedMotion = useReducedMotion();
   const panelPresenceValue = useSharedValue(0);
   const panelPresenceRef = useRef<PanelPresence | null>(null);
   if (META_PANEL_MOTION && panelPresenceRef.current === null) {
