@@ -5,6 +5,9 @@
  * height does not grow). With the flag OFF the menu is exactly BASE: the
  * `flag OFF` snapshots in __snapshots__/HomeScreen.gallery.test.tsx.snap were
  * written by BASE 4840d25's HomeScreen.tsx, before HomeScreen.tsx was edited.
+ * W4-10 rewrote the two whose META_DAILY is on (`solved, daily available` and
+ * `solved, daily done`): they hold the composed menu's daily-only layout, which
+ * W4-10 owns; the two with every menu flag off are still BASE's.
  * Placement against the stats line and the banner closes only on the
  * uiautomator dump in artifacts/W4-09/layout/.
  */

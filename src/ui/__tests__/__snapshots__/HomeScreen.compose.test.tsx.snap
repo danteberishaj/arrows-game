@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree identical to BASE 1`] = `
+exports[`all menu flags OFF: the BASE menu composite (dark false): tree identical to BASE 1`] = `
 <View
   style={
     [
@@ -25,7 +25,1042 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
           "right": 18,
         },
         {
-          "top": 14,
+          "top": 42,
+        },
+      ]
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#EFEDF8",
+          "borderColor": "#8E80C5",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#4A3E8C",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ☾
+      </Text>
+    </View>
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#EFEDF8",
+          "borderColor": "#8E80C5",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#4A3E8C",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ♪
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "marginBottom": 56,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        style={
+          {
+            "alignItems": "center",
+            "height": 51.52,
+            "justifyContent": "center",
+            "width": 51.52,
+          }
+        }
+      >
+        <Image
+          resizeMode="contain"
+          source={
+            {
+              "testUri": "../../../assets/images/mark.png",
+            }
+          }
+          style={
+            {
+              "height": 80.5,
+              "marginTop": -2.24,
+              "width": 80.5,
+            }
+          }
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#191724",
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 56,
+            "includeFontPadding": false,
+            "letterSpacing": 0.56,
+            "marginLeft": 2.24,
+          }
+        }
+      >
+        rrows
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 24,
+            "letterSpacing": 0.5,
+            "marginTop": 30,
+          },
+          {
+            "color": "#8F76F0",
+          },
+        ]
+      }
+    >
+      Level 
+      25
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_600SemiBold",
+            "fontSize": 15,
+            "letterSpacing": 0.5,
+            "marginTop": 6,
+          },
+          {
+            "color": "#6D6988",
+          },
+        ]
+      }
+    >
+      Normal
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "transform": [
+          {
+            "scale": 1,
+          },
+        ],
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 34,
+            "height": 68,
+            "justifyContent": "center",
+            "width": 250,
+          },
+          {
+            "backgroundColor": "#6D4AEF",
+            "transform": [
+              {
+                "scale": 1,
+              },
+            ],
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontFamily": "Fredoka_700Bold",
+              "fontSize": 22,
+              "letterSpacing": 1,
+            },
+            {
+              "color": "#FFFFFF",
+            },
+          ]
+        }
+      >
+        Play
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 13,
+          "position": "absolute",
+        },
+        {
+          "bottom": 88,
+          "color": "#6D6988",
+        },
+      ]
+    }
+  >
+    24 puzzles solved   ·   6-day streak   ·   best perfect run 4
+  </Text>
+</View>
+`;
+
+exports[`all menu flags OFF: the BASE menu composite (dark true): tree identical to BASE 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "flex": 1,
+        "justifyContent": "center",
+      },
+      {
+        "backgroundColor": "#13111C",
+      },
+    ]
+  }
+>
+  <View
+    style={
+      [
+        {
+          "flexDirection": "row-reverse",
+          "gap": 12,
+          "position": "absolute",
+          "right": 18,
+        },
+        {
+          "top": 42,
+        },
+      ]
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#201D30",
+          "borderColor": "#69629E",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#CBC4F0",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ☀
+      </Text>
+    </View>
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#201D30",
+          "borderColor": "#69629E",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#CBC4F0",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ♪
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "marginBottom": 56,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        style={
+          {
+            "alignItems": "center",
+            "height": 51.52,
+            "justifyContent": "center",
+            "width": 51.52,
+          }
+        }
+      >
+        <Image
+          resizeMode="contain"
+          source={
+            {
+              "testUri": "../../../assets/images/mark.png",
+            }
+          }
+          style={
+            {
+              "height": 80.5,
+              "marginTop": -2.24,
+              "width": 80.5,
+            }
+          }
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#EFEDF9",
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 56,
+            "includeFontPadding": false,
+            "letterSpacing": 0.56,
+            "marginLeft": 2.24,
+          }
+        }
+      >
+        rrows
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 24,
+            "letterSpacing": 0.5,
+            "marginTop": 30,
+          },
+          {
+            "color": "#A98FF8",
+          },
+        ]
+      }
+    >
+      Level 
+      25
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_600SemiBold",
+            "fontSize": 15,
+            "letterSpacing": 0.5,
+            "marginTop": 6,
+          },
+          {
+            "color": "#A29DC1",
+          },
+        ]
+      }
+    >
+      Normal
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "transform": [
+          {
+            "scale": 1,
+          },
+        ],
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 34,
+            "height": 68,
+            "justifyContent": "center",
+            "width": 250,
+          },
+          {
+            "backgroundColor": "#7B5BF5",
+            "transform": [
+              {
+                "scale": 1,
+              },
+            ],
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontFamily": "Fredoka_700Bold",
+              "fontSize": 22,
+              "letterSpacing": 1,
+            },
+            {
+              "color": "#FFFFFF",
+            },
+          ]
+        }
+      >
+        Play
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 13,
+          "position": "absolute",
+        },
+        {
+          "bottom": 88,
+          "color": "#A29DC1",
+        },
+      ]
+    }
+  >
+    24 puzzles solved   ·   6-day streak   ·   best perfect run 4
+  </Text>
+</View>
+`;
+
+exports[`all menu flags OFF: the BASE menu compositeDone (dark false): tree identical to BASE 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "flex": 1,
+        "justifyContent": "center",
+      },
+      {
+        "backgroundColor": "#FFFFFF",
+      },
+    ]
+  }
+>
+  <View
+    style={
+      [
+        {
+          "flexDirection": "row-reverse",
+          "gap": 12,
+          "position": "absolute",
+          "right": 18,
+        },
+        {
+          "top": 42,
+        },
+      ]
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#EFEDF8",
+          "borderColor": "#8E80C5",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#4A3E8C",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ☾
+      </Text>
+    </View>
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": false,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      hitSlop={8}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        {
+          "alignItems": "center",
+          "backgroundColor": "#EFEDF8",
+          "borderColor": "#8E80C5",
+          "borderRadius": 14.666666666666666,
+          "borderWidth": 1,
+          "height": 44,
+          "justifyContent": "center",
+          "transform": [
+            {
+              "scale": 1,
+            },
+          ],
+          "width": 44,
+        }
+      }
+    >
+      <Text
+        style={
+          {
+            "color": "#4A3E8C",
+            "fontSize": 19.36,
+            "opacity": 1,
+          }
+        }
+      >
+        ♪
+      </Text>
+    </View>
+  </View>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "marginBottom": 56,
+      }
+    }
+  >
+    <View
+      style={
+        {
+          "alignItems": "center",
+          "flexDirection": "row",
+        }
+      }
+    >
+      <View
+        style={
+          {
+            "alignItems": "center",
+            "height": 51.52,
+            "justifyContent": "center",
+            "width": 51.52,
+          }
+        }
+      >
+        <Image
+          resizeMode="contain"
+          source={
+            {
+              "testUri": "../../../assets/images/mark.png",
+            }
+          }
+          style={
+            {
+              "height": 80.5,
+              "marginTop": -2.24,
+              "width": 80.5,
+            }
+          }
+        />
+      </View>
+      <Text
+        style={
+          {
+            "color": "#191724",
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 56,
+            "includeFontPadding": false,
+            "letterSpacing": 0.56,
+            "marginLeft": 2.24,
+          }
+        }
+      >
+        rrows
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 24,
+            "letterSpacing": 0.5,
+            "marginTop": 30,
+          },
+          {
+            "color": "#8F76F0",
+          },
+        ]
+      }
+    >
+      Level 
+      25
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_600SemiBold",
+            "fontSize": 15,
+            "letterSpacing": 0.5,
+            "marginTop": 6,
+          },
+          {
+            "color": "#6D6988",
+          },
+        ]
+      }
+    >
+      Normal
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "transform": [
+          {
+            "scale": 1,
+          },
+        ],
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 34,
+            "height": 68,
+            "justifyContent": "center",
+            "width": 250,
+          },
+          {
+            "backgroundColor": "#6D4AEF",
+            "transform": [
+              {
+                "scale": 1,
+              },
+            ],
+          },
+        ]
+      }
+    >
+      <Text
+        style={
+          [
+            {
+              "fontFamily": "Fredoka_700Bold",
+              "fontSize": 22,
+              "letterSpacing": 1,
+            },
+            {
+              "color": "#FFFFFF",
+            },
+          ]
+        }
+      >
+        Play
+      </Text>
+    </View>
+  </View>
+  <Text
+    style={
+      [
+        {
+          "fontFamily": "Fredoka_600SemiBold",
+          "fontSize": 13,
+          "position": "absolute",
+        },
+        {
+          "bottom": 88,
+          "color": "#6D6988",
+        },
+      ]
+    }
+  >
+    24 puzzles solved   ·   6-day streak   ·   best perfect run 4
+  </Text>
+</View>
+`;
+
+exports[`all menu flags OFF: the BASE menu fresh (dark false): tree identical to BASE 1`] = `
+<View
+  style={
+    [
+      {
+        "alignItems": "center",
+        "flex": 1,
+        "justifyContent": "center",
+      },
+      {
+        "backgroundColor": "#FFFFFF",
+      },
+    ]
+  }
+>
+  <View
+    style={
+      [
+        {
+          "flexDirection": "row-reverse",
+          "gap": 12,
+          "position": "absolute",
+          "right": 18,
+        },
+        {
+          "top": 42,
         },
       ]
     }
@@ -334,7 +1369,7 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
           "position": "absolute",
         },
         {
-          "bottom": 32,
+          "bottom": 88,
           "color": "#6D6988",
         },
       ]
@@ -343,7 +1378,7 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
 </View>
 `;
 
-exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tree identical to BASE 1`] = `
+exports[`all menu flags OFF: the BASE menu fresh (dark true): tree identical to BASE 1`] = `
 <View
   style={
     [
@@ -353,7 +1388,7 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
         "justifyContent": "center",
       },
       {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#13111C",
       },
     ]
   }
@@ -368,7 +1403,7 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
           "right": 18,
         },
         {
-          "top": 14,
+          "top": 42,
         },
       ]
     }
@@ -407,8 +1442,8 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       style={
         {
           "alignItems": "center",
-          "backgroundColor": "#EFEDF8",
-          "borderColor": "#8E80C5",
+          "backgroundColor": "#201D30",
+          "borderColor": "#69629E",
           "borderRadius": 14.666666666666666,
           "borderWidth": 1,
           "height": 44,
@@ -425,13 +1460,13 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       <Text
         style={
           {
-            "color": "#4A3E8C",
+            "color": "#CBC4F0",
             "fontSize": 19.36,
             "opacity": 1,
           }
         }
       >
-        ☾
+        ☀
       </Text>
     </View>
     <View
@@ -468,8 +1503,8 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       style={
         {
           "alignItems": "center",
-          "backgroundColor": "#EFEDF8",
-          "borderColor": "#8E80C5",
+          "backgroundColor": "#201D30",
+          "borderColor": "#69629E",
           "borderRadius": 14.666666666666666,
           "borderWidth": 1,
           "height": 44,
@@ -486,7 +1521,7 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       <Text
         style={
           {
-            "color": "#4A3E8C",
+            "color": "#CBC4F0",
             "fontSize": 19.36,
             "opacity": 1,
           }
@@ -497,25 +1532,18 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
     </View>
   </View>
   <View
-    pointerEvents="box-none"
     style={
-      [
-        {
-          "alignItems": "center",
-        },
-        {
-          "paddingBottom": 97,
-          "paddingTop": 58,
-        },
-      ]
+      {
+        "alignItems": "center",
+        "marginBottom": 56,
+      }
     }
-    testID="menu-column"
   >
     <View
       style={
         {
           "alignItems": "center",
-          "marginBottom": 56,
+          "flexDirection": "row",
         }
       }
     >
@@ -523,245 +1551,156 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
         style={
           {
             "alignItems": "center",
-            "flexDirection": "row",
+            "height": 51.52,
+            "justifyContent": "center",
+            "width": 51.52,
           }
         }
       >
-        <View
-          style={
+        <Image
+          resizeMode="contain"
+          source={
             {
-              "alignItems": "center",
-              "height": 51.52,
-              "justifyContent": "center",
-              "width": 51.52,
+              "testUri": "../../../assets/images/mark.png",
             }
           }
-        >
-          <Image
-            resizeMode="contain"
-            source={
-              {
-                "testUri": "../../../assets/images/mark.png",
-              }
-            }
-            style={
-              {
-                "height": 80.5,
-                "marginTop": -2.24,
-                "width": 80.5,
-              }
-            }
-          />
-        </View>
-        <Text
           style={
             {
-              "color": "#191724",
-              "fontFamily": "Fredoka_700Bold",
-              "fontSize": 56,
-              "includeFontPadding": false,
-              "letterSpacing": 0.56,
-              "marginLeft": 2.24,
+              "height": 80.5,
+              "marginTop": -2.24,
+              "width": 80.5,
             }
           }
-        >
-          rrows
-        </Text>
+        />
       </View>
+      <Text
+        style={
+          {
+            "color": "#EFEDF9",
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 56,
+            "includeFontPadding": false,
+            "letterSpacing": 0.56,
+            "marginLeft": 2.24,
+          }
+        }
+      >
+        rrows
+      </Text>
+    </View>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_700Bold",
+            "fontSize": 24,
+            "letterSpacing": 0.5,
+            "marginTop": 30,
+          },
+          {
+            "color": "#A98FF8",
+          },
+        ]
+      }
+    >
+      Level 
+      1
+    </Text>
+    <Text
+      style={
+        [
+          {
+            "fontFamily": "Fredoka_600SemiBold",
+            "fontSize": 15,
+            "letterSpacing": 0.5,
+            "marginTop": 6,
+          },
+          {
+            "color": "#A29DC1",
+          },
+        ]
+      }
+    >
+      Normal
+    </Text>
+  </View>
+  <View
+    style={
+      {
+        "transform": [
+          {
+            "scale": 1,
+          },
+        ],
+      }
+    }
+  >
+    <View
+      accessibilityState={
+        {
+          "busy": undefined,
+          "checked": undefined,
+          "disabled": undefined,
+          "expanded": undefined,
+          "selected": undefined,
+        }
+      }
+      accessibilityValue={
+        {
+          "max": undefined,
+          "min": undefined,
+          "now": undefined,
+          "text": undefined,
+        }
+      }
+      accessible={true}
+      collapsable={false}
+      focusable={true}
+      onBlur={[Function]}
+      onClick={[Function]}
+      onFocus={[Function]}
+      onResponderGrant={[Function]}
+      onResponderMove={[Function]}
+      onResponderRelease={[Function]}
+      onResponderTerminate={[Function]}
+      onResponderTerminationRequest={[Function]}
+      onStartShouldSetResponder={[Function]}
+      style={
+        [
+          {
+            "alignItems": "center",
+            "borderRadius": 34,
+            "height": 68,
+            "justifyContent": "center",
+            "width": 250,
+          },
+          {
+            "backgroundColor": "#7B5BF5",
+            "transform": [
+              {
+                "scale": 1,
+              },
+            ],
+          },
+        ]
+      }
+    >
       <Text
         style={
           [
             {
               "fontFamily": "Fredoka_700Bold",
-              "fontSize": 24,
-              "letterSpacing": 0.5,
-              "marginTop": 30,
+              "fontSize": 22,
+              "letterSpacing": 1,
             },
             {
-              "color": "#8F76F0",
+              "color": "#FFFFFF",
             },
           ]
         }
       >
-        Level 
-        1
+        Play
       </Text>
-      <Text
-        style={
-          [
-            {
-              "fontFamily": "Fredoka_600SemiBold",
-              "fontSize": 15,
-              "letterSpacing": 0.5,
-              "marginTop": 6,
-            },
-            {
-              "color": "#6D6988",
-            },
-          ]
-        }
-      >
-        Normal
-      </Text>
-    </View>
-    <View
-      style={
-        {
-          "transform": [
-            {
-              "scale": 1,
-            },
-          ],
-        }
-      }
-    >
-      <View
-        accessibilityState={
-          {
-            "busy": undefined,
-            "checked": undefined,
-            "disabled": undefined,
-            "expanded": undefined,
-            "selected": undefined,
-          }
-        }
-        accessibilityValue={
-          {
-            "max": undefined,
-            "min": undefined,
-            "now": undefined,
-            "text": undefined,
-          }
-        }
-        accessible={true}
-        collapsable={false}
-        focusable={true}
-        onBlur={[Function]}
-        onClick={[Function]}
-        onFocus={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          [
-            {
-              "alignItems": "center",
-              "borderRadius": 34,
-              "height": 68,
-              "justifyContent": "center",
-              "width": 250,
-            },
-            {
-              "backgroundColor": "#6D4AEF",
-              "transform": [
-                {
-                  "scale": 1,
-                },
-              ],
-            },
-          ]
-        }
-      >
-        <Text
-          style={
-            [
-              {
-                "fontFamily": "Fredoka_700Bold",
-                "fontSize": 22,
-                "letterSpacing": 1,
-              },
-              {
-                "color": "#FFFFFF",
-              },
-            ]
-          }
-        >
-          Play
-        </Text>
-      </View>
-    </View>
-    <View
-      style={
-        {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "justifyContent": "center",
-        }
-      }
-      testID="menu-entry-row"
-    >
-      <View
-        accessibilityLabel="Today's board"
-        accessibilityRole="button"
-        accessibilityState={
-          {
-            "busy": undefined,
-            "checked": undefined,
-            "disabled": undefined,
-            "expanded": undefined,
-            "selected": undefined,
-          }
-        }
-        accessibilityValue={
-          {
-            "max": undefined,
-            "min": undefined,
-            "now": undefined,
-            "text": undefined,
-          }
-        }
-        accessible={true}
-        collapsable={false}
-        focusable={true}
-        onBlur={[Function]}
-        onClick={[Function]}
-        onFocus={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          [
-            {
-              "alignItems": "center",
-              "justifyContent": "center",
-              "marginTop": 4,
-              "minHeight": 44,
-              "minWidth": 44,
-              "paddingHorizontal": 16,
-            },
-            {
-              "transform": [
-                {
-                  "scale": 1,
-                },
-              ],
-            },
-          ]
-        }
-      >
-        <Text
-          style={
-            [
-              {
-                "fontFamily": "Fredoka_600SemiBold",
-                "fontSize": 15,
-                "letterSpacing": 0.5,
-              },
-              {
-                "color": "#6D6988",
-              },
-            ]
-          }
-        >
-          Today's board
-        </Text>
-      </View>
     </View>
   </View>
   <Text
@@ -773,23 +1712,16 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
           "position": "absolute",
         },
         {
-          "left": 18,
-          "right": 18,
-          "textAlign": "center",
-        },
-        {
-          "bottom": 32,
-          "color": "#6D6988",
+          "bottom": 88,
+          "color": "#A29DC1",
         },
       ]
     }
-  >
-    3 puzzles solved
-  </Text>
+  />
 </View>
 `;
 
-exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree identical to BASE 1`] = `
+exports[`all menu flags OFF: the BASE menu oneSolve (dark false): tree identical to BASE 1`] = `
 <View
   style={
     [
@@ -814,415 +1746,7 @@ exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree id
           "right": 18,
         },
         {
-          "top": 14,
-        },
-      ]
-    }
-  >
-    <View
-      accessibilityState={
-        {
-          "busy": undefined,
-          "checked": undefined,
-          "disabled": false,
-          "expanded": undefined,
-          "selected": undefined,
-        }
-      }
-      accessibilityValue={
-        {
-          "max": undefined,
-          "min": undefined,
-          "now": undefined,
-          "text": undefined,
-        }
-      }
-      accessible={true}
-      collapsable={false}
-      focusable={true}
-      hitSlop={8}
-      onBlur={[Function]}
-      onClick={[Function]}
-      onFocus={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        {
-          "alignItems": "center",
-          "backgroundColor": "#EFEDF8",
-          "borderColor": "#8E80C5",
-          "borderRadius": 14.666666666666666,
-          "borderWidth": 1,
-          "height": 44,
-          "justifyContent": "center",
-          "transform": [
-            {
-              "scale": 1,
-            },
-          ],
-          "width": 44,
-        }
-      }
-    >
-      <Text
-        style={
-          {
-            "color": "#4A3E8C",
-            "fontSize": 19.36,
-            "opacity": 1,
-          }
-        }
-      >
-        ☾
-      </Text>
-    </View>
-    <View
-      accessibilityState={
-        {
-          "busy": undefined,
-          "checked": undefined,
-          "disabled": false,
-          "expanded": undefined,
-          "selected": undefined,
-        }
-      }
-      accessibilityValue={
-        {
-          "max": undefined,
-          "min": undefined,
-          "now": undefined,
-          "text": undefined,
-        }
-      }
-      accessible={true}
-      collapsable={false}
-      focusable={true}
-      hitSlop={8}
-      onBlur={[Function]}
-      onClick={[Function]}
-      onFocus={[Function]}
-      onResponderGrant={[Function]}
-      onResponderMove={[Function]}
-      onResponderRelease={[Function]}
-      onResponderTerminate={[Function]}
-      onResponderTerminationRequest={[Function]}
-      onStartShouldSetResponder={[Function]}
-      style={
-        {
-          "alignItems": "center",
-          "backgroundColor": "#EFEDF8",
-          "borderColor": "#8E80C5",
-          "borderRadius": 14.666666666666666,
-          "borderWidth": 1,
-          "height": 44,
-          "justifyContent": "center",
-          "transform": [
-            {
-              "scale": 1,
-            },
-          ],
-          "width": 44,
-        }
-      }
-    >
-      <Text
-        style={
-          {
-            "color": "#4A3E8C",
-            "fontSize": 19.36,
-            "opacity": 1,
-          }
-        }
-      >
-        ♪
-      </Text>
-    </View>
-  </View>
-  <View
-    pointerEvents="box-none"
-    style={
-      [
-        {
-          "alignItems": "center",
-        },
-        {
-          "paddingBottom": 97,
-          "paddingTop": 58,
-        },
-      ]
-    }
-    testID="menu-column"
-  >
-    <View
-      style={
-        {
-          "alignItems": "center",
-          "marginBottom": 56,
-        }
-      }
-    >
-      <View
-        style={
-          {
-            "alignItems": "center",
-            "flexDirection": "row",
-          }
-        }
-      >
-        <View
-          style={
-            {
-              "alignItems": "center",
-              "height": 51.52,
-              "justifyContent": "center",
-              "width": 51.52,
-            }
-          }
-        >
-          <Image
-            resizeMode="contain"
-            source={
-              {
-                "testUri": "../../../assets/images/mark.png",
-              }
-            }
-            style={
-              {
-                "height": 80.5,
-                "marginTop": -2.24,
-                "width": 80.5,
-              }
-            }
-          />
-        </View>
-        <Text
-          style={
-            {
-              "color": "#191724",
-              "fontFamily": "Fredoka_700Bold",
-              "fontSize": 56,
-              "includeFontPadding": false,
-              "letterSpacing": 0.56,
-              "marginLeft": 2.24,
-            }
-          }
-        >
-          rrows
-        </Text>
-      </View>
-      <Text
-        style={
-          [
-            {
-              "fontFamily": "Fredoka_700Bold",
-              "fontSize": 24,
-              "letterSpacing": 0.5,
-              "marginTop": 30,
-            },
-            {
-              "color": "#8F76F0",
-            },
-          ]
-        }
-      >
-        Level 
-        1
-      </Text>
-      <Text
-        style={
-          [
-            {
-              "fontFamily": "Fredoka_600SemiBold",
-              "fontSize": 15,
-              "letterSpacing": 0.5,
-              "marginTop": 6,
-            },
-            {
-              "color": "#6D6988",
-            },
-          ]
-        }
-      >
-        Normal
-      </Text>
-    </View>
-    <View
-      style={
-        {
-          "transform": [
-            {
-              "scale": 1,
-            },
-          ],
-        }
-      }
-    >
-      <View
-        accessibilityState={
-          {
-            "busy": undefined,
-            "checked": undefined,
-            "disabled": undefined,
-            "expanded": undefined,
-            "selected": undefined,
-          }
-        }
-        accessibilityValue={
-          {
-            "max": undefined,
-            "min": undefined,
-            "now": undefined,
-            "text": undefined,
-          }
-        }
-        accessible={true}
-        collapsable={false}
-        focusable={true}
-        onBlur={[Function]}
-        onClick={[Function]}
-        onFocus={[Function]}
-        onResponderGrant={[Function]}
-        onResponderMove={[Function]}
-        onResponderRelease={[Function]}
-        onResponderTerminate={[Function]}
-        onResponderTerminationRequest={[Function]}
-        onStartShouldSetResponder={[Function]}
-        style={
-          [
-            {
-              "alignItems": "center",
-              "borderRadius": 34,
-              "height": 68,
-              "justifyContent": "center",
-              "width": 250,
-            },
-            {
-              "backgroundColor": "#6D4AEF",
-              "transform": [
-                {
-                  "scale": 1,
-                },
-              ],
-            },
-          ]
-        }
-      >
-        <Text
-          style={
-            [
-              {
-                "fontFamily": "Fredoka_700Bold",
-                "fontSize": 22,
-                "letterSpacing": 1,
-              },
-              {
-                "color": "#FFFFFF",
-              },
-            ]
-          }
-        >
-          Play
-        </Text>
-      </View>
-    </View>
-    <View
-      style={
-        {
-          "alignItems": "center",
-          "flexDirection": "row",
-          "justifyContent": "center",
-        }
-      }
-      testID="menu-entry-row"
-    >
-      <View
-        style={
-          [
-            {
-              "alignItems": "center",
-              "justifyContent": "center",
-              "marginTop": 4,
-              "minHeight": 44,
-              "minWidth": 44,
-              "paddingHorizontal": 16,
-            },
-          ]
-        }
-      >
-        <Text
-          style={
-            [
-              {
-                "fontFamily": "Fredoka_600SemiBold",
-                "fontSize": 15,
-                "letterSpacing": 0.5,
-              },
-              {
-                "color": "#6D6988",
-              },
-            ]
-          }
-        >
-          Today's board · done
-        </Text>
-      </View>
-    </View>
-  </View>
-  <Text
-    style={
-      [
-        {
-          "fontFamily": "Fredoka_600SemiBold",
-          "fontSize": 13,
-          "position": "absolute",
-        },
-        {
-          "left": 18,
-          "right": 18,
-          "textAlign": "center",
-        },
-        {
-          "bottom": 32,
-          "color": "#6D6988",
-        },
-      ]
-    }
-  >
-    3 puzzles solved
-  </Text>
-</View>
-`;
-
-exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree identical to BASE 1`] = `
-<View
-  style={
-    [
-      {
-        "alignItems": "center",
-        "flex": 1,
-        "justifyContent": "center",
-      },
-      {
-        "backgroundColor": "#FFFFFF",
-      },
-    ]
-  }
->
-  <View
-    style={
-      [
-        {
-          "flexDirection": "row-reverse",
-          "gap": 12,
-          "position": "absolute",
-          "right": 18,
-        },
-        {
-          "top": 14,
+          "top": 42,
         },
       ]
     }
@@ -1423,7 +1947,7 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
       }
     >
       Level 
-      1
+      2
     </Text>
     <Text
       style={
@@ -1531,13 +2055,13 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
           "position": "absolute",
         },
         {
-          "bottom": 32,
+          "bottom": 88,
           "color": "#6D6988",
         },
       ]
     }
   >
-    3 puzzles solved
+    1 puzzle solved
   </Text>
 </View>
 `;
