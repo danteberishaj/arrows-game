@@ -338,6 +338,35 @@ test('P-01 A7: a failed hydrate marks persistence unhealthy and does not migrate
   expect(storage.multiRemove).not.toHaveBeenCalled();
 });
 
+test('SAVE-GUARD: after a failed hydrate, play in that session never writes over the saved progress on disk', async () => {
+  // A player at level 37. This launch the native read fails (a transient
+  // AsyncStorage error), but writes would still reach the disk.
+  const disk = useMapBackedStorage(LEGACY_SEED);
+  storage.multiGet.mockRejectedValue(new Error('transient read failure'));
+
+  await initSaveSystem();
+  await settlePersistence();
+  expect(SaveSystem.persistenceHealthy).toBe(false);
+  expect(SaveSystem.currentLevel).toBe(0); // in-memory defaults for this session
+
+  // The player clears the level the defaults put them on, and toggles a setting.
+  SaveSystem.setCurrentLevel(1);
+  SaveSystem.registerSolve(true);
+  SaveSystem.soundOn = true;
+  await settlePersistence();
+
+  expect(storage.multiSet).not.toHaveBeenCalled();
+  expect(storage.multiRemove).not.toHaveBeenCalled();
+  expect([...disk]).toEqual(LEGACY_SEED);
+
+  // The next launch reads the disk normally: the real progress is still there.
+  storage.multiGet.mockImplementation(async (keys: readonly string[]) =>
+    keys.map((k) => [k, disk.has(k) ? disk.get(k)! : null] as [string, string | null]),
+  );
+  await coldStart();
+  assertLegacyGettersMatchSeed();
+});
+
 test('W4-02: a live 14-day chain survives hydration and advances with absent freeze keys', async () => {
   const previousClock = SaveSystem.useClock(() => new Date(2026, 8, 20, 12, 0, 0));
   try {
@@ -481,7 +510,10 @@ describe('W4-07 shape collection across cold starts', () => {
 
     expect(disk.get('arrows_shapes_seen_lo')).toBe('1023');
     expect(disk.get('arrows_shapes_through_level')).toBe('37');
+    // SAVE-GUARD: after a failed hydrate nothing reaches the disk at all (this
+    // test used to pin the arrows_current_level overwrite W4-07 found).
     const writtenKeys = storage.multiSet.mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
-    expect(writtenKeys).toEqual(['arrows_current_level']);
+    expect(writtenKeys).toEqual([]);
+    expect(disk.get('arrows_current_level')).toBe(seed.find(([key]) => key === 'arrows_current_level')?.[1]);
   });
 });

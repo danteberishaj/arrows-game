@@ -14,6 +14,14 @@ class HydratedIntStore implements IntStore {
   private readonly pending = new Map<string, string | null>();
   private flushScheduled = false;
   private persistence = Promise.resolve();
+  /**
+   * SAVE-GUARD: false after a failed hydrate. The session then runs on
+   * in-memory defaults, and writing those through would overwrite the real
+   * saved progress the read could not see (a clear on the default level 0
+   * would store level 1 over level 37). Writes stay in memory until the next
+   * launch reads the disk again.
+   */
+  private writeThrough = true;
 
   /** Reads every registered key. Returns false when the native read threw. */
   async hydrate(): Promise<boolean> {
@@ -27,7 +35,9 @@ class HydratedIntStore implements IntStore {
       }
       return true;
     } catch {
-      // No persistence (e.g. private browsing): play with in-memory state.
+      // No persistence (e.g. private browsing) or a transient read failure:
+      // play with in-memory state and never write it over the unread save.
+      this.writeThrough = false;
       return false;
     }
   }
@@ -48,6 +58,7 @@ class HydratedIntStore implements IntStore {
   }
 
   private enqueue(key: string, value: string | null): void {
+    if (!this.writeThrough) return;
     this.pending.set(key, value);
     if (this.flushScheduled) return;
     this.flushScheduled = true;
