@@ -3,7 +3,8 @@
  * search-cost proxy over the shipping generator, so every later W3 task pins a
  * number that this script actually measured instead of an invented threshold.
  * `--version 2` drives `LevelGenerator.generate(i, 2)` (dark behind
- * GEN_V2_ENABLED) and measures its clamp at `V2_MAX_GRID_DIM`.
+ * GEN_V2_ENABLED) and measures its clamp (W3-09: at most `V2_MAX_GRID_COLS`
+ * columns, rows up to `v2MaxRows(aspect)`).
  *
  * Run: npx tsx scripts/analysis/difficulty-probe.ts -- <flags>
  * (or `npm run analysis:probe -- <flags>`)
@@ -55,6 +56,25 @@
  * cellPt comes from the shipping camera (`src/ui/boardCamera.ts`
  * `initialCamera`, a pure module with no imports; preflight F30: one camera
  * function, not another copy). That is this script's only non-`src/core` import.
+ *
+ * W3-14 makes v2 difficulty a function of the level index (`src/core/curve.ts`):
+ * - `--curve <file>` deals v2 from a curve table (JSON: an array of rows, or
+ *   `{ id, rows }`) instead of the shipped `V2_CURVE`, in every v2 level mode.
+ * - `--candidates` writes W3-14's exploration candidates (ruling W3-7: base
+ *   cells reach the ceiling at displayed level 100, 400 or 1000; plus a
+ *   variant of each that keeps lowering the bias after saturation) as JSON
+ *   tables to `--out <dir>` (default artifacts/W3-14/curves) and prints them.
+ * - `--curve-report` prints the brief's (a)-(g) for `--curve` (or the shipped
+ *   curve): cycle medians over `--levels` (default 1-3000), the saturation
+ *   level, admissible shapes per bag window, clamp shortfalls, the heaviest
+ *   board over indices 0-99,999 sampled every 7, the smallest fit cell, the
+ *   v1 -> v2 discontinuity at switch levels, and the heaviest board over
+ *   0-9999 with its node generation time beside v1's worst (7157).
+ * - `--ceiling` measures `CEILING_BASE_CELLS`: the largest saturated base
+ *   cells whose Hard and Super Hard boards in that sample stay at or under
+ *   `ARROW_CEILING` arrows, neutral and at the bias-tail floor.
+ * Every one of them reads arrow counts and search cost from boards the
+ * shipping `generate(i, 2, { curve })` produced, never the table back.
  */
 import {
   ArrowPath,
@@ -68,17 +88,33 @@ import {
   ShapeDef,
   ShapeLibrary,
   TutorialId,
-  V2_MAX_GRID_DIM,
+  ARROW_CEILING,
+  CEILING_BASE_CELLS,
+  CurveTable,
+  LEVEL1_CLEARABLE_BIAS,
+  LEVEL1_TARGET_CELLS,
+  MIN_LEGIBLE_CELL_PT,
+  V1_TIER_TEXTURE,
+  V2Knobs,
+  V2_CURVE,
+  V2_MAX_GRID_COLS,
+  V2_MAX_GRID_ROWS,
+  V2_MIN_GRID_ROWS,
   bagCandidates,
   bagWindowFor,
   buildTutorialLevel,
+  curveWindowMaxTarget,
   placeholderWindowMaxTarget,
   shapeCapacity,
   v2Cols,
+  v2GridFor,
+  v2MaxRows,
+  validateCurve,
   windowSetAt,
 } from '../../src/core';
-import { V2_MIN_GRID_ROWS } from '../../src/core/shapeBag';
 import { initialCamera } from '../../src/ui/boardCamera';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const HONESTY_BOUND =
   'Search-cost proxy for a uniform-sampling player. Not a measurement of ' +
@@ -92,7 +128,8 @@ const BAND_FRACTIONS = [1 / 8, 1 / 4, 1 / 2, 3 / 4, 1] as const;
 
 type Mode =
   | 'rows' | 'per-tier' | 'bands' | 'shape-report' | 'tier-report' | 'capacity' | 'clamp-shortfall'
-  | 'size-sweep' | 'transfer' | 'start-sweep' | 'tutorial';
+  | 'size-sweep' | 'transfer' | 'start-sweep' | 'tutorial'
+  | 'candidates' | 'curve-report' | 'ceiling' | 'flat-reference';
 
 /** W3-11 set (ii) defaults: level-1-sized boards (brief step 4). */
 const SIZE_SWEEP_DEFAULT_SHAPES = ['Circle', 'Square', 'Heart'] as const;
@@ -126,11 +163,7 @@ const START_VIEWPORTS: readonly { label: string; w: number; h: number }[] = [
   { label: '360', w: 360, h: 689 },
   { label: '411', w: 411.4285583496094, h: 804.2857055664062 },
 ];
-/**
- * W3-09 OWNER PICK 2026-09-26: the smallest acceptable board is W3-08's row 3,
- * Bolt 46x37 at the 360 dp phone (0.94 x 360 / 37 = 9.15 pt).
- */
-const MIN_LEGIBLE_CELL_PT = 9.1; // OWNER-PICKED STARTING VALUE (W3-09 pick, 2026-09-26)
+// W3-09's floor, MIN_LEGIBLE_CELL_PT (9.1 pt, OWNER PICK 2026-09-26), now lives in src/core/shapeBag.ts (W3-14).
 /** BoardView's `CELL` (board units per grid cell). It cancels out of cellPt; any positive value gives the same pt. */
 const BOARD_CELL_UNITS = 40;
 
@@ -161,6 +194,18 @@ interface Options {
   tutorials: readonly TutorialId[];
   /** W3-12 `--start-sweep --targets`: cell targets to size every shape at with v2's own sizing. */
   targets: readonly number[];
+  /** W3-14 `--curve <file>`: the v2 curve to deal from; null = the shipped V2_CURVE. */
+  curve: CurveTable | null;
+  /** The curve's label: its file's `id`, or the file name; 'V2_CURVE' when shipped. */
+  curveId: string;
+  /** W3-14 `--candidates --out <dir>`. */
+  out: string;
+  /** W3-14 `--only S400,...`: limit `--candidates --curve-report` to these ids. */
+  only: readonly string[] | null;
+  /** W3-14 `--json-out <file>`: `--curve-report` / `--flat-reference` also write their JSON there (text still printed). */
+  jsonOut: string | null;
+  /** W3-14 `--reference <file>`: a `--flat-reference --json-out` file for `--curve-report` (else it is computed, slowly). */
+  referenceFile: string | null;
 }
 
 interface LevelRow {
@@ -203,6 +248,12 @@ function parseArgs(argv: readonly string[]): Options {
   let shapesGiven = false;
   const tutorials: TutorialId[] = [];
   let targets: readonly number[] = [];
+  let curve: CurveTable | null = null;
+  let curveId = 'V2_CURVE';
+  let out = CANDIDATES_DEFAULT_OUT;
+  let only: readonly string[] | null = null;
+  let jsonOut: string | null = null;
+  let referenceFile: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -267,6 +318,44 @@ function parseArgs(argv: readonly string[]): Options {
       case '--seeds':
         sweepSeeds = parseIntRange(argv[++i], '--seeds', 0);
         break;
+      case '--curve': {
+        const loaded = loadCurve(argv[++i]);
+        curve = loaded.table;
+        curveId = loaded.id;
+        break;
+      }
+      case '--out': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--out requires a directory');
+        out = raw;
+        break;
+      }
+      case '--only': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--only requires candidate ids, e.g. --only S100,S400');
+        only = raw.split(',').map((x) => x.trim());
+        break;
+      }
+      case '--reference': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--reference requires a --flat-reference JSON file');
+        referenceFile = raw;
+        break;
+      }
+      case '--flat-reference':
+        modeFlags.push('flat-reference');
+        break;
+      case '--json-out': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--json-out requires a file');
+        jsonOut = raw;
+        break;
+      }
+      case '--candidates':
+      case '--curve-report':
+      case '--ceiling':
+        modeFlags.push(arg.slice(2) as Mode);
+        break;
       case '--size-sweep':
       case '--transfer':
       case '--per-tier':
@@ -287,7 +376,8 @@ function parseArgs(argv: readonly string[]): Options {
   }
   const modes: Mode[] = modeFlags.length === 0 ? ['rows'] : [...new Set(modeFlags)];
   for (const mode of modes) {
-    const needsLevels = mode !== 'capacity' && mode !== 'size-sweep' && mode !== 'start-sweep' && mode !== 'tutorial';
+    const needsLevels = mode !== 'capacity' && mode !== 'size-sweep' && mode !== 'start-sweep' && mode !== 'tutorial'
+      && mode !== 'candidates' && mode !== 'curve-report' && mode !== 'ceiling' && mode !== 'flat-reference';
     if (needsLevels && levels === null) {
       const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
       throw new Error(`--levels a-b is required for ${flagName}`);
@@ -323,12 +413,40 @@ function parseArgs(argv: readonly string[]): Options {
   if (targets.length > 0 && !modes.includes('start-sweep')) {
     throw new Error('--targets is only used by --start-sweep');
   }
+  // W3-14: the curve deals v2 only; the curve modes measure v2.
+  if (curve !== null && version !== 2) throw new Error('--curve is a generator v2 table; add --version 2');
+  const curveModes: Mode[] = ['candidates', 'curve-report', 'ceiling', 'flat-reference'];
+  if (modes.some((m) => curveModes.includes(m)) && version !== 2) {
+    throw new Error('--candidates, --curve-report and --ceiling measure generator v2; add --version 2');
+  }
+  if (modes.includes('candidates') && curve !== null) throw new Error('--candidates builds its own curves; drop --curve');
+  if (modes.includes('ceiling') && (curve !== null || bias !== null)) throw new Error('--ceiling builds its own saturated curves; drop --curve/--bias');
+  if (only !== null && !modes.includes('candidates')) throw new Error('--only is only used by --candidates');
+  if (modes.includes('curve-report') && bias !== null) throw new Error('--curve-report reads the bias from the curve; drop --bias');
+  if (jsonOut !== null && !modes.includes('flat-reference') && (!modes.includes('curve-report') || modes.includes('candidates'))) {
+    throw new Error('--json-out is only used by --flat-reference or a single --curve-report (without --candidates)');
+  }
+  if (referenceFile !== null && !modes.includes('curve-report')) throw new Error('--reference is only used by --curve-report');
   if (modes.includes('start-sweep') && !biasesGiven) biases = START_SWEEP_DEFAULT_BIASES;
   if (modes.includes('start-sweep') && !rowsGiven) sweepRows = START_SWEEP_DEFAULT_ROWS;
   return {
     levels, version, viewport, json, modes, bias, sweepShapes, sweepRows, sweepSeeds, biases,
-    biasesGiven, rowsGiven, shapesGiven, tutorials, targets,
+    biasesGiven, rowsGiven, shapesGiven, tutorials, targets, curve, curveId, out, only, jsonOut, referenceFile,
   };
+}
+
+/** W3-14: a curve file is a JSON array of `CurveRow`s, or `{ id, rows }`. Validated before use. */
+function loadCurve(file: string | undefined): { id: string; table: CurveTable } {
+  if (file === undefined) throw new Error('--curve requires a JSON file');
+  const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const rows = Array.isArray(raw) ? raw : (raw as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) throw new Error(`--curve ${file}: expected an array of rows or { id, rows }`);
+  const table = rows as CurveTable;
+  validateCurve(table);
+  const id = !Array.isArray(raw) && typeof (raw as { id?: unknown }).id === 'string'
+    ? (raw as { id: string }).id
+    : path.basename(file, '.json');
+  return { id, table };
 }
 
 function parseBias(raw: string | undefined, flag: string): number {
@@ -350,9 +468,16 @@ function parseIntRange(raw: string | undefined, flag: string, min: number): [num
   return [lo, hi];
 }
 
-/** The knobs object `--bias` passes to `LevelGenerator.generate` (undefined = neutral). */
-function knobsFor(bias: number | null): { clearableBias: number } | undefined {
-  return bias === null ? undefined : { clearableBias: bias };
+/**
+ * The knobs `--bias` and `--curve` pass to `LevelGenerator.generate`
+ * (undefined = the shipped v2: V2_CURVE with its own bias).
+ */
+function knobsFor(opts: { bias: number | null; curve: CurveTable | null }): V2Knobs | undefined {
+  if (opts.bias === null && opts.curve === null) return undefined;
+  return {
+    ...(opts.bias === null ? {} : { clearableBias: opts.bias }),
+    ...(opts.curve === null ? {} : { curve: opts.curve }),
+  };
 }
 
 function shapeByName(name: string): ShapeDef {
@@ -361,9 +486,19 @@ function shapeByName(name: string): ShapeDef {
   return shape;
 }
 
-/** The grid clamp a generator version sizes against (v1's literal 46; v2's V2_MAX_GRID_DIM). */
+/** The column clamp a generator version sizes against (v1's literal 46; v2's W3-09 cap, 37). */
 function maxDimFor(version: 1 | 2): number {
-  return version === 2 ? V2_MAX_GRID_DIM : 46;
+  return version === 2 ? V2_MAX_GRID_COLS : 46;
+}
+
+/**
+ * Whether a board sits at its generator's clamp: v1, rows or cols = 46; v2
+ * (W3-09/W3-14), rows = the shape's own row cap `v2MaxRows(aspect)` or cols =
+ * `V2_MAX_GRID_COLS`.
+ */
+function atClamp(version: 1 | 2, shapeName: string, rows: number, cols: number): boolean {
+  if (version === 1) return rows === 46 || cols === 46;
+  return rows === v2MaxRows(shapeByName(shapeName).aspect) || cols === V2_MAX_GRID_COLS;
 }
 
 function parseLevelsRange(raw: string | undefined): [number, number] {
@@ -454,8 +589,8 @@ interface WalkMetrics {
  * `arrowCount` removals (the in-probe reconciliation that proves every board
  * was fully walked) and exits non-zero otherwise.
  */
-function buildRow(index: number, version: 1 | 2, viewport: Viewport | null, bias: number | null = null): LevelRow {
-  const level = LevelGenerator.generate(index, version, knobsFor(bias));
+function buildRow(index: number, version: 1 | 2, viewport: Viewport | null, knobs?: V2Knobs): LevelRow {
+  const level = LevelGenerator.generate(index, version, knobs);
   const maskCells = countTrue(level.mask);
   const arrowCount = level.arrowCount;
   const m = walkBoard(level.board, arrowCount, `level index ${index}`);
@@ -579,21 +714,28 @@ function printHonestyBound(): void {
   console.log('');
 }
 
-/** W3-11: " (clearableBias b)" in a mode's header line when --bias is set; empty when neutral. */
+/**
+ * W3-11: " (clearableBias b)" in a mode's header line when --bias is set;
+ * W3-14: " (curve <id>)" when --curve is set; empty when neither is.
+ */
 function biasTag(opts: Options): string {
-  return opts.bias === null ? '' : ` (v2 clearableBias ${opts.bias} on every tier)`;
+  return (opts.bias === null ? '' : ` (v2 clearableBias ${opts.bias} on every tier)`)
+    + (opts.curve === null ? '' : ` (v2 curve ${opts.curveId})`);
 }
 
-/** W3-11: `{ clearableBias }` in a mode's JSON when --bias is set; nothing when neutral (JSON unchanged). */
-function biasField(opts: Options): { clearableBias?: number } {
-  return opts.bias === null ? {} : { clearableBias: opts.bias };
+/** W3-11: `{ clearableBias }` in a mode's JSON when --bias is set; W3-14: `{ curve }` when --curve is; nothing otherwise (JSON unchanged). */
+function biasField(opts: Options): { clearableBias?: number; curve?: string } {
+  return {
+    ...(opts.bias === null ? {} : { clearableBias: opts.bias }),
+    ...(opts.curve === null ? {} : { curve: opts.curveId }),
+  };
 }
 
 // ---- Modes --------------------------------------------------------------
 
 function runRows(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, opts.viewport, opts.bias));
+  const rows = indices.map((i) => buildRow(i, opts.version, opts.viewport, knobsFor(opts)));
 
   if (opts.json) {
     console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'rows', version: opts.version, levels: opts.levels, ...biasField(opts), rows }, null, 2));
@@ -623,7 +765,7 @@ function runRows(opts: Options): void {
 
 function runPerTier(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, knobsFor(opts)));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const byTier = new Map<Difficulty, LevelRow[]>(tiers.map((t) => [t, []]));
   for (const r of rows) byTier.get(r.tier)!.push(r);
@@ -662,7 +804,7 @@ function runBands(opts: Options): void {
   const [lo, hi] = opts.levels!;
   const length = hi - lo + 1;
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, knobsFor(opts)));
 
   const bands: { lo: number; hi: number; rows: LevelRow[] }[] = [];
   let prevBoundary = 0;
@@ -731,10 +873,11 @@ interface V2Admission {
   excludedEverywhere: string[];
 }
 
-function v2Admission(indices: readonly number[]): V2Admission {
+function v2Admission(indices: readonly number[], curve: CurveTable): V2Admission {
+  const wmt = curveWindowMaxTarget(curve);
   const windows = new Map<number, ReturnType<typeof bagWindowFor>>();
   for (const index of indices) {
-    const w = bagWindowFor(index);
+    const w = bagWindowFor(index, wmt);
     windows.set(w.ordinal, w);
   }
   const list = [...windows.values()].sort((a, b) => a.ordinal - b.ordinal);
@@ -745,7 +888,7 @@ function v2Admission(indices: readonly number[]): V2Admission {
     const names = new Set(w.order.map((s) => s.name));
     for (const id of [...inAll]) if (!names.has(id)) inAll.delete(id);
     for (const id of names) inAny.add(id);
-    if (windowSetAt(w.start).length !== w.order.length) truncated++;
+    if (windowSetAt(w.start, wmt).length !== w.order.length) truncated++;
   }
   return {
     windows: list.length,
@@ -769,19 +912,19 @@ function runShapeReport(opts: Options): void {
   let prevShape: string | null = null;
 
   for (const index of indices) {
-    const level = LevelGenerator.generate(index, opts.version, knobsFor(opts.bias));
+    const level = LevelGenerator.generate(index, opts.version, knobsFor(opts));
     const name = level.shapeName;
     counts.set(name, (counts.get(name) ?? 0) + 1);
     if (!firstAppearance.has(name)) firstAppearance.set(name, index + 1);
     if (prevShape !== null && prevShape === name) backToBack++;
     prevShape = name;
-    if (level.board.rows === maxDim || level.board.cols === maxDim) {
+    if (atClamp(opts.version, name, level.board.rows, level.board.cols)) {
       clampHits.set(name, (clampHits.get(name) ?? 0) + 1);
       totalClampLevels++;
     }
   }
   const drought = longestFirstAppearanceGap(opts.levels![0], firstAppearance);
-  const admission = opts.version === 2 ? v2Admission(indices) : null;
+  const admission = opts.version === 2 ? v2Admission(indices, opts.curve ?? V2_CURVE) : null;
 
   const total = indices.length;
   const shapes = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({
@@ -804,15 +947,19 @@ function runShapeReport(opts: Options): void {
   }
 
   printHonestyBound();
-  console.log(`Shape census over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})`);
+  console.log(`Shape census over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})${biasTag(opts)}`);
   console.log('');
   console.log(table(
-    ['shape', 'count', 'share', 'first appearance', `clamp hits (rows or cols = ${maxDim})`],
+    ['shape', 'count', 'share', 'first appearance', opts.version === 2
+      ? `clamp hits (rows = v2MaxRows(aspect) or cols = ${maxDim})`
+      : `clamp hits (rows or cols = ${maxDim})`],
     shapes.map((s) => [s.name, s.count, fmtPct(s.sharePct), s.firstAppearance, `${s.clampHits}/${s.count}`]),
   ));
   console.log('');
   console.log(`Back-to-back repeats: ${backToBack}`);
-  console.log(`Rows or cols hit ${maxDim} on ${totalClampLevels} levels`);
+  console.log(opts.version === 2
+    ? `Rows hit the shape's row cap or cols hit ${maxDim} on ${totalClampLevels} levels`
+    : `Rows or cols hit ${maxDim} on ${totalClampLevels} levels`);
   console.log(`Longest first-appearance gap: ${drought.gap} levels (level ${drought.from} to level ${drought.to})`);
   if (admission !== null) {
     const size = admission.setSizes.length === 1 ? admission.setSizes[0] : null;
@@ -836,7 +983,7 @@ function runShapeReport(opts: Options): void {
 
 function runTierReport(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, knobsFor(opts)));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const ranges = new Map<Difficulty, { min: number; max: number }>();
   for (const tier of tiers) {
@@ -932,36 +1079,48 @@ function runCapacity(opts: Options): void {
 
 /**
  * v2 capacity: every bag candidate (SHAPE_CATALOGUE minus RETIRED_SHAPE_IDS)
- * at rows = V2_MAX_GRID_DIM, via the bag's own `shapeCapacity`, with whether
- * the placeholder curve's window admits it. Under the placeholder every window
- * holds a Super Hard level, so every window has the same set.
+ * at its largest v2 board (W3-09/W3-14: rows = `v2MaxRows(aspect)`, the most
+ * rows whose cols fit `V2_MAX_GRID_COLS`), via the bag's own `shapeCapacity`,
+ * with whether the curve's saturated window admits it (every window from the
+ * curve's last row on has the same set), and, for reference, the W3-10
+ * placeholder's (v1 tier bands, 720).
  */
 function runCapacityV2(opts: Options): void {
   const cfg = Difficulties.config(Difficulty.Normal);
-  const maxDim = V2_MAX_GRID_DIM;
-  const windowMax = placeholderWindowMaxTarget(0, Difficulties.cycleLength);
-  const admitted = new Set(windowSetAt(0).map((s) => s.name));
+  const curve = opts.curve ?? V2_CURVE;
+  const last = curve[curve.length - 1].levelIndex;
+  const windowMax = curveWindowMaxTarget(curve)(last, last + Difficulties.cycleLength);
+  const placeholderMax = placeholderWindowMaxTarget(0, Difficulties.cycleLength);
   const data = bagCandidates().map((shape) => {
-    const cols = v2Cols(maxDim, shape.aspect, maxDim);
-    const cells = shapeCapacity(shape, maxDim);
-    const mask = shape.rasterize(maxDim, cols);
-    const arrowCounts = [1, 2, 3, 4, 5].map((s) => LevelGenerator.fillMask(mask, maxDim, cols, cfg, new DotNetRandom(s)).length);
-    return { name: shape.name, cols, cells, medianArrows: median(ascending(arrowCounts)), admitted: admitted.has(shape.name) };
+    const rows = v2MaxRows(shape.aspect);
+    const cols = v2Cols(rows, shape.aspect);
+    const cells = shapeCapacity(shape);
+    const mask = shape.rasterize(rows, cols);
+    const arrowCounts = [1, 2, 3, 4, 5].map((s) => LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(s)).length);
+    return {
+      name: shape.name, rows, cols, cells, medianArrows: median(ascending(arrowCounts)),
+      admitted: cells >= windowMax, admittedPlaceholder: cells >= placeholderMax,
+    };
   }).sort((a, b) => b.cells - a.cells);
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'capacity', version: 2, maxDim, windowMaxTarget: windowMax, shapes: data }, null, 2));
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'capacity', version: 2, maxRows: V2_MAX_GRID_ROWS, maxCols: V2_MAX_GRID_COLS,
+      curve: opts.curveId, windowMaxTarget: windowMax, placeholderWindowMaxTarget: placeholderMax, shapes: data,
+    }, null, 2));
     return;
   }
 
   printHonestyBound();
-  console.log(`v2 per-shape capacity at the grid clamp (rows=V2_MAX_GRID_DIM=${maxDim}, cols=v2Cols(${maxDim}, aspect))`);
-  console.log(`Admission: capacity >= the placeholder window max target ${windowMax} (v1 tier bands).`);
+  console.log(`v2 per-shape capacity at the W3-09 clamp (cols <= V2_MAX_GRID_COLS = ${V2_MAX_GRID_COLS}, `
+    + `rows = v2MaxRows(aspect) <= V2_MAX_GRID_ROWS = ${V2_MAX_GRID_ROWS}, aspect kept)`);
+  console.log(`Admission: capacity >= the ${opts.curveId} curve's saturated window max target ${windowMax} `
+    + `(from level index ${last} on); placeholder column: >= ${placeholderMax} (v1 tier bands, W3-10).`);
   console.log('Arrows use the Normal config, median over DotNetRandom(1..5).');
   console.log('');
   console.log(table(
-    ['shape', 'cols', 'cells', 'median arrows (Normal, seeds 1-5)', `v2 admitted (>= ${windowMax})`],
-    data.map((d) => [d.name, d.cols, d.cells, d.medianArrows, d.admitted ? 'yes' : 'no']),
+    ['shape', 'rows×cols', 'cells', 'median arrows (Normal, seeds 1-5)', `admitted at saturation (>= ${windowMax})`, `placeholder (>= ${placeholderMax})`],
+    data.map((d) => [d.name, `${d.rows}×${d.cols}`, d.cells, d.medianArrows, d.admitted ? 'yes' : 'no', d.admittedPlaceholder ? 'yes' : 'no']),
   ));
   const excluded = data.filter((d) => !d.admitted).map((d) => d.name);
   console.log('');
@@ -973,11 +1132,13 @@ function runClampShortfall(opts: Options): void {
   const maxDim = maxDimFor(opts.version);
   const findings = indices
     .map((index) => {
-      const level = LevelGenerator.generate(index, opts.version, knobsFor(opts.bias));
-      if (level.board.rows !== maxDim && level.board.cols !== maxDim) return null;
+      const level = LevelGenerator.generate(index, opts.version, knobsFor(opts));
+      if (!atClamp(opts.version, level.shapeName, level.board.rows, level.board.cols)) return null;
       const maskCells = countTrue(level.mask);
       if (maskCells >= level.targetCells) return null;
-      const cfg = Difficulties.config(level.difficulty);
+      const cfg = opts.version === 2
+        ? Difficulties.configV2(level.difficulty, index, opts.curve ?? V2_CURVE)
+        : Difficulties.config(level.difficulty);
       return {
         level: index + 1,
         index,
@@ -998,8 +1159,10 @@ function runClampShortfall(opts: Options): void {
   }
 
   printHonestyBound();
-  console.log(`Clamp shortfalls over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})`);
-  console.log(`(rows or cols hit the ${maxDim} clamp AND the mask fell short of the drawn cell target)`);
+  console.log(`Clamp shortfalls over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})${biasTag(opts)}`);
+  console.log(opts.version === 2
+    ? `(rows hit the shape's row cap v2MaxRows(aspect) or cols hit ${maxDim} AND the mask fell short of the drawn cell target)`
+    : `(rows or cols hit the ${maxDim} clamp AND the mask fell short of the drawn cell target)`);
   console.log('');
   console.log(table(
     ['level', 'shape', 'tier', 'rows×cols', 'mask cells', 'drawn target', 'tier range'],
@@ -1239,10 +1402,13 @@ function runTransfer(opts: Options): void {
   // Set (i): v2 levels. The mask, size and tier do not depend on the bias
   // (it only reweights fillMask), so each level's neutral board supplies the
   // mask the seed replicas refill; the "real" stream is generate(i, 2, knobs).
-  const neutralLevels = indices.map((i) => LevelGenerator.generate(i, 2));
+  // W3-14: "unset" is the curve's own bias at each level (the shipped curve,
+  // or --curve); a b overrides it on every level.
+  const curve = opts.curve ?? V2_CURVE;
+  const neutralLevels = indices.map((i) => LevelGenerator.generate(i, 2, { curve }));
   const setI: SettingResult[] = settings.map((bias) => {
     const real = aggregateStream(indices.map((i, k) => {
-      const lvl = LevelGenerator.generate(i, 2, knobsFor(bias));
+      const lvl = LevelGenerator.generate(i, 2, knobsFor({ bias, curve }));
       const base = neutralLevels[k];
       if (lvl.shapeName !== base.shapeName || lvl.board.rows !== base.board.rows || lvl.board.cols !== base.board.cols) {
         throw new Error(`level index ${i}: the bias changed the shape or size, which it must never do`);
@@ -1250,7 +1416,7 @@ function runTransfer(opts: Options): void {
       return toSample(walkBoard(lvl.board, lvl.arrowCount, `level index ${i} bias ${biasLabel(bias)}`));
     }));
     const replicas = seeds.map((s) => aggregateStream(neutralLevels.map((base, k) => fillAndWalk(
-      base.mask, base.board.rows, base.board.cols, withBias(Difficulties.config(base.difficulty), bias), s,
+      base.mask, base.board.rows, base.board.cols, withBias(Difficulties.configV2(base.difficulty, indices[k], curve), bias), s,
       `level index ${indices[k]} bias ${biasLabel(bias)} seed ${s}`,
     ))));
     return { bias, replicas, real };
@@ -1586,18 +1752,13 @@ function candidateStartRow(
 }
 
 /**
- * v2's board size for a cell target: a replica of `buildV2`'s density-probe fit
- * (levelGenerator.ts, with its literals: probe at 24 rows, fill floor 0.05,
- * rows clamped to [V2_MIN_GRID_ROWS, V2_MAX_GRID_DIM]). `buildV2` is not
- * exported and this task only measures, so `checkV2SizingReplica` compares it
- * with `generate(i, 2)` before any `--targets` row uses it.
+ * v2's board size for a cell target. W3-12 kept a replica of `buildV2`'s fit
+ * here (its concern 6); W3-14 exports the shipping sizing (`v2GridFor`,
+ * shapeBag.ts) and uses it. `checkV2SizingReplica` still compares it with
+ * `generate(i, 2)` before any `--targets` row uses it.
  */
 function v2SizeForTarget(shape: ShapeDef, targetCells: number): { rows: number; cols: number } {
-  const probeRows = 24;
-  const probeCols = v2Cols(probeRows, shape.aspect);
-  const probeFill = Math.max(0.05, countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols));
-  const rows = clamp(Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect))), V2_MIN_GRID_ROWS, V2_MAX_GRID_DIM);
-  return { rows, cols: v2Cols(rows, shape.aspect) };
+  return v2GridFor(shape, targetCells);
 }
 
 /** v2 levels checked against the replica: the corpus W3-10/W3-11 pinned (0-299, `04d0ec7e`). */
@@ -1812,7 +1973,7 @@ function runStartSweep(opts: Options): void {
   console.log(tutorialInvariant('T2', tutorials[1]));
 
   console.log('');
-  console.log('For reference: generator v2 levels 1-5 as dealt today (placeholder curve, dark behind GEN_V2_ENABLED).');
+  console.log('For reference: generator v2 levels 1-5 as dealt today (the shipped V2_CURVE, dark behind GEN_V2_ENABLED).');
   console.log('');
   console.log(table(startTableHeaders(), v2Rows.map((r) => startTableRow(r, baselineBlocked))));
 
@@ -1867,12 +2028,705 @@ function runStartSweep(opts: Options): void {
   console.log(`Rows whose median blocked is below v1 level 1's measured ${baselineBlocked.toFixed(1)}: `
     + `${below.length} of ${candidates.length} candidate rows (the "yes" rows above)`
     + (notBelow.length === 0 ? '; none is at or above it.' : `; at or above it: ${notBelow.map((r) => r.id).join(', ')}.`));
-  console.log(`Admissible shapes: the ${capacities.length} bag candidates' smallest capacity at the clamp (V2_MAX_GRID_DIM = ${V2_MAX_GRID_DIM}) `
+  console.log(`Admissible shapes: the ${capacities.length} bag candidates' smallest capacity at the clamp (W3-09: cols <= ${V2_MAX_GRID_COLS}, rows <= v2MaxRows(aspect)) `
     + `is ${minCap.capacity} (${minCap.name}); the largest candidate board here holds ${maxCandidateCells} cells; `
     + `candidate rows above their own shape's capacity: ${inadmissible.length === 0 ? 'none' : inadmissible.map((r) => r.id).join(', ')}.`);
   console.log(`Which shape level 1 gets is the bag's pick, not a row's: if a curve admitted every candidate to window 0, `
     + `the bag would deal ${window0.order.slice(0, 5).map((s) => s.name).join(', ')} at levels 1-5 `
     + `(bagWindowFor(0) with a window max target of 0; W3-14's curve sets the real window).`);
+}
+
+// ---- W3-14: curve candidates, the curve report (a)-(g), and the ceiling ----
+
+/** `--candidates` writes its tables here unless `--out` says otherwise (artifacts/ is gitignored). */
+const CANDIDATES_DEFAULT_OUT = 'artifacts/W3-14/curves';
+/**
+ * Ruling W3-7's exploration grid (docs/next-level/progress.md): the displayed
+ * level at which base cells reach the ceiling. Sampling points, not shipped
+ * values; the owner picks in W3-16.
+ */
+const CANDIDATE_SATURATION_LEVELS = [100, 400, 1000] as const;
+/**
+ * The bias-tail variants (brief step 3): after saturation the bias keeps
+ * falling, linearly from 1 (neutral) at the saturation level to this floor at
+ * displayed level `BIAS_TAIL_END_LEVEL`, then holds. 0.3 is the mildest value
+ * below 1 that W3-11 measured; its brand gate flags it ("changes arrow look"),
+ * so every tail is flagged "look not accepted".
+ */
+const BIAS_TAIL_FLOOR = 0.3; // OWNER-PICKED STARTING VALUE (exploration grid; W3-11 owner-question-1 recommendation, hard side)
+const BIAS_TAIL_END_LEVEL = 3000; // OWNER-PICKED STARTING VALUE (exploration grid: the end of report (a)'s range)
+/** The brief's report ranges: (a) over levels 1-3000; (e) indices 0-99,999 every 7th; the controller's heaviest over 0-9999. */
+const CURVE_REPORT_LEVELS: readonly [number, number] = [1, 3000];
+const HEAVY_SAMPLE_END = 100000;
+const HEAVY_SAMPLE_STEP = 7;
+const HEAVIEST_FULL_END = 10000;
+/** Brief (g): the switch levels (displayed) at which a v1 player meets v2. */
+const SWITCH_LEVELS = [2, 12, 40, 100, 400, 1000] as const;
+/** The controller's key levels (displayed) for the level -> (cells, bias) table. */
+const KEY_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 5000] as const;
+/** v1's heaviest board over indices 0-9999: index 7157, Butterfly, 262 arrows (W3-10 heavy.ts; re-measured by --curve-report). */
+const V1_HEAVIEST_INDEX = 7157;
+const V1_HEAVIEST_ARROWS = 262;
+/** W3-10 heavy.ts's rep count for timing one board. */
+const TIMING_REPS = 15;
+/**
+ * (a)'s block sizes: 50 cycles = 300 levels (1-3000 is 10 blocks; the
+ * verdict), and 10 cycles = 60 levels (50 blocks; shown, too noisy to judge:
+ * a flat curve moves up to about 30% between them). Method, not a gate.
+ */
+const MONOTONE_BLOCK_CYCLES = 50;
+const FINE_BLOCK_CYCLES = 10;
+/** (b)'s smoothing: a running median over this many cycles (60 levels); single cycles cross the plateau by noise. Method. */
+const SATURATION_RUN_CYCLES = 10;
+/** (g)'s window: the cycles a switching player meets next (10 cycles = 60 levels), beside the brief's single cycle. Method. */
+const SWITCH_WINDOW_CYCLES = 10;
+/**
+ * (a)'s noise reference: v2 dealt from a flat curve (the ceiling from level 1)
+ * over this range, 40 blocks of 300 levels (39 block-to-block changes). W3-14's
+ * first run used 1-3000 only (9 changes) and under-estimated the noise: a
+ * candidate's own input-flat plateau moved more than that. Method, not a gate.
+ */
+const FLAT_REFERENCE_LEVELS: readonly [number, number] = [1, 12000];
+/** `--ceiling`'s default scan (base cells); the refinement steps by 1 between the last pass and the first failure. */
+const CEILING_SCAN: readonly number[] = [330, 335, 340, 345, 350, 355, 360, 365, 370];
+
+interface Candidate {
+  id: string;
+  saturationLevel: number;
+  biasTail: boolean;
+  description: string;
+  table: CurveTable;
+}
+
+/** Row 0 (W3-13's owner pick) every candidate shares. */
+function candidateRow0(): CurveTable[number] {
+  return { levelIndex: 0, baseCells: LEVEL1_TARGET_CELLS, tierTexture: V1_TIER_TEXTURE, clearableBias: LEVEL1_CLEARABLE_BIAS };
+}
+
+function buildCandidates(): Candidate[] {
+  const out: Candidate[] = [];
+  for (const tail of [false, true]) {
+    for (const s of CANDIDATE_SATURATION_LEVELS) {
+      const rows: CurveTable[number][] = [
+        candidateRow0(),
+        { levelIndex: s - 1, baseCells: CEILING_BASE_CELLS, tierTexture: V1_TIER_TEXTURE },
+      ];
+      if (tail) {
+        rows.push({ levelIndex: BIAS_TAIL_END_LEVEL - 1, baseCells: CEILING_BASE_CELLS, tierTexture: V1_TIER_TEXTURE, clearableBias: BIAS_TAIL_FLOOR });
+      }
+      validateCurve(rows);
+      out.push({
+        id: `S${s}${tail ? 'b' : ''}`,
+        saturationLevel: s,
+        biasTail: tail,
+        description: `base cells ${LEVEL1_TARGET_CELLS} -> ${CEILING_BASE_CELLS} by level ${s} with bias ${LEVEL1_CLEARABLE_BIAS} -> 1 (neutral)`
+          + (tail ? `; then bias 1 -> ${BIAS_TAIL_FLOOR} by level ${BIAS_TAIL_END_LEVEL} (look NOT accepted)` : '; flat after'),
+        table: rows,
+      });
+    }
+  }
+  return out;
+}
+
+/** The look status of a bias value at a displayed level (controller: only b = 3 at level 1 is accepted). */
+function lookFlag(bias: number | undefined, level: number): string {
+  if (bias === undefined || bias === 1) return 'neutral';
+  if (bias === LEVEL1_CLEARABLE_BIAS && level === 1) return 'accepted (W3-13, level 1)';
+  if (bias === LEVEL1_CLEARABLE_BIAS) return 'b = 3: accepted for level 1 only';
+  return 'look not accepted';
+}
+
+function tierCells(curve: CurveTable, index: number): { normal: number; hard: number; superHard: number; bias: number | undefined } {
+  const n = Difficulties.configV2(Difficulty.Normal, index, curve);
+  return {
+    normal: n.maxCells,
+    hard: Difficulties.configV2(Difficulty.Hard, index, curve).maxCells,
+    superHard: Difficulties.configV2(Difficulty.SuperHard, index, curve).maxCells,
+    bias: n.clearableBias,
+  };
+}
+
+function sameTable(a: CurveTable, b: CurveTable): boolean {
+  return JSON.stringify(a.map((r) => ({ ...r, clearableBias: r.clearableBias ?? null })))
+    === JSON.stringify(b.map((r) => ({ ...r, clearableBias: r.clearableBias ?? null })));
+}
+
+function runCandidates(opts: Options): void {
+  let candidates = buildCandidates();
+  if (opts.only !== null) {
+    const unknown = opts.only.filter((id) => !candidates.some((c) => c.id === id));
+    if (unknown.length > 0) throw new Error(`--only: unknown candidate id(s) ${unknown.join(', ')}`);
+    candidates = candidates.filter((c) => opts.only!.includes(c.id));
+  }
+  fs.mkdirSync(opts.out, { recursive: true });
+  const files = candidates.map((c) => {
+    const file = path.join(opts.out, `${c.id}.json`);
+    fs.writeFileSync(file, JSON.stringify({ id: c.id, description: c.description, rows: c.table }, null, 2) + '\n');
+    return file;
+  });
+  const shipped = buildCandidates().find((c) => sameTable(c.table, V2_CURVE));
+  const keyTables = candidates.map((c) => ({
+    id: c.id,
+    rows: KEY_LEVELS.map((level) => {
+      const t = tierCells(c.table, level - 1);
+      return { level, tier: Difficulties.displayName(Difficulties.forLevel(level - 1)), ...t, look: lookFlag(t.bias, level) };
+    }),
+  }));
+
+  if (opts.json && !opts.modes.includes('curve-report')) {
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'candidates', files, shippedEquals: shipped?.id ?? null,
+      ceilingBaseCells: CEILING_BASE_CELLS, arrowCeiling: ARROW_CEILING,
+      candidates: candidates.map((c) => ({ id: c.id, description: c.description, rows: c.table })), keyTables,
+    }, null, 2));
+    return;
+  }
+  if (!opts.json) {
+    printHonestyBound();
+    console.log(`W3-14 curve candidates (exploration grid, ruling W3-7; not shipped values). Shared: row 0 = W3-13's owner pick `
+      + `(target ${LEVEL1_TARGET_CELLS} cells, clearableBias ${LEVEL1_CLEARABLE_BIAS}), the ceiling base cells ${CEILING_BASE_CELLS} `
+      + `(measured by --ceiling against ARROW_CEILING = ${ARROW_CEILING} arrows), v1's tier texture `
+      + `${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : ${V1_TIER_TEXTURE.SuperHard}.`);
+    console.log(`The shipped V2_CURVE (src/core/curve.ts) equals candidate: ${shipped?.id ?? 'NONE'}.`);
+    console.log(`Written: ${files.join(', ')}`);
+    for (const c of candidates) {
+      console.log('');
+      console.log(`### ${c.id}: ${c.description}`);
+      console.log('');
+      console.log(table(['row', 'level index', 'displayed level', 'base cells', 'clearableBias'],
+        c.table.map((r, k) => [k, r.levelIndex, r.levelIndex + 1, r.baseCells, r.clearableBias ?? 'unset (1)'])));
+      console.log('');
+      console.log(table(['level', 'tier dealt', 'Normal cells', 'Hard cells', 'Super Hard cells', 'bias', 'look'],
+        keyTables.find((k) => k.id === c.id)!.rows.map((r) => [r.level, r.tier, r.normal, r.hard, r.superHard, r.bias ?? 'unset (1)', r.look])));
+    }
+  }
+  if (opts.modes.includes('curve-report')) {
+    const reference = loadOrComputeReference(null);
+    for (const c of candidates) {
+      if (!opts.json) console.log('');
+      printCurveReport(curveReport(c.id, c.table, opts.levels ?? CURVE_REPORT_LEVELS, reference), opts.json);
+    }
+  }
+}
+
+// -- The report ---------------------------------------------------------------
+
+interface CurveBoard {
+  index: number;
+  tier: Difficulty;
+  shape: string;
+  rows: number;
+  cols: number;
+  maskCells: number;
+  target: number;
+  arrows: number;
+  scan: number;
+  blocked: number;
+  bias: number | null;
+  cellPt360: number;
+  cellPt411: number;
+  clampShortfall: boolean;
+}
+
+interface CycleStat {
+  cycle: number;
+  firstLevel: number;
+  lastLevel: number;
+  scan: number;
+  blocked: number;
+  arrows: number;
+}
+
+interface FlatReference {
+  id: string;
+  blocks: number;
+  /** Largest relative block-to-block change of block-median scan / blocked on a flat curve (300-level blocks). */
+  maxRelDeltaScan: number;
+  maxRelDeltaBlocked: number;
+  fineBlocks: number;
+  /** The same for 60-level blocks. */
+  fineMaxRelDeltaScan: number;
+  fineMaxRelDeltaBlocked: number;
+  cycles: CycleStat[];
+}
+
+interface CurveReport {
+  id: string;
+  table: CurveTable;
+  levels: readonly [number, number];
+  keyLevels: { level: number; tier: string; normal: number; hard: number; superHard: number; bias: number | null; look: string;
+    dealt: { shape: string; rows: number; cols: number; arrows: number } }[];
+  cycles: CycleStat[];
+  monotone: {
+    cycleDropsScan: number; cycleDropsBlocked: number; cycles: number;
+    blocks: { firstLevel: number; lastLevel: number; scan: number; blocked: number }[];
+    blockDropsScan: { at: number; rel: number }[]; blockDropsBlocked: { at: number; rel: number }[];
+    fineBlocks: { firstLevel: number; lastLevel: number; scan: number; blocked: number }[];
+    fineBlockDropsScan: { at: number; rel: number }[]; fineBlockDropsBlocked: { at: number; rel: number }[];
+    reference: Omit<FlatReference, 'cycles'> | null; passScan: boolean | null; passBlocked: boolean | null;
+    finePassScan: boolean | null; finePassBlocked: boolean | null;
+  };
+  saturation: {
+    rowIndex: number; plateauCycles: number; plateauP25Arrows: number; plateauMedianArrows: number;
+    level: number | null; blockedAfter: { early: number; late: number; ratio: number } | null; verdict: string;
+  };
+  windows: { firstLevel: number; lastLevel: number; size: number; satOut: number }[];
+  windowSteps: { fromLevel: number; size: number }[];
+  /** Window slots where a shape could hold every target of the window yet was not dealt (W3-10's top-k window model). */
+  satOutSlots: number;
+  saturatedExcluded: string[];
+  clampShortfalls: { range: number; sample: number };
+  heavySample: { boards: number; max: number; at: number; shape: string; rowsCols: string; target: number; tier: string;
+    overCeiling: number; overV1Worst: number };
+  cellPt: { min360: number; min411: number; maxCols: number; maxRows: number; floor: number; pass: boolean };
+  switches: { level: number; cycle: number; v1Scan: number; v2Scan: number; ratio: number; v1Arrows: number; v2Arrows: number;
+    windowV1Scan: number; windowV2Scan: number; windowRatio: number }[];
+  heaviest: { index: number; arrows: number; shape: string; rowsCols: string; tier: string; over250: number; overV1Worst: number;
+    v1Index: number; v1Arrows: number; msMedian: number; msMin: number; v1MsMedian: number; v1MsMin: number; ratio: number; reps: number };
+}
+
+function cellPtAt(label: '360' | '411', rows: number, cols: number): number {
+  return cellPtAtFit(START_VIEWPORTS.find((v) => v.label === label)!, rows, cols);
+}
+
+function walkCurveBoard(index: number, curve: CurveTable): CurveBoard {
+  const level = LevelGenerator.generate(index, 2, { curve });
+  const { rows, cols } = level.board;
+  const maskCells = countTrue(level.mask);
+  const bias = Difficulties.configV2(level.difficulty, index, curve).clearableBias ?? null;
+  const shortfall = atClamp(2, level.shapeName, rows, cols) && maskCells < level.targetCells;
+  const m = walkBoard(level.board, level.arrowCount, `v2 level index ${index}`);
+  return {
+    index, tier: level.difficulty, shape: level.shapeName, rows, cols, maskCells, target: level.targetCells,
+    arrows: m.arrowCount, scan: m.scanTaps, blocked: m.blockedTaps, bias,
+    cellPt360: cellPtAt('360', rows, cols), cellPt411: cellPtAt('411', rows, cols), clampShortfall: shortfall,
+  };
+}
+
+/** Full 6-level cycles inside the range (the brief's "per 6-level cycle"), with the probe's median. */
+function cycleStats(boards: readonly CurveBoard[]): CycleStat[] {
+  const byCycle = new Map<number, CurveBoard[]>();
+  for (const b of boards) {
+    const c = Math.floor(b.index / Difficulties.cycleLength);
+    if (!byCycle.has(c)) byCycle.set(c, []);
+    byCycle.get(c)!.push(b);
+  }
+  return [...byCycle.entries()]
+    .filter(([, bs]) => bs.length === Difficulties.cycleLength)
+    .sort((a, b) => a[0] - b[0])
+    .map(([cycle, bs]) => ({
+      cycle,
+      firstLevel: cycle * Difficulties.cycleLength + 1,
+      lastLevel: (cycle + 1) * Difficulties.cycleLength,
+      scan: med(bs.map((b) => b.scan)),
+      blocked: med(bs.map((b) => b.blocked)),
+      arrows: med(bs.map((b) => b.arrows)),
+    }));
+}
+
+function blockStats(cycles: readonly CycleStat[], size: number = MONOTONE_BLOCK_CYCLES): { firstLevel: number; lastLevel: number; scan: number; blocked: number }[] {
+  const out = [];
+  for (let k = 0; k + size <= cycles.length; k += size) {
+    const cs = cycles.slice(k, k + size);
+    out.push({ firstLevel: cs[0].firstLevel, lastLevel: cs[cs.length - 1].lastLevel, scan: med(cs.map((c) => c.scan)), blocked: med(cs.map((c) => c.blocked)) });
+  }
+  return out;
+}
+
+function relDrops(values: readonly number[], firstLevels: readonly number[]): { at: number; rel: number }[] {
+  const out: { at: number; rel: number }[] = [];
+  for (let k = 1; k < values.length; k++) {
+    if (values[k] < values[k - 1]) out.push({ at: firstLevels[k], rel: (values[k - 1] - values[k]) / values[k - 1] });
+  }
+  return out;
+}
+
+/**
+ * (a)'s instrument resolution: v2 dealt from a FLAT curve (base cells at the
+ * ceiling from level 1, neutral), walked over the same range. Its block
+ * medians can only move by noise (shape, fill), so their largest relative
+ * block-to-block change is the smallest real drop this report can resolve.
+ */
+function flatReference(): FlatReference {
+  const flat: CurveTable = [{ levelIndex: 0, baseCells: CEILING_BASE_CELLS, tierTexture: V1_TIER_TEXTURE }];
+  const [lo, hi] = FLAT_REFERENCE_LEVELS;
+  const boards: CurveBoard[] = [];
+  for (let i = lo - 1; i <= hi - 1; i++) boards.push(walkCurveBoard(i, flat));
+  const cycles = cycleStats(boards);
+  const blocks = blockStats(cycles);
+  const fine = blockStats(cycles, FINE_BLOCK_CYCLES);
+  const rel = (bs: typeof blocks, f: (b: typeof blocks[number]) => number) => {
+    let max = 0;
+    for (let k = 1; k < bs.length; k++) max = Math.max(max, Math.abs(f(bs[k]) - f(bs[k - 1])) / f(bs[k - 1]));
+    return max;
+  };
+  return { id: `FLAT (base ${CEILING_BASE_CELLS} from level ${lo}, neutral, levels ${lo}-${hi})`, blocks: blocks.length,
+    maxRelDeltaScan: rel(blocks, (b) => b.scan), maxRelDeltaBlocked: rel(blocks, (b) => b.blocked),
+    fineBlocks: fine.length, fineMaxRelDeltaScan: rel(fine, (b) => b.scan), fineMaxRelDeltaBlocked: rel(fine, (b) => b.blocked), cycles };
+}
+
+function percentile(values: readonly number[], p: number): number {
+  const s = ascending(values);
+  return s[Math.min(s.length - 1, Math.floor(p * s.length))];
+}
+
+function curveReport(id: string, curve: CurveTable, levels: readonly [number, number], reference: FlatReference | null): CurveReport {
+  const [lo, hi] = levels;
+  const boards: CurveBoard[] = [];
+  for (let i = lo - 1; i <= hi - 1; i++) boards.push(walkCurveBoard(i, curve));
+  const cycles = cycleStats(boards);
+
+  // (a) monotone: raw cycle drops, and block medians against the flat reference's resolution.
+  const drops = (f: (c: CycleStat) => number) => cycles.slice(1).filter((c, k) => f(c) < f(cycles[k])).length;
+  const blocks = blockStats(cycles);
+  const blockDropsScan = relDrops(blocks.map((b) => b.scan), blocks.map((b) => b.firstLevel));
+  const blockDropsBlocked = relDrops(blocks.map((b) => b.blocked), blocks.map((b) => b.firstLevel));
+  const passScan = reference === null ? null : blockDropsScan.every((d) => d.rel <= reference.maxRelDeltaScan);
+  const passBlocked = reference === null ? null : blockDropsBlocked.every((d) => d.rel <= reference.maxRelDeltaBlocked);
+  const fineBlocks = blockStats(cycles, FINE_BLOCK_CYCLES);
+  const fineBlockDropsScan = relDrops(fineBlocks.map((b) => b.scan), fineBlocks.map((b) => b.firstLevel));
+  const fineBlockDropsBlocked = relDrops(fineBlocks.map((b) => b.blocked), fineBlocks.map((b) => b.firstLevel));
+  const finePassScan = reference === null ? null : fineBlockDropsScan.every((d) => d.rel <= reference.fineMaxRelDeltaScan);
+  const finePassBlocked = reference === null ? null : fineBlockDropsBlocked.every((d) => d.rel <= reference.fineMaxRelDeltaBlocked);
+
+  // (b) saturation: the first 10-cycle running median of cycle-median arrows that reaches the plateau's lower quartile.
+  const maxBase = Math.max(...curve.map((r) => r.baseCells));
+  const satRow = curve.find((r) => r.baseCells === maxBase)!;
+  const lastRow = curve[curve.length - 1];
+  const plateau = cycles.filter((c) => c.firstLevel - 1 >= satRow.levelIndex);
+  let saturation: CurveReport['saturation'];
+  if (plateau.length === 0) {
+    saturation = { rowIndex: satRow.levelIndex, plateauCycles: 0, plateauP25Arrows: NaN, plateauMedianArrows: NaN, level: null,
+      blockedAfter: null, verdict: 'the curve does not saturate inside the range' };
+  } else {
+    const p25 = percentile(plateau.map((c) => c.arrows), 0.25);
+    let first: CycleStat | null = null;
+    for (let k = 0; k + SATURATION_RUN_CYCLES <= cycles.length && first === null; k++) {
+      if (med(cycles.slice(k, k + SATURATION_RUN_CYCLES).map((c) => c.arrows)) >= p25) first = cycles[k];
+    }
+    const after = cycles.filter((c) => first !== null && c.cycle >= first.cycle);
+    const window = Math.min(50, Math.floor(after.length / 2));
+    const early = window > 0 ? med(after.slice(0, window).map((c) => c.blocked)) : NaN;
+    const late = window > 0 ? med(after.slice(after.length - window).map((c) => c.blocked)) : NaN;
+    const ratio = late / early;
+    const biasAfter = lastRow.levelIndex > satRow.levelIndex && (lastRow.clearableBias ?? 1) < (satRow.clearableBias ?? 1);
+    const verdict = biasAfter
+      ? `after it, difficulty is carried by the bias (${satRow.clearableBias ?? 1} -> ${lastRow.clearableBias ?? 1} by level ${lastRow.levelIndex + 1}), `
+        + `then flat; median blocked of the first vs last ${window} cycles after saturation: ${early.toFixed(1)} -> ${late.toFixed(1)} (x${ratio.toFixed(2)})`
+      : `after it, difficulty is flat by construction (no curve input changes); median blocked of the first vs last ${window} cycles `
+        + `after saturation: ${early.toFixed(1)} -> ${late.toFixed(1)} (x${ratio.toFixed(2)})`;
+    saturation = {
+      rowIndex: satRow.levelIndex, plateauCycles: plateau.length, plateauP25Arrows: p25,
+      plateauMedianArrows: med(plateau.map((c) => c.arrows)), level: first === null ? null : first.firstLevel,
+      blockedAfter: window > 0 ? { early, late, ratio } : null, verdict,
+    };
+  }
+
+  // (c) admissible shapes per bag window over the range.
+  const wmt = curveWindowMaxTarget(curve);
+  const windows: CurveReport['windows'] = [];
+  const capacityOf = new Map(bagCandidates().map((sh) => [sh.name, shapeCapacity(sh)] as const));
+  for (let start = lo - 1; start <= hi - 1;) {
+    const w = bagWindowFor(start, wmt);
+    const max = wmt(w.start, w.start + w.order.length);
+    const dealt = new Set(w.order.map((sh) => sh.name));
+    const satOut = [...capacityOf.entries()].filter(([n, cap]) => !dealt.has(n) && cap >= max).length;
+    windows.push({ firstLevel: w.start + 1, lastLevel: w.start + w.order.length, size: w.order.length, satOut });
+    start = w.start + w.order.length;
+  }
+  const satOutSlots = windows.reduce((t, w) => t + w.satOut, 0);
+  const windowSteps: CurveReport['windowSteps'] = [];
+  for (const w of windows) if (windowSteps.length === 0 || windowSteps[windowSteps.length - 1].size !== w.size) windowSteps.push({ fromLevel: w.firstLevel, size: w.size });
+  const lastWindow = bagWindowFor(Math.max(lastRow.levelIndex, hi - 1), wmt);
+  const lastNames = new Set(lastWindow.order.map((s) => s.name));
+  const saturatedExcluded = bagCandidates().map((s) => s.name).filter((n) => !lastNames.has(n));
+
+  // (e) + (d) + (f) over the sample.
+  let heavy = { max: -1, at: -1, shape: '', rowsCols: '', target: 0, tier: '' };
+  let overCeiling = 0;
+  let overV1 = 0;
+  let sampleShort = 0;
+  let sampleBoards = 0;
+  let min360 = Math.min(...boards.map((b) => b.cellPt360));
+  let min411 = Math.min(...boards.map((b) => b.cellPt411));
+  let maxCols = Math.max(...boards.map((b) => b.cols));
+  let maxRows = Math.max(...boards.map((b) => b.rows));
+  for (let i = 0; i < HEAVY_SAMPLE_END; i += HEAVY_SAMPLE_STEP) {
+    const level = LevelGenerator.generate(i, 2, { curve });
+    sampleBoards++;
+    const { rows, cols } = level.board;
+    if (level.arrowCount > heavy.max) {
+      heavy = { max: level.arrowCount, at: i, shape: level.shapeName, rowsCols: `${rows}×${cols}`, target: level.targetCells,
+        tier: Difficulties.displayName(level.difficulty) };
+    }
+    if (level.arrowCount > ARROW_CEILING) overCeiling++;
+    if (level.arrowCount > V1_HEAVIEST_ARROWS) overV1++;
+    if (atClamp(2, level.shapeName, rows, cols) && countTrue(level.mask) < level.targetCells) sampleShort++;
+    min360 = Math.min(min360, cellPtAt('360', rows, cols));
+    min411 = Math.min(min411, cellPtAt('411', rows, cols));
+    maxCols = Math.max(maxCols, cols);
+    maxRows = Math.max(maxRows, rows);
+  }
+
+  // (g) the discontinuity at switch levels: v1's cycle median scan beside v2's, same cycle.
+  const switches = SWITCH_LEVELS.filter((l) => l >= lo && l <= hi).map((level) => {
+    const c = Math.floor((level - 1) / Difficulties.cycleLength);
+    const v2c = cycles.find((x) => x.cycle === c);
+    if (v2c === undefined) throw new Error(`(g): cycle ${c} is not a full cycle of the range`);
+    const v1Boards = [];
+    for (let k = 0; k < Difficulties.cycleLength; k++) {
+      const i = c * Difficulties.cycleLength + k;
+      const l1 = LevelGenerator.generate(i, 1);
+      v1Boards.push(walkBoard(l1.board, l1.arrowCount, `v1 level index ${i}`));
+    }
+    const v1Scan = med(v1Boards.map((m) => m.scanTaps));
+    // The next 60 levels: median of the cycle medians over cycles c .. c+9, both generators.
+    const v1Window: number[] = [v1Scan];
+    for (let cc = c + 1; cc < c + SWITCH_WINDOW_CYCLES; cc++) {
+      const ms = [];
+      for (let k = 0; k < Difficulties.cycleLength; k++) {
+        const l1 = LevelGenerator.generate(cc * Difficulties.cycleLength + k, 1);
+        ms.push(walkBoard(l1.board, l1.arrowCount, `v1 level index ${cc * Difficulties.cycleLength + k}`).scanTaps);
+      }
+      v1Window.push(med(ms));
+    }
+    const v2Window = cycles.filter((x) => x.cycle >= c && x.cycle < c + SWITCH_WINDOW_CYCLES).map((x) => x.scan);
+    if (v2Window.length !== SWITCH_WINDOW_CYCLES) throw new Error(`(g): the ${SWITCH_WINDOW_CYCLES} cycles after level ${level} are not all in the range`);
+    const windowV1Scan = med(v1Window);
+    const windowV2Scan = med(v2Window);
+    return { level, cycle: c, v1Scan, v2Scan: v2c.scan, ratio: v2c.scan / v1Scan, v1Arrows: med(v1Boards.map((m) => m.arrowCount)), v2Arrows: v2c.arrows,
+      windowV1Scan, windowV2Scan, windowRatio: windowV2Scan / windowV1Scan };
+  });
+
+  // Heaviest board over 0-9999, and its node generation time beside v1's worst (same process, alternated).
+  let hv = { index: -1, arrows: -1, shape: '', rowsCols: '', tier: '' };
+  let over250 = 0;
+  let overV1Worst = 0;
+  for (let i = 0; i < HEAVIEST_FULL_END; i++) {
+    const level = LevelGenerator.generate(i, 2, { curve });
+    if (level.arrowCount > hv.arrows) hv = { index: i, arrows: level.arrowCount, shape: level.shapeName, rowsCols: `${level.board.rows}×${level.board.cols}`, tier: Difficulties.displayName(level.difficulty) };
+    if (level.arrowCount > ARROW_CEILING) over250++;
+    if (level.arrowCount > V1_HEAVIEST_ARROWS) overV1Worst++;
+  }
+  const v1Worst = LevelGenerator.generate(V1_HEAVIEST_INDEX, 1);
+  const tV2: number[] = [];
+  const tV1: number[] = [];
+  for (let w = 0; w < 3; w++) { LevelGenerator.generate(hv.index, 2, { curve }); LevelGenerator.generate(V1_HEAVIEST_INDEX, 1); }
+  for (let r = 0; r < TIMING_REPS; r++) {
+    const order = r % 2 === 0 ? ['v2', 'v1'] : ['v1', 'v2'];
+    for (const which of order) {
+      const t0 = process.hrtime.bigint();
+      if (which === 'v2') LevelGenerator.generate(hv.index, 2, { curve });
+      else LevelGenerator.generate(V1_HEAVIEST_INDEX, 1);
+      const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+      (which === 'v2' ? tV2 : tV1).push(ms);
+    }
+  }
+  if (tV2.length !== TIMING_REPS || tV1.length !== TIMING_REPS) throw new Error('timing: rep count mismatch');
+
+  const keyLevels = KEY_LEVELS.map((level) => {
+    const t = tierCells(curve, level - 1);
+    const d = LevelGenerator.generate(level - 1, 2, { curve });
+    return { level, tier: Difficulties.displayName(Difficulties.forLevel(level - 1)), normal: t.normal, hard: t.hard, superHard: t.superHard,
+      bias: t.bias ?? null, look: lookFlag(t.bias, level),
+      dealt: { shape: d.shapeName, rows: d.board.rows, cols: d.board.cols, arrows: d.arrowCount } };
+  });
+
+  return {
+    id, table: curve, levels, keyLevels, cycles,
+    monotone: {
+      cycleDropsScan: drops((c) => c.scan), cycleDropsBlocked: drops((c) => c.blocked), cycles: cycles.length,
+      blocks, blockDropsScan, blockDropsBlocked, fineBlocks, fineBlockDropsScan, fineBlockDropsBlocked,
+      reference: reference === null ? null : (({ cycles: _c, ...rest }) => rest)(reference),
+      passScan, passBlocked, finePassScan, finePassBlocked,
+    },
+    saturation, windows, windowSteps, satOutSlots, saturatedExcluded,
+    clampShortfalls: { range: boards.filter((b) => b.clampShortfall).length, sample: sampleShort },
+    heavySample: { boards: sampleBoards, max: heavy.max, at: heavy.at, shape: heavy.shape, rowsCols: heavy.rowsCols, target: heavy.target,
+      tier: heavy.tier, overCeiling, overV1Worst: overV1 },
+    cellPt: { min360, min411, maxCols, maxRows, floor: MIN_LEGIBLE_CELL_PT, pass: min360 >= MIN_LEGIBLE_CELL_PT },
+    switches,
+    heaviest: { ...hv, over250, overV1Worst, v1Index: V1_HEAVIEST_INDEX, v1Arrows: v1Worst.arrowCount,
+      msMedian: med(tV2), msMin: Math.min(...tV2), v1MsMedian: med(tV1), v1MsMin: Math.min(...tV1), ratio: med(tV2) / med(tV1), reps: TIMING_REPS },
+  };
+}
+
+function fmtRel(x: number): string {
+  return `${(x * 100).toFixed(1)}%`;
+}
+
+function printCurveReport(r: CurveReport, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'curve-report', ...r }));
+    return;
+  }
+  const [lo, hi] = r.levels;
+  const sat = r.saturation;
+  console.log(`## Curve ${r.id}`);
+  console.log('');
+  console.log(`Saturation (b): ${sat.level === null ? 'not reached in the range' : `level ${sat.level}`} — ${sat.verdict}.`);
+  console.log('');
+  console.log(table(['row', 'level index', 'displayed level', 'base cells', 'clearableBias'],
+    r.table.map((row, k) => [k, row.levelIndex, row.levelIndex + 1, row.baseCells, row.clearableBias ?? 'unset (1)'])));
+  console.log('');
+  console.log('Key levels (cells from the table; "dealt" is the board generate(i, 2, { curve }) returns at that level):');
+  console.log('');
+  console.log(table(['level', 'tier', 'Normal', 'Hard', 'Super Hard', 'bias', 'look', 'dealt shape', 'rows×cols', 'arrows'],
+    r.keyLevels.map((k) => [k.level, k.tier, k.normal, k.hard, k.superHard, k.bias ?? 'unset (1)', k.look, k.dealt.shape, `${k.dealt.rows}×${k.dealt.cols}`, k.dealt.arrows])));
+  const m = r.monotone;
+  console.log('');
+  console.log(`(a) Cycle medians over levels ${lo}-${hi} (${m.cycles} full 6-level cycles; the probe's median of 6 boards).`);
+  console.log(`    Raw cycle-to-cycle drops: scan ${m.cycleDropsScan}, blocked ${m.cycleDropsBlocked} of ${m.cycles - 1} steps.`);
+  if (m.reference !== null) {
+    const worst = (ds: { at: number; rel: number }[]) => (ds.length === 0 ? 'none' : `${ds.length}, largest ${fmtRel(Math.max(...ds.map((d) => d.rel)))} at level ${ds.reduce((a, b) => (b.rel > a.rel ? b : a)).at}`);
+    console.log(`    Literal cycle-to-cycle monotonicity is not resolvable: a flat curve's cycle medians also drop about half the time (shape and fill noise).`);
+    console.log(`    Block medians (${MONOTONE_BLOCK_CYCLES} cycles = ${MONOTONE_BLOCK_CYCLES * Difficulties.cycleLength} levels, ${m.blocks.length} blocks): drops scan ${worst(m.blockDropsScan)}; blocked ${worst(m.blockDropsBlocked)}.`);
+    console.log(`    Resolution (${m.reference.id}, ${m.reference.blocks} blocks): the largest ${MONOTONE_BLOCK_CYCLES * Difficulties.cycleLength}-level block-to-block change on a flat curve is `
+      + `${fmtRel(m.reference.maxRelDeltaScan)} (scan), ${fmtRel(m.reference.maxRelDeltaBlocked)} (blocked).`);
+    console.log(`    Non-decreasing within resolution (${MONOTONE_BLOCK_CYCLES * Difficulties.cycleLength}-level blocks): scan ${m.passScan ? 'PASS' : 'FAIL'}, blocked ${m.passBlocked ? 'PASS' : 'FAIL'}.`);
+    console.log(`    Finer, ${FINE_BLOCK_CYCLES * Difficulties.cycleLength}-level blocks (${m.fineBlocks.length}): drops scan ${worst(m.fineBlockDropsScan)}; blocked ${worst(m.fineBlockDropsBlocked)}; `
+      + `flat-curve resolution ${fmtRel(m.reference.fineMaxRelDeltaScan)} / ${fmtRel(m.reference.fineMaxRelDeltaBlocked)}: scan ${m.finePassScan ? 'PASS' : 'FAIL'}, blocked ${m.finePassBlocked ? 'PASS' : 'FAIL'} (coarse: shown, not the verdict).`);
+  }
+  console.log('');
+  console.log(table(['block', 'levels', 'median scan', 'median blocked'], m.blocks.map((b, k) => [k, `${b.firstLevel}-${b.lastLevel}`, b.scan.toFixed(1), b.blocked.toFixed(1)])));
+  console.log('');
+  console.log(table(['60-level block', 'levels', 'median scan', 'median blocked'], m.fineBlocks.map((b, k) => [k, `${b.firstLevel}-${b.lastLevel}`, b.scan.toFixed(1), b.blocked.toFixed(1)])));
+  console.log('');
+  console.log(`(b) Saturation: base cells reach ${Math.max(...r.table.map((x) => x.baseCells))} at level ${sat.rowIndex + 1}; `
+    + (sat.plateauCycles === 0 ? 'no plateau cycles in range.'
+      : `plateau = the ${sat.plateauCycles} cycles from there on, cycle-median arrows median ${sat.plateauMedianArrows}, lower quartile ${sat.plateauP25Arrows}; `
+        + `the first ${SATURATION_RUN_CYCLES}-cycle running median of cycle-median arrows to reach the lower quartile starts at level ${sat.level}.`));
+  console.log('');
+  console.log(`(c) Admissible shapes per bag window (${r.windows.length} windows over levels ${lo}-${hi}): `
+    + r.windowSteps.map((s) => `${s.size} from level ${s.fromLevel}`).join('; ') + '.');
+  console.log(`    Excluded once saturated: ${r.saturatedExcluded.length === 0 ? 'none' : `${r.saturatedExcluded.length} (${r.saturatedExcluded.join(', ')})`}.`);
+  console.log(`    Window model cost (W3-10's top-k windows): ${r.satOutSlots} window slots where a shape could hold every target `
+    + `of the window but sat it out (${r.windows.filter((w) => w.satOut > 0).length} of ${r.windows.length} windows).`);
+  console.log('');
+  console.log(`(d) Clamp shortfalls: ${r.clampShortfalls.range} over levels ${lo}-${hi}; ${r.clampShortfalls.sample} over the (e) sample.`);
+  const h = r.heavySample;
+  console.log(`(e) Heaviest board over indices 0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} (${h.boards} boards): ${h.max} arrows at index ${h.at} `
+    + `(${h.tier} ${h.shape} ${h.rowsCols}, target ${h.target}); ceiling ${ARROW_CEILING}: ${h.max <= ARROW_CEILING ? 'PASS' : 'FAIL'}; `
+    + `boards over ${ARROW_CEILING}: ${h.overCeiling}; over v1's worst (${V1_HEAVIEST_ARROWS}): ${h.overV1Worst}.`);
+  const c = r.cellPt;
+  console.log(`(f) Smallest fit cell over the (a) boards and the (e) sample: ${c.min360.toFixed(2)} pt at 360 dp, ${c.min411.toFixed(2)} pt at 411 dp `
+    + `(largest board ${c.maxRows} rows, ${c.maxCols} cols); floor ${c.floor} pt: ${c.pass ? 'PASS' : 'FAIL'}.`);
+  console.log('');
+  console.log('(g) Discontinuity for a v1 player switching at level L (ruling W3-2): v1 and v2 cycle-median scan for the cycle holding L, '
+    + `and the median over the ${SWITCH_WINDOW_CYCLES} cycles (${SWITCH_WINDOW_CYCLES * 6} levels) from there (single cycles are noisy).`);
+  console.log('');
+  console.log(table(['switch level', 'cycle levels', 'v1 scan', 'v2 scan', 'v2 / v1', 'v1 arrows', 'v2 arrows', `next ${SWITCH_WINDOW_CYCLES * 6} levels: v1 scan`, 'v2 scan', 'v2 / v1'],
+    r.switches.map((s) => [s.level, `${s.cycle * 6 + 1}-${s.cycle * 6 + 6}`, s.v1Scan.toFixed(0), s.v2Scan.toFixed(0), s.ratio.toFixed(2), s.v1Arrows, s.v2Arrows,
+      s.windowV1Scan.toFixed(0), s.windowV2Scan.toFixed(0), s.windowRatio.toFixed(2)])));
+  const hv = r.heaviest;
+  console.log('');
+  console.log(`Heaviest board over indices 0-${HEAVIEST_FULL_END - 1}: ${hv.arrows} arrows at index ${hv.index} (${hv.tier} ${hv.shape} ${hv.rowsCols}); `
+    + `boards over ${ARROW_CEILING}: ${hv.over250}; over v1's worst ${V1_HEAVIEST_ARROWS}: ${hv.overV1Worst}. `
+    + `Node generation (same process, alternated, ${hv.reps} reps each): median ${hv.msMedian.toFixed(2)} ms (min ${hv.msMin.toFixed(2)}) `
+    + `against v1 index ${hv.v1Index} (${hv.v1Arrows} arrows) ${hv.v1MsMedian.toFixed(2)} ms (min ${hv.v1MsMin.toFixed(2)}): ratio ${hv.ratio.toFixed(3)}.`);
+  console.log('');
+  console.log('Per-cycle medians (a), every cycle:');
+  console.log('');
+  console.log(table(['cycle', 'levels', 'median scan', 'median blocked', 'median arrows'],
+    r.cycles.map((x) => [x.cycle, `${x.firstLevel}-${x.lastLevel}`, x.scan.toFixed(1), x.blocked.toFixed(1), x.arrows])));
+}
+
+function runCurveReport(opts: Options): void {
+  if (opts.modes.includes('candidates')) return; // --candidates runs the report for each candidate itself
+  const reference = loadOrComputeReference(opts.referenceFile);
+  const report = curveReport(opts.curveId, opts.curve ?? V2_CURVE, opts.levels ?? CURVE_REPORT_LEVELS, reference);
+  if (opts.jsonOut !== null) {
+    fs.writeFileSync(opts.jsonOut, JSON.stringify({ note: HONESTY_BOUND, mode: 'curve-report', ...report,
+      flatReferenceCycles: reference.cycles }) + '\n');
+  }
+  printCurveReport(report, opts.json);
+}
+
+function loadOrComputeReference(file: string | null): FlatReference {
+  if (file === null) return flatReference();
+  const r = JSON.parse(fs.readFileSync(file, 'utf8')) as FlatReference & { mode?: string; ceilingBaseCells?: number };
+  if (r.mode !== 'flat-reference' || r.ceilingBaseCells !== CEILING_BASE_CELLS) {
+    throw new Error(`--reference ${file}: not a --flat-reference file for CEILING_BASE_CELLS ${CEILING_BASE_CELLS}`);
+  }
+  return r;
+}
+
+function runFlatReference(opts: Options): void {
+  const r = flatReference();
+  const payload = { note: HONESTY_BOUND, mode: 'flat-reference', ceilingBaseCells: CEILING_BASE_CELLS, levels: FLAT_REFERENCE_LEVELS, ...r };
+  if (opts.jsonOut !== null) fs.writeFileSync(opts.jsonOut, JSON.stringify(payload) + '\n');
+  if (opts.json) { console.log(JSON.stringify(payload)); return; }
+  printHonestyBound();
+  console.log(`(a)'s noise reference: ${r.id}: ${r.cycles.length} cycles. Largest block-to-block change of block-median scan / blocked: `
+    + `${MONOTONE_BLOCK_CYCLES * Difficulties.cycleLength}-level blocks (${r.blocks}): ${fmtRel(r.maxRelDeltaScan)} / ${fmtRel(r.maxRelDeltaBlocked)}; `
+    + `${FINE_BLOCK_CYCLES * Difficulties.cycleLength}-level blocks (${r.fineBlocks}): ${fmtRel(r.fineMaxRelDeltaScan)} / ${fmtRel(r.fineMaxRelDeltaBlocked)}.`);
+  console.log('');
+  console.log(table(['block', 'levels', 'median scan', 'median blocked'], blockStats(r.cycles).map((b, k) => [k, `${b.firstLevel}-${b.lastLevel}`, b.scan.toFixed(1), b.blocked.toFixed(1)])));
+}
+
+// -- The ceiling --------------------------------------------------------------
+
+interface CeilingRow {
+  baseCells: number;
+  hardTarget: number;
+  superHardTarget: number;
+  admitted: number;
+  neutral: { max: number; at: number; shape: string };
+  tail: { max: number; at: number; shape: string };
+  pass: boolean;
+}
+
+function ceilingRow(baseCells: number): CeilingRow {
+  const measure = (bias: number | undefined) => {
+    const curve: CurveTable = [{ levelIndex: 0, baseCells, tierTexture: V1_TIER_TEXTURE, clearableBias: bias }];
+    let best = { max: -1, at: -1, shape: '' };
+    for (let i = 0; i < HEAVY_SAMPLE_END; i += HEAVY_SAMPLE_STEP) {
+      if (Difficulties.forLevel(i) === Difficulty.Normal) continue; // Normal targets are the smallest: never the heaviest
+      const level = LevelGenerator.generate(i, 2, { curve });
+      if (level.arrowCount > best.max) best = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}` };
+    }
+    return best;
+  };
+  const one: CurveTable = [{ levelIndex: 0, baseCells, tierTexture: V1_TIER_TEXTURE }];
+  const sh = Difficulties.configV2(Difficulty.SuperHard, 0, one).maxCells;
+  const neutral = measure(undefined);
+  const tail = measure(BIAS_TAIL_FLOOR);
+  return {
+    baseCells, hardTarget: Difficulties.configV2(Difficulty.Hard, 0, one).maxCells, superHardTarget: sh,
+    admitted: bagCandidates().filter((s) => shapeCapacity(s) >= sh).length,
+    neutral, tail, pass: neutral.max <= ARROW_CEILING && tail.max <= ARROW_CEILING,
+  };
+}
+
+function runCeiling(opts: Options): void {
+  const rows = CEILING_SCAN.map(ceilingRow);
+  // Refine by 1 between the last value whose scan prefix all passed and the next value.
+  let lastPass = -1;
+  for (let k = 0; k < rows.length && rows[k].pass; k++) lastPass = k;
+  if (lastPass >= 0 && lastPass < rows.length - 1) {
+    for (let b = rows[lastPass].baseCells + 1; b < rows[lastPass + 1].baseCells; b++) rows.push(ceilingRow(b));
+  }
+  rows.sort((a, b) => a.baseCells - b.baseCells);
+  let ceiling: number | null = null;
+  for (const r of rows) { if (!r.pass) break; ceiling = r.baseCells; }
+
+  if (opts.json) {
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'ceiling', arrowCeiling: ARROW_CEILING, tailFloor: BIAS_TAIL_FLOOR, rows, ceiling,
+      sample: { end: HEAVY_SAMPLE_END, step: HEAVY_SAMPLE_STEP, tiers: 'Hard and Super Hard' } }, null, 2));
+    return;
+  }
+  printHonestyBound();
+  console.log(`W3-14 ceiling: the largest saturated base cells (Normal target; Hard and Super Hard by v1's texture `
+    + `${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : ${V1_TIER_TEXTURE.SuperHard}) whose Hard and Super Hard boards over indices `
+    + `0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} stay at or under ARROW_CEILING = ${ARROW_CEILING} arrows, neutral AND at the `
+    + `bias-tail floor ${BIAS_TAIL_FLOOR}. Each row deals a flat curve (that base cells from level 1) through generate(i, 2, { curve }).`);
+  console.log('');
+  console.log(table(['base cells', 'Hard target', 'Super Hard target', 'shapes admitted', 'max arrows, neutral (index, shape)', `max arrows, b = ${BIAS_TAIL_FLOOR} (index, shape)`, 'pass'],
+    rows.map((r) => [r.baseCells, r.hardTarget, r.superHardTarget, r.admitted, `${r.neutral.max} (${r.neutral.at}, ${r.neutral.shape})`,
+      `${r.tail.max} (${r.tail.at}, ${r.tail.shape})`, r.pass ? 'yes' : 'no'])));
+  console.log('');
+  console.log(`CEILING_BASE_CELLS = ${ceiling ?? 'none (the smallest scanned value fails)'}: the largest scanned value with every smaller scanned value passing too. `
+    + `src/core/curve.ts holds ${CEILING_BASE_CELLS}${ceiling === CEILING_BASE_CELLS ? ' (matches)' : ' (DIFFERS: update it)'}.`);
 }
 
 // ---- Entry point --------------------------------------------------------
@@ -1890,6 +2744,10 @@ function runMode(mode: Mode, opts: Options): void {
     case 'transfer': return runTransfer(opts);
     case 'start-sweep': return runStartSweep(opts);
     case 'tutorial': return runTutorial(opts);
+    case 'candidates': return runCandidates(opts);
+    case 'curve-report': return runCurveReport(opts);
+    case 'ceiling': return runCeiling(opts);
+    case 'flat-reference': return runFlatReference(opts);
   }
 }
 

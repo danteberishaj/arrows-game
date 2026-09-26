@@ -1,6 +1,8 @@
 /**
  * Endless difficulty schedule. Ported from Assets/_Game/Scripts/Core/Difficulty.cs.
  */
+import { V2_CURVE, curvePointAt, type CurveTable } from './curve';
+
 export enum Difficulty {
   Normal,
   Hard,
@@ -75,6 +77,26 @@ export const Difficulties = {
       default:
         return { minCells: 260, maxCells: 400, minLen: 4, maxLen: 6, bendArrowChance: 0.93, bendChance: 0.95, hearts: 3 };
     }
+  },
+
+  /**
+   * W3-14, generator v2 only: tier `d`'s config at `levelIndex` on `curve`
+   * (`curve.ts`; default the shipped `V2_CURVE`). The cell target is a point
+   * (`minCells === maxCells`) read from the curve: the interpolated base cells
+   * times the tier's texture ratio, rounded. `clearableBias` is the curve's,
+   * left unset where it is exactly 1 (the identity, so the neutral path).
+   * Arrow length, bends and hearts are v1's for the tier, unchanged. `config`
+   * (v1 and the daily) never reads the curve.
+   */
+  configV2(d: Difficulty, levelIndex: number, curve: CurveTable = V2_CURVE): DifficultyConfig {
+    const v1 = Difficulties.config(d);
+    const p = curvePointAt(curve, levelIndex);
+    const weight = d === Difficulty.Hard ? p.tierTexture.Hard
+      : d === Difficulty.SuperHard ? p.tierTexture.SuperHard
+      : p.tierTexture.Normal;
+    const cells = Math.round((p.baseCells * weight) / p.tierTexture.Normal);
+    const cfg: DifficultyConfig = { ...v1, minCells: cells, maxCells: cells };
+    return p.clearableBias === 1 ? cfg : { ...cfg, clearableBias: p.clearableBias };
   },
 
   displayName(d: Difficulty): string {

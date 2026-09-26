@@ -14,18 +14,36 @@ export {
   shapeDefFor,
 } from './shapeCatalogue';
 export { LevelGenerator, seed, shapeNameForLevel } from './levelGenerator';
-export type { GeneratedLevel } from './levelGenerator';
+export type { GeneratedLevel, V2Knobs } from './levelGenerator';
 export {
-  V2_MAX_GRID_DIM,
+  MIN_LEGIBLE_CELL_PT,
+  V2_MAX_GRID_COLS,
+  V2_MAX_GRID_ROWS,
+  V2_MIN_GRID_ROWS,
   bagCandidates,
   bagWindowFor,
+  curveWindowMaxTarget,
   isClampShortfall,
   pickForLevelV2,
   placeholderWindowMaxTarget,
   shapeCapacity,
   v2Cols,
+  v2GridFor,
+  v2MaxRows,
+  v2WindowMaxTarget,
   windowSetAt,
 } from './shapeBag';
+export {
+  ARROW_CEILING,
+  CEILING_BASE_CELLS,
+  LEVEL1_CLEARABLE_BIAS,
+  LEVEL1_TARGET_CELLS,
+  V1_TIER_TEXTURE,
+  V2_CURVE,
+  curvePointAt,
+  validateCurve,
+} from './curve';
+export type { CurvePoint, CurveRow, CurveTable, TierTexture } from './curve';
 export type { BagWindow, WindowMaxTarget } from './shapeBag';
 export {
   GEN_V2_ENABLED,

@@ -1,15 +1,16 @@
 import { ArrowPath, Cell } from './arrowPath';
 import { BoardLogic } from './boardLogic';
+import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
 import { DotNetRandom } from './dotnetRandom';
 import type { GenVersion } from './generatorVersion';
 import {
-  V2_MAX_GRID_DIM,
-  V2_MIN_GRID_ROWS,
+  curveWindowMaxTarget,
   isClampShortfall,
   pickForLevelV2,
-  v2Cols,
+  v2GridFor,
+  v2MaxRows,
 } from './shapeBag';
 import { ShapeDef, ShapeLibrary } from './shapeLibrary';
 
@@ -33,15 +34,23 @@ export interface GeneratedLevel {
 }
 
 /**
- * W3-11: v2-only generation knobs. Every field is optional and an unset field
- * is neutral, so `generate(i, 2)`, `generate(i, 2, {})` and
- * `generate(i, 2, { clearableBias: undefined })` deal the same board. The
- * difficulty probe's `--bias` sets one value for every tier; W3-14's curve
- * rows will set it per level.
+ * W3-11: v2-only generation knobs (analysis overrides). Every field is
+ * optional and an unset field means "as shipped", so `generate(i, 2)`,
+ * `generate(i, 2, {})` and `generate(i, 2, { clearableBias: undefined })` deal
+ * the same board.
  */
 export interface V2Knobs {
-  /** See `DifficultyConfig.clearableBias`. */
+  /**
+   * See `DifficultyConfig.clearableBias`. Set, it replaces the curve's bias on
+   * every tier (the probe's `--bias`); unset, the curve's bias applies (W3-14).
+   */
   readonly clearableBias?: number;
+  /**
+   * W3-14: the difficulty curve to deal from instead of the shipped `V2_CURVE`
+   * (the probe's `--curve` / `--candidates`). It sets the cell targets, the
+   * bias and the bag's windows alike.
+   */
+  readonly curve?: CurveTable;
 }
 
 /**
@@ -59,7 +68,10 @@ function shapeNameForLevelV1(levelIndex: number): string {
   return ShapeLibrary.pick(difficulty, new DotNetRandom(seed(levelIndex))).name;
 }
 
-/** W3-10: v2's shape is the bag's pick, which needs no board (and no RNG). */
+/**
+ * W3-10: v2's shape is the bag's pick, which needs no board (and no RNG); its
+ * windows follow the shipped curve (W3-14), as `generateV2` does.
+ */
 function shapeNameForLevelV2(levelIndex: number): string {
   return pickForLevelV2(levelIndex).name;
 }
@@ -79,40 +91,49 @@ function generateV1(levelIndex: number): GeneratedLevel {
 }
 
 /**
- * v2 (W3-10; dark behind GEN_V2_ENABLED). Differs from v1 in three ways:
- * - the cell target is the FIRST draw of the level's `DotNetRandom(seed(i))`
- *   (placeholder: v1's tier band, until W3-14's curve);
- * - the shape is the capacity-aware bag's pick (`shapeBag.ts`), which draws
- *   nothing from that stream;
- * - sizing clamps at `V2_MAX_GRID_DIM` (`buildV2`), not v1's literal 46.
- * Difficulty, hearts, arrow rules and `fillMask` are v1's. v1 is untouched.
+ * v2 (W3-10; dark behind GEN_V2_ENABLED). Differs from v1 in these ways:
+ * - the cell target comes from W3-14's curve (`Difficulties.configV2(d, i)`,
+ *   a point), still taken as the FIRST draw of the level's
+ *   `DotNetRandom(seed(i))` (`next(t, t + 1)` is t, and keeps the stream where
+ *   W3-10 put it);
+ * - the curve also sets W3-11's clearable bias per level;
+ * - the shape is the capacity-aware bag's pick (`shapeBag.ts`) over the
+ *   curve's windows, which draws nothing from that stream;
+ * - sizing (`v2GridFor`) caps cols at `V2_MAX_GRID_COLS` and rows at
+ *   `v2MaxRows(aspect)` (W3-09), not v1's literal 46.
+ * Difficulty tiers, hearts, arrow rules and `fillMask` are v1's. v1 is untouched.
  */
 function generateV2(levelIndex: number, knobs?: V2Knobs): GeneratedLevel {
   const difficulty = Difficulties.forLevel(levelIndex);
-  const cfg = v2Config(difficulty, knobs);
+  const curve = knobs?.curve ?? V2_CURVE;
+  const cfg = v2Config(difficulty, levelIndex, curve, knobs);
   const rng = new DotNetRandom(seed(levelIndex));
 
   const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
-  const shape = pickForLevelV2(levelIndex);
+  const shape = pickForLevelV2(levelIndex, curveWindowMaxTarget(curve));
 
   return buildV2(shape, difficulty, cfg, rng, targetCells);
 }
 
 /**
- * v2's tier config plus its knobs. With no knob set it returns
- * `Difficulties.config` itself, so neutral v2 reads exactly what W3-10 read.
+ * v2's config at this level: the curve's (`Difficulties.configV2`), with a
+ * `clearableBias` knob replacing the curve's bias when set.
  */
-function v2Config(difficulty: Difficulty, knobs: V2Knobs | undefined): DifficultyConfig {
-  const base = Difficulties.config(difficulty);
+function v2Config(
+  difficulty: Difficulty,
+  levelIndex: number,
+  curve: CurveTable,
+  knobs: V2Knobs | undefined,
+): DifficultyConfig {
+  const base = Difficulties.configV2(difficulty, levelIndex, curve);
   if (knobs === undefined || knobs.clearableBias === undefined) return base;
   return { ...base, clearableBias: knobs.clearableBias };
 }
 
 /**
- * v2's sizing: v1's density-probe fit (`buildFromShape`), with the target
- * already drawn and the clamp at `V2_MAX_GRID_DIM`. Kept separate from
- * `buildFromShape`, which v1 and the daily board share, so no v2 change can
- * reach a shipped board.
+ * v2's board: `v2GridFor`'s size for the drawn target, then v1's fill. Kept
+ * separate from `buildFromShape`, which v1 and the daily board share, so no v2
+ * change can reach a shipped board.
  */
 function buildV2(
   shape: ShapeDef,
@@ -121,19 +142,7 @@ function buildV2(
   rng: DotNetRandom,
   targetCells: number,
 ): GeneratedLevel {
-  const maxDim = V2_MAX_GRID_DIM;
-  const probeRows = 24;
-  const probeCols = v2Cols(probeRows, shape.aspect, maxDim);
-  const probeFill = Math.max(
-    0.05,
-    countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols),
-  );
-  const rows = clamp(
-    Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect))),
-    V2_MIN_GRID_ROWS,
-    maxDim,
-  );
-  const cols = v2Cols(rows, shape.aspect, maxDim);
+  const { rows, cols } = v2GridFor(shape, targetCells);
 
   const mask = shape.rasterize(rows, cols);
   let maskCells = countTrue(mask);
@@ -144,7 +153,7 @@ function buildV2(
   }
   // No silent shortfall (W3-10 step 4). The bag only deals shapes whose
   // capacity covers the target, so a board at the clamp holds its target.
-  if (isDev() && isClampShortfall(rows, cols, maskCells, targetCells, maxDim)) {
+  if (isDev() && isClampShortfall(rows, cols, maskCells, targetCells, v2MaxRows(shape.aspect))) {
     throw new Error(
       `generateV2: ${shape.name} ${rows}x${cols} holds ${maskCells} cells at the clamp, ` +
         `below its target ${targetCells}`,
@@ -207,8 +216,8 @@ export const LevelGenerator = {
    */
   generate(levelIndex: number, version: GenVersion = 1, knobs?: V2Knobs): GeneratedLevel {
     if (version === 2) return generateV2(levelIndex, knobs);
-    if (knobs !== undefined && knobs.clearableBias !== undefined) {
-      throw new Error('LevelGenerator.generate: clearableBias is a v2-only knob; v1 is frozen');
+    if (knobs !== undefined && (knobs.clearableBias !== undefined || knobs.curve !== undefined)) {
+      throw new Error('LevelGenerator.generate: clearableBias and curve are v2-only knobs; v1 is frozen');
     }
     return generateV1(levelIndex);
   },

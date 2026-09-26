@@ -168,21 +168,28 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   thin features like the crescent's horns stay clean, `shapeLibrary.ts:43,53-56`).
 - **Shape selection (generator v2)** (`src/core/shapeBag.ts`; W3-10, dark behind `GEN_V2_ENABLED`):
   v2 drops the tier pools for a **capacity-aware shuffled bag** over the whole `SHAPE_CATALOGUE`
-  (minus `RETIRED_SHAPE_IDS`). A shape's capacity is its cell count at rows = `V2_MAX_GRID_DIM`
-  (46, provisional until W3-09). Levels are dealt in windows; a window admits every shape whose
-  capacity covers the largest cell target any of its levels can draw, is exactly as long as that
-  set, and deals it as a seeded Fisher–Yates shuffle, swapping its first two shapes once if the
-  first would repeat the previous level. So no shape repeats back to back, every admitted shape
-  appears once per window, and no board is capped below its target by the clamp. Until W3-14's
-  curve, a v2 level draws its target from v1's tier bands as the first draw of its seeded random,
-  so every window admits the same 18 shapes (the eight below 720 cells at the clamp — Bolt, Arrow,
-  Trophy, Rocket, Pine, Star, Hourglass, Crescent — sit out). Measured by
-  `npm run analysis:probe -- --version 2 --levels 1-1000 --shape-report --clamp-shortfall`:
-  0 back-to-back repeats, 0 clamp shortfalls, every admitted shape 55–56 times, all 18 seen by
-  level 18 (v1 over the same levels: 107 repeats, 65 levels at the clamp).
+  (minus `RETIRED_SHAPE_IDS`). A shape's capacity is its cell count on its largest v2 board: at
+  most 37 columns (`V2_MAX_GRID_COLS`, the owner's W3-09 legibility floor, 9.1 pt per cell on a
+  360 dp phone), rows up to 46, aspect kept (`v2MaxRows`). Levels are dealt in windows: a window
+  is the top-k shapes by capacity for the largest k whose k levels all fit the k-th capacity, dealt
+  as a seeded Fisher–Yates shuffle, swapping its first two shapes once if the first would repeat
+  the previous level. So no shape repeats back to back, each dealt shape appears once per window,
+  and no board is capped below its target by the clamp. Since W3-14 the targets come from the
+  difficulty curve (below), so windows shrink while it rises. Under the placeholder curve (S400)
+  every bag candidate is dealt at first, and from level 361 on 15 of 26: Triangle, Star, Trophy,
+  Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat and Fish cannot hold the saturated Super Hard
+  target of 609 cells. Measured by `npm run analysis:probe -- --version 2 --curve
+  artifacts/W3-14/curves/S400.json --curve-report` (`docs/curve-candidates-2026-09-26.md`).
 - **Tier schedule** (`src/core/difficulty.ts:34-49`): a repeating 6-level cycle Normal, Normal,
   Hard, Normal, Normal, Super Hard. The tier configs do not depend on the level index
   (`difficulty.ts:51-67`).
+  **Generator v2** (W3-14, dark) keeps the cycle but reads each tier's cell target, and its
+  clearable bias, from a breakpoint table indexed by level (`src/core/curve.ts`,
+  `Difficulties.configV2`): level 1 is the owner's pick (88 cells, bias 3), and the targets climb
+  linearly to a measured ceiling (base 339 cells: Normal 339, Hard 515, Super Hard 609, the
+  largest whose boards stay at or under 250 arrows), after which difficulty is flat. Which level
+  the ceiling sits at is the owner's W3-16 pick among `docs/curve-candidates-2026-09-26.md`'s
+  candidates; `V2_CURVE` holds S400 as a placeholder.
 - **Full fill, guaranteed solvable** (`LevelGenerator`, `src/core/levelGenerator.ts:22-41`): the
   silhouette is packed so **every shape cell holds an arrow**, and the board is solvable *by
   construction*. Both come from one "peel" rule — only ever carve an arrow whose head has a

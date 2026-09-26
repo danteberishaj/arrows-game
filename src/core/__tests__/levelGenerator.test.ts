@@ -1,9 +1,19 @@
 import { BoardLogic } from '../boardLogic';
+import {
+  LEVEL1_CLEARABLE_BIAS,
+  LEVEL1_TARGET_CELLS,
+  V1_TIER_TEXTURE,
+  V2_CURVE,
+  curvePointAt,
+  validateCurve,
+  type CurveTable,
+} from '../curve';
 import { Difficulties, Difficulty } from '../difficulty';
 import { Direction, toDelta } from '../direction';
 import { DotNetRandom } from '../dotnetRandom';
 import type { GenVersion } from '../generatorVersion';
-import { LevelGenerator } from '../levelGenerator';
+import { LevelGenerator, shapeNameForLevel } from '../levelGenerator';
+import { curveWindowMaxTarget, pickForLevelV2 } from '../shapeBag';
 import { ShapeLibrary } from '../shapeLibrary';
 
 // Ported from Assets/_Game/Scripts/Tests/LevelGeneratorTests.cs.
@@ -309,6 +319,7 @@ test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () =
 
 interface W311Knobs {
   clearableBias?: number;
+  curve?: CurveTable;
 }
 
 /** The v2 corpus 0..299, serialized exactly like the v1 fingerprint above. */
@@ -326,15 +337,19 @@ function serializeLevel(lvl: { shapeName: string; board: BoardLogic }): string {
   return [lvl.shapeName, lvl.board.rows, lvl.board.cols, ...lvl.board.arrows().map((a) => a.toLine())].join('\n');
 }
 
-test('W3-11 neutral: with clearableBias unset, generate(i, 2) equals the W3-10 output for 0-299', () => {
-  // 04d0ec7e is W3-10's v2 corpus (c31dd8e), EXECUTED by W3-10's fp.ts and
-  // re-EXECUTED by W3-11 against a `git archive c31dd8e src/core` copy. Unlike
-  // v1's d01abbd8 this is not frozen forever: a later task that changes v2
-  // content on purpose (W3-09's clamp, W3-14's curve, W3-18's shapes) re-pins
-  // it with its own evidence. What this test pins is that the knob, unset,
-  // changes nothing.
-  expect(v2CorpusFingerprint()).toBe('04d0ec7e');
+test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by W3-14: the curve and the W3-09 clamp)', () => {
+  // W3-10/W3-11 pinned 04d0ec7e (v1 tier bands, 46x46 clamp). W3-14 changes
+  // v2 content on purpose: targets and bias from V2_CURVE, at most 37 columns.
+  // The new value was EXECUTED twice, by this test and by W3-14's scratch
+  // fp.ts (docs/next-level/reports/W3-14.md, "Fingerprints"). Unlike v1's
+  // d01abbd8 this is not frozen forever: a later task that changes v2 content
+  // on purpose (W3-16's pick, W3-18's shapes) re-pins it with its own evidence
+  // (W3-21 freezes it).
+  expect(v2CorpusFingerprint()).toBe('ec15f0f7');
 });
+
+/** V2_CURVE with every bias removed: the same targets and windows, the neutral fill. */
+const V2_CURVE_NO_BIAS: CurveTable = V2_CURVE.map(({ levelIndex, baseCells, tierTexture }) => ({ levelIndex, baseCells, tierTexture }));
 
 test('W3-11 neutral: an empty knobs object and an explicit undefined bias are the same boards', () => {
   for (let i = 0; i < 60; i++) {
@@ -347,8 +362,12 @@ test('W3-11 neutral: an empty knobs object and an explicit undefined bias are th
 test('W3-11: clearableBias 1 is the identity (same weights, same draws, same boards as unset)', () => {
   // The biased path picks with an untruncated u * total; for integer weights
   // that selects exactly what the truncated neutral pick selects, and the
-  // path adds no RNG draw. So b=1 must reproduce the neutral corpus.
-  expect(v2CorpusFingerprint({ clearableBias: 1 })).toBe('04d0ec7e');
+  // path adds no RNG draw. So b=1 on every level must reproduce the corpus of
+  // the same curve with no bias anywhere (W3-14: the shipped curve sets a bias
+  // at early levels, so "unset" is now that bias-free curve).
+  const neutral = v2CorpusFingerprint({ curve: V2_CURVE_NO_BIAS });
+  expect(v2CorpusFingerprint({ clearableBias: 1 })).toBe(neutral);
+  expect(neutral).not.toBe(v2CorpusFingerprint()); // the curve's own bias does change boards
 });
 
 test('W3-11: clearableBias 0 throws (so do negative, NaN and infinite values)', () => {
@@ -512,4 +531,156 @@ test('W3-11: every shape fills and solves at extreme biases (peel proof holds fo
       if (!solveGreedy(board)) throw new Error(`${shape.name} rows=${rows} bias=${clearableBias}: not solvable`);
     }
   }
+});
+
+// ---- W3-14: v2 difficulty is a function of the level index -----------------
+//
+// `curve.ts` holds a breakpoint table (data, linearly interpolated). v2's
+// config reads its cell target and clearable bias from it; v1's arrow rules
+// and hearts are unchanged. v1 and the daily never read the curve.
+
+/** A synthetic table: three rows, one of them with the bias unset (neutral = 1). */
+const W314_TABLE: CurveTable = [
+  { levelIndex: 0, baseCells: 100, tierTexture: V1_TIER_TEXTURE, clearableBias: 3 },
+  { levelIndex: 10, baseCells: 200, tierTexture: V1_TIER_TEXTURE },
+  { levelIndex: 30, baseCells: 300, tierTexture: V1_TIER_TEXTURE, clearableBias: 0.5 },
+];
+
+const TIERS = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard] as const;
+
+test('W3-14 curve: a breakpoint returns its row, and a midpoint the linear interpolation', () => {
+  // Breakpoints.
+  expect(curvePointAt(W314_TABLE, 0)).toEqual({ baseCells: 100, tierTexture: V1_TIER_TEXTURE, clearableBias: 3 });
+  expect(curvePointAt(W314_TABLE, 10)).toEqual({ baseCells: 200, tierTexture: V1_TIER_TEXTURE, clearableBias: 1 });
+  expect(curvePointAt(W314_TABLE, 30)).toEqual({ baseCells: 300, tierTexture: V1_TIER_TEXTURE, clearableBias: 0.5 });
+  // Midpoints: halfway in cells and in bias (an unset bias interpolates as 1).
+  expect(curvePointAt(W314_TABLE, 5)).toEqual({ baseCells: 150, tierTexture: V1_TIER_TEXTURE, clearableBias: 2 });
+  expect(curvePointAt(W314_TABLE, 20)).toEqual({ baseCells: 250, tierTexture: V1_TIER_TEXTURE, clearableBias: 0.75 });
+  // A quarter of the way: linear, not a step.
+  expect(curvePointAt(W314_TABLE, 15).baseCells).toBeCloseTo(225, 10);
+});
+
+test('W3-14 configV2 beyond the last row returns the last row (synthetic table and the shipped curve)', () => {
+  for (const d of TIERS) {
+    const last = Difficulties.configV2(d, 30, W314_TABLE);
+    for (const i of [31, 32, 1000, 99999]) expect([d, i, Difficulties.configV2(d, i, W314_TABLE)]).toEqual([d, i, last]);
+    const shippedLast = V2_CURVE[V2_CURVE.length - 1].levelIndex;
+    const shipped = Difficulties.configV2(d, shippedLast);
+    for (const i of [shippedLast + 1, shippedLast * 3 + 7, 1_000_000]) {
+      expect([d, i, Difficulties.configV2(d, i)]).toEqual([d, i, shipped]);
+    }
+  }
+});
+
+test('W3-14 configV2: a point cell target from the table and the tier texture; v1 arrow rules and hearts', () => {
+  // Midpoint 5: base 150. Hard = 150 x 126/83 = 227.7 -> 228; Super Hard = 150 x 149/83 = 269.3 -> 269.
+  const want: Record<number, number> = { [Difficulty.Normal]: 150, [Difficulty.Hard]: 228, [Difficulty.SuperHard]: 269 };
+  for (const d of TIERS) {
+    const v1 = Difficulties.config(d);
+    const v2 = Difficulties.configV2(d, 5, W314_TABLE);
+    expect([d, v2.minCells, v2.maxCells]).toEqual([d, want[d], want[d]]);
+    expect([d, v2.minLen, v2.maxLen, v2.bendArrowChance, v2.bendChance, v2.hearts])
+      .toEqual([d, v1.minLen, v1.maxLen, v1.bendArrowChance, v1.bendChance, v1.hearts]);
+    expect([d, v2.clearableBias]).toEqual([d, 2]);
+  }
+  // A bias that interpolates to exactly 1 is the neutral path (undefined), not
+  // the biased path at 1 (identical boards, but W3-11 measured it ~1.5% slower).
+  for (const d of TIERS) expect([d, Difficulties.configV2(d, 10, W314_TABLE).clearableBias]).toEqual([d, undefined]);
+});
+
+test('W3-14 the shipped curve starts at the owner pick: level 1 (index 0, Normal) targets 88 cells at clearableBias 3', () => {
+  expect(LEVEL1_TARGET_CELLS).toBe(88);
+  expect(LEVEL1_CLEARABLE_BIAS).toBe(3);
+  expect(V2_CURVE[0]).toEqual({ levelIndex: 0, baseCells: 88, tierTexture: V1_TIER_TEXTURE, clearableBias: 3 });
+  const cfg = Difficulties.configV2(Difficulty.Normal, 0);
+  expect([cfg.minCells, cfg.maxCells, cfg.clearableBias]).toEqual([88, 88, 3]);
+  const lvl = LevelGenerator.generate(0, 2);
+  expect([lvl.difficulty, lvl.targetCells]).toEqual([Difficulty.Normal, 88]);
+  // v1's measured tier arrow medians over levels 1-1000 (W3-01), carried over.
+  expect(V1_TIER_TEXTURE).toEqual({ Normal: 83, Hard: 126, SuperHard: 149 });
+  expect(() => validateCurve(V2_CURVE)).not.toThrow();
+});
+
+test('W3-14 Difficulties.config (v1 and the daily) is untouched', () => {
+  expect(Difficulties.config(Difficulty.Normal)).toEqual({ minCells: 260, maxCells: 400, minLen: 4, maxLen: 6, bendArrowChance: 0.93, bendChance: 0.95, hearts: 3 });
+  expect(Difficulties.config(Difficulty.Hard)).toEqual({ minCells: 420, maxCells: 580, minLen: 4, maxLen: 6, bendArrowChance: 0.95, bendChance: 0.96, hearts: 3 });
+  expect(Difficulties.config(Difficulty.SuperHard)).toEqual({ minCells: 560, maxCells: 720, minLen: 4, maxLen: 6, bendArrowChance: 0.97, bendChance: 0.97, hearts: 3 });
+});
+
+test('W3-14 validateCurve refuses a table the interpolation or the bag cannot trust', () => {
+  const row = (levelIndex: number, baseCells: number, clearableBias?: number) =>
+    ({ levelIndex, baseCells, tierTexture: V1_TIER_TEXTURE, clearableBias });
+  expect(() => validateCurve([])).toThrow(/empty/);
+  expect(() => validateCurve([row(1, 100)])).toThrow(/index 0/);
+  expect(() => validateCurve([row(0, 100), row(0, 120)])).toThrow(/increasing/);
+  expect(() => validateCurve([row(0, 100), row(10, 90)])).toThrow(/cells/); // difficulty would fall
+  expect(() => validateCurve([row(0, 100, 1), row(10, 120, 2)])).toThrow(/bias/); // easier later
+  expect(() => validateCurve([row(0, 100, 0)])).toThrow(/bias/);
+  expect(() => validateCurve([{ levelIndex: 0, baseCells: 100, tierTexture: { Normal: 83, Hard: 126, SuperHard: 0 } }])).toThrow(/texture/);
+  expect(() => validateCurve([
+    { levelIndex: 0, baseCells: 100, tierTexture: V1_TIER_TEXTURE },
+    { levelIndex: 10, baseCells: 100, tierTexture: { Normal: 83, Hard: 100, SuperHard: 149 } },
+  ])).toThrow(/texture/); // Hard would get smaller
+  expect(() => validateCurve(W314_TABLE)).not.toThrow();
+  expect(() => Difficulties.configV2(Difficulty.Normal, -1)).toThrow(RangeError);
+  expect(() => Difficulties.configV2(Difficulty.Normal, 2.5)).toThrow(RangeError);
+});
+
+test('W3-14 generate(i, 2) deals the curve: its target is configV2(forLevel(i), i).maxCells for 0-599', () => {
+  const bad: string[] = [];
+  for (let i = 0; i < 600; i++) {
+    const lvl = LevelGenerator.generate(i, 2);
+    const cfg = Difficulties.configV2(Difficulties.forLevel(i), i);
+    if (lvl.targetCells !== cfg.maxCells || lvl.difficulty !== Difficulties.forLevel(i)) bad.push(`${i}:${lvl.targetCells}!=${cfg.maxCells}`);
+  }
+  expect(bad).toEqual([]);
+});
+
+test('W3-14 generate(i, 2) fills at the curve bias: the same board as passing that bias as a knob', () => {
+  // Index 0 is biased (3); a knob of the same value must deal the same board,
+  // and the neutral knob (1, the identity) a different one.
+  for (const i of [0, 1, 2, 5, 7]) {
+    const cfg = Difficulties.configV2(Difficulties.forLevel(i), i);
+    expect(cfg.clearableBias).toBeDefined();
+    const viaCurve = serializeLevel(LevelGenerator.generate(i, 2));
+    expect(serializeLevel(LevelGenerator.generate(i, 2, { clearableBias: cfg.clearableBias }))).toBe(viaCurve);
+  }
+  const neutral = serializeLevel(LevelGenerator.generate(0, 2, { clearableBias: 1 }));
+  expect(neutral).not.toBe(serializeLevel(LevelGenerator.generate(0, 2)));
+});
+
+test('W3-14 a curve knob replaces the shipped curve (the probe\'s --curve)', () => {
+  for (let i = 0; i < 60; i++) {
+    const lvl = LevelGenerator.generate(i, 2, { curve: W314_TABLE });
+    expect([i, lvl.targetCells]).toEqual([i, Difficulties.configV2(Difficulties.forLevel(i), i, W314_TABLE).maxCells]);
+    expect(serializeLevel(LevelGenerator.generate(i, 2, { curve: V2_CURVE }))).toBe(serializeLevel(LevelGenerator.generate(i, 2)));
+  }
+  expect(() => LevelGenerator.generate(0, 1, { curve: W314_TABLE })).toThrow(/v2/);
+  expect(() => LevelGenerator.generate(0, 2, { curve: [] })).toThrow(/empty/);
+});
+
+test('W3-14 a curve knob also sets the bag\'s windows: the shape is the pick over that curve\'s window max targets', () => {
+  // A steep synthetic curve (Super Hard 1009 cells from level 31: only Heart,
+  // 1033, and Square, 1369, hold it) deals windows unlike the shipped curve's.
+  const steep: CurveTable = [
+    { levelIndex: 0, baseCells: 88, tierTexture: V1_TIER_TEXTURE },
+    { levelIndex: 30, baseCells: 562, tierTexture: V1_TIER_TEXTURE },
+  ];
+  const wmt = curveWindowMaxTarget(steep);
+  let differs = 0;
+  for (let i = 0; i < 200; i++) {
+    const lvl = LevelGenerator.generate(i, 2, { curve: steep });
+    expect([i, lvl.shapeName]).toEqual([i, pickForLevelV2(i, wmt).name]);
+    if (lvl.shapeName !== shapeNameForLevel(i, 2)) differs++;
+  }
+  expect(differs).toBeGreaterThan(50);
+});
+
+test('W3-14 v2 boards stay inside the owner\'s W3-09 clamp: at most 37 columns and 46 rows (0-1999)', () => {
+  const bad: string[] = [];
+  for (let i = 0; i < 2000; i++) {
+    const { board } = LevelGenerator.generate(i, 2);
+    if (board.cols > 37 || board.rows > 46) bad.push(`${i}:${board.rows}x${board.cols}`);
+  }
+  expect(bad).toEqual([]);
 });

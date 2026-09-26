@@ -29,8 +29,10 @@
  * `artifacts/` for an owner-review artifact.
  *
  * W3-10: both modes also print each shape's generator-v2 admission — whether
- * the v2 shape bag deals it under the placeholder curve (its capacity at
- * `V2_MAX_GRID_DIM`, from `shapeCapacity`, against the window max target).
+ * the v2 shape bag deals it. W3-14: v2's windows follow the difficulty curve,
+ * so admission varies by level; the sheet prints admission where it is
+ * tightest and permanent, at the shipped curve's saturated end (the capacity
+ * at the W3-09 clamp, from `shapeCapacity`, against that window max target).
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -45,10 +47,11 @@ import {
   LevelGenerator,
   ShapeDef,
   ShapeLibrary,
-  V2_MAX_GRID_DIM,
-  placeholderWindowMaxTarget,
+  V2_CURVE,
+  V2_MAX_GRID_COLS,
+  V2_MAX_GRID_ROWS,
   shapeCapacity,
-  windowSetAt,
+  v2WindowMaxTarget,
 } from '../../src/core';
 import { arrowArt, STROKE } from '../../src/ui/arrowGeometry';
 import { Daylight } from '../../src/ui/theme';
@@ -108,7 +111,7 @@ function rasterAt(shape: ShapeDef, rows: number): Raster {
   return { rows, cols, mask, cells, fillFraction: cells / (rows * cols) };
 }
 
-/** Generator v2's admission of `shape` under the placeholder curve (W3-10). */
+/** Generator v2's admission of `shape` at the shipped curve's saturated end (W3-14). */
 interface V2Admission {
   readonly admitted: boolean;
   readonly capacity: number;
@@ -116,9 +119,10 @@ interface V2Admission {
 }
 
 function v2Admission(shape: ShapeDef): V2Admission {
-  const windowMax = placeholderWindowMaxTarget(0, Difficulties.cycleLength);
-  const admitted = windowSetAt(0).some((s) => s.name === shape.name);
-  return { admitted, capacity: shapeCapacity(shape, V2_MAX_GRID_DIM), windowMax };
+  const last = V2_CURVE[V2_CURVE.length - 1].levelIndex;
+  const windowMax = v2WindowMaxTarget(last, last + Difficulties.cycleLength);
+  const capacity = shapeCapacity(shape);
+  return { admitted: capacity >= windowMax, capacity, windowMax };
 }
 
 function v2AdmissionLabel(a: V2Admission): string {
@@ -178,7 +182,7 @@ async function runSingle(name: string, rows: number, outDir: string): Promise<vo
     + `cols=${clampRaster.cols}, cells=${clampRaster.cells} `
     + `(${(clampRaster.fillFraction * 100).toFixed(1)}%)`
     + (rows === GRID_CLAMP_ROWS ? ' — same run as above, since rows=46 IS the clamp' : ''));
-  console.log(`Generator ${v2AdmissionLabel(v2Admission(shape))} at V2_MAX_GRID_DIM=${V2_MAX_GRID_DIM}`);
+  console.log(`Generator ${v2AdmissionLabel(v2Admission(shape))} at the saturated curve, clamp ${V2_MAX_GRID_ROWS} rows x ${V2_MAX_GRID_COLS} cols`);
   console.log('');
   console.log('ASCII mask:');
   console.log(asciiMask(raster.mask));
@@ -316,7 +320,7 @@ async function runAll(outDir: string): Promise<void> {
   console.log(`Shape catalogue: ${shapes.length} shapes x ${CONTACT_SHEET_ROWS.length} row counts `
     + `= ${shapes.length * CONTACT_SHEET_ROWS.length} tiles.`);
   console.log('');
-  console.log(['shape', ...CONTACT_SHEET_ROWS.map((r) => `rows=${r}`), `v2 (V2_MAX_GRID_DIM=${V2_MAX_GRID_DIM})`].join('\t'));
+  console.log(['shape', ...CONTACT_SHEET_ROWS.map((r) => `rows=${r}`), `v2 (saturated curve, clamp ${V2_MAX_GRID_ROWS}x${V2_MAX_GRID_COLS})`].join('\t'));
   for (const entry of entries) {
     const cells = entry.rasters.map((r) => `${r.cells}/${r.rows * r.cols} (${r.rows}x${r.cols})`);
     console.log([entry.shape.name, ...cells, v2AdmissionLabel(entry.v2)].join('\t'));

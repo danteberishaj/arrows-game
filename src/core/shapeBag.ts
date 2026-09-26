@@ -10,9 +10,11 @@
  *   target a level can draw.
  *
  * How v2 picks (every function here is pure; the caches below only memoize):
- * - **Capacity.** `shapeCapacity(shape)` is the shape's cell count at rows =
- *   `V2_MAX_GRID_DIM` with cols as v2 sizes them (`v2Cols`), the most cells v2
- *   sizing can ever give that shape.
+ * - **Capacity.** `shapeCapacity(shape)` is the shape's cell count at its
+ *   largest v2 board: rows = `v2MaxRows(aspect)`, the most rows (up to
+ *   `V2_MAX_GRID_ROWS`) whose cols stay within `V2_MAX_GRID_COLS`, and cols as
+ *   v2 sizes them (`v2Cols`). It is the most cells v2 sizing can ever give that
+ *   shape without distorting it.
  * - **Windows.** Levels are dealt in consecutive windows. A window's
  *   admissible set is every bag candidate whose capacity covers the largest
  *   cell target any level in the window can draw (`windowMaxTarget`), and the
@@ -21,12 +23,14 @@
  *   candidates by capacity; the window is the largest such k whose k levels
  *   all fit (`windowSetAt`). Because a window's length is chosen together with
  *   its set, no window is ever cut short.
- * - **Where the set changes.** Under the placeholder target (v1's tier bands,
- *   max 720) every window of 6+ levels holds a Super Hard level, so every
- *   window has the same 18 shapes and is 18 levels long. Under a rising curve
- *   (W3-14), the window just before the rise ends at the rise and holds the
- *   top-k shapes by capacity, k = the levels left before it; each still
- *   appears exactly once. W3-14 owns reporting the admissible count per window.
+ * - **Where the set changes.** v2 deals from W3-14's curve (`curve.ts`): the
+ *   default window max target is `curveWindowMaxTarget(V2_CURVE)`. While the
+ *   curve rises, later windows admit fewer shapes; the window just before a
+ *   rise ends at the rise and holds the top-k shapes by capacity, k = the
+ *   levels left before it; each still appears exactly once. Once the curve
+ *   saturates every window has the same set. W3-14's probe reports the
+ *   admissible count per window (`--candidates`). The W3-10 placeholder (v1's
+ *   tier bands, max 720) is kept for tests and the contact sheet.
  * - **Order.** Each window is a Fisher-Yates shuffle of its set (in catalogue
  *   order before the shuffle), seeded with `new DotNetRandom(bagSeed(ordinal))`.
  *   If the first shape equals the previous level's shape, positions 0 and 1
@@ -41,21 +45,37 @@
  * `SHAPE_CATALOGUE` or changing its index, so W4-07's collection bits stay
  * stable. A shape the bag deals is therefore always a catalogue id.
  */
+import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties } from './difficulty';
 import { DotNetRandom } from './dotnetRandom';
 import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, shapeDefFor } from './shapeCatalogue';
 import type { ShapeDef } from './shapeLibrary';
 
 /**
- * v2's grid clamp (rows and cols). PROVISIONAL: this is v1's shipped clamp,
- * carried over unchanged until the owner's W3-09 pick (from W3-08's
- * legibility set) lands. A lower value shrinks every capacity and so changes
- * the admissible set; re-derive it with `difficulty-probe.ts --version 2
- * --capacity`.
+ * The smallest fit-to-view cell a v2 board may show, in points on the 360 dp
+ * phone W3-08 logged (board viewport 360x689 dp): W3-08's row 3, Bolt 46x37,
+ * whose cell is 0.94 x 360 / 37 = 9.15 pt (FIT_MARGIN 0.94, `boardCamera.ts`).
  */
-export const V2_MAX_GRID_DIM = 46; // OWNER-PICKED STARTING VALUE (provisional until W3-09)
+// OWNER PICK 2026-09-26 (W3-09, docs/board-legibility-2026-09-26.md): "row 3 or larger".
+export const MIN_LEGIBLE_CELL_PT = 9.1;
 
-/** v1's grid floors, unchanged in v2. */
+/**
+ * v2's column cap: the most columns whose fit cell on that phone stays at or
+ * above `MIN_LEGIBLE_CELL_PT` (0.94 x 360 / 37 = 9.15 >= 9.1; / 38 = 8.91).
+ * Every campaign board is width-bound there, so columns alone set the cell.
+ */
+// OWNER PICK 2026-09-26 (W3-09, docs/board-legibility-2026-09-26.md): at most 37 columns.
+export const V2_MAX_GRID_COLS = 37;
+
+/**
+ * v2's row cap: v1's shipped clamp, unchanged. Rows do not bind the cell on
+ * the logged phones (a 46-row board at <= 37 columns is still width-bound or
+ * above the floor: 0.94 x 689 / 46 = 14.1 pt).
+ */
+// OWNER PICK 2026-09-26 (W3-09, docs/board-legibility-2026-09-26.md): rows may stay up to 46.
+export const V2_MAX_GRID_ROWS = 46;
+
+/** v1's grid floors, unchanged in v2 (levelGenerator.ts `buildFromShape`'s literals 8 and 4). */
 export const V2_MIN_GRID_ROWS = 8;
 export const V2_MIN_GRID_COLS = 4;
 
@@ -81,27 +101,114 @@ export const placeholderWindowMaxTarget: WindowMaxTarget = (start, end) => {
   return max;
 };
 
-/** cols for a v2 board of `rows` rows: the single formula v2 sizing and capacity share. */
-export function v2Cols(rows: number, aspect: number, maxDim: number = V2_MAX_GRID_DIM): number {
-  return clamp(roundHalfToEven(rows * aspect), V2_MIN_GRID_COLS, maxDim);
-}
-
-const capacityCache = new Map<ShapeDef, Map<number, number>>();
+const curveWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
 
 /**
- * Mask cells of `shape` at rows = `maxDim` and cols = `v2Cols(maxDim, aspect)`,
- * memoized per shape and clamp. The first call rasterizes each shape once.
+ * W3-14: the bag's view of a difficulty curve, the largest cell target any
+ * level in `[start, end)` draws (`Difficulties.configV2`, a point target per
+ * level). `validateCurve` guarantees every tier's target never falls, so each
+ * tier's largest target in the range is at its last occurrence, and every
+ * tier present occurs in the range's last `cycleLength` levels: at most six
+ * levels are read. Each level's target is computed once per table and kept
+ * (a memo only: a deep player's first v2 pick builds every window from level
+ * 0, and re-deriving targets per window measured slower than W3-10 at level
+ * 20,000). One function per table (the bag's window cache is keyed by it).
  */
-export function shapeCapacity(shape: ShapeDef, maxDim: number = V2_MAX_GRID_DIM): number {
-  let byDim = capacityCache.get(shape);
-  if (byDim === undefined) {
-    byDim = new Map();
-    capacityCache.set(shape, byDim);
+export function curveWindowMaxTarget(curve: CurveTable): WindowMaxTarget {
+  let wmt = curveWmtCache.get(curve);
+  if (wmt === undefined) {
+    const targets: number[] = [];
+    const targetAt = (i: number): number => {
+      let t = targets[i];
+      if (t === undefined) {
+        t = Difficulties.configV2(Difficulties.forLevel(i), i, curve).maxCells;
+        targets[i] = t;
+      }
+      return t;
+    };
+    wmt = (start, end) => {
+      let max = 0;
+      for (let i = Math.max(start, end - Difficulties.cycleLength); i < end; i++) {
+        const t = targetAt(i);
+        if (t > max) max = t;
+      }
+      return max;
+    };
+    curveWmtCache.set(curve, wmt);
   }
-  let cells = byDim.get(maxDim);
+  return wmt;
+}
+
+/** The shipped curve's window max target: the bag's default. */
+export const v2WindowMaxTarget: WindowMaxTarget = curveWindowMaxTarget(V2_CURVE);
+
+/** cols for a v2 board of `rows` rows: the single formula v2 sizing and capacity share. */
+export function v2Cols(rows: number, aspect: number, maxCols: number = V2_MAX_GRID_COLS): number {
+  return clamp(roundHalfToEven(rows * aspect), V2_MIN_GRID_COLS, maxCols);
+}
+
+/**
+ * The most rows a v2 board of this aspect may have: `maxRows`, lowered until
+ * its unclamped cols fit `maxCols`, so the column cap never squeezes a
+ * silhouette (W3-14; W3-10's cols-only clamp distorted wide shapes instead).
+ * Never below `V2_MIN_GRID_ROWS`.
+ */
+export function v2MaxRows(
+  aspect: number,
+  maxRows: number = V2_MAX_GRID_ROWS,
+  maxCols: number = V2_MAX_GRID_COLS,
+): number {
+  let rows = maxRows;
+  while (rows > V2_MIN_GRID_ROWS && roundHalfToEven(rows * aspect) > maxCols) rows--;
+  return rows;
+}
+
+/**
+ * v2's board size for a cell target (generator v2's `buildV2`, exported so
+ * the probe measures the shipping sizing instead of a replica): v1's
+ * density-probe fit (probe the silhouette's fill at 24 rows, floor 0.05, solve
+ * rows for the target), with rows clamped to [V2_MIN_GRID_ROWS,
+ * v2MaxRows(aspect)] and cols = v2Cols(rows, aspect).
+ */
+export function v2GridFor(shape: ShapeDef, targetCells: number): { rows: number; cols: number } {
+  const probeRows = 24; // v1's density-probe size (levelGenerator.ts buildFromShape)
+  const probeCols = v2Cols(probeRows, shape.aspect);
+  const probeFill = Math.max(
+    0.05, // v1's fill floor (buildFromShape)
+    countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols),
+  );
+  const rows = clamp(
+    Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect))),
+    V2_MIN_GRID_ROWS,
+    v2MaxRows(shape.aspect),
+  );
+  return { rows, cols: v2Cols(rows, shape.aspect) };
+}
+
+const capacityCache = new Map<ShapeDef, Map<string, number>>();
+
+/**
+ * Mask cells of `shape` at its largest board under the given caps (rows =
+ * `v2MaxRows(aspect, maxRows, maxCols)`, cols = `v2Cols(rows, aspect, maxCols)`),
+ * memoized per shape and caps. The first call rasterizes each shape once.
+ * `shapeCapacity(s, 46, 46)` is v1's clamp (W3-01's measured table).
+ */
+export function shapeCapacity(
+  shape: ShapeDef,
+  maxRows: number = V2_MAX_GRID_ROWS,
+  maxCols: number = V2_MAX_GRID_COLS,
+): number {
+  let byCaps = capacityCache.get(shape);
+  if (byCaps === undefined) {
+    byCaps = new Map();
+    capacityCache.set(shape, byCaps);
+  }
+  const key = `${maxRows}x${maxCols}`;
+  let cells = byCaps.get(key);
   if (cells === undefined) {
-    cells = countTrue(shape.rasterize(maxDim, v2Cols(maxDim, shape.aspect, maxDim)));
-    byDim.set(maxDim, cells);
+    const rows = v2MaxRows(shape.aspect, maxRows, maxCols);
+    cells = countTrue(shape.rasterize(rows, v2Cols(rows, shape.aspect, maxCols)));
+    byCaps.set(key, cells);
   }
   return cells;
 }
@@ -155,7 +262,7 @@ function rankedCandidates(): readonly Ranked[] {
  */
 export function windowSetAt(
   start: number,
-  windowMaxTarget: WindowMaxTarget = placeholderWindowMaxTarget,
+  windowMaxTarget: WindowMaxTarget = v2WindowMaxTarget,
 ): readonly ShapeDef[] {
   const ranked = rankedCandidates();
   for (let k = ranked.length; k >= 2; k--) {
@@ -230,7 +337,7 @@ function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt:
  */
 export function bagWindowFor(
   levelIndex: number,
-  windowMaxTarget: WindowMaxTarget = placeholderWindowMaxTarget,
+  windowMaxTarget: WindowMaxTarget = v2WindowMaxTarget,
 ): BagWindow {
   if (!Number.isSafeInteger(levelIndex) || levelIndex < 0) {
     throw new RangeError(`shapeBag: level index must be a non-negative integer, got ${levelIndex}`);
@@ -263,7 +370,7 @@ export function bagWindowFor(
  */
 export function pickForLevelV2(
   levelIndex: number,
-  windowMaxTarget: WindowMaxTarget = placeholderWindowMaxTarget,
+  windowMaxTarget: WindowMaxTarget = v2WindowMaxTarget,
 ): ShapeDef {
   const window = bagWindowFor(levelIndex, windowMaxTarget);
   return window.order[levelIndex - window.start];
@@ -271,18 +378,20 @@ export function pickForLevelV2(
 
 /**
  * The no-silent-shortfall check (W3-10 step 4): a board whose rows or cols
- * sit at the clamp must hold at least its drawn cell target. v2's bag makes
- * this hold by construction when rows hit the clamp (the mask is then the
- * capacity mask); `generateV2` asserts it in `__DEV__`.
+ * sit at (or beyond) a clamp must hold at least its drawn cell target. v2's
+ * bag makes this hold by construction when rows hit the shape's row cap (the
+ * mask is then the capacity mask); `generateV2` asserts it in `__DEV__` with
+ * `maxRows = v2MaxRows(aspect)`.
  */
 export function isClampShortfall(
   rows: number,
   cols: number,
   maskCells: number,
   targetCells: number,
-  maxDim: number = V2_MAX_GRID_DIM,
+  maxRows: number = V2_MAX_GRID_ROWS,
+  maxCols: number = V2_MAX_GRID_COLS,
 ): boolean {
-  return (rows === maxDim || cols === maxDim) && maskCells < targetCells;
+  return (rows >= maxRows || cols >= maxCols) && maskCells < targetCells;
 }
 
 function countTrue(m: readonly (readonly boolean[])[]): number {
