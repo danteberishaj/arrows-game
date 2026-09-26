@@ -37,6 +37,24 @@
  *   0.1,0.3,1,3,10) plus "unset" on set (i), v2 `--levels`, and set (ii), the
  *   size-sweep boards, and prints each b beside the neutral seed band with the
  *   premise check and the brand gate (W3-11 brief).
+ *
+ * W3-12 puts the whole first session on one table:
+ * - `--tutorial T1|T2` walks W1-02's authored `BoardLogic` board with the same
+ *   walk and prints the same columns (repeatable: `--tutorial T1 --tutorial T2`).
+ * - `--start-sweep` prints, in play order, T1, T2, v1 levels 1-5 (v1 level 1 is
+ *   the baseline row), then the level-1 candidates: every bag candidate shape
+ *   (`--shapes` to narrow) x `--rows a-b` (default 6-16, cols = v2Cols) x bias
+ *   in {unset, `--biases`} (default: only the value that passed W3-11's brand
+ *   gate) x `--seeds` (default 1-5, `DotNetRandom(s)`), Normal config. Each row
+ *   carries n, cellPt at fit on the two board viewports W3-08 logged (360 and
+ *   411 dp wide), and flags for W3-09's legibility floor, v2's row floor and a
+ *   bias outside W3-11's brand gate.
+ * - `--start-sweep --targets a,b` adds every shape sized to each cell target by
+ *   a replica of `buildV2`'s fit (checked against `generate(i, 2)` first): level
+ *   1 at that target whatever shape the bag deals.
+ * cellPt comes from the shipping camera (`src/ui/boardCamera.ts`
+ * `initialCamera`, a pure module with no imports; preflight F30: one camera
+ * function, not another copy). That is this script's only non-`src/core` import.
  */
 import {
   ArrowPath,
@@ -49,14 +67,18 @@ import {
   SHAPE_CATALOGUE,
   ShapeDef,
   ShapeLibrary,
+  TutorialId,
   V2_MAX_GRID_DIM,
   bagCandidates,
   bagWindowFor,
+  buildTutorialLevel,
   placeholderWindowMaxTarget,
   shapeCapacity,
   v2Cols,
   windowSetAt,
 } from '../../src/core';
+import { V2_MIN_GRID_ROWS } from '../../src/core/shapeBag';
+import { initialCamera } from '../../src/ui/boardCamera';
 
 const HONESTY_BOUND =
   'Search-cost proxy for a uniform-sampling player. Not a measurement of ' +
@@ -70,7 +92,7 @@ const BAND_FRACTIONS = [1 / 8, 1 / 4, 1 / 2, 3 / 4, 1] as const;
 
 type Mode =
   | 'rows' | 'per-tier' | 'bands' | 'shape-report' | 'tier-report' | 'capacity' | 'clamp-shortfall'
-  | 'size-sweep' | 'transfer';
+  | 'size-sweep' | 'transfer' | 'start-sweep' | 'tutorial';
 
 /** W3-11 set (ii) defaults: level-1-sized boards (brief step 4). */
 const SIZE_SWEEP_DEFAULT_SHAPES = ['Circle', 'Square', 'Heart'] as const;
@@ -78,6 +100,39 @@ const SIZE_SWEEP_DEFAULT_ROWS: readonly [number, number] = [8, 16];
 const SIZE_SWEEP_DEFAULT_SEEDS: readonly [number, number] = [1, 5];
 /** W3-11 exploration grid (brief step 4): sweep points, not shipped values. */
 const TRANSFER_DEFAULT_BIASES = [0.1, 0.3, 1, 3, 10] as const;
+
+/**
+ * W3-12: the clearableBias values that passed W3-11's brand gate ("inside both
+ * bands"): only b = 3. MEASURED by `--version 2 --levels 1-100 --transfer`
+ * (docs/clearable-bias-transfer-2026-09-26.md, "Brand gate"); b = 1 also sits
+ * inside but is the identity (byte-identical to unset), so it adds no row. The
+ * owner's screenshot yes/no on b = 3 (W3-11 owner question 1c) is still open.
+ */
+const BRAND_GATE_PASSED_BIASES: readonly number[] = [3];
+/** `--start-sweep`'s bias rows besides unset, unless `--biases` is given. */
+const START_SWEEP_DEFAULT_BIASES: readonly number[] = BRAND_GATE_PASSED_BIASES;
+/** The W3-12 brief's sampling grid (rows 6-16, as the red team's sweep); method, not a gate. */
+const START_SWEEP_DEFAULT_ROWS: readonly [number, number] = [6, 16];
+/** The W3-12 brief's first-session context: v1 displayed levels 1-5 (level 1 = the baseline row). */
+const START_SWEEP_V1_LEVELS: readonly [number, number] = [1, 5];
+
+/**
+ * W3-12: the board viewports (dp) W3-08 logged at runtime on emulator-5556
+ * (`[board-viewport]`, docs/board-legibility-2026-09-26.md): 360x689 is the
+ * board area of a 360x780 dp phone (W1-01's geometry), 411.43x804.29 the
+ * native 1440x3120 @560 screen's. MEASURED, not picked.
+ */
+const START_VIEWPORTS: readonly { label: string; w: number; h: number }[] = [
+  { label: '360', w: 360, h: 689 },
+  { label: '411', w: 411.4285583496094, h: 804.2857055664062 },
+];
+/**
+ * W3-09 OWNER PICK 2026-09-26: the smallest acceptable board is W3-08's row 3,
+ * Bolt 46x37 at the 360 dp phone (0.94 x 360 / 37 = 9.15 pt).
+ */
+const MIN_LEGIBLE_CELL_PT = 9.1; // OWNER-PICKED STARTING VALUE (W3-09 pick, 2026-09-26)
+/** BoardView's `CELL` (board units per grid cell). It cancels out of cellPt; any positive value gives the same pt. */
+const BOARD_CELL_UNITS = 40;
 
 interface Viewport {
   w: number;
@@ -97,8 +152,15 @@ interface Options {
   sweepShapes: readonly string[];
   sweepRows: readonly [number, number];
   sweepSeeds: readonly [number, number];
-  /** W3-11 transfer grid. */
+  /** W3-11 transfer grid; W3-12 `--start-sweep` bias rows besides unset. */
   biases: readonly number[];
+  biasesGiven: boolean;
+  rowsGiven: boolean;
+  shapesGiven: boolean;
+  /** W3-12 `--tutorial` boards, in the order given. */
+  tutorials: readonly TutorialId[];
+  /** W3-12 `--start-sweep --targets`: cell targets to size every shape at with v2's own sizing. */
+  targets: readonly number[];
 }
 
 interface LevelRow {
@@ -137,6 +199,10 @@ function parseArgs(argv: readonly string[]): Options {
   let sweepSeeds: readonly [number, number] = SIZE_SWEEP_DEFAULT_SEEDS;
   let biases: readonly number[] = TRANSFER_DEFAULT_BIASES;
   let biasesGiven = false;
+  let rowsGiven = false;
+  let shapesGiven = false;
+  const tutorials: TutorialId[] = [];
+  let targets: readonly number[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -171,11 +237,33 @@ function parseArgs(argv: readonly string[]): Options {
         if (raw === undefined) throw new Error('--shapes requires a value, e.g. --shapes Circle,Square,Heart');
         sweepShapes = raw.split(',').map((n) => n.trim());
         for (const name of sweepShapes) shapeByName(name); // validate early
+        shapesGiven = true;
         break;
       }
       case '--rows':
         sweepRows = parseIntRange(argv[++i], '--rows', 1);
+        rowsGiven = true;
         break;
+      case '--tutorial': {
+        const raw = argv[++i];
+        if (raw !== 'T1' && raw !== 'T2') throw new Error(`--tutorial must be T1 or T2; got "${raw ?? ''}"`);
+        if (!tutorials.includes(raw)) tutorials.push(raw);
+        modeFlags.push('tutorial');
+        break;
+      }
+      case '--start-sweep':
+        modeFlags.push('start-sweep');
+        break;
+      case '--targets': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--targets requires a value, e.g. --targets 68,88,145');
+        targets = raw.split(',').map((t) => {
+          const v = Number(t.trim());
+          if (t.trim() === '' || !Number.isSafeInteger(v) || v < 1) throw new Error(`--targets values must be integers >= 1; got "${t}"`);
+          return v;
+        });
+        break;
+      }
       case '--seeds':
         sweepSeeds = parseIntRange(argv[++i], '--seeds', 0);
         break;
@@ -199,14 +287,19 @@ function parseArgs(argv: readonly string[]): Options {
   }
   const modes: Mode[] = modeFlags.length === 0 ? ['rows'] : [...new Set(modeFlags)];
   for (const mode of modes) {
-    if (mode !== 'capacity' && mode !== 'size-sweep' && levels === null) {
+    const needsLevels = mode !== 'capacity' && mode !== 'size-sweep' && mode !== 'start-sweep' && mode !== 'tutorial';
+    if (needsLevels && levels === null) {
       const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
       throw new Error(`--levels a-b is required for ${flagName}`);
     }
   }
   // W3-11: the knob is v2-only (LevelGenerator.generate throws on a v1 knob);
   // say so up front. --size-sweep fills boards directly and takes --bias at
-  // any version; --transfer runs its own grid and takes --biases instead.
+  // any version; --transfer runs its own grid and takes --biases instead; so
+  // does W3-12's --start-sweep, which always prints the unset rows too.
+  if (modes.includes('start-sweep') && bias !== null) {
+    throw new Error('--start-sweep always prints unset rows; list extra biases with --biases, not --bias');
+  }
   if (bias !== null && modes.includes('transfer')) {
     throw new Error('--transfer runs its own grid; use --biases, not --bias');
   }
@@ -216,10 +309,26 @@ function parseArgs(argv: readonly string[]): Options {
   if (modes.includes('transfer') && version !== 2) {
     throw new Error('--transfer measures generator v2; add --version 2');
   }
-  if (biasesGiven && !modes.includes('transfer')) {
-    throw new Error('--biases is only used by --transfer');
+  if (biasesGiven && !modes.includes('transfer') && !modes.includes('start-sweep')) {
+    throw new Error('--biases is only used by --transfer and --start-sweep');
   }
-  return { levels, version, viewport, json, modes, bias, sweepShapes, sweepRows, sweepSeeds, biases };
+  // W3-12: the start sweep has its own --rows/--biases defaults and fixes its
+  // own first-session rows, so a level range would be ignored.
+  if (modes.includes('start-sweep') && (modes.includes('transfer') || modes.includes('size-sweep'))) {
+    throw new Error('--start-sweep sets its own --rows/--biases defaults; run it apart from --transfer and --size-sweep');
+  }
+  if (modes.includes('start-sweep') && levels !== null && modes.every((m) => m === 'start-sweep' || m === 'tutorial')) {
+    throw new Error('--start-sweep prints T1, T2 and v1 levels 1-5 itself; --levels is not used');
+  }
+  if (targets.length > 0 && !modes.includes('start-sweep')) {
+    throw new Error('--targets is only used by --start-sweep');
+  }
+  if (modes.includes('start-sweep') && !biasesGiven) biases = START_SWEEP_DEFAULT_BIASES;
+  if (modes.includes('start-sweep') && !rowsGiven) sweepRows = START_SWEEP_DEFAULT_ROWS;
+  return {
+    levels, version, viewport, json, modes, bias, sweepShapes, sweepRows, sweepSeeds, biases,
+    biasesGiven, rowsGiven, shapesGiven, tutorials, targets,
+  };
 }
 
 function parseBias(raw: string | undefined, flag: string): number {
@@ -330,6 +439,12 @@ interface WalkMetrics {
   worstK: number;
   bentCount: number;
   totalLen: number;
+  /**
+   * W3-12: the deal state's share of `blockedTaps`, `(n-k)/(k+1)` before the
+   * first removal: the wrong looks W1-06's assist forgives (no heart for a
+   * blocked tap while `removalsThisBoard === 0`). Existing modes never print it.
+   */
+  blockedAtDeal: number;
 }
 
 /**
@@ -391,6 +506,7 @@ function walkBoard(board: BoardLogic, arrowCount: number, label: string): WalkMe
   let worstN = 0;
   let worstK = 0;
   let clearableAtDeal = 0;
+  let blockedAtDeal = 0;
   let removals = 0;
 
   while (!board.isCleared()) {
@@ -404,7 +520,10 @@ function walkBoard(board: BoardLogic, arrowCount: number, label: string): WalkMe
         if (firstClearable === null) firstClearable = arrow;
       }
     }
-    if (removals === 0) clearableAtDeal = k;
+    if (removals === 0) {
+      clearableAtDeal = k;
+      blockedAtDeal = (n - k) / (k + 1);
+    }
     // Every walk's LAST state has exactly n=1, k=1 by construction (the
     // final arrow must be clearable or the walk would have thrown above),
     // so a min-over-all-states definition is 1 for every level — not a
@@ -438,7 +557,9 @@ function walkBoard(board: BoardLogic, arrowCount: number, label: string): WalkMe
     );
   }
 
-  return { arrowCount, clearableAtDeal, scanTaps, blockedTaps, minClearable, worstN, worstK, bentCount, totalLen };
+  return {
+    arrowCount, clearableAtDeal, scanTaps, blockedTaps, minClearable, worstN, worstK, bentCount, totalLen, blockedAtDeal,
+  };
 }
 
 // ---- Table rendering --------------------------------------------------
@@ -1283,6 +1404,477 @@ function runTransfer(opts: Options): void {
   }
 }
 
+// ---- W3-12: the first session and the level-1 candidates on one table ---
+
+/** Median (the probe's convention), min–max and mean over one row's samples. */
+interface RowStat {
+  median: number;
+  min: number;
+  max: number;
+  mean: number;
+}
+
+function rowStat(values: readonly number[]): RowStat {
+  return {
+    median: med(values),
+    min: Math.min(...values),
+    max: Math.max(...values),
+    mean: values.reduce((t, v) => t + v, 0) / values.length,
+  };
+}
+
+/** One walked board of a start-sweep row. */
+interface StartSample {
+  /** `DotNetRandom(seed)` for a candidate fill; null for a fixed board (tutorial, v1/v2 level). */
+  seed: number | null;
+  arrows: number;
+  clearable: number;
+  clearablePct: number;
+  scan: number;
+  blocked: number;
+  blockedAtDeal: number;
+  blockedAfterFirstRemoval: number;
+}
+
+type StartSection = 'tutorial' | 'v1' | 'v2-placeholder' | 'candidate';
+
+interface StartRow {
+  section: StartSection;
+  /** The row's name in the doc: `T1`, `v1 L1`, or `<bias>/<rows>/<shape>` for a candidate, e.g. `b3/12/Circle`. */
+  id: string;
+  shape: string;
+  rows: number;
+  cols: number;
+  maskCells: number | null;
+  bias: number | null;
+  n: number;
+  arrows: RowStat;
+  clearable: RowStat;
+  clearablePct: RowStat;
+  scan: RowStat;
+  blocked: RowStat;
+  blockedAtDeal: RowStat;
+  blockedAfterFirstRemoval: RowStat;
+  /** Fit-to-view pt per cell, keyed by `START_VIEWPORTS` label. */
+  cellPt: Record<string, number>;
+  flags: string[];
+  /** The lowest seed whose blocked taps equal the row's median: the board a screenshot shows. */
+  medianSeed: number | null;
+  samples: StartSample[];
+}
+
+function startSample(m: WalkMetrics, seedValue: number | null): StartSample {
+  return {
+    seed: seedValue,
+    arrows: m.arrowCount,
+    clearable: m.clearableAtDeal,
+    clearablePct: (m.clearableAtDeal / m.arrowCount) * 100,
+    scan: m.scanTaps,
+    blocked: m.blockedTaps,
+    blockedAtDeal: m.blockedAtDeal,
+    blockedAfterFirstRemoval: m.blockedTaps - m.blockedAtDeal,
+  };
+}
+
+/** Fit-to-view pt per cell from the shipping camera (`initialCamera(..., zoomed=false)`, as BoardView's fit). */
+function cellPtAtFit(vp: { w: number; h: number }, rows: number, cols: number): number {
+  const camera = initialCamera(vp.w, vp.h, cols * BOARD_CELL_UNITS, rows * BOARD_CELL_UNITS, BOARD_CELL_UNITS, false);
+  if (camera === null || camera.scale !== camera.minScale) throw new Error(`no fit camera for ${vp.w}x${vp.h}`);
+  return camera.scale * BOARD_CELL_UNITS;
+}
+
+/** The most columns W3-09's floor admits on the 360 dp viewport (a width-bound board); derived from the camera. */
+function maxLegibleCols(): number {
+  const vp = START_VIEWPORTS[0];
+  let cols = 1;
+  while (cellPtAtFit(vp, 1, cols + 1) >= MIN_LEGIBLE_CELL_PT) cols++;
+  return cols;
+}
+
+function biasId(bias: number | null): string {
+  return bias === null ? 'unset' : `b${bias}`;
+}
+
+function startRow(
+  section: StartSection,
+  id: string,
+  shape: string,
+  rows: number,
+  cols: number,
+  maskCells: number | null,
+  bias: number | null,
+  samples: readonly StartSample[],
+  flags: readonly string[],
+): StartRow {
+  const pick = (f: (x: StartSample) => number) => samples.map(f);
+  const blocked = rowStat(pick((x) => x.blocked));
+  const cellPt = Object.fromEntries(START_VIEWPORTS.map((v) => [v.label, cellPtAtFit(v, rows, cols)]));
+  const allFlags = [...flags];
+  if (cellPt[START_VIEWPORTS[0].label] < MIN_LEGIBLE_CELL_PT) {
+    allFlags.push(`cellPt < ${MIN_LEGIBLE_CELL_PT} at ${START_VIEWPORTS[0].label} dp (W3-09 floor)`);
+  }
+  if (bias !== null && !BRAND_GATE_PASSED_BIASES.includes(bias)) {
+    allFlags.push(`b=${bias} did not pass W3-11's brand gate`);
+  }
+  const medianSample = samples.find((x) => x.blocked === blocked.median) ?? null;
+  return {
+    section, id, shape, rows, cols, maskCells, bias,
+    n: samples.length,
+    arrows: rowStat(pick((x) => x.arrows)),
+    clearable: rowStat(pick((x) => x.clearable)),
+    clearablePct: rowStat(pick((x) => x.clearablePct)),
+    scan: rowStat(pick((x) => x.scan)),
+    blocked,
+    blockedAtDeal: rowStat(pick((x) => x.blockedAtDeal)),
+    blockedAfterFirstRemoval: rowStat(pick((x) => x.blockedAfterFirstRemoval)),
+    cellPt,
+    flags: allFlags,
+    medianSeed: medianSample === null ? null : medianSample.seed,
+    samples: [...samples],
+  };
+}
+
+/** W1-02's authored board, walked with the same walk (no generator call). */
+function tutorialStartRow(id: TutorialId): StartRow {
+  const level = buildTutorialLevel(id);
+  const { rows, cols } = level.board;
+  const m = walkBoard(level.board, level.arrowCount, `tutorial ${id}`);
+  return startRow('tutorial', id, '(authored)', rows, cols, null, null, [startSample(m, null)], []);
+}
+
+/** A shipped (v1) or placeholder (v2, dark) campaign level, as `buildRow` generates it. */
+function levelStartRow(index: number, version: 1 | 2): StartRow {
+  const level = LevelGenerator.generate(index, version);
+  const { rows, cols } = level.board;
+  const maskCells = countTrue(level.mask);
+  const m = walkBoard(level.board, level.arrowCount, `v${version} level index ${index}`);
+  const section: StartSection = version === 1 ? 'v1' : 'v2-placeholder';
+  return startRow(section, `v${version} L${index + 1}`, level.shapeName, rows, cols, maskCells, null, [startSample(m, null)], []);
+}
+
+/**
+ * One candidate: `shape` at `rows` rows, cols = `v2Cols` (v2's sizing formula),
+ * Normal config plus the bias, filled by the shipping `fillMask` with
+ * `DotNetRandom(s)` per seed and walked. An empty raster falls back to the
+ * full grid, as `buildV2` does, and is flagged.
+ */
+function candidateStartRow(
+  shape: ShapeDef,
+  rows: number,
+  bias: number | null,
+  seeds: readonly number[],
+  id: string = `${biasId(bias)}/${rows}/${shape.name}`,
+): StartRow {
+  const cols = v2Cols(rows, shape.aspect);
+  const mask = shape.rasterize(rows, cols);
+  let maskCells = countTrue(mask);
+  const flags: string[] = [];
+  if (maskCells === 0) {
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) mask[r][c] = true;
+    maskCells = rows * cols;
+    flags.push('empty raster: full-grid fallback (as buildV2)');
+  }
+  if (rows < V2_MIN_GRID_ROWS) flags.push(`rows < ${V2_MIN_GRID_ROWS}: below v2's row floor (V2_MIN_GRID_ROWS)`);
+  const cfg = withBias(NORMAL_CFG(), bias);
+  const samples = seeds.map((s) => {
+    const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(s));
+    const board = new BoardLogic(rows, cols);
+    for (const a of arrows) board.add(a);
+    return startSample(walkBoard(board, arrows.length, `${id} seed ${s}`), s);
+  });
+  return startRow('candidate', id, shape.name, rows, cols, maskCells, bias, samples, flags);
+}
+
+/**
+ * v2's board size for a cell target: a replica of `buildV2`'s density-probe fit
+ * (levelGenerator.ts, with its literals: probe at 24 rows, fill floor 0.05,
+ * rows clamped to [V2_MIN_GRID_ROWS, V2_MAX_GRID_DIM]). `buildV2` is not
+ * exported and this task only measures, so `checkV2SizingReplica` compares it
+ * with `generate(i, 2)` before any `--targets` row uses it.
+ */
+function v2SizeForTarget(shape: ShapeDef, targetCells: number): { rows: number; cols: number } {
+  const probeRows = 24;
+  const probeCols = v2Cols(probeRows, shape.aspect);
+  const probeFill = Math.max(0.05, countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols));
+  const rows = clamp(Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect))), V2_MIN_GRID_ROWS, V2_MAX_GRID_DIM);
+  return { rows, cols: v2Cols(rows, shape.aspect) };
+}
+
+/** v2 levels checked against the replica: the corpus W3-10/W3-11 pinned (0-299, `04d0ec7e`). */
+const V2_SIZING_CHECK_LEVELS = 300;
+
+/** Throws unless the replica reproduces `generate(i, 2)`'s rows x cols for every checked level; returns the count. */
+function checkV2SizingReplica(): number {
+  const byName = new Map(bagCandidates().map((s) => [s.name, s] as const));
+  for (let i = 0; i < V2_SIZING_CHECK_LEVELS; i++) {
+    const level = LevelGenerator.generate(i, 2);
+    const shape = byName.get(level.shapeName);
+    if (shape === undefined) throw new Error(`v2 level index ${i}: shape ${level.shapeName} is not a bag candidate`);
+    const { rows, cols } = v2SizeForTarget(shape, level.targetCells);
+    if (rows !== level.board.rows || cols !== level.board.cols) {
+      throw new Error(`v2 sizing replica: level index ${i} ${shape.name} target ${level.targetCells} gives ${rows}x${cols}, `
+        + `generate(i, 2) dealt ${level.board.rows}x${level.board.cols}`);
+    }
+  }
+  return V2_SIZING_CHECK_LEVELS;
+}
+
+/** A (rows, bias) group of candidates across the shape set: pooled over every shape and seed. */
+interface StartSummary {
+  rows: number;
+  rowsRange: { min: number; max: number };
+  bias: number | null;
+  shapes: number;
+  boards: number;
+  maskCells: RowStat; // over shapes
+  cols: { min: number; max: number };
+  arrows: { pooled: number; shapeMin: number; shapeMax: number };
+  clearablePct: { pooled: number; shapeMin: number; shapeMax: number };
+  blocked: { pooled: number; shapeMin: number; shapeMax: number };
+  blockedAtDeal: { pooled: number; shapeMin: number; shapeMax: number };
+  blockedAfterFirstRemoval: { pooled: number; shapeMin: number; shapeMax: number };
+  cellPt360: { min: number; max: number };
+  flaggedShapes: number;
+}
+
+function summarise(group: readonly StartRow[]): StartSummary {
+  const samples = group.flatMap((r) => r.samples);
+  const spread = (rowKey: 'arrows' | 'clearablePct' | 'blocked' | 'blockedAtDeal' | 'blockedAfterFirstRemoval') => {
+    const perShape = group.map((r) => r[rowKey].median);
+    return { pooled: med(samples.map((x) => x[rowKey])), shapeMin: Math.min(...perShape), shapeMax: Math.max(...perShape) };
+  };
+  const vp360 = START_VIEWPORTS[0].label;
+  return {
+    rows: group[0].rows,
+    rowsRange: minMax(group.map((r) => r.rows)),
+    bias: group[0].bias,
+    shapes: group.length,
+    boards: samples.length,
+    maskCells: rowStat(group.map((r) => r.maskCells ?? 0)),
+    cols: minMax(group.map((r) => r.cols)),
+    arrows: spread('arrows'),
+    clearablePct: spread('clearablePct'),
+    blocked: spread('blocked'),
+    blockedAtDeal: spread('blockedAtDeal'),
+    blockedAfterFirstRemoval: spread('blockedAfterFirstRemoval'),
+    cellPt360: minMax(group.map((r) => r.cellPt[vp360])),
+    flaggedShapes: group.filter((r) => r.flags.length > 0).length,
+  };
+}
+
+function startTableHeaders(): string[] {
+  return [
+    'row', 'rows×cols', 'mask cells', 'n', 'arrows median [min–max]', 'arrows mean', 'clearable@0 median (%)',
+    'scan median', 'blocked median [min–max]', 'blocked mean', 'blocked@deal median', 'blocked after 1st removal median',
+    `cellPt ${START_VIEWPORTS.map((v) => v.label).join(' / ')}`, 'median seed', 'blocked < v1 L1', 'flags',
+  ];
+}
+
+function startTableRow(r: StartRow, baselineBlocked: number | null): (string | number)[] {
+  const range = (s: RowStat, digits: number) => (r.n === 1 ? s.median.toFixed(digits) : `${s.median.toFixed(digits)} [${fmtRange(s, digits)}]`);
+  return [
+    r.id,
+    `${r.rows}×${r.cols}`,
+    r.maskCells ?? '-',
+    r.n,
+    range(r.arrows, 0),
+    r.arrows.mean.toFixed(1),
+    `${r.clearable.median} (${r.clearablePct.median.toFixed(1)}%)`,
+    r.scan.median.toFixed(1),
+    range(r.blocked, 1),
+    r.blocked.mean.toFixed(1),
+    r.blockedAtDeal.median.toFixed(1),
+    r.blockedAfterFirstRemoval.median.toFixed(1),
+    START_VIEWPORTS.map((v) => r.cellPt[v.label].toFixed(1)).join(' / '),
+    r.medianSeed ?? '-',
+    baselineBlocked === null ? '-' : r.blocked.median < baselineBlocked ? 'yes' : 'NO',
+    r.flags.join('; ') || '-',
+  ];
+}
+
+function tutorialInvariant(id: TutorialId, r: StartRow): string {
+  const k = r.clearable.median;
+  const n = r.arrows.median;
+  if (id === 'T1') return `W1-02 invariant T1 (every arrow clearable at deal): ${k}/${n} clearable, ${k === n ? 'holds' : 'BROKEN'}`;
+  return `W1-02 invariant T2 (exactly 1 clearable at deal): ${k}/${n} clearable, ${k === 1 ? 'holds' : 'BROKEN'}`;
+}
+
+function runTutorial(opts: Options): void {
+  const rows = opts.tutorials.map((id) => ({ id, row: tutorialStartRow(id) }));
+  if (opts.json) {
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'tutorial', viewports: START_VIEWPORTS,
+      boards: rows.map(({ id, row }) => ({ ...row, invariant: tutorialInvariant(id, row) })),
+    }, null, 2));
+    return;
+  }
+  printHonestyBound();
+  console.log(`W1-02 tutorial boards (src/core/tutorialLevels.ts, BoardLogic.parse; no generator call), same walk as every probe row.`);
+  console.log('');
+  console.log(table(startTableHeaders(), rows.map(({ row }) => startTableRow(row, null))));
+  console.log('');
+  for (const { id, row } of rows) console.log(tutorialInvariant(id, row));
+}
+
+function runStartSweep(opts: Options): void {
+  const seeds = seedList(opts);
+  const shapes: readonly ShapeDef[] = opts.shapesGiven ? opts.sweepShapes.map(shapeByName) : bagCandidates();
+  const settings: (number | null)[] = [null, ...opts.biases];
+  const [v1Lo, v1Hi] = START_SWEEP_V1_LEVELS;
+
+  const tutorials = (['T1', 'T2'] as const).map((id) => tutorialStartRow(id));
+  const v1Rows: StartRow[] = [];
+  const v2Rows: StartRow[] = [];
+  for (let displayed = v1Lo; displayed <= v1Hi; displayed++) {
+    v1Rows.push(levelStartRow(displayed - 1, 1));
+    v2Rows.push(levelStartRow(displayed - 1, 2));
+  }
+  const baseline = v1Rows[0];
+  const baselineBlocked = baseline.blocked.median;
+
+  const candidates: StartRow[] = [];
+  for (const bias of settings) {
+    for (let rows = opts.sweepRows[0]; rows <= opts.sweepRows[1]; rows++) {
+      for (const shape of shapes) candidates.push(candidateStartRow(shape, rows, bias, seeds));
+    }
+  }
+  const summaries: StartSummary[] = [];
+  for (const bias of settings) {
+    for (let rows = opts.sweepRows[0]; rows <= opts.sweepRows[1]; rows++) {
+      summaries.push(summarise(candidates.filter((r) => r.bias === bias && r.rows === rows)));
+    }
+  }
+
+  // --targets: every shape sized to each cell target by v2's own fit, i.e. level 1 whatever shape the bag deals.
+  const sizingChecked = opts.targets.length > 0 ? checkV2SizingReplica() : 0;
+  const targetRows: StartRow[] = [];
+  const targetSummaries: { target: number; summary: StartSummary }[] = [];
+  for (const bias of settings) {
+    for (const target of opts.targets) {
+      const group = shapes.map((shape) =>
+        candidateStartRow(shape, v2SizeForTarget(shape, target).rows, bias, seeds, `${biasId(bias)}/T${target}/${shape.name}`));
+      targetRows.push(...group);
+      targetSummaries.push({ target, summary: summarise(group) });
+    }
+  }
+
+  const below = candidates.filter((r) => r.blocked.median < baselineBlocked);
+  const notBelow = candidates.filter((r) => !(r.blocked.median < baselineBlocked));
+
+  // Admissibility for a level-1 window: capacity at the clamp against each candidate's own cell count.
+  const capacities = bagCandidates().map((s) => ({ name: s.name, capacity: shapeCapacity(s) }));
+  const minCap = capacities.reduce((a, b) => (b.capacity < a.capacity ? b : a));
+  const maxCandidateCells = Math.max(...candidates.map((r) => r.maskCells ?? 0));
+  const inadmissible = candidates.filter((r) => (r.maskCells ?? 0) > (capacities.find((c) => c.name === r.shape)?.capacity ?? 0));
+  // Illustration only: which shapes window 0 would deal if a curve admitted every candidate there.
+  const allAdmitted: typeof placeholderWindowMaxTarget = () => 0;
+  const window0 = bagWindowFor(0, allAdmitted);
+  const legibleCols = maxLegibleCols();
+
+  if (opts.json) {
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'start-sweep', viewports: START_VIEWPORTS, minLegibleCellPt: MIN_LEGIBLE_CELL_PT,
+      maxLegibleCols360: legibleCols, brandGatePassedBiases: BRAND_GATE_PASSED_BIASES, biases: settings,
+      rows: opts.sweepRows, seeds: opts.sweepSeeds, shapes: shapes.map((s) => s.name),
+      firstSession: [...tutorials, ...v1Rows], v2Placeholder: v2Rows, candidates, summaries,
+      baseline: { id: baseline.id, blocked: baselineBlocked },
+      belowBaseline: { count: below.length, of: candidates.length, ids: below.map((r) => r.id) },
+      notBelowBaseline: notBelow.map((r) => r.id),
+      admissibility: { minCapacity: minCap, maxCandidateCells, inadmissible: inadmissible.map((r) => r.id) },
+      window0IfAllAdmitted: window0.order.map((s) => s.name),
+      targets: opts.targets, v2SizingReplicaCheckedLevels: sizingChecked, targetSummaries, targetRows,
+    }, null, 2));
+    return;
+  }
+
+  printHonestyBound();
+  console.log('W3-12 start sweep: the first session and the level-1 candidates on one table, in play order.');
+  console.log(`Candidates: ${shapes.length} shapes x rows ${opts.sweepRows[0]}-${opts.sweepRows[1]} (cols = v2Cols(rows, aspect)) `
+    + `x b in {${settings.map(biasLabel).join(', ')}} x DotNetRandom(s), s = ${seeds[0]}..${seeds[seeds.length - 1]}; `
+    + `Normal config (level 1 is Normal); ${candidates.length} rows, n = ${seeds.length} boards each.`);
+  console.log('Each candidate cell is the median over its seeds (the probe\'s median), with [min–max]; "blocked mean" is the plain mean '
+    + '(the red team quoted means). T/v1 rows are fixed boards (n = 1).');
+  console.log('blocked@deal = (n-k)/(k+1) in the deal state: the wrong looks W1-06\'s assist forgives (no heart before a board\'s first '
+    + 'removal). blocked after 1st removal = blocked - blocked@deal: what hearts pay for with the assist ON.');
+  console.log(`cellPt = fit-to-view pt per cell from the shipping initialCamera on the board viewports W3-08 logged: `
+    + `${START_VIEWPORTS.map((v) => `${v.label} = ${v.w.toFixed(2)}x${v.h.toFixed(2)} dp`).join(', ')}. `
+    + `W3-09 floor: ${MIN_LEGIBLE_CELL_PT} pt, i.e. at most ${legibleCols} columns at ${START_VIEWPORTS[0].label} dp.`);
+  console.log(`Bias: W3-11's brand gate passed only b = ${BRAND_GATE_PASSED_BIASES.join(', ')}; any other b is flagged.`);
+  console.log(`"median seed" = the lowest seed whose blocked equals the row median (the board to screenshot). `
+    + `"blocked < v1 L1" compares the median with v1 level 1's measured ${baselineBlocked.toFixed(1)}.`);
+
+  console.log('');
+  console.log('First session (fixed boards, play order): W1-02 tutorials, then v1 levels 1-5 (v1 L1 = the baseline row).');
+  console.log('');
+  console.log(table(startTableHeaders(), [...tutorials, ...v1Rows].map((r) => startTableRow(r, r === baseline ? null : baselineBlocked))));
+  console.log('');
+  console.log(tutorialInvariant('T1', tutorials[0]));
+  console.log(tutorialInvariant('T2', tutorials[1]));
+
+  console.log('');
+  console.log('For reference: generator v2 levels 1-5 as dealt today (placeholder curve, dark behind GEN_V2_ENABLED).');
+  console.log('');
+  console.log(table(startTableHeaders(), v2Rows.map((r) => startTableRow(r, baselineBlocked))));
+
+  console.log('');
+  console.log('Candidates by (rows, b) across the shape set: pooled median over every shape x seed board, '
+    + 'with the per-shape medians\' min–max in brackets.');
+  console.log('');
+  const pooled = (x: { pooled: number; shapeMin: number; shapeMax: number }, digits: number) =>
+    `${x.pooled.toFixed(digits)} [${x.shapeMin.toFixed(digits)}–${x.shapeMax.toFixed(digits)}]`;
+  console.log(table(
+    ['rows', 'b', 'shapes x seeds', 'mask cells median [min–max]', 'cols', 'arrows', 'clearable@0 %', 'blocked',
+      'blocked@deal', 'blocked after 1st removal', `cellPt ${START_VIEWPORTS[0].label} [min–max]`, 'flagged shapes'],
+    summaries.map((s) => [
+      s.rows, biasLabel(s.bias), `${s.shapes} x ${seeds.length} = ${s.boards}`,
+      `${s.maskCells.median} [${s.maskCells.min}–${s.maskCells.max}]`, `${s.cols.min}–${s.cols.max}`,
+      pooled(s.arrows, 0), pooled(s.clearablePct, 1), pooled(s.blocked, 1), pooled(s.blockedAtDeal, 1),
+      pooled(s.blockedAfterFirstRemoval, 1), `${s.cellPt360.min.toFixed(1)}–${s.cellPt360.max.toFixed(1)}`,
+      s.flaggedShapes,
+    ]),
+  ));
+
+  for (const bias of settings) {
+    console.log('');
+    console.log(`Candidate rows, b = ${biasLabel(bias)}${bias !== null && !BRAND_GATE_PASSED_BIASES.includes(bias) ? ' (FLAGGED: not a brand-gate pass)' : ''}:`);
+    console.log('');
+    console.log(table(startTableHeaders(), candidates.filter((r) => r.bias === bias).map((r) => startTableRow(r, baselineBlocked))));
+  }
+
+  if (opts.targets.length > 0) {
+    console.log('');
+    console.log(`Level 1 at a cell target, whatever shape the bag deals: every shape sized to the target by v2's own fit `
+      + `(a replica of buildV2's sizing, checked against generate(i, 2) rows x cols on v2 levels 0-${sizingChecked - 1}: all match), `
+      + 'then filled and walked like the rows above. Pooled median over every shape x seed, per-shape medians\' min–max in brackets.');
+    console.log('');
+    console.log(table(
+      ['target cells', 'b', 'shapes x seeds', 'rows', 'cols', 'mask cells median [min–max]', 'arrows', 'clearable@0 %', 'blocked',
+        'blocked@deal', 'blocked after 1st removal', `cellPt ${START_VIEWPORTS[0].label} [min–max]`, 'flagged shapes'],
+      targetSummaries.map(({ target, summary: s }) => [
+        target, biasLabel(s.bias), `${s.shapes} x ${seeds.length} = ${s.boards}`, `${s.rowsRange.min}–${s.rowsRange.max}`,
+        `${s.cols.min}–${s.cols.max}`, `${s.maskCells.median} [${s.maskCells.min}–${s.maskCells.max}]`,
+        pooled(s.arrows, 0), pooled(s.clearablePct, 1), pooled(s.blocked, 1), pooled(s.blockedAtDeal, 1),
+        pooled(s.blockedAfterFirstRemoval, 1), `${s.cellPt360.min.toFixed(1)}–${s.cellPt360.max.toFixed(1)}`, s.flaggedShapes,
+      ]),
+    ));
+    console.log('');
+    console.log('Per shape at each target (row = <b>/T<target>/<shape>):');
+    console.log('');
+    console.log(table(startTableHeaders(), targetRows.map((r) => startTableRow(r, baselineBlocked))));
+  }
+
+  console.log('');
+  console.log(`Rows whose median blocked is below v1 level 1's measured ${baselineBlocked.toFixed(1)}: `
+    + `${below.length} of ${candidates.length} candidate rows (the "yes" rows above)`
+    + (notBelow.length === 0 ? '; none is at or above it.' : `; at or above it: ${notBelow.map((r) => r.id).join(', ')}.`));
+  console.log(`Admissible shapes: the ${capacities.length} bag candidates' smallest capacity at the clamp (V2_MAX_GRID_DIM = ${V2_MAX_GRID_DIM}) `
+    + `is ${minCap.capacity} (${minCap.name}); the largest candidate board here holds ${maxCandidateCells} cells; `
+    + `candidate rows above their own shape's capacity: ${inadmissible.length === 0 ? 'none' : inadmissible.map((r) => r.id).join(', ')}.`);
+  console.log(`Which shape level 1 gets is the bag's pick, not a row's: if a curve admitted every candidate to window 0, `
+    + `the bag would deal ${window0.order.slice(0, 5).map((s) => s.name).join(', ')} at levels 1-5 `
+    + `(bagWindowFor(0) with a window max target of 0; W3-14's curve sets the real window).`);
+}
+
 // ---- Entry point --------------------------------------------------------
 
 function runMode(mode: Mode, opts: Options): void {
@@ -1296,6 +1888,8 @@ function runMode(mode: Mode, opts: Options): void {
     case 'clamp-shortfall': return runClampShortfall(opts);
     case 'size-sweep': return runSizeSweep(opts);
     case 'transfer': return runTransfer(opts);
+    case 'start-sweep': return runStartSweep(opts);
+    case 'tutorial': return runTutorial(opts);
   }
 }
 
