@@ -84,6 +84,21 @@ test.each([
   expect(checksumLines(serialize(level))).toBe(expected);
 });
 
+// V2-FINISH: the whole first year, pinned. The three goldens above did not
+// notice the daily switching to generator v2's ExactDotNetRandom (mutation
+// P2-M6 in docs/next-level/reports/V2-FINISH.md survived them): the daily
+// is frozen on the DotNetRandom port. Computed EXECUTED as W3-10 defined it,
+// checksumLines(days.map((d) => shapeName + ':' + checksumLines(serialize(d)))),
+// and equal to the value W3-05, W3-10 and W3-14 recomputed in scratch.
+test('daily 0..364 keeps its combined fingerprint (ff12d7b5)', () => {
+  const days: string[] = [];
+  for (let d = 0; d < 365; d++) {
+    const level = generateDaily(d);
+    days.push(`${level.shapeName}:${checksumLines(serialize(level))}`);
+  }
+  expect(checksumLines(days)).toBe('ff12d7b5');
+});
+
 test('daily boards draw Normal config from the daily pool', () => {
   for (const day of [0, 1, 2450, 9999]) {
     const level = generateDaily(day);

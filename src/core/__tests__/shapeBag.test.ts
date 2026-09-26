@@ -3,7 +3,7 @@ import { EMPTY_SHAPE_MASKS, foldLevels } from '../collection';
 import { V1_TIER_TEXTURE, V2_CURVE, type CurveTable } from '../curve';
 import { dailySeed } from '../dailyBoard';
 import { Difficulties } from '../difficulty';
-import { DotNetRandom } from '../dotnetRandom';
+import { DotNetRandom, ExactDotNetRandom } from '../dotnetRandom';
 import { LevelGenerator, seed, shapeNameForLevel, type GeneratedLevel } from '../levelGenerator';
 import {
   MIN_LEGIBLE_CELL_PT,
@@ -339,9 +339,11 @@ describe('W3-10 bag invariants over v2 levels 0-1999', () => {
     expect(v2Rows().filter((r) => r.cols > COLS_CAP || r.rows > ROWS_CAP)).toEqual([]);
   });
 
-  test('v2\'s target is the first draw of the level\'s DotNetRandom(seed(i)) (the bag draws nothing from it)', () => {
+  test('v2\'s target is the first draw of the level\'s ExactDotNetRandom(seed(i)) (the bag draws nothing from it)', () => {
+    // V2-FINISH: v2's level stream is the exact .NET stream (dotnetRandom.test.ts
+    // proves the whole board is a rebuild from it).
     const bad = v2Rows()
-      .filter((r) => r.targetCells !== new DotNetRandom(seed(r.index)).next(r.minCells, r.maxCells + 1))
+      .filter((r) => r.targetCells !== new ExactDotNetRandom(seed(r.index)).next(r.minCells, r.maxCells + 1))
       .map((r) => r.index);
     expect(bad).toEqual([]);
   });
@@ -387,7 +389,7 @@ describe('W3-10 bag construction (the brief\'s algorithm, reimplemented here)', 
     for (let ordinal = 0; ordinal < 2000; ordinal++) {
       const window = bagWindowFor(ordinal * 8, placeholderWindowMaxTarget);
       const order = SHAPE_CATALOGUE.filter((id) => AT_LEAST_720.includes(id));
-      const rng = new DotNetRandom(bagSeed(ordinal));
+      const rng = new ExactDotNetRandom(bagSeed(ordinal)); // V2-FINISH: v2's exact stream
       for (let i = order.length - 1; i > 0; i--) {
         const j = rng.next(i + 1);
         [order[i], order[j]] = [order[j], order[i]];
@@ -420,12 +422,15 @@ describe('W3-10 bag construction (the brief\'s algorithm, reimplemented here)', 
     expect(seen.size).toBe(20000);
   });
 
-  test('a full-range seed can draw outside [0, 1) in this port, which is why bag seeds are kept small', () => {
+  test('a full-range seed can draw outside [0, 1) in the frozen port (why W3-10 kept bag seeds small); the exact stream v2 uses cannot', () => {
     // Positive control for the range rule above: campaign seed(58) is a
-    // full-range seed whose stream leaves [0, 1) within 50 draws (W3-10 scan).
+    // full-range seed whose legacy stream leaves [0, 1) within 50 draws (W3-10
+    // scan). V2-FINISH: ExactDotNetRandom, which v2 now draws from, stays in range.
     const r = new DotNetRandom(seed(58));
     const draws = Array.from({ length: 50 }, () => r.nextDouble());
     expect(draws.some((d) => d < 0 || d >= 1)).toBe(true);
+    const e = new ExactDotNetRandom(seed(58));
+    expect(Array.from({ length: 50 }, () => e.nextDouble()).every((d) => d >= 0 && d < 1)).toBe(true);
   });
 });
 

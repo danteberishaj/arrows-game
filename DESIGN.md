@@ -191,10 +191,10 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   the owner's W3-16 pick among `docs/curve-candidates-2026-09-26.md`'s candidates: S400, the
   ceiling at level 400 (the bias falls 3 → 1 over the same ramp).
   **Existing players** (V2-FINISH): an install whose switch level is above 0 played v1 first, so its
-  v2 boards carry a **v1 floor**: base cells at least 333 (Normal 333, Hard 506, Super Hard 598)
-  and no bias above neutral. 333 is the smallest base whose own v2 boards reach v1's per-tier
+  v2 boards carry a **v1 floor**: base cells at least 335 (Normal 335, Hard 509, Super Hard 601)
+  and no bias above neutral. 335 is the smallest base whose own v2 boards reach v1's per-tier
   median arrows over levels 1–3000 (83 / 125 / 150; `npm run analysis:probe -- --version 2
-  --v1-floor`). S400 passes it at level 391, so from its ceiling on the floor changes nothing
+  --v1-floor`). S400 passes it at level 394, so from its ceiling on the floor changes nothing
   but the deal: an existing player's bag is built from the floored targets, so their board is a
   pure function of (level index, switch level).
 - **Full fill, guaranteed solvable** (`LevelGenerator`, `src/core/levelGenerator.ts:22-41`): the

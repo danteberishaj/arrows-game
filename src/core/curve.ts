@@ -102,6 +102,14 @@ export const ARROW_CEILING = 250;
  * arrows, neutral (max 238) and at the bias-tail floor 0.3 (max 248); 340
  * already deals 253 at 0.3. MEASURED 2026-09-26: `npm run analysis:probe --
  * --version 2 --ceiling` (docs/curve-candidates-2026-09-26.md, "Ceiling").
+ *
+ * That measurement dealt v2 from the legacy `DotNetRandom` stream, whose
+ * out-of-range draws carve many short arrows. On `ExactDotNetRandom`
+ * (V2-FINISH part 2) the same scan passes every value up to 370 (max 201
+ * neutral, 210 at 0.3; the scan no longer brackets), so 339 is now
+ * conservative and the probe prints "DIFFERS". It is kept: these cells ARE
+ * S400, the owner's W3-16 pick, so re-measuring it is the owner's call
+ * (docs/next-level/reports/V2-FINISH.md, Concern 2).
  */
 export const CEILING_BASE_CELLS = 339;
 
@@ -109,7 +117,7 @@ export const CEILING_BASE_CELLS = 339;
  * The v1 floor for existing players (V2-FINISH; the owner's W3-16 ruling: "a
  * new board is never smaller than the old generator's size for that tier, so
  * nothing suddenly gets easy"), in base cells on `V1_TIER_TEXTURE` (Normal
- * 333, Hard 506, Super Hard 598).
+ * 335, Hard 509, Super Hard 601).
  *
  * How "v1's size for that tier" is computed: v1 is flat by construction
  * (`Difficulties.config(d)` never reads the level), so its size per tier is
@@ -121,9 +129,12 @@ export const CEILING_BASE_CELLS = 339;
  * larger scanned base up to the ceiling passing too. It is below
  * `CEILING_BASE_CELLS`, so from S400's ceiling on the floor is inert.
  * MEASURED 2026-09-26: `npm run analysis:probe -- --version 2 --v1-floor`
- * (docs/next-level/reports/V2-FINISH.md, part 1).
+ * (docs/next-level/reports/V2-FINISH.md, parts 1 and 2). It measures v2's
+ * own boards, so it moves with v2's stream: 333 on the legacy port (part 1),
+ * 335 on `ExactDotNetRandom` (part 2), whose boards run about one arrow
+ * lighter per tier.
  */
-export const V1_FLOOR_BASE_CELLS = 333;
+export const V1_FLOOR_BASE_CELLS = 335;
 
 /**
  * The shipped v2 curve, dark behind GEN_V2_ENABLED: W3-14's candidate `S400`,

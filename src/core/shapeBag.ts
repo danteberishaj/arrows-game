@@ -34,11 +34,11 @@
  *   admissible count per window (`--candidates`). The W3-10 placeholder (v1's
  *   tier bands, max 720) is kept for tests and the contact sheet.
  * - **Order.** Each window is a Fisher-Yates shuffle of its set (in catalogue
- *   order before the shuffle), seeded with `new DotNetRandom(bagSeed(ordinal))`.
+ *   order before the shuffle), seeded with `new ExactDotNetRandom(bagSeed(ordinal))`.
  *   If the first shape equals the previous level's shape, positions 0 and 1
  *   swap, once (no retry loop), so no shape is dealt twice in a row.
  * - **No RNG from the level.** The bag never touches the level's
- *   `DotNetRandom(seed(i))` stream: calling `pickForLevelV2` any number of
+ *   `ExactDotNetRandom(seed(i))` stream: calling `pickForLevelV2` any number of
  *   times changes no board.
  *
  * Catalogue contract (W4-01): bag membership is derived from
@@ -49,7 +49,7 @@
  */
 import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties } from './difficulty';
-import { DotNetRandom } from './dotnetRandom';
+import { ExactDotNetRandom } from './dotnetRandom';
 import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, shapeDefFor } from './shapeCatalogue';
 import type { ShapeDef } from './shapeLibrary';
 
@@ -290,12 +290,13 @@ export function windowSetAt(
 }
 
 /**
- * .NET's `MSEED`. `DotNetRandom` is exact only for |seed| <= this: a larger
- * seed overflows int32 inside .NET's seeding, which the JS port does not wrap,
- * and its stream can then draw outside [0, 1) from the third draw on (W3-10
- * measured about 23% of full-range seeds doing so within 50 draws, and 0 of
- * 200,000 seeds in range over 1000 draws). A shuffle index outside the array
- * would corrupt a window, so bag seeds stay in range.
+ * .NET's `MSEED`. W3-10 kept bag seeds at or below it because the frozen
+ * `DotNetRandom` port is exact only there (a larger seed overflows int32
+ * inside .NET's seeding, which the port does not wrap, and its stream can draw
+ * outside [0, 1)). Since V2-FINISH the bag shuffles with `ExactDotNetRandom`,
+ * which is exact for every seed; for these seeds both classes draw the same
+ * stream (tested), so keeping the reduction leaves every window's order
+ * exactly as W3-10 dealt it. The range guard in `buildWindow` stays.
  */
 const DOTNET_EXACT_SEED_MAX = 161803398;
 
@@ -323,7 +324,7 @@ const windowCache = new WeakMap<WindowMaxTarget, BagWindow[]>();
 
 function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt: WindowMaxTarget): BagWindow {
   const order = [...windowSetAt(start, wmt)];
-  const rng = new DotNetRandom(bagSeed(ordinal));
+  const rng = new ExactDotNetRandom(bagSeed(ordinal));
   for (let i = order.length - 1; i > 0; i--) {
     const j = rng.next(i + 1);
     if (!(j >= 0 && j <= i)) throw new Error(`shapeBag: window ${ordinal} drew index ${j} outside 0..${i}`);

@@ -66,8 +66,9 @@ describe('V2-FINISH part 1: S400 is the owner\'s curve', () => {
 
 describe('V2-FINISH part 1: the v1 floor', () => {
   test('the floor is measured, sits between level 1 and the ceiling, and every tier\'s floor target is at most S400\'s ceiling target', () => {
-    // MEASURED by `npm run analysis:probe -- --version 2 --v1-floor` (see curve.ts).
-    expect(V1_FLOOR_BASE_CELLS).toBe(333);
+    // MEASURED by `npm run analysis:probe -- --version 2 --v1-floor` (see curve.ts):
+    // 333 on the legacy stream (part 1), 335 on the exact stream (part 2).
+    expect(V1_FLOOR_BASE_CELLS).toBe(335);
     expect(V1_FLOOR_BASE_CELLS).toBeGreaterThan(LEVEL1_TARGET_CELLS);
     expect(V1_FLOOR_BASE_CELLS).toBeLessThanOrEqual(CEILING_BASE_CELLS);
     for (const d of TIERS) expect([d, target(V1_FLOOR_BASE_CELLS, d) <= target(CEILING_BASE_CELLS, d)]).toEqual([d, true]);
@@ -228,16 +229,18 @@ function checksumLines(lines: readonly string[]): string {
 
 test('existing-player v2 corpus pin: generate(i, 2, { switchLevel: 1 }) for 0-299', () => {
   // Serialized exactly like levelGenerator.test.ts's v1 fingerprint and v2 pin.
-  // EXECUTED twice (this test and V2-FINISH's scratch fp.ts). Like the fresh v2
-  // pin it is not frozen: a task that changes v2 content on purpose re-pins it
-  // with its own evidence (W3-21 freezes both).
+  // EXECUTED twice (this test and V2-FINISH's scratch fp.ts). Part 1 pinned
+  // dbe91425; part 2 re-pinned it (the exact int32 RNG, and the floor it
+  // re-measured, 333 -> 335): d5005b0d. Like the
+  // fresh v2 pin it is not frozen: a task that changes v2 content on purpose
+  // re-pins it with its own evidence (W3-21 freezes both).
   const lines: string[] = [];
   for (let i = 0; i < 300; i++) {
     const lvl = LevelGenerator.generate(i, 2, { switchLevel: 1 });
     lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
     for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
   }
-  expect(checksumLines(lines)).toBe('dbe91425');
+  expect(checksumLines(lines)).toBe('d5005b0d');
 });
 
 describe('V2-FINISH part 1: tripwire for W3-21', () => {

@@ -1,7 +1,8 @@
 export { Direction, toDelta, zRotation, fromChar, toChar, opposite } from './direction';
 export { Difficulty, Difficulties } from './difficulty';
 export type { DifficultyConfig } from './difficulty';
-export { DotNetRandom } from './dotnetRandom';
+export { DotNetRandom, ExactDotNetRandom } from './dotnetRandom';
+export type { LevelRng } from './dotnetRandom';
 export { ArrowPath } from './arrowPath';
 export type { Cell } from './arrowPath';
 export { BoardLogic } from './boardLogic';
@@ -21,6 +22,7 @@ export {
   V2_MAX_GRID_ROWS,
   V2_MIN_GRID_ROWS,
   bagCandidates,
+  bagSeed,
   bagWindowFor,
   curveWindowMaxTarget,
   isClampShortfall,

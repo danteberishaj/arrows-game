@@ -3,7 +3,7 @@ import { BoardLogic } from './boardLogic';
 import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
-import { DotNetRandom } from './dotnetRandom';
+import { DotNetRandom, ExactDotNetRandom, type LevelRng } from './dotnetRandom';
 import { hasV1Floor, type GenVersion } from './generatorVersion';
 import {
   curveWindowMaxTarget,
@@ -112,9 +112,11 @@ function generateV1(levelIndex: number): GeneratedLevel {
 /**
  * v2 (W3-10; dark behind GEN_V2_ENABLED). Differs from v1 in these ways:
  * - the cell target comes from W3-14's curve (`Difficulties.configV2(d, i)`,
- *   a point), still taken as the FIRST draw of the level's
- *   `DotNetRandom(seed(i))` (`next(t, t + 1)` is t, and keeps the stream where
- *   W3-10 put it);
+ *   a point), still taken as the FIRST draw of the level's stream
+ *   (`next(t, t + 1)` is t, and keeps the stream where W3-10 put it);
+ * - that stream is `ExactDotNetRandom(seed(i))` (V2-FINISH): .NET's exact
+ *   int32 stream, whose every draw is in [0, 1). v1's `DotNetRandom` port
+ *   leaves [0, 1) for about a quarter of campaign seeds;
  * - the curve also sets W3-11's clearable bias per level;
  * - the shape is the capacity-aware bag's pick (`shapeBag.ts`) over the
  *   curve's windows, which draws nothing from that stream;
@@ -131,7 +133,9 @@ function generateV2(levelIndex: number, knobs?: V2Knobs): GeneratedLevel {
   const curve = knobs?.curve ?? V2_CURVE;
   const v1Floor = v1FloorFor(knobs?.switchLevel);
   const cfg = v2Config(difficulty, levelIndex, curve, v1Floor, knobs);
-  const rng = new DotNetRandom(seed(levelIndex));
+  // V2-FINISH: the exact .NET stream (`DotNetRandom` is not exact for this
+  // seed range; v1 and the daily keep it, frozen).
+  const rng = new ExactDotNetRandom(seed(levelIndex));
 
   const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
   const shape = pickForLevelV2(levelIndex, curveWindowMaxTarget(curve, v1Floor));
@@ -164,7 +168,7 @@ function buildV2(
   shape: ShapeDef,
   difficulty: Difficulty,
   cfg: DifficultyConfig,
-  rng: DotNetRandom,
+  rng: ExactDotNetRandom,
   targetCells: number,
 ): GeneratedLevel {
   const { rows, cols } = v2GridFor(shape, targetCells);
@@ -310,14 +314,15 @@ export const LevelGenerator = {
    * silhouette is fully filled. See the doc above for the peel rule that makes
    * this both complete and solvable. Arrows are kept mostly straight (with a
    * straight neck behind each head and at most one short bend) so they read
-   * cleanly.
+   * cleanly. `rng` is the caller's stream: the frozen `DotNetRandom` for v1
+   * and the daily (via `buildFromShape`), `ExactDotNetRandom` for v2.
    */
   fillMask(
     mask: readonly (readonly boolean[])[],
     rows: number,
     cols: number,
     cfg: DifficultyConfig,
-    rng: DotNetRandom,
+    rng: LevelRng,
   ): ArrowPath[] {
     const need = mask.map((row) => [...row]); // true = a shape cell still waiting to be filled
     const rowFirst = new Int16Array(rows);
