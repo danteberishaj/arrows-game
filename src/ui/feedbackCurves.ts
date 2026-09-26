@@ -4,6 +4,11 @@
  * 0..1 progress; usable from Reanimated worklets.
  */
 
+import { META_BLOCKED_INK_HOLD } from '../featureFlags';
+
+/** W2-09 flag as a plain module constant, so worklets capture a boolean. */
+const BLOCKED_INK_HOLD = META_BLOCKED_INK_HOLD;
+
 /** Blocked bump: the arrow lunges into its lane and springs back. */
 export const BLOCKED_BUMP_MS = 300;
 /** The blocking arrow's flash: hold, then fade back to plain ink. */
@@ -13,8 +18,14 @@ export const FEEDBACK_CLEANUP_MARGIN_MS = 40; // OWNER-PICKED STARTING VALUE
 /** Press preview stroke, relative to the resting stroke. Bold enough to read
  * at 9 pt cells; it draws over the static arrow, so it must fully cover it. */
 export const PRESSED_STROKE_SWELL = 1.6;
-/** Peak bump travel is ~0.22 cell (0.5 x sin x exp at k~0.28). */
+/** Peak bump travel is ~0.22 cell (0.5 x sin x exp at BLOCKED_BUMP_PEAK_K). */
 const BLOCKED_BUMP_AMPLITUDE_CELLS = 0.5;
+
+/**
+ * Progress at which the bump's displacement peaks: d/dk [sin(πk)·e^(−2k)] = 0
+ * where tan(πk) = π/2, so k ≈ 0.3195 (≈ 0.2226 cell). Derived, not picked.
+ */
+export const BLOCKED_BUMP_PEAK_K = Math.atan(Math.PI / 2) / Math.PI;
 
 /** Bump displacement along the exit direction, in cells, at progress k. */
 export function blockedBumpAt(k: number): number {
@@ -50,12 +61,22 @@ export function blockerStrokeSwellAt(k: number, reducedMotion: boolean): number 
   return 1 + 0.6 * (1 - t);
 }
 
-/** Blocked arrow colour mix: 0 = heart, 1 = ink. easeOutQuad, so it flashes
- * the fail colour and settles to ink. Reduced motion: stays heart. */
+/** Blocked arrow colour mix: 0 = heart, 1 = ink (or the missed mark).
+ * easeOutQuad, so it flashes the fail colour and settles to ink. Reduced
+ * motion: stays heart.
+ * META_BLOCKED_INK_HOLD (W2-09): pure heart until the bump's displacement
+ * peaks (BLOCKED_BUMP_PEAK_K, derived), then a smoothstep release to 1 by
+ * k = 1, so the magenta outlasts the lunge instead of finishing before it. */
 export function blockedFlashMixAt(k: number, reducedMotion: boolean): number {
   'worklet';
   if (reducedMotion) return 0;
   const t = Math.min(1, Math.max(0, k));
+  if (BLOCKED_INK_HOLD) {
+    if (t <= BLOCKED_BUMP_PEAK_K) return 0;
+    const f = (t - BLOCKED_BUMP_PEAK_K) / (1 - BLOCKED_BUMP_PEAK_K);
+    // smoothstep release shape: OWNER-PICKED STARTING VALUE (the hold point is derived)
+    return f * f * (3 - 2 * f);
+  }
   return 1 - (1 - t) * (1 - t);
 }
 

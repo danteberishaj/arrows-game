@@ -21,6 +21,7 @@ const NAMED_META_FLAGS = [
   'META_DAILY', // W4-06
   'META_GALLERY', // W4-09
   'META_REVIEW_PROMPT', // W4-11
+  'META_BLOCKED_INK_HOLD', // W2-09
 ];
 
 const savedEnv = { ...process.env };

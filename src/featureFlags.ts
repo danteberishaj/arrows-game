@@ -127,3 +127,12 @@ export const META_GALLERY = process.env.EXPO_PUBLIC_META_GALLERY === '1';
  * sit untouched, exactly as before (rollback).
  */
 export const META_REVIEW_PROMPT = process.env.EXPO_PUBLIC_META_REVIEW_PROMPT === '1';
+
+/**
+ * W2-09: the blocked arrow's magenta outlasts its lunge. The colour mix holds
+ * pure heart until the bump reaches its peak displacement, then releases to
+ * ink (or the missed mark) by k = 1 (src/ui/feedbackCurves.ts
+ * `blockedFlashMixAt`, both renderers). Timing, travel and reduced motion are
+ * unchanged. OFF: the shipped easeOutQuad mix, value for value.
+ */
+export const META_BLOCKED_INK_HOLD = process.env.EXPO_PUBLIC_META_BLOCKED_INK_HOLD === '1';
