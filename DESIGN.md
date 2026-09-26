@@ -125,12 +125,26 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
   "Continue +♥ (ad)" and Retry.
 - **Menu**: `bg`; wordmark (size 56) in the upper-middle, "Level N" beneath it (`accent-light`) with
   the resume level's **difficulty** under that (same colour-coding as the header), big violet
-  Play pill below (`HomeScreen.tsx:68-92`). Generous whitespace. **Top-right: two 44 pt `surface`
-  buttons**, the theme toggle (☀/☾) and the sound toggle (♪ glyph — `accent-core` when on,
-  `heartLost` when off; persisted) (`HomeScreen.tsx:63-66`, `HeaderButton.tsx:35`). Near the
-  bottom, one quiet `ink-dim` **lifetime-stats line** ("N puzzles solved · D-day streak ·
+  Play pill 56 pt below the tier (`HomeScreen.tsx:170-198`). Generous whitespace. **Top-right: two
+  44 pt `surface` buttons**, the theme toggle (☀/☾) and the sound toggle (♪ glyph — `accent-core`
+  when on, `heartLost` when off; persisted) (`HomeScreen.tsx:233-237`, `HeaderButton.tsx:35`).
+  Near the bottom, one quiet `ink-dim` **lifetime-stats line** ("N puzzles solved · D-day streak ·
   best perfect run K") — hidden until the first solve, streak/run parts shown only from 2 up
-  (`HomeScreen.tsx:94-96,102-112`).
+  (`HomeScreen.tsx:261-273,418-431`).
+  - **Entry row** (`META_DAILY`, `META_GALLERY`): one secondary row 4 pt under the Play pill, two
+    quiet `ink-dim` text controls in the tier label's type (SemiBold 15, no pill, no icon) —
+    "Today's board" (after today's clear, "Today's board · done", not pressable) and "Gallery" —
+    split by the stats line's own `   ·   ` separator, which is the whole gap between the two words.
+    Each control's hit box is ≥ 44 × 44 pt, widened 16 pt on its outer side. Hidden until the first
+    solve, like the stats line (`HomeScreen.tsx:200-226`).
+  - **Composition** (from the first solve, whenever `META_DAILY`, `META_GALLERY` or
+    `META_STREAK_FREEZE` is on): the column (wordmark → entry row) is centred in the room between the
+    header buttons and the stats band — two stats lines at the system font scale plus a fixed 56 pt
+    banner reserve — so it is placed once and never moves when the ad loads or fails
+    (`HomeScreen.tsx:239-259,384-406`). The stats line keeps its anchor; when it is too long for one
+    line (360 pt, or "· streak saved" from `META_STREAK_FREEZE`) it wraps centred inside 18 pt side
+    margins and only after a separator (`HomeScreen.tsx:408-431`). Flags OFF, or before the first
+    solve: the menu above, unchanged.
 - **Stats & streaks** (`SaveSystem`, `src/core/saveSystem.ts:85-127`): lifetime **solved count**, a
   **perfect streak** (consecutive clears with no heart lost; current + best), and a **daily play
   streak** (consecutive calendar days with ≥1 solve; reads 0 once broken, `saveSystem.ts:99-109`).
