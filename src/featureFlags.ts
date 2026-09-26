@@ -155,3 +155,12 @@ export const META_HEART_REFILL_POP = process.env.EXPO_PUBLIC_META_HEART_REFILL_P
  * toggle flips the theme in one frame, exactly as before.
  */
 export const META_THEME_TRANSITION = process.env.EXPO_PUBLIC_META_THEME_TRANSITION === '1';
+
+/**
+ * W2-06: the post-clear timeline. The won panel waits for the final exit's last pixel to leave, then a fixed
+ * empty-board hold (EMPTY_BOARD_HOLD_MS) and W5's reveal slot (CLEAR_REVEAL_MS, 0), instead of a flat 450 ms from
+ * the last tap, so the empty board no longer shows for longer after a short last exit than after a long one. The
+ * final exit may be stretched by FINAL_EXIT_FACTOR (1.0 until the owner picks). OFF: the flat 450 ms and the
+ * unchanged final exit, exactly as before (src/ui/gameSessionLifecycle.ts, src/ui/exitToScreenEdge.ts).
+ */
+export const META_POST_CLEAR_TIMELINE = process.env.EXPO_PUBLIC_META_POST_CLEAR_TIMELINE === '1';

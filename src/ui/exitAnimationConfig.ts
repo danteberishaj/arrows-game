@@ -3,8 +3,12 @@ import { PERF_MODE } from '../perfMode';
 const configuredDuration = PERF_MODE
   ? Number(process.env.EXPO_PUBLIC_PERF_EXIT_DURATION_MS)
   : Number.NaN;
-const MIN_EXIT_TRAIL_DURATION_MS = 160;
-const MAX_EXIT_TRAIL_DURATION_MS = 1000;
+/**
+ * The band both native parsers accept (ArrowsBoardView.kt / .swift MIN/MAX_EXIT_DURATION_MS). A payload outside it is
+ * SILENTLY DROPPED there: the arrow vanishes with no motion.
+ */
+export const MIN_EXIT_TRAIL_DURATION_MS = 160;
+export const MAX_EXIT_TRAIL_DURATION_MS = 1000;
 
 /** Short enough to cap overlap during rapid play while remaining directional. */
 export const EXIT_TRAIL_DURATION_MS =
@@ -39,6 +43,25 @@ export function exitTrailDurationMs(screenDistance: number): number {
   const distance = Number.isFinite(screenDistance) ? Math.max(0, screenDistance) : 0;
   const scaled = Math.round(EXIT_TRAIL_BASE_MS + distance * EXIT_TRAIL_MS_PER_SCREEN_POINT);
   return Math.min(EXIT_TRAIL_MAX_DURATION_MS, Math.max(EXIT_TRAIL_DURATION_MS, scaled));
+}
+
+/**
+ * W2-06 (META_POST_CLEAR_TIMELINE): the clearing exit's clock is stretched by this factor (a slower last slither)
+ * before the empty-board hold. 1.0 keeps the speed invariant above (every exit reads at the same speed at every
+ * zoom) and is the recommendation; the owner's candidates are 1.0 and 1.5 (2.0 was excluded: 2 x 320 = 640 ms is a
+ * drift, not a flick). A factor > 1 DELIBERATELY breaks that invariant for the final arrow only.
+ */
+export const FINAL_EXIT_FACTOR = 1.0; // OWNER-PICKED STARTING VALUE
+
+/**
+ * W2-06: the clearing exit's duration: `normalMs x factor`, rounded and kept inside the parsers' band (anything outside
+ * it would make the last arrow vanish with no motion). A benchmark build keeps its pinned duration.
+ */
+export function finalExitDurationMs(normalMs: number, factor: number): number {
+  if (EXIT_TRAIL_DURATION_PINNED) return EXIT_TRAIL_DURATION_MS;
+  if (!Number.isFinite(normalMs)) return EXIT_TRAIL_DURATION_MS;
+  const scaled = Number.isFinite(factor) ? Math.round(normalMs * factor) : Math.round(normalMs);
+  return Math.min(MAX_EXIT_TRAIL_DURATION_MS, Math.max(MIN_EXIT_TRAIL_DURATION_MS, scaled));
 }
 
 /**

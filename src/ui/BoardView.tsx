@@ -18,7 +18,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
-import { META_EXIT_TO_SCREEN_EDGE, META_ZOOMED_CAMERA } from '../featureFlags';
+import { META_EXIT_TO_SCREEN_EDGE, META_POST_CLEAR_TIMELINE, META_ZOOMED_CAMERA } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
@@ -34,10 +34,17 @@ import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
   EXIT_TRAIL_CLEANUP_MARGIN_MS,
   EXIT_TRAIL_STROKE_CELLS,
+  FINAL_EXIT_FACTOR,
   MAX_CONCURRENT_EXIT_TRAILS,
   exitAnimationKind,
 } from './exitAnimationConfig';
-import { exitFadeAt, exitTravelFraction, planExit, type ExitCamera } from './exitToScreenEdge';
+import {
+  exitFadeAt,
+  exitTravelFraction,
+  finalExitPlan,
+  planExit,
+  type ExitCamera,
+} from './exitToScreenEdge';
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS, FEEDBACK_CLEANUP_MARGIN_MS,
@@ -194,8 +201,12 @@ function timeTapOutcome(
 export interface BoardViewProps {
   board: BoardLogic;
   palette: Palette;
-  /** An arrow left the board. `cleared` = it was the last one. */
-  onRemoved: (cleared: boolean) => void;
+  /**
+   * An arrow left the board. `cleared` = it was the last one. `exitVisibleMs` (W2-06; the brief's
+   * `exitDurationMs`) = ms from the tap's exit start until that exit's last pixel is gone (exitToScreenEdge.ts
+   * `visibleMs`); 0 when nothing is drawn (the diagnostic 'none' kind, or no native art for the arrow).
+   */
+  onRemoved: (cleared: boolean, exitVisibleMs: number) => void;
   /**
    * A blocked arrow was tapped. `costsHeart` is false when this arrow has
    * already been charged this level (a probe or an echoed touch, not a new
@@ -566,6 +577,8 @@ export function BoardView({
     }
 
     if (board.tryRemove(owner)) {
+      // Known before the payload is built: W2-06 may stretch the clearing exit.
+      const cleared = board.isCleared();
       if (onTapOutcome) {
         if (PERF_TELEMETRY_TIMING) timeTapOutcome(onTapOutcome, 'exit');
         else onTapOutcome('exit');
@@ -591,13 +604,19 @@ export function BoardView({
         viewportW: measuredLayout.current.w, viewportH: measuredLayout.current.h,
       };
       const exitOptions = { toScreenEdge: META_EXIT_TO_SCREEN_EDGE, reducedMotion };
+      // W2-06 (META_POST_CLEAR_TIMELINE): the clearing exit on FINAL_EXIT_FACTOR x its clock (1.0 = unchanged).
+      const planRemoval = () => finalExitPlan(
+        planExit(owner, CELL, board.rows, board.cols, exitCamera, exitOptions),
+        { enabled: META_POST_CLEAR_TIMELINE, cleared, reducedMotion, factor: FINAL_EXIT_FACTOR },
+      );
+      let exitVisibleMs = 0;
       if (animationKind === 'native-slither') {
         // The retained board view already owns the arrowhead path; it only
         // needs the trail polyline, which is identical to the web slither.
         const arrowIndex = arrowArtCache.indexFor(owner);
         if (arrowIndex !== null) {
-          const { path, durationMs, motion } =
-            planExit(owner, CELL, board.rows, board.cols, exitCamera, exitOptions);
+          const { path, durationMs, motion, visibleMs } = planRemoval();
+          exitVisibleMs = visibleMs;
           setNativeExitAnimation({
             id,
             arrowIndex,
@@ -609,8 +628,8 @@ export function BoardView({
           });
         }
       } else if (animationKind === 'slither') {
-        const { path, durationMs, motion } =
-          planExit(owner, CELL, board.rows, board.cols, exitCamera, exitOptions);
+        const { path, durationMs, motion, visibleMs } = planRemoval();
+        exitVisibleMs = visibleMs;
         const slot = nextExitSlot.current;
         nextExitSlot.current = (slot + 1) % MAX_CONCURRENT_EXIT_TRAILS;
         const previousTimer = exitCleanupTimers[slot];
@@ -633,7 +652,7 @@ export function BoardView({
         }, durationMs + EXIT_TRAIL_CLEANUP_MARGIN_MS);
         exitCleanupTimers[slot] = timer;
       }
-      onRemoved(board.isCleared());
+      onRemoved(cleared, exitVisibleMs);
     } else {
       if (onTapOutcome) {
         if (PERF_TELEMETRY_TIMING) timeTapOutcome(onTapOutcome, 'blocked');

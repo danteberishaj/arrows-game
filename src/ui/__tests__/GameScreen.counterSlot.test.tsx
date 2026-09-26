@@ -92,7 +92,7 @@ test('a removal changes only the digits: the ghost and " left" stay as they were
     const arrow = board.findHint();
     expect(arrow).not.toBeNull();
     board.tryRemove(arrow!);
-    mockBoardViewProps.onRemoved(false);
+    mockBoardViewProps.onRemoved(false, 0);
   });
   const after = counterTexts(screen.getByLabelText('99 left'));
   expect(after[0].props.children).toBe('222');

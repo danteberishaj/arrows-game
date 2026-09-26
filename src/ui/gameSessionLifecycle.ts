@@ -18,6 +18,26 @@ import {
 export const LOSE_PANEL_DELAY_MS = BLOCKER_FLASH_MS + FEEDBACK_CLEANUP_MARGIN_MS;
 export const WON_PANEL_DELAY_MS = 450; // OWNER-PICKED STARTING VALUE
 
+/**
+ * W2-06 (META_POST_CLEAR_TIMELINE): the empty board is held for this long after the final exit's last pixel is gone,
+ * whatever that exit did. OFF, the flat WON_PANEL_DELAY_MS left 130..270 ms (the board-edge exits) or ~265..362 ms
+ * (POLISH-T10's screen-edge exits, computed from exitOnScreenMs' 88..185 ms band) of empty board, depending on how far the last arrow travelled on screen. The
+ * owner's candidates are 250, 350 and 500 (artifacts/W2-06/owner/).
+ */
+export const EMPTY_BOARD_HOLD_MS = 350; // OWNER-PICKED STARTING VALUE
+/** W2-06: the slot W5's clear reveal (W5-17) will take between the hold and the panel. Reserved; W5 sets it. */
+export const CLEAR_REVEAL_MS = 0;
+
+/**
+ * W2-06: the won panel's delay after the clearing tap = the final exit's visible time (when its last pixel is gone,
+ * exitToScreenEdge.ts `visibleMs`) + the empty-board hold + the reveal slot. A non-finite or negative exit time
+ * counts as 0.
+ */
+export function wonPanelDelayMs(exitVisibleMs: number, holdMs: number, revealMs: number): number {
+  const exit = Number.isFinite(exitVisibleMs) ? Math.max(0, exitVisibleMs) : 0;
+  return exit + holdMs + revealMs;
+}
+
 export type GamePhase = 'playing' | 'won' | 'lost';
 export type TerminalPhase = Exclude<GamePhase, 'playing'>;
 

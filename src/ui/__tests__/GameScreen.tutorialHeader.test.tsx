@@ -88,7 +88,7 @@ test('T2: opening line, blocked line and emptied line keep the identical box', (
   expect(blocked).toEqual(opening);
 
   act(() => {
-    mockBoardViewProps.onRemoved(false); // the next successful removal empties the line
+    mockBoardViewProps.onRemoved(false, 0); // the next successful removal empties the line
   });
   expect(screen.queryByText(T2_BLOCKED_LINE)).toBeNull();
   const empty = screen.getByText('', { exact: true });

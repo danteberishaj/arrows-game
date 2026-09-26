@@ -14,13 +14,16 @@ import {
   FEEDBACK_CLEANUP_MARGIN_MS,
 } from '../feedbackCurves';
 import {
+  CLEAR_REVEAL_MS,
   createDailySession,
   createLevelSession,
   createTutorialSession,
+  EMPTY_BOARD_HOLD_MS,
   levelGenVersion,
   LOSE_PANEL_DELAY_MS,
   TerminalTransitionGuard,
   WON_PANEL_DELAY_MS,
+  wonPanelDelayMs,
 } from '../gameSessionLifecycle';
 
 describe('game session lifecycle', () => {
@@ -363,3 +366,36 @@ function mapStore(seed: ReadonlyArray<[string, number]>): IntStore {
     },
   };
 }
+
+describe('W2-06 post-clear timeline (META_POST_CLEAR_TIMELINE)', () => {
+  it('flag OFF keeps the flat won delay of W2-03: 450 ms after the last tap', () => {
+    expect(WON_PANEL_DELAY_MS).toBe(450);
+  });
+
+  it('flag ON: won delay = the final exit\'s visible time + the empty-board hold + the reveal slot', () => {
+    expect(wonPanelDelayMs(120, 350, 0)).toBe(470);
+    expect(wonPanelDelayMs(185, 250, 40)).toBe(475);
+    for (const exit of [0, 88, 132, 185, 278, 1000]) {
+      for (const hold of [250, 350, 500]) {
+        expect(wonPanelDelayMs(exit, hold, CLEAR_REVEAL_MS)).toBe(exit + hold + CLEAR_REVEAL_MS);
+      }
+    }
+  });
+
+  it('so the empty-board hold no longer depends on how far the last arrow travelled', () => {
+    for (const exit of [88, 185, 320]) {
+      expect(wonPanelDelayMs(exit, EMPTY_BOARD_HOLD_MS, CLEAR_REVEAL_MS) - exit).toBe(EMPTY_BOARD_HOLD_MS);
+    }
+  });
+
+  it('a non-finite or negative exit time counts as 0 (the panel can never be scheduled at NaN)', () => {
+    expect(wonPanelDelayMs(Number.NaN, 350, 0)).toBe(350);
+    expect(wonPanelDelayMs(-5, 350, 0)).toBe(350);
+  });
+
+  it('the hold is an owner candidate (350 until the owner picks) and the reveal slot is reserved at 0 for W5', () => {
+    expect([250, 350, 500]).toContain(EMPTY_BOARD_HOLD_MS);
+    expect(EMPTY_BOARD_HOLD_MS).toBe(350);
+    expect(CLEAR_REVEAL_MS).toBe(0);
+  });
+});

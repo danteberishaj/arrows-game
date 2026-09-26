@@ -24,6 +24,7 @@ const NAMED_META_FLAGS = [
   'META_BLOCKED_INK_HOLD', // W2-09
   'META_HEART_REFILL_POP', // W2-07
   'META_THEME_TRANSITION', // W2-08
+  'META_POST_CLEAR_TIMELINE', // W2-06
 ];
 
 const savedEnv = { ...process.env };

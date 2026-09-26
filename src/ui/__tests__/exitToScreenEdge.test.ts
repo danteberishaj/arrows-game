@@ -1,7 +1,8 @@
 import { ArrowPath, Direction } from '../../core';
 import { slitherPath } from '../arrowGeometry';
-import { exitTrailDurationMs } from '../exitAnimationConfig';
+import { exitTrailDurationMs, finalExitDurationMs } from '../exitAnimationConfig';
 import {
+  EXIT_EDGE_AA_PT,
   EXIT_EDGE_FADE_START,
   EXIT_EDGE_LAUNCH,
   EXIT_EDGE_MARGIN_FRACTION,
@@ -11,6 +12,7 @@ import {
   exitExtent,
   exitFadeAt,
   exitTravelFraction,
+  finalExitPlan,
   planExit,
   visibleBoardRect,
 } from '../exitToScreenEdge';
@@ -181,6 +183,104 @@ describe('planExit', () => {
       const plan = planExit(right, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false });
       expect(plan.path).toEqual(slitherPath(right, CELL, 20, 20));
       expect(plan.motion).toBeNull();
+    }
+  });
+});
+
+/**
+ * W2-06: the post-clear timeline needs the moment the final exit's LAST PIXEL is gone, not the exit's clock. With
+ * POLISH-T10 the clock runs on past the screen edge (the slow-down happens off screen) and the renderer stops at endMs
+ * (the whole arrow past the extent), so `durationMs` overstates what the eye sees by up to ~800 ms.
+ */
+describe('W2-06 visibleMs: when the exit\'s last pixel is gone', () => {
+  it('board-edge exits (flag OFF, reduced motion, no layout) fade out at k = 1: visibleMs = durationMs', () => {
+    for (const opts of [{ toScreenEdge: false, reducedMotion: false }, { toScreenEdge: true, reducedMotion: true },
+      { toScreenEdge: false, reducedMotion: true }]) {
+      for (const arrow of [right, up, left, down]) {
+        const plan = planExit(arrow, CELL, 20, 20, camera, opts);
+        expect(plan.visibleMs).toBe(plan.durationMs);
+      }
+    }
+  });
+
+  it('flag ON: the clock at which the tail cap and its anti-aliased edge cross the visible edge, never past endMs', () => {
+    const tall = { tx: 10, ty: -100, scale: 0.8, viewportW: 400, viewportH: 900 };
+    const cases: [ArrowPath, number, number, typeof camera][] = [
+      [right, 780 - 140, 136.8, camera], [up, 140 - -40, 96.8, camera], [left, 460 - -20, 56.8, camera],
+      [down, 1250 - 580, 96.8, tall], [right, 1300 - 140, 136.8, { ...camera, scale: 0.3 }],
+    ];
+    for (const [arrow, e, b, cam] of cases) {
+      const plan = planExit(arrow, CELL, 20, 20, cam, { toScreenEdge: true, reducedMotion: false });
+      const run = e + b + 5.2 + EXIT_EDGE_AA_PT / cam.scale;
+      const k = exitClockAt(run / plan.path.totalLen, EXIT_EDGE_LAUNCH);
+      expect(plan.visibleMs).toBe(Math.ceil(k * plan.durationMs));
+      expect(plan.visibleMs).toBeGreaterThan(0);
+      expect(plan.visibleMs).toBeLessThanOrEqual(plan.motion?.endMs ?? plan.durationMs);
+      // POLISH-T10 puts the visible run (without the AA edge) at 88..185 ms.
+      expect(plan.visibleMs).toBeLessThan(plan.durationMs);
+    }
+  });
+});
+
+describe('W2-06 finalExitPlan', () => {
+  const on = { toScreenEdge: true, reducedMotion: false };
+  const cleared = { enabled: true, cleared: true, reducedMotion: false };
+
+  it('returns the very same plan unless the flag is on, the board is cleared and motion is not reduced', () => {
+    const plan = planExit(right, CELL, 20, 20, camera, on);
+    for (const ctx of [{ ...cleared, enabled: false }, { ...cleared, cleared: false }, { ...cleared, reducedMotion: true }]) {
+      expect(finalExitPlan(plan, { ...ctx, factor: 1.5 })).toBe(plan);
+    }
+  });
+
+  it('factor 1 (the starting value) is the same plan: the final exit and its payload are unchanged', () => {
+    const plan = planExit(up, CELL, 20, 20, camera, on);
+    expect(finalExitPlan(plan, { ...cleared, factor: 1.0 })).toBe(plan);
+  });
+
+  it('factor 1.5 stretches the whole clock: duration, endMs and visibleMs scale together; path and curve do not', () => {
+    for (const arrow of [right, up, left, down]) {
+      const plan = planExit(arrow, CELL, 20, 20, camera, on);
+      const slow = finalExitPlan(plan, { ...cleared, factor: 1.5 });
+      const r = slow.durationMs / plan.durationMs;
+      expect(slow.durationMs).toBe(finalExitDurationMs(plan.durationMs, 1.5));
+      expect(slow.path).toBe(plan.path);
+      expect(slow.motion?.fadeStart).toBe(plan.motion?.fadeStart);
+      expect(slow.motion?.launch).toBe(plan.motion?.launch);
+      expect(slow.visibleMs).toBe(Math.min(slow.durationMs, Math.ceil(plan.visibleMs * r)));
+      if (plan.motion?.endMs !== undefined) {
+        const endMs = Math.ceil(plan.motion.endMs * r);
+        expect(slow.motion?.endMs).toBe(endMs < slow.durationMs ? endMs : undefined);
+      }
+      // Every stretched exit still parses: 160..1000 ms, endMs in 1..durationMs.
+      expect(slow.durationMs).toBeGreaterThanOrEqual(160);
+      expect(slow.durationMs).toBeLessThanOrEqual(1000);
+      if (slow.motion?.endMs !== undefined) {
+        expect(slow.motion.endMs).toBeGreaterThanOrEqual(1);
+        expect(slow.motion.endMs).toBeLessThan(slow.durationMs);
+      }
+    }
+  });
+
+  it('a board-edge exit (no motion tokens) keeps none and fades out at its new end', () => {
+    const plan = planExit(right, CELL, 20, 20, camera, { toScreenEdge: false, reducedMotion: false });
+    const slow = finalExitPlan(plan, { ...cleared, factor: 1.5 });
+    expect(slow.motion).toBeNull();
+    expect(slow.durationMs).toBe(finalExitDurationMs(plan.durationMs, 1.5));
+    expect(slow.visibleMs).toBe(slow.durationMs);
+  });
+
+  it('the native payload keeps its token layout (no wire-format change)', () => {
+    const event = (p: ReturnType<typeof planExit>) => serializeNativeExitAnimation({
+      id: 7, arrowIndex: 2, durationMs: p.durationMs, reducedMotion: false,
+      path: p.path, trailStrokeWidth: 10.4, motion: p.motion,
+    }).split(',').length;
+    for (const arrow of [right, up, left, down]) {
+      const plan = planExit(arrow, CELL, 20, 20, camera, on);
+      const slow = finalExitPlan(plan, { ...cleared, factor: 1.5 });
+      const hadEnd = plan.motion?.endMs !== undefined;
+      const hasEnd = slow.motion?.endMs !== undefined;
+      expect(event(slow)).toBe(event(plan) - (hadEnd && !hasEnd ? 1 : 0));
     }
   });
 });

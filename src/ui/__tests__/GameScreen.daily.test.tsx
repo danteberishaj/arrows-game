@@ -130,7 +130,7 @@ function winBoard(screen: ReturnType<typeof renderGame>, primaryLabel: string) {
   const board = mockBoardViewProps!.board;
   act(() => {
     for (const arrow of [...board.arrows()]) board.tryRemove(arrow);
-    mockBoardViewProps!.onRemoved(true);
+    mockBoardViewProps!.onRemoved(true, 0);
   });
   act(() => {
     jest.advanceTimersByTime(WON_PANEL_DELAY_MS);

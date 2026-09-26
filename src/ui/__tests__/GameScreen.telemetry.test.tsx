@@ -6,6 +6,14 @@ import { Daylight } from '../theme';
 import { createMemorySink, noopSink, Telemetry } from '../../telemetry/telemetry';
 
 let mockBoardViewProps: BoardViewProps;
+const mockFlags = { META_POST_CLEAR_TIMELINE: false };
+
+// W2-06 (ruling F07): the flag-ON case below reads META_POST_CLEAR_TIMELINE through this getter.
+jest.mock('../../featureFlags', () =>
+  Object.defineProperties(
+    { ...jest.requireActual('../../featureFlags') },
+    { META_POST_CLEAR_TIMELINE: { get: () => mockFlags.META_POST_CLEAR_TIMELINE, enumerable: true } },
+  ));
 
 jest.mock('../BoardView', () => ({
   BoardView: (props: BoardViewProps) => {
@@ -26,9 +34,13 @@ jest.mock('../ads', () => ({
 }));
 
 describe('GameScreen telemetry', () => {
-  afterEach(() => Telemetry.useSink(noopSink));
+  afterEach(() => {
+    Telemetry.useSink(noopSink);
+    mockFlags.META_POST_CLEAR_TIMELINE = false;
+  });
 
-  test('emits one cleared level with every exit tap counted', () => {
+  test.each([false, true])('emits one cleared level with every exit tap counted (W2-06 post-clear timeline %s)', (postClear) => {
+    mockFlags.META_POST_CLEAR_TIMELINE = postClear;
     const sink = createMemorySink(Number.MAX_SAFE_INTEGER);
     Telemetry.configure({ validate: true, disabled: false });
     Telemetry.useSink(sink);
@@ -49,10 +61,10 @@ describe('GameScreen telemetry', () => {
     act(() => {
       for (let index = 0; index < arrowCount - 1; index += 1) {
         mockBoardViewProps.onTapOutcome?.('exit');
-        mockBoardViewProps.onRemoved(false);
+        mockBoardViewProps.onRemoved(false, 150);
       }
       mockBoardViewProps.onTapOutcome?.('exit');
-      mockBoardViewProps.onRemoved(true);
+      mockBoardViewProps.onRemoved(true, 185);
     });
 
     const starts = sink.events.filter((event) => event.name === 'level_start');

@@ -11,6 +11,7 @@ import {
   exitLaunchDurationMs,
   exitOnScreenMs,
   exitTrailDurationMs,
+  finalExitDurationMs,
 } from './exitAnimationConfig';
 import type { ExitMotion } from './nativeExitAnimation';
 
@@ -120,6 +121,12 @@ export interface PlannedExit {
   durationMs: number;
   /** null = today's fade/curve and the pre-T3 native payload. */
   motion: ExitMotion | null;
+  /**
+   * W2-06: ms from the launch until the exit's last pixel is gone (JS only; not part of the native payload). A
+   * board-edge exit (no motion) fades out at k = 1: `durationMs`. A screen-edge exit leaves the screen by motion at
+   * the clock where its tail cap and anti-aliased edge cross the visible edge; the rest of its clock runs off screen.
+   */
+  visibleMs: number;
 }
 
 /**
@@ -151,7 +158,8 @@ export function planExit(
   const hasLayout = camera.scale > 0 && camera.viewportW >= 1 && camera.viewportH >= 1;
   if (!options.toScreenEdge || options.reducedMotion || !hasLayout) {
     const path = slitherPath(arrow, cell, rows, cols);
-    return { path, durationMs: exitTrailDurationMs(path.totalLen * camera.scale), motion: null };
+    const durationMs = exitTrailDurationMs(path.totalLen * camera.scale);
+    return { path, durationMs, motion: null, visibleMs: durationMs };
   }
   const extent = exitExtent(camera);
   let path = slitherPath(arrow, cell, rows, cols, extent);
@@ -164,13 +172,16 @@ export function planExit(
   }
   const onScreenClock = exitClockAt(run / path.totalLen, EXIT_EDGE_LAUNCH);
   const durationMs = exitLaunchDurationMs(exitOnScreenMs(run * camera.scale), onScreenClock);
+  const aa = EXIT_EDGE_AA_PT / camera.scale;
+  // W2-06: the last pixel (the tail cap's anti-aliased edge) crosses the visible edge here.
+  const lastPixelClock = exitClockAt((run + aa) / path.totalLen, EXIT_EDGE_LAUNCH);
   const full: PlannedExit = {
     path,
     durationMs,
     motion: { fadeStart: EXIT_EDGE_FADE_START, launch: EXIT_EDGE_LAUNCH },
+    visibleMs: Math.min(durationMs, Math.ceil(lastPixelClock * durationMs)),
   };
   if (EXIT_TRAIL_DURATION_IS_PINNED || options.truncate === false) return full;
-  const aa = EXIT_EDGE_AA_PT / camera.scale;
   const pastExtent = Math.max(0, headDistanceToRectEdge(arrow, cell, extent)) + path.bodyLen + cap + aa;
   const motion = endAtExtent(full, pastExtent);
   return motion === null ? full : { ...full, motion };
@@ -193,4 +204,31 @@ export function endAtExtent(full: PlannedExit, pastExtentTravel: number): ExitMo
   const endMs = Math.ceil(exitClockAt(pastExtentTravel / full.path.totalLen, motion.launch) * full.durationMs);
   if (endMs >= full.durationMs) return null;
   return { ...motion, endMs };
+}
+
+/**
+ * W2-06 (META_POST_CLEAR_TIMELINE): the clearing exit, stretched by `factor` (FINAL_EXIT_FACTOR). The same exit on a
+ * longer clock: path, travel curve and fade are unchanged, and `endMs` and `visibleMs` keep their share of the clock,
+ * so the renderer still stops only once the whole arrow is past the extent (an unscaled endMs would stop a slowed
+ * exit while the arrow is still on screen). Returns the very same plan when the flag is off, the board is not cleared,
+ * motion is reduced (the reduced native fade keeps its duration) or the factor leaves the duration unchanged.
+ */
+export function finalExitPlan(
+  plan: PlannedExit,
+  { enabled, cleared, reducedMotion, factor }: { enabled: boolean; cleared: boolean; reducedMotion: boolean; factor: number },
+): PlannedExit {
+  if (!enabled || !cleared || reducedMotion) return plan;
+  const durationMs = finalExitDurationMs(plan.durationMs, factor);
+  if (durationMs === plan.durationMs) return plan;
+  const r = durationMs / plan.durationMs;
+  const visibleMs = Math.min(durationMs, Math.ceil(plan.visibleMs * r));
+  if (plan.motion === null) return { ...plan, durationMs, visibleMs };
+  const { endMs, ...motion } = plan.motion;
+  const scaledEnd = endMs === undefined ? undefined : Math.ceil(endMs * r);
+  return {
+    ...plan,
+    durationMs,
+    visibleMs,
+    motion: scaledEnd !== undefined && scaledEnd < durationMs ? { ...motion, endMs: scaledEnd } : motion,
+  };
 }

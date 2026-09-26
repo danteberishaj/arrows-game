@@ -42,6 +42,7 @@ import {
   META_HEART_REFILL_POP,
   META_LEVEL_TRANSITION,
   META_PANEL_MOTION,
+  META_POST_CLEAR_TIMELINE,
   META_REVIEW_PROMPT,
 } from '../featureFlags';
 import { Ads } from './ads';
@@ -70,8 +71,8 @@ import {
 } from './heartPip';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
-  createDailySession, createLevelSession, createTutorialSession, levelGenVersion,
-  LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS,
+  CLEAR_REVEAL_MS, createDailySession, createLevelSession, createTutorialSession, EMPTY_BOARD_HOLD_MS,
+  levelGenVersion, LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS, wonPanelDelayMs,
   TerminalTransitionGuard,
   type GamePhase,
   type LevelSession,
@@ -494,7 +495,7 @@ export function GameScreen({
   }, [onHome]);
 
   const onRemoved = useCallback(
-    (cleared: boolean) => {
+    (cleared: boolean, exitVisibleMs: number) => {
       setAdShowFailed(false);
       if (terminalTransition.isPending) return;
       logFtueEvent({ type: 'removal' });
@@ -514,9 +515,14 @@ export function GameScreen({
       assistedAtClearRef.current = ftueStageAtClear === ASSIST_STAGE;
       const perfect = heartsRef.current === level.hearts;
       perfectAtClearRef.current = perfect;
+      // W2-06 (META_POST_CLEAR_TIMELINE): the final exit's last pixel, then the same empty-board hold (and W5's
+      // reveal slot) whatever that exit did. OFF: the flat 450 ms from the tap, as before.
+      const wonDelayMs = META_POST_CLEAR_TIMELINE
+        ? wonPanelDelayMs(exitVisibleMs, EMPTY_BOARD_HOLD_MS, CLEAR_REVEAL_MS)
+        : WON_PANEL_DELAY_MS;
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
-        if (!beginTerminalTransition('won', WON_PANEL_DELAY_MS, () => {
+        if (!beginTerminalTransition('won', wonDelayMs, () => {
           if (nextTutorialId) {
             loadTutorial(nextTutorialId);
           } else {
@@ -528,7 +534,7 @@ export function GameScreen({
           activeTutorialId === 'T1' ? T1_CLEARED_STAGE : ASSIST_STAGE,
         );
       } else {
-        if (!beginTerminalTransition('won', WON_PANEL_DELAY_MS)) return;
+        if (!beginTerminalTransition('won', wonDelayMs)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
         if (!benchmarkMode) {
           if (ftueStageAtClear === ASSIST_STAGE && perfect) {

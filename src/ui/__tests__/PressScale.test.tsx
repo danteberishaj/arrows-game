@@ -99,7 +99,7 @@ function renderGame() {
 function renderWonPanel() {
   const screen = renderGame();
   act(() => {
-    mockBoardViewProps.onRemoved(true);
+    mockBoardViewProps.onRemoved(true, 0);
     jest.runOnlyPendingTimers();
   });
   return screen;
