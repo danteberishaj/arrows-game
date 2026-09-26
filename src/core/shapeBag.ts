@@ -51,6 +51,11 @@ import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties } from './difficulty';
 import { ExactDotNetRandom } from './dotnetRandom';
 import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, shapeDefFor } from './shapeCatalogue';
+import {
+  CAPACITY_TABLE_MAX_COLS,
+  CAPACITY_TABLE_MAX_ROWS,
+  SHAPE_CAPACITY_AT_CLAMP,
+} from './shapeCapacityTable';
 import type { ShapeDef } from './shapeLibrary';
 
 /**
@@ -103,6 +108,16 @@ export const placeholderWindowMaxTarget: WindowMaxTarget = (start, end) => {
   return max;
 };
 
+/**
+ * V2-FINISH part 3: the level index from which a window-max function stops
+ * changing, i.e. every level's target from there on depends only on its tier.
+ * Registered by `curveWindowMaxTarget` (the curve's last row: `curvePointAt`
+ * holds it forever, and max(curve, v1 floor) with it) and for the placeholder
+ * (v1's tier bands, fixed from level 0). Any other function is unregistered
+ * and always built window by window.
+ */
+const steadyFromIndex = new WeakMap<WindowMaxTarget, number>();
+
 const curveWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
 const flooredWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
 
@@ -145,12 +160,17 @@ export function curveWindowMaxTarget(curve: CurveTable, v1Floor = false): Window
       return max;
     };
     cache.set(curve, wmt);
+    // V2-FINISH part 3: from the last row on every level's target is its tier's final one.
+    steadyFromIndex.set(wmt, curve[curve.length - 1].levelIndex);
   }
   return wmt;
 }
 
 /** The shipped curve's window max target: the bag's default. */
 export const v2WindowMaxTarget: WindowMaxTarget = curveWindowMaxTarget(V2_CURVE);
+
+// v1's tier bands never change with the level.
+steadyFromIndex.set(placeholderWindowMaxTarget, 0);
 
 /** cols for a v2 board of `rows` rows: the single formula v2 sizing and capacity share. */
 export function v2Cols(rows: number, aspect: number, maxCols: number = V2_MAX_GRID_COLS): number {
@@ -200,14 +220,56 @@ const capacityCache = new Map<ShapeDef, Map<string, number>>();
 /**
  * Mask cells of `shape` at its largest board under the given caps (rows =
  * `v2MaxRows(aspect, maxRows, maxCols)`, cols = `v2Cols(rows, aspect, maxCols)`),
- * memoized per shape and caps. The first call rasterizes each shape once.
- * `shapeCapacity(s, 46, 46)` is v1's clamp (W3-01's measured table).
+ * by rasterizing it. Uncached: `shapeCapacity` is the cached entry point, and
+ * `scripts/analysis/capacity-table.ts` generates the checked-in table from this.
+ */
+export function rasterizedCapacity(
+  shape: ShapeDef,
+  maxRows: number = V2_MAX_GRID_ROWS,
+  maxCols: number = V2_MAX_GRID_COLS,
+): number {
+  const rows = v2MaxRows(shape.aspect, maxRows, maxCols);
+  return countTrue(shape.rasterize(rows, v2Cols(rows, shape.aspect, maxCols)));
+}
+
+let tableByShape: ReadonlyMap<ShapeDef, number> | null = null;
+
+/**
+ * V2-FINISH part 3: the checked-in capacities (`shapeCapacityTable.ts`),
+ * keyed by the catalogue's own ShapeDef instances. Valid only for the clamp it
+ * was generated at, which `__tests__/coldPick.test.ts` pins to the shipped one.
+ */
+function capacityTable(): ReadonlyMap<ShapeDef, number> {
+  if (tableByShape === null) {
+    const m = new Map<ShapeDef, number>();
+    if (CAPACITY_TABLE_MAX_ROWS === V2_MAX_GRID_ROWS && CAPACITY_TABLE_MAX_COLS === V2_MAX_GRID_COLS) {
+      for (const id of Object.keys(SHAPE_CAPACITY_AT_CLAMP)) {
+        const def = shapeDefFor(id);
+        if (def !== null) m.set(def, SHAPE_CAPACITY_AT_CLAMP[id]);
+      }
+    }
+    tableByShape = m;
+  }
+  return tableByShape;
+}
+
+/**
+ * Mask cells of `shape` at its largest board under the given caps
+ * (`rasterizedCapacity`), memoized per shape and caps. At the shipped clamp a
+ * catalogue shape is served from the checked-in table (V2-FINISH part 3: the
+ * first v2 pick of a process used to rasterize all 26 shapes); any other
+ * shape or caps rasterize once. `shapeCapacity(s, 46, 46)` is v1's clamp
+ * (W3-01's measured table).
  */
 export function shapeCapacity(
   shape: ShapeDef,
   maxRows: number = V2_MAX_GRID_ROWS,
   maxCols: number = V2_MAX_GRID_COLS,
 ): number {
+  if (maxRows === V2_MAX_GRID_ROWS && maxCols === V2_MAX_GRID_COLS) {
+    const tabled = capacityTable().get(shape);
+    if (tabled !== undefined) return tabled;
+  }
   let byCaps = capacityCache.get(shape);
   if (byCaps === undefined) {
     byCaps = new Map();
@@ -216,8 +278,7 @@ export function shapeCapacity(
   const key = `${maxRows}x${maxCols}`;
   let cells = byCaps.get(key);
   if (cells === undefined) {
-    const rows = v2MaxRows(shape.aspect, maxRows, maxCols);
-    cells = countTrue(shape.rasterize(rows, v2Cols(rows, shape.aspect, maxCols)));
+    cells = rasterizedCapacity(shape, maxRows, maxCols);
     byCaps.set(key, cells);
   }
   return cells;
@@ -320,10 +381,9 @@ export interface BagWindow {
   readonly order: readonly ShapeDef[];
 }
 
-const windowCache = new WeakMap<WindowMaxTarget, BagWindow[]>();
-
-function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt: WindowMaxTarget): BagWindow {
-  const order = [...windowSetAt(start, wmt)];
+/** A window's set (catalogue order), Fisher-Yates shuffled with `ExactDotNetRandom(bagSeed(ordinal))`, before the no-repeat swap. */
+function shuffledSet(set: readonly ShapeDef[], ordinal: number): ShapeDef[] {
+  const order = [...set];
   const rng = new ExactDotNetRandom(bagSeed(ordinal));
   for (let i = order.length - 1; i > 0; i--) {
     const j = rng.next(i + 1);
@@ -332,6 +392,11 @@ function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt:
     order[i] = order[j];
     order[j] = t;
   }
+  return order;
+}
+
+/** The dealt window: the shuffle, with positions 0 and 1 swapped once if position 0 repeats `prev`. */
+function dealWindow(ordinal: number, start: number, order: ShapeDef[], prev: ShapeDef | null): BagWindow {
   if (prev !== null && order[0] === prev) {
     const t = order[0];
     order[0] = order[1];
@@ -340,11 +405,71 @@ function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt:
   return Object.freeze({ ordinal, start, order: Object.freeze(order) });
 }
 
+function buildWindow(ordinal: number, start: number, prev: ShapeDef | null, wmt: WindowMaxTarget): BagWindow {
+  return dealWindow(ordinal, start, shuffledSet(windowSetAt(start, wmt), ordinal), prev);
+}
+
+
+/**
+ * The bag's steady state: from the first window that starts at or after the
+ * steady index and holds at least one full tier cycle, every window has the
+ * same set and length. Why that is exact: `windowSetAt` tries k = the
+ * candidate count down to 2 and keeps the first k whose k levels fit the k-th
+ * capacity. For a start at or after the steady index and any k >= 6, the k
+ * levels hold every tier, so `windowMaxTarget(start, start + k)` is the same
+ * number for every such start; the first passing k is therefore the same k
+ * (>= 6) and the same top-k set for all of them. (A steady length under 6
+ * would depend on the start's tier position, so it is not taken.) Window
+ * `first.ordinal + m` then starts at `first.start + m * length`, its order is
+ * its own shuffle, and its no-repeat swap reads the previous window's last
+ * shape, which that window's own shuffle fixes (the swap moves only positions
+ * 0 and 1, and length >= 6).
+ */
+interface SteadyBag {
+  readonly first: BagWindow;
+  readonly set: readonly ShapeDef[];
+  readonly length: number;
+  readonly windows: Map<number, BagWindow>;
+}
+
+interface BagState {
+  /** Windows built one by one from level 0, up to and including the steady state's first. */
+  readonly built: BagWindow[];
+  steady: SteadyBag | null;
+}
+
+const bagStates = new WeakMap<WindowMaxTarget, BagState>();
+
+function bagStateFor(wmt: WindowMaxTarget): BagState {
+  let state = bagStates.get(wmt);
+  if (state === undefined) {
+    state = { built: [], steady: null };
+    bagStates.set(wmt, state);
+  }
+  return state;
+}
+
+function steadyWindow(steady: SteadyBag, levelIndex: number): BagWindow {
+  const m = Math.floor((levelIndex - steady.first.start) / steady.length);
+  if (m === 0) return steady.first;
+  const ordinal = steady.first.ordinal + m;
+  let w = steady.windows.get(ordinal);
+  if (w === undefined) {
+    const prevOrder = shuffledSet(steady.set, ordinal - 1);
+    w = dealWindow(ordinal, steady.first.start + m * steady.length, shuffledSet(steady.set, ordinal), prevOrder[steady.length - 1]);
+    steady.windows.set(ordinal, w);
+  }
+  return w;
+}
+
 /**
  * The window that deals `levelIndex`. Windows are built in order from level 0
  * (a window's start and first-shape swap depend on the one before it) and
- * memoized per curve, so a later call is a binary search. The cache never
- * changes a result: any call order returns the same windows.
+ * memoized per curve, so a later call is a binary search. Once the curve has
+ * stopped changing (V2-FINISH part 3, `SteadyBag`), a window is computed from
+ * its ordinal in O(1) instead: a deep player's first v2 pick no longer builds
+ * every window from level 0. The cache never changes a result: any call order
+ * returns the same windows (`__tests__/coldPick.test.ts` compares both paths).
  */
 export function bagWindowFor(
   levelIndex: number,
@@ -353,18 +478,21 @@ export function bagWindowFor(
   if (!Number.isSafeInteger(levelIndex) || levelIndex < 0) {
     throw new RangeError(`shapeBag: level index must be a non-negative integer, got ${levelIndex}`);
   }
-  let windows = windowCache.get(windowMaxTarget);
-  if (windows === undefined) {
-    windows = [];
-    windowCache.set(windowMaxTarget, windows);
-  }
-  for (;;) {
+  const state = bagStateFor(windowMaxTarget);
+  const windows = state.built;
+  const steadyFrom = steadyFromIndex.get(windowMaxTarget);
+  while (state.steady === null) {
     const last = windows.length === 0 ? null : windows[windows.length - 1];
     const end = last === null ? 0 : last.start + last.order.length;
     if (levelIndex < end) break;
     const prev = last === null ? null : last.order[last.order.length - 1];
-    windows.push(buildWindow(windows.length, end, prev, windowMaxTarget));
+    const w = buildWindow(windows.length, end, prev, windowMaxTarget);
+    windows.push(w);
+    if (steadyFrom !== undefined && w.start >= steadyFrom && w.order.length >= Difficulties.cycleLength) {
+      state.steady = { first: w, set: windowSetAt(w.start, windowMaxTarget), length: w.order.length, windows: new Map() };
+    }
   }
+  if (state.steady !== null && levelIndex >= state.steady.first.start) return steadyWindow(state.steady, levelIndex);
   let lo = 0;
   let hi = windows.length - 1;
   while (lo < hi) {
@@ -373,6 +501,20 @@ export function bagWindowFor(
     else hi = mid - 1;
   }
   return windows[lo];
+}
+
+/**
+ * For tests and the probe: how many windows `windowMaxTarget`'s bag built one
+ * by one, and where its steady state begins (null while it has none).
+ */
+export function bagWindowStats(windowMaxTarget: WindowMaxTarget): {
+  built: number;
+  steadyFrom: { ordinal: number; start: number; length: number } | null;
+} {
+  const state = bagStates.get(windowMaxTarget);
+  if (state === undefined) return { built: 0, steadyFrom: null };
+  const s = state.steady;
+  return { built: state.built.length, steadyFrom: s === null ? null : { ordinal: s.first.ordinal, start: s.first.start, length: s.length } };
 }
 
 /**
