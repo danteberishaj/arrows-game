@@ -49,6 +49,16 @@ const TEXT_LEFT_PX = 10; // OWNER-PICKED STARTING VALUE
 const CAPTION_NUDGE_PX = 15; // OWNER-PICKED STARTING VALUE
 const BOLD_FONT_WEIGHT = 700;
 
+// ShapeDef's old "whole rectangle, no margin" flag was a dead field (read
+// nowhere in game code) deleted by W3-03; this script was its one real
+// reader. Reproduced here by name, not by re-adding it to ShapeDef, so this
+// diagnostic's output is unchanged: Square and Rectangle are exactly the two
+// `() => true` insides in `shapeLibrary.ts`.
+const GRID_FILLING_SHAPE_NAMES: ReadonlySet<string> = new Set(['Square', 'Rectangle']);
+function isGridFilling(shape: ShapeDef): boolean {
+  return GRID_FILLING_SHAPE_NAMES.has(shape.name);
+}
+
 interface ShapeRaster {
   readonly shape: ShapeDef;
   readonly rows: number;
@@ -241,7 +251,7 @@ function writeFilledCellTable(
   const emptyEntries: string[] = [];
   const lines: string[] = [];
   lines.push('Filled-cell count per shape and row count (rasterize(), >= 5/9 sub-sample rule)');
-  lines.push(['shape', 'fillsGrid', ...ROW_COUNTS.map((r) => `rows=${r}`)].join('\t'));
+  lines.push(['shape', 'gridFilling', ...ROW_COUNTS.map((r) => `rows=${r}`)].join('\t'));
 
   for (const shape of shapes) {
     const cells = ROW_COUNTS.map((rows) => {
@@ -249,7 +259,7 @@ function writeFilledCellTable(
       if (raster.filled === 0) emptyEntries.push(`${shape.name}@rows=${rows}`);
       return `${raster.filled}/${raster.total} (${raster.rows}×${raster.cols})`;
     });
-    lines.push([shape.name, String(shape.fillsGrid), ...cells].join('\t'));
+    lines.push([shape.name, String(isGridFilling(shape)), ...cells].join('\t'));
   }
 
   lines.push('');
@@ -271,8 +281,8 @@ async function main(): Promise<void> {
 
   const shapes = shapeCatalogue();
   console.log(`Shape catalogue: ${shapes.length} shapes `
-    + `(${shapes.filter((s) => s.fillsGrid).length} grid-filling, `
-    + `${shapes.filter((s) => !s.fillsGrid).length} non-fill silhouettes)`);
+    + `(${shapes.filter((s) => isGridFilling(s)).length} grid-filling, `
+    + `${shapes.filter((s) => !isGridFilling(s)).length} non-fill silhouettes)`);
 
   const rastersByRowCount = new Map<number, readonly ShapeRaster[]>(
     ROW_COUNTS.map((rows) => [rows, rasterize(shapes, rows)]),

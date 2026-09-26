@@ -26,8 +26,8 @@ import { shapeDefFor } from './shapeCatalogue';
 /**
  * v1 daily pool: every catalogue id in catalogue order except the two
  * no-picture fills, which read as "the whole grid" rather than a silhouette.
- * Listed explicitly by id — deliberately NOT derived from `ShapeDef.fillsGrid`,
- * which W3-03 deletes.
+ * Listed explicitly by id — deliberately NOT derived from `ShapeDef`'s old
+ * "whole rectangle, no margin" field, which W3-03 deleted as dead code.
  *
  * OWNER-PICKED STARTING VALUE: the 24-shape pool (the exclusion of Square and
  * Rectangle is a recommendation, not a measurement). The 26-shape alternative

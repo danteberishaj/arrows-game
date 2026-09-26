@@ -18,20 +18,14 @@ const PINE_LOWER: readonly Pt[] = [[0, 0.5], [0.8, -0.45], [-0.8, -0.45]];
  */
 export class ShapeDef {
   readonly name: string;
-  /** Simple shapes (square/rect/circle) feed Normal+Hard; complex ones feed SuperHard. */
-  readonly simple: boolean;
   /** Preferred cols/rows. 1 = square, >1 = wide, <1 = tall. */
   readonly aspect: number;
-  /** When true the shape is the whole rectangle (no margin) — square/rectangle. */
-  readonly fillsGrid: boolean;
 
   private readonly _inside: InsideFn;
 
-  constructor(name: string, simple: boolean, aspect: number, fillsGrid: boolean, inside: InsideFn) {
+  constructor(name: string, aspect: number, inside: InsideFn) {
     this.name = name;
-    this.simple = simple;
     this.aspect = aspect;
-    this.fillsGrid = fillsGrid;
     this._inside = inside;
   }
 
@@ -112,31 +106,26 @@ function starPolygon(points: number, outer: number, inner: number, startDeg: num
 export const ShapeLibrary = (() => {
   // ---- Simple pool (Normal + Hard): square, rectangle, circle -----------------
 
-  const Square = new ShapeDef('Square', true, 1, true, () => true);
-  const Rectangle = new ShapeDef('Rectangle', true, 1.5, true, () => true);
-  const Circle = new ShapeDef('Circle', true, 1, false, (x, y) => x * x + y * y <= 0.92 * 0.92);
+  const Square = new ShapeDef('Square', 1, () => true);
+  const Rectangle = new ShapeDef('Rectangle', 1.5, () => true);
+  const Circle = new ShapeDef('Circle', 1, (x, y) => x * x + y * y <= 0.92 * 0.92);
 
   // ---- Complex pool (SuperHard): heart, star, diamond, triangle, plus, hex, trophy ---
 
-  const Diamond = new ShapeDef('Diamond', false, 1, false,
-    (x, y) => Math.abs(x) + Math.abs(y) <= 0.94);
+  const Diamond = new ShapeDef('Diamond', 1, (x, y) => Math.abs(x) + Math.abs(y) <= 0.94);
 
-  const Triangle = new ShapeDef('Triangle', false, 1, false,
-    polygon([0, 0.9], [0.86, -0.82], [-0.86, -0.82]));
+  const Triangle = new ShapeDef('Triangle', 1, polygon([0, 0.9], [0.86, -0.82], [-0.86, -0.82]));
 
-  const Plus = new ShapeDef('Plus', false, 1, false,
-    (x, y) => (Math.abs(x) <= 0.34 && Math.abs(y) <= 0.92)
+  const Plus = new ShapeDef('Plus', 1, (x, y) => (Math.abs(x) <= 0.34 && Math.abs(y) <= 0.92)
            || (Math.abs(y) <= 0.34 && Math.abs(x) <= 0.92));
 
-  const Hexagon = new ShapeDef('Hexagon', false, 1, false,
-    polygon(...regularPolygon(6, 0.95, 90)));
+  const Hexagon = new ShapeDef('Hexagon', 1, polygon(...regularPolygon(6, 0.95, 90)));
 
-  const Star = new ShapeDef('Star', false, 1, false,
-    polygon(...starPolygon(5, 0.98, 0.42, 90)));
+  const Star = new ShapeDef('Star', 1, polygon(...starPolygon(5, 0.98, 0.42, 90)));
 
   // Classic implicit heart (x^2+y^2-1)^3 - x^2 y^3 <= 0, rescaled/shifted to
   // fit -1..1 with the cusp at the top and the point at the bottom.
-  const Heart = new ShapeDef('Heart', false, 1, false, (x, y) => {
+  const Heart = new ShapeDef('Heart', 1, (x, y) => {
     const X = x / 0.92;
     const Y = (y + 0.28) / 0.92;
     const a = X * X + Y * Y - 1;
@@ -145,20 +134,19 @@ export const ShapeLibrary = (() => {
 
   // Trophy silhouette: a bowl on a stem on a base (handles implied, not cut
   // out), drawn as one outline. Slightly taller than wide.
-  const Trophy = new ShapeDef('Trophy', false, 0.85, false,
-    polygon(
-      [-0.52, 0.86], [0.52, 0.86],    // cup rim
-      [0.50, 0.50], [0.34, 0.16],     // bowl curves in
-      [0.16, 0.04], [0.16, -0.34],    // down the stem
-      [0.44, -0.46], [0.44, -0.72],   // right side of the base
-      [-0.44, -0.72], [-0.44, -0.46], // left side of the base
-      [-0.16, -0.34], [-0.16, 0.04],  // up the stem
-      [-0.34, 0.16], [-0.50, 0.50])); // bowl back to the rim
+  const Trophy = new ShapeDef('Trophy', 0.85, polygon(
+    [-0.52, 0.86], [0.52, 0.86],    // cup rim
+    [0.50, 0.50], [0.34, 0.16],     // bowl curves in
+    [0.16, 0.04], [0.16, -0.34],    // down the stem
+    [0.44, -0.46], [0.44, -0.72],   // right side of the base
+    [-0.44, -0.72], [-0.44, -0.46], // left side of the base
+    [-0.16, -0.34], [-0.16, 0.04],  // up the stem
+    [-0.34, 0.16], [-0.50, 0.50])); // bowl back to the rim
 
   // Crescent moon (very Ink Night): a full disc with a second disc bitten out
   // of its upper right. The bite is kept shallow so the horns stay thick
   // enough to pack cleanly with arrows.
-  const Crescent = new ShapeDef('Crescent', false, 1, false, (x, y) => {
+  const Crescent = new ShapeDef('Crescent', 1, (x, y) => {
     const inDisc = x * x + y * y <= 0.92 * 0.92;
     const bx = x - 0.42, by = y - 0.2;
     const inBite = bx * bx + by * by <= 0.72 * 0.72;
@@ -166,7 +154,7 @@ export const ShapeLibrary = (() => {
   });
 
   // Four-petal flower: the union of four petal discs and a core disc.
-  const Flower = new ShapeDef('Flower', false, 1, false, (x, y) => {
+  const Flower = new ShapeDef('Flower', 1, (x, y) => {
     const rightX = x - 0.47;
     const leftX = x + 0.47;
     const topY = y - 0.47;
@@ -181,50 +169,45 @@ export const ShapeLibrary = (() => {
   });
 
   // Lightning bolt, the classic zig-zag hexagon. Taller than wide.
-  const Bolt = new ShapeDef('Bolt', false, 0.8, false,
-    polygon(
-      [0.3, 0.95], [-0.42, 0.05], [-0.06, 0.05],
-      [-0.3, -0.95], [0.42, -0.02], [0.06, -0.02]));
+  const Bolt = new ShapeDef('Bolt', 0.8, polygon(
+    [0.3, 0.95], [-0.42, 0.05], [-0.06, 0.05],
+    [-0.3, -0.95], [0.42, -0.02], [0.06, -0.02]));
 
   // An upward arrow drawn out of arrows. Of course.
-  const ArrowMark = new ShapeDef('Arrow', false, 0.9, false,
-    polygon(
-      [0, 0.95], [0.66, 0.24], [0.26, 0.24],
-      [0.26, -0.9], [-0.26, -0.9], [-0.26, 0.24], [-0.66, 0.24]));
+  const ArrowMark = new ShapeDef('Arrow', 0.9, polygon(
+    [0, 0.95], [0.66, 0.24], [0.26, 0.24],
+    [0.26, -0.9], [-0.26, -0.9], [-0.26, 0.24], [-0.66, 0.24]));
 
   // Three-peak crown over a band.
-  const Crown = new ShapeDef('Crown', false, 1.15, false,
-    polygon(
-      [-0.78, -0.8], [0.78, -0.8], [0.78, 0.58],
-      [0.39, -0.05], [0, 0.72], [-0.39, -0.05], [-0.78, 0.58]));
+  const Crown = new ShapeDef('Crown', 1.15, polygon(
+    [-0.78, -0.8], [0.78, -0.8], [0.78, 0.58],
+    [0.39, -0.05], [0, 0.72], [-0.39, -0.05], [-0.78, 0.58]));
 
   // Hourglass: two triangles meeting at a narrow waist.
-  const Hourglass = new ShapeDef('Hourglass', false, 0.8, false, (x, y) => {
+  const Hourglass = new ShapeDef('Hourglass', 0.8, (x, y) => {
     const ay = Math.abs(y);
     if (ay > 0.88) return false;
     return Math.abs(x) <= 0.14 + (0.66 * ay) / 0.88;
   });
 
-  const Pentagon = new ShapeDef('Pentagon', false, 1, false,
-    polygon(...regularPolygon(5, 0.95, 90)));
+  const Pentagon = new ShapeDef('Pentagon', 1, polygon(...regularPolygon(5, 0.95, 90)));
 
-  const Octagon = new ShapeDef('Octagon', false, 1, false,
-    polygon(...regularPolygon(8, 0.95, 22.5)));
+  const Octagon = new ShapeDef('Octagon', 1, polygon(...regularPolygon(8, 0.95, 22.5)));
 
   // Ring: a thick annulus — the hole is fine, the peel rule fills any mask.
-  const Ring = new ShapeDef('Ring', false, 1, false, (x, y) => {
+  const Ring = new ShapeDef('Ring', 1, (x, y) => {
     const r2 = x * x + y * y;
     return r2 <= 0.95 * 0.95 && r2 >= 0.5 * 0.5;
   });
 
   // X: two diagonal bars.
-  const XMark = new ShapeDef('X', false, 1, false, (x, y) => {
+  const XMark = new ShapeDef('X', 1, (x, y) => {
     if (Math.abs(x) > 0.92 || Math.abs(y) > 0.92) return false;
     return Math.abs(x - y) <= 0.3 || Math.abs(x + y) <= 0.3;
   });
 
   // Butterfly: two wing discs per side + a body bar.
-  const Butterfly = new ShapeDef('Butterfly', false, 1.1, false, (x, y) => {
+  const Butterfly = new ShapeDef('Butterfly', 1.1, (x, y) => {
     const upperY = y - 0.34;
     const lowerY = y + 0.4;
     const rightUpperX = x - 0.5;
@@ -241,14 +224,13 @@ export const ShapeLibrary = (() => {
   });
 
   // Rocket with side fins. Tall.
-  const Rocket = new ShapeDef('Rocket', false, 0.75, false,
-    polygon(
-      [0, 0.95], [0.42, 0.3], [0.42, -0.5], [0.8, -0.82], [0.8, -0.95],
-      [0.3, -0.82], [-0.3, -0.82], [-0.8, -0.95], [-0.8, -0.82],
-      [-0.42, -0.5], [-0.42, 0.3]));
+  const Rocket = new ShapeDef('Rocket', 0.75, polygon(
+    [0, 0.95], [0.42, 0.3], [0.42, -0.5], [0.8, -0.82], [0.8, -0.95],
+    [0.3, -0.82], [-0.3, -0.82], [-0.8, -0.95], [-0.8, -0.82],
+    [-0.42, -0.5], [-0.42, 0.3]));
 
   // Pine tree: two stacked canopy triangles over a trunk.
-  const Pine = new ShapeDef('Pine', false, 0.9, false, (x, y) => {
+  const Pine = new ShapeDef('Pine', 0.9, (x, y) => {
     return (
       pointInPolygon(x, y, PINE_TOP) ||
       pointInPolygon(x, y, PINE_LOWER) ||
@@ -257,21 +239,21 @@ export const ShapeLibrary = (() => {
   });
 
   // Cat head: a round face with two triangular ears (and a dip between them).
-  const Cat = new ShapeDef('Cat', false, 1, false, (x, y) => {
+  const Cat = new ShapeDef('Cat', 1, (x, y) => {
     if (x * x + (y + 0.18) * (y + 0.18) <= 0.66 * 0.66) return true;
     const ax = Math.abs(x);
     return pointInPolygon(ax, y, [[0.66, 0.1], [0.5, 0.95], [0.16, 0.42]]);
   });
 
   // Mushroom: a dome cap over a stout stem.
-  const Mushroom = new ShapeDef('Mushroom', false, 0.95, false, (x, y) => {
+  const Mushroom = new ShapeDef('Mushroom', 0.95, (x, y) => {
     const inCap = x * x + (y - 0.02) * (y - 0.02) <= 0.9 * 0.9 && y >= 0.08;
     const inStem = Math.abs(x) <= 0.3 && y >= -0.82 && y <= 0.16;
     return inCap || inStem;
   });
 
   // Fish: an ellipse body with a triangular tail. Wide.
-  const Fish = new ShapeDef('Fish', false, 1.2, false, (x, y) => {
+  const Fish = new ShapeDef('Fish', 1.2, (x, y) => {
     const bx = (x + 0.24) / 0.7, by = y / 0.62;
     if (bx * bx + by * by <= 1) return true;
     return pointInPolygon(x, y, [[0.3, 0], [0.94, 0.66], [0.94, -0.66]]);
