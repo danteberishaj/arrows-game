@@ -78,8 +78,7 @@ install via the opt-in link, and play a few levels.
 
 **Store listing** (assets are in `store/`):
 - App icon: `store/playstore-icon-512.png`
-- Feature graphic: `store/feature-graphic.png` (Higgsfield brand art; a simpler
-  script-composed fallback lives in `store/fallback/`)
+- Feature graphic: `store/feature-graphic.png` (Higgsfield brand art)
 - Promo art in `store/marketing/`: board-heart / board-crescent / board-flower
   are REAL generated levels rendered with the game's exact line-art (regenerate
   with `npx tsx scripts/generate-promo-art.ts`) — safe as listing imagery because
@@ -89,26 +88,16 @@ install via the opt-in link, and play a few levels.
   build — the menu and a mid-level board make a good pair; a SuperHard silhouette
   (heart/crescent) makes a great third. Play policy expects screenshots to show
   REAL gameplay — use the promo art around them, not instead of them.
-- Short description (≤80 chars), e.g.:
-  "Calm arrow puzzles. Spot the clear arrows, clear the shape, keep your streak."
+- Title candidates, short description (≤80 chars) and full description: the checked
+  drafts in [`store/listing/play.md`](store/listing/play.md) (W7-08; run
+  `node scripts/check-listing.js store/listing/play.md` after any edit). The owner picks
+  the title and accepts the copy in W7-10.
 - Privacy policy URL: from step 2.
 
-**Data safety** form — declare honestly. This list was written for the removed
-LevelPlay SDK; the owner must re-check it against the Google Mobile Ads SDK
-(ADMOB-A found 4 new merged permissions: WAKE_LOCK, ACCESS_ADSERVICES_AD_ID,
-ACCESS_ADSERVICES_TOPICS, FOREGROUND_SERVICE):
-- Collects data: **Yes**
-- Device or other IDs → Advertising ID: collected, **shared** (with ad partners),
-  purpose **Advertising or marketing**, optional: **No**, ephemeral: **No**
-- Location → Approximate location: collected via IP by the ad SDK, purpose
-  Advertising
-- Data is encrypted in transit: **Yes**. Deletion request mechanism: **No** (no
-  accounts; progress is device-local)
-
-**Ads declaration**: Yes, contains ads.
-**Content rating questionnaire**: it's a puzzle game, no user content, no violence —
-lands at Everyone / PEGI 3. **Target audience**: 13+ (avoids the families-program
-requirements that ad SDKs complicate).
+**Data safety, ads declaration, content rating, target audience, Advertising ID and
+EU DSA trader status**: the draft answers and the release-artifact evidence behind
+each one live in one place, [`docs/data-safety.md`](docs/data-safety.md) (W7-06).
+They are drafts for the owner's legal review (W7-07); enter nothing from memory.
 
 ## 6. Roll out
 
