@@ -26,11 +26,24 @@
  * This is a PROXY, not a measurement of human difficulty — see the printed
  * HONESTY_BOUND below and W3-23, which is the task that will (or will not)
  * correlate it with real play.
+ *
+ * W3-11 adds the clearable-fraction knob:
+ * - `--bias <b>` generates v2 with `clearableBias` b on every tier (level
+ *   modes need `--version 2`; v1 takes no knobs).
+ * - `--size-sweep` walks level-1-sized boards: `--shapes` (default
+ *   Circle,Square,Heart) x `--rows a-b` (default 8-16, cols = v2Cols) x
+ *   `--seeds a-b` (default 1-5, `DotNetRandom(s)`), Normal config, `--bias`.
+ * - `--transfer` runs the exploration grid `--biases` (default
+ *   0.1,0.3,1,3,10) plus "unset" on set (i), v2 `--levels`, and set (ii), the
+ *   size-sweep boards, and prints each b beside the neutral seed band with the
+ *   premise check and the brand gate (W3-11 brief).
  */
 import {
   ArrowPath,
+  BoardLogic,
   Difficulties,
   Difficulty,
+  DifficultyConfig,
   DotNetRandom,
   LevelGenerator,
   SHAPE_CATALOGUE,
@@ -55,7 +68,16 @@ const HONESTY_BOUND =
 // other --levels range is split proportionally by the same fractions.
 const BAND_FRACTIONS = [1 / 8, 1 / 4, 1 / 2, 3 / 4, 1] as const;
 
-type Mode = 'rows' | 'per-tier' | 'bands' | 'shape-report' | 'tier-report' | 'capacity' | 'clamp-shortfall';
+type Mode =
+  | 'rows' | 'per-tier' | 'bands' | 'shape-report' | 'tier-report' | 'capacity' | 'clamp-shortfall'
+  | 'size-sweep' | 'transfer';
+
+/** W3-11 set (ii) defaults: level-1-sized boards (brief step 4). */
+const SIZE_SWEEP_DEFAULT_SHAPES = ['Circle', 'Square', 'Heart'] as const;
+const SIZE_SWEEP_DEFAULT_ROWS: readonly [number, number] = [8, 16];
+const SIZE_SWEEP_DEFAULT_SEEDS: readonly [number, number] = [1, 5];
+/** W3-11 exploration grid (brief step 4): sweep points, not shipped values. */
+const TRANSFER_DEFAULT_BIASES = [0.1, 0.3, 1, 3, 10] as const;
 
 interface Viewport {
   w: number;
@@ -69,6 +91,14 @@ interface Options {
   json: boolean;
   /** Aggregate modes run in the order given (W3-10: `--shape-report --clamp-shortfall`). */
   modes: readonly Mode[];
+  /** W3-11: v2 `clearableBias` for every tier; null = unset (neutral). */
+  bias: number | null;
+  /** W3-11 size-sweep / transfer set (ii) options. */
+  sweepShapes: readonly string[];
+  sweepRows: readonly [number, number];
+  sweepSeeds: readonly [number, number];
+  /** W3-11 transfer grid. */
+  biases: readonly number[];
 }
 
 interface LevelRow {
@@ -101,6 +131,12 @@ function parseArgs(argv: readonly string[]): Options {
   let viewport: Viewport | null = null;
   let json = false;
   const modeFlags: Mode[] = [];
+  let bias: number | null = null;
+  let sweepShapes: readonly string[] = SIZE_SWEEP_DEFAULT_SHAPES;
+  let sweepRows: readonly [number, number] = SIZE_SWEEP_DEFAULT_ROWS;
+  let sweepSeeds: readonly [number, number] = SIZE_SWEEP_DEFAULT_SEEDS;
+  let biases: readonly number[] = TRANSFER_DEFAULT_BIASES;
+  let biasesGiven = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -120,6 +156,31 @@ function parseArgs(argv: readonly string[]): Options {
       case '--json':
         json = true;
         break;
+      case '--bias':
+        bias = parseBias(argv[++i], '--bias');
+        break;
+      case '--biases': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--biases requires a value, e.g. --biases 0.1,0.3,1,3,10');
+        biases = raw.split(',').map((b) => parseBias(b, '--biases'));
+        biasesGiven = true;
+        break;
+      }
+      case '--shapes': {
+        const raw = argv[++i];
+        if (raw === undefined) throw new Error('--shapes requires a value, e.g. --shapes Circle,Square,Heart');
+        sweepShapes = raw.split(',').map((n) => n.trim());
+        for (const name of sweepShapes) shapeByName(name); // validate early
+        break;
+      }
+      case '--rows':
+        sweepRows = parseIntRange(argv[++i], '--rows', 1);
+        break;
+      case '--seeds':
+        sweepSeeds = parseIntRange(argv[++i], '--seeds', 0);
+        break;
+      case '--size-sweep':
+      case '--transfer':
       case '--per-tier':
       case '--bands':
       case '--shape-report':
@@ -138,12 +199,57 @@ function parseArgs(argv: readonly string[]): Options {
   }
   const modes: Mode[] = modeFlags.length === 0 ? ['rows'] : [...new Set(modeFlags)];
   for (const mode of modes) {
-    if (mode !== 'capacity' && levels === null) {
+    if (mode !== 'capacity' && mode !== 'size-sweep' && levels === null) {
       const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
       throw new Error(`--levels a-b is required for ${flagName}`);
     }
   }
-  return { levels, version, viewport, json, modes };
+  // W3-11: the knob is v2-only (LevelGenerator.generate throws on a v1 knob);
+  // say so up front. --size-sweep fills boards directly and takes --bias at
+  // any version; --transfer runs its own grid and takes --biases instead.
+  if (bias !== null && modes.includes('transfer')) {
+    throw new Error('--transfer runs its own grid; use --biases, not --bias');
+  }
+  if (bias !== null && version !== 2 && modes.some((m) => m !== 'size-sweep')) {
+    throw new Error('--bias is a generator v2 knob; add --version 2');
+  }
+  if (modes.includes('transfer') && version !== 2) {
+    throw new Error('--transfer measures generator v2; add --version 2');
+  }
+  if (biasesGiven && !modes.includes('transfer')) {
+    throw new Error('--biases is only used by --transfer');
+  }
+  return { levels, version, viewport, json, modes, bias, sweepShapes, sweepRows, sweepSeeds, biases };
+}
+
+function parseBias(raw: string | undefined, flag: string): number {
+  if (raw === undefined) throw new Error(`${flag} requires a value, e.g. ${flag} 3`);
+  const b = Number(raw.trim());
+  if (raw.trim() === '' || !Number.isFinite(b) || !(b > 0)) {
+    throw new Error(`${flag} values must be finite numbers > 0; got "${raw}"`);
+  }
+  return b;
+}
+
+function parseIntRange(raw: string | undefined, flag: string, min: number): [number, number] {
+  if (raw === undefined) throw new Error(`${flag} requires a value, e.g. ${flag} 8-16`);
+  const m = /^(\d+)-(\d+)$/.exec(raw.trim());
+  if (!m) throw new Error(`${flag} must look like "a-b"; got "${raw}"`);
+  const lo = Number(m[1]);
+  const hi = Number(m[2]);
+  if (lo < min || hi < lo) throw new Error(`${flag} range must satisfy ${min} <= a <= b; got "${raw}"`);
+  return [lo, hi];
+}
+
+/** The knobs object `--bias` passes to `LevelGenerator.generate` (undefined = neutral). */
+function knobsFor(bias: number | null): { clearableBias: number } | undefined {
+  return bias === null ? undefined : { clearableBias: bias };
+}
+
+function shapeByName(name: string): ShapeDef {
+  const shape = [...allShapes(), ...bagCandidates()].find((s) => s.name === name);
+  if (shape === undefined) throw new Error(`Unknown shape "${name}"`);
+  return shape;
 }
 
 /** The grid clamp a generator version sizes against (v1's literal 46; v2's V2_MAX_GRID_DIM). */
@@ -213,6 +319,19 @@ function ascending(values: readonly number[]): number[] {
   return [...values].sort((a, b) => a - b);
 }
 
+/** What one walk of a board measures (see `walkBoard`). */
+interface WalkMetrics {
+  arrowCount: number;
+  clearableAtDeal: number;
+  scanTaps: number;
+  blockedTaps: number;
+  minClearable: number;
+  worstN: number;
+  worstK: number;
+  bentCount: number;
+  totalLen: number;
+}
+
 /**
  * Generates level `index`, then walks it to empty removing the first
  * clearable arrow in `board.arrows()` order at each step, accumulating the
@@ -220,12 +339,43 @@ function ascending(values: readonly number[]): number[] {
  * `arrowCount` removals (the in-probe reconciliation that proves every board
  * was fully walked) and exits non-zero otherwise.
  */
-function buildRow(index: number, version: 1 | 2, viewport: Viewport | null): LevelRow {
-  const level = LevelGenerator.generate(index, version);
-  const board = level.board;
+function buildRow(index: number, version: 1 | 2, viewport: Viewport | null, bias: number | null = null): LevelRow {
+  const level = LevelGenerator.generate(index, version, knobsFor(bias));
   const maskCells = countTrue(level.mask);
   const arrowCount = level.arrowCount;
+  const m = walkBoard(level.board, arrowCount, `level index ${index}`);
 
+  return {
+    level: index + 1,
+    index,
+    tier: level.difficulty,
+    shapeName: level.shapeName,
+    rows: level.board.rows,
+    cols: level.board.cols,
+    maskCells,
+    arrowCount,
+    targetCells: level.targetCells,
+    clearableAtDeal: m.clearableAtDeal,
+    clearablePct: (m.clearableAtDeal / arrowCount) * 100,
+    scanTaps: m.scanTaps,
+    blockedTaps: m.blockedTaps,
+    // Infinity only if arrowCount <= 1 (no state ever had n > 1); not hit by
+    // any level in the committed baseline ranges (min arrowCount is 47).
+    minClearable: m.minClearable === Infinity ? 0 : m.minClearable,
+    worstN: m.worstN,
+    worstK: m.worstK,
+    bendRate: m.bentCount / arrowCount,
+    meanLen: m.totalLen / arrowCount,
+    cellPt: viewport ? 0.94 * Math.min(viewport.w / level.board.cols, viewport.h / level.board.rows) : null,
+  };
+}
+
+/**
+ * The walk itself (shared by `buildRow`, `--size-sweep` and `--transfer`):
+ * remove the first clearable arrow in `board.arrows()` order until empty,
+ * summing the scan/blocked proxy over every state. Mutates `board`.
+ */
+function walkBoard(board: BoardLogic, arrowCount: number, label: string): WalkMetrics {
   const startingArrows = [...board.arrows()];
   let bentCount = 0;
   let totalLen = 0;
@@ -273,44 +423,22 @@ function buildRow(index: number, version: 1 | 2, viewport: Viewport | null): Lev
     blockedTaps += (n - k) / (k + 1);
 
     if (firstClearable === null) {
-      throw new Error(`level index ${index}: no clearable arrow with ${n} remaining (unsolvable state)`);
+      throw new Error(`${label}: no clearable arrow with ${n} remaining (unsolvable state)`);
     }
     if (!board.tryRemove(firstClearable)) {
-      throw new Error(`level index ${index}: tryRemove failed on a reported-clearable arrow`);
+      throw new Error(`${label}: tryRemove failed on a reported-clearable arrow`);
     }
     removals++;
   }
 
   if (removals !== arrowCount) {
     throw new Error(
-      `level index ${index}: walk removed ${removals} arrows but arrowCount is ${arrowCount} — ` +
+      `${label}: walk removed ${removals} arrows but arrowCount is ${arrowCount} — ` +
         'the board was not fully reconciled',
     );
   }
 
-  return {
-    level: index + 1,
-    index,
-    tier: level.difficulty,
-    shapeName: level.shapeName,
-    rows: level.board.rows,
-    cols: level.board.cols,
-    maskCells,
-    arrowCount,
-    targetCells: level.targetCells,
-    clearableAtDeal,
-    clearablePct: (clearableAtDeal / arrowCount) * 100,
-    scanTaps,
-    blockedTaps,
-    // Infinity only if arrowCount <= 1 (no state ever had n > 1); not hit by
-    // any level in the committed baseline ranges (min arrowCount is 47).
-    minClearable: minClearable === Infinity ? 0 : minClearable,
-    worstN,
-    worstK,
-    bendRate: bentCount / arrowCount,
-    meanLen: totalLen / arrowCount,
-    cellPt: viewport ? 0.94 * Math.min(viewport.w / level.board.cols, viewport.h / level.board.rows) : null,
-  };
+  return { arrowCount, clearableAtDeal, scanTaps, blockedTaps, minClearable, worstN, worstK, bentCount, totalLen };
 }
 
 // ---- Table rendering --------------------------------------------------
@@ -330,19 +458,29 @@ function printHonestyBound(): void {
   console.log('');
 }
 
+/** W3-11: " (clearableBias b)" in a mode's header line when --bias is set; empty when neutral. */
+function biasTag(opts: Options): string {
+  return opts.bias === null ? '' : ` (v2 clearableBias ${opts.bias} on every tier)`;
+}
+
+/** W3-11: `{ clearableBias }` in a mode's JSON when --bias is set; nothing when neutral (JSON unchanged). */
+function biasField(opts: Options): { clearableBias?: number } {
+  return opts.bias === null ? {} : { clearableBias: opts.bias };
+}
+
 // ---- Modes --------------------------------------------------------------
 
 function runRows(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, opts.viewport));
+  const rows = indices.map((i) => buildRow(i, opts.version, opts.viewport, opts.bias));
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'rows', version: opts.version, levels: opts.levels, rows }, null, 2));
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'rows', version: opts.version, levels: opts.levels, ...biasField(opts), rows }, null, 2));
     return;
   }
 
   printHonestyBound();
-  console.log(`Level rows for displayed levels ${opts.levels![0]}-${opts.levels![1]} (index ${indices[0]}-${indices[indices.length - 1]})`);
+  console.log(`Level rows for displayed levels ${opts.levels![0]}-${opts.levels![1]} (index ${indices[0]}-${indices[indices.length - 1]})${biasTag(opts)}`);
   console.log('');
   const headers = [
     'level', 'index', 'tier', 'shape', 'rows×cols', 'mask cells', 'arrows', 'targetCells',
@@ -364,7 +502,7 @@ function runRows(opts: Options): void {
 
 function runPerTier(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const byTier = new Map<Difficulty, LevelRow[]>(tiers.map((t) => [t, []]));
   for (const r of rows) byTier.get(r.tier)!.push(r);
@@ -386,12 +524,12 @@ function runPerTier(opts: Options): void {
   });
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'per-tier', levels: opts.levels, tiers: data }, null, 2));
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'per-tier', levels: opts.levels, ...biasField(opts), tiers: data }, null, 2));
     return;
   }
 
   printHonestyBound();
-  console.log(`Per-tier stats over displayed levels ${opts.levels![0]}-${opts.levels![1]}`);
+  console.log(`Per-tier stats over displayed levels ${opts.levels![0]}-${opts.levels![1]}${biasTag(opts)}`);
   console.log('');
   console.log(table(
     ['Tier', 'n', 'arrows min', 'p50', 'max', 'median scan', 'median blocked'],
@@ -403,7 +541,7 @@ function runBands(opts: Options): void {
   const [lo, hi] = opts.levels!;
   const length = hi - lo + 1;
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
 
   const bands: { lo: number; hi: number; rows: LevelRow[] }[] = [];
   let prevBoundary = 0;
@@ -429,12 +567,12 @@ function runBands(opts: Options): void {
   });
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'bands', levels: opts.levels, bands: data }, null, 2));
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'bands', levels: opts.levels, ...biasField(opts), bands: data }, null, 2));
     return;
   }
 
   printHonestyBound();
-  console.log(`Bands over displayed levels ${lo}-${hi} (fixed cumulative fractions ${BAND_FRACTIONS.map((f) => f.toFixed(3)).join(', ')})`);
+  console.log(`Bands over displayed levels ${lo}-${hi} (fixed cumulative fractions ${BAND_FRACTIONS.map((f) => f.toFixed(3)).join(', ')})${biasTag(opts)}`);
   console.log('');
   console.log(table(
     ['band', 'n', 'median scan', 'median blocked', 'arrows p50'],
@@ -510,7 +648,7 @@ function runShapeReport(opts: Options): void {
   let prevShape: string | null = null;
 
   for (const index of indices) {
-    const level = LevelGenerator.generate(index, opts.version);
+    const level = LevelGenerator.generate(index, opts.version, knobsFor(opts.bias));
     const name = level.shapeName;
     counts.set(name, (counts.get(name) ?? 0) + 1);
     if (!firstAppearance.has(name)) firstAppearance.set(name, index + 1);
@@ -577,7 +715,7 @@ function runShapeReport(opts: Options): void {
 
 function runTierReport(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.version, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null, opts.bias));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const ranges = new Map<Difficulty, { min: number; max: number }>();
   for (const tier of tiers) {
@@ -714,7 +852,7 @@ function runClampShortfall(opts: Options): void {
   const maxDim = maxDimFor(opts.version);
   const findings = indices
     .map((index) => {
-      const level = LevelGenerator.generate(index, opts.version);
+      const level = LevelGenerator.generate(index, opts.version, knobsFor(opts.bias));
       if (level.board.rows !== maxDim && level.board.cols !== maxDim) return null;
       const maskCells = countTrue(level.mask);
       if (maskCells >= level.targetCells) return null;
@@ -750,6 +888,401 @@ function runClampShortfall(opts: Options): void {
   console.log(`Clamp shortfalls: ${findings.length}`);
 }
 
+// ---- W3-11: size sweep and the clearable-bias transfer grid -------------
+
+/** One walked board (one fill seed) of a sweep. */
+interface SweepSample {
+  arrows: number;
+  clearable: number; // arrows clearable at deal
+  clearablePct: number;
+  scan: number;
+  blocked: number;
+  bent: number;
+  totalLen: number;
+}
+
+/** A level-1-sized board of `--size-sweep` / `--transfer` set (ii). */
+interface SizeBoard {
+  shape: ShapeDef;
+  rows: number;
+  cols: number;
+  mask: boolean[][];
+  maskCells: number;
+}
+
+/** The config a sweep fills with: `cfg` itself when neutral, else `cfg` plus the bias. */
+function withBias(cfg: DifficultyConfig, bias: number | null): DifficultyConfig {
+  return bias === null ? cfg : { ...cfg, clearableBias: bias };
+}
+
+function toSample(m: WalkMetrics): SweepSample {
+  return {
+    arrows: m.arrowCount,
+    clearable: m.clearableAtDeal,
+    clearablePct: (m.clearableAtDeal / m.arrowCount) * 100,
+    scan: m.scanTaps,
+    blocked: m.blockedTaps,
+    bent: m.bentCount,
+    totalLen: m.totalLen,
+  };
+}
+
+/** Fill `mask` with `DotNetRandom(seedValue)` through the shipping `fillMask`, then walk it. */
+function fillAndWalk(
+  mask: readonly (readonly boolean[])[],
+  rows: number,
+  cols: number,
+  cfg: DifficultyConfig,
+  seedValue: number,
+  label: string,
+): SweepSample {
+  const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(seedValue));
+  const board = new BoardLogic(rows, cols);
+  for (const a of arrows) board.add(a);
+  return toSample(walkBoard(board, arrows.length, label));
+}
+
+function sizeSweepBoards(opts: Options): SizeBoard[] {
+  const boards: SizeBoard[] = [];
+  for (const name of opts.sweepShapes) {
+    const shape = shapeByName(name);
+    for (let rows = opts.sweepRows[0]; rows <= opts.sweepRows[1]; rows++) {
+      const cols = v2Cols(rows, shape.aspect);
+      const mask = shape.rasterize(rows, cols);
+      const maskCells = countTrue(mask);
+      if (maskCells === 0) throw new Error(`${name} at ${rows} rows rasterizes to no cells`);
+      boards.push({ shape, rows, cols, mask, maskCells });
+    }
+  }
+  return boards;
+}
+
+function seedList(opts: Options): number[] {
+  const out: number[] = [];
+  for (let s = opts.sweepSeeds[0]; s <= opts.sweepSeeds[1]; s++) out.push(s);
+  return out;
+}
+
+const NORMAL_CFG = (): DifficultyConfig => Difficulties.config(Difficulty.Normal);
+
+function med(values: readonly number[]): number {
+  return median(ascending(values));
+}
+
+function minMax(values: readonly number[]): { min: number; max: number } {
+  return { min: Math.min(...values), max: Math.max(...values) };
+}
+
+function fmtRange(r: { min: number; max: number }, digits: number): string {
+  return `${r.min.toFixed(digits)}–${r.max.toFixed(digits)}`;
+}
+
+function sizeSweepHeader(opts: Options, seeds: readonly number[], biasText: string): string {
+  const lowRows = opts.sweepRows[0] < V2_MIN_ROWS_FOR_NOTE
+    ? ` (rows below ${V2_MIN_ROWS_FOR_NOTE} are below v2's row floor; v2 never deals them)`
+    : '';
+  return `Level-1-sized boards: ${opts.sweepShapes.join('/')} x rows ${opts.sweepRows[0]}-${opts.sweepRows[1]}${lowRows}, `
+    + `cols = v2Cols(rows, aspect), Normal config, fillMask with DotNetRandom(s) for s = ${seeds[0]}..${seeds[seeds.length - 1]}; `
+    + biasText;
+}
+
+/** v2's row floor (`V2_MIN_GRID_ROWS`), restated for the size-sweep note only. */
+const V2_MIN_ROWS_FOR_NOTE = 8;
+
+function runSizeSweep(opts: Options): void {
+  const boards = sizeSweepBoards(opts);
+  const seeds = seedList(opts);
+  const cfg = withBias(NORMAL_CFG(), opts.bias);
+  const data = boards.map((b) => {
+    const samples = seeds.map((s) => fillAndWalk(b.mask, b.rows, b.cols, cfg, s, `${b.shape.name} ${b.rows}x${b.cols} seed ${s}`));
+    const pick = (f: (x: SweepSample) => number) => samples.map(f);
+    return {
+      shape: b.shape.name,
+      rows: b.rows,
+      cols: b.cols,
+      maskCells: b.maskCells,
+      n: samples.length,
+      arrowsMean: pick((x) => x.arrows).reduce((t, v) => t + v, 0) / samples.length,
+      arrows: { median: med(pick((x) => x.arrows)), ...minMax(pick((x) => x.arrows)) },
+      clearablePct: { median: med(pick((x) => x.clearablePct)), ...minMax(pick((x) => x.clearablePct)) },
+      scan: { median: med(pick((x) => x.scan)), ...minMax(pick((x) => x.scan)) },
+      blockedMean: pick((x) => x.blocked).reduce((t, v) => t + v, 0) / samples.length,
+      blocked: { median: med(pick((x) => x.blocked)), ...minMax(pick((x) => x.blocked)) },
+      bendPct: med(pick((x) => (100 * x.bent) / x.arrows)),
+      meanLen: med(pick((x) => x.totalLen / x.arrows)),
+      samples,
+    };
+  });
+
+  if (opts.json) {
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'size-sweep', shapes: opts.sweepShapes, rows: opts.sweepRows, seeds: opts.sweepSeeds,
+      clearableBias: opts.bias, boards: data,
+    }, null, 2));
+    return;
+  }
+
+  printHonestyBound();
+  console.log(sizeSweepHeader(opts, seeds, opts.bias === null ? 'clearableBias unset (neutral).' : `clearableBias ${opts.bias}.`));
+  console.log('Each cell is the median over seeds with the seed min–max; "mean" columns are plain means over seeds.');
+  console.log('');
+  console.log(table(
+    ['shape', 'rows×cols', 'mask cells', 'n', 'arrows mean', 'arrows [min–max]', 'clearable@0% median [min–max]',
+      'scan median [min–max]', 'blocked mean', 'blocked median [min–max]', 'bend% median', 'meanLen median'],
+    data.map((d) => [
+      d.shape, `${d.rows}×${d.cols}`, d.maskCells, d.n, d.arrowsMean.toFixed(1), `${d.arrows.min}–${d.arrows.max}`,
+      `${d.clearablePct.median.toFixed(1)}% [${fmtRange(d.clearablePct, 1)}]`,
+      `${d.scan.median.toFixed(1)} [${fmtRange(d.scan, 1)}]`,
+      d.blockedMean.toFixed(1),
+      `${d.blocked.median.toFixed(1)} [${fmtRange(d.blocked, 1)}]`,
+      fmtPct(d.bendPct), d.meanLen.toFixed(2),
+    ]),
+  ));
+}
+
+/** A stream's summary over a set of boards: medians per board, and pooled look metrics. */
+interface StreamAggregate {
+  n: number;
+  arrows: number; // median arrows per board
+  clearablePct: number; // median clearable-at-deal % per board
+  scan: number; // median
+  blocked: number; // median
+  bendPct: number; // pooled: bent arrows / all arrows
+  meanLen: number; // pooled: cells / arrows
+}
+
+function aggregateStream(samples: readonly SweepSample[]): StreamAggregate {
+  const arrowsTotal = samples.reduce((t, x) => t + x.arrows, 0);
+  return {
+    n: samples.length,
+    arrows: med(samples.map((x) => x.arrows)),
+    clearablePct: med(samples.map((x) => x.clearablePct)),
+    scan: med(samples.map((x) => x.scan)),
+    blocked: med(samples.map((x) => x.blocked)),
+    bendPct: (100 * samples.reduce((t, x) => t + x.bent, 0)) / arrowsTotal,
+    meanLen: samples.reduce((t, x) => t + x.totalLen, 0) / arrowsTotal,
+  };
+}
+
+type AggKey = 'clearablePct' | 'scan' | 'blocked' | 'bendPct' | 'meanLen' | 'arrows';
+const AGG_KEYS: readonly AggKey[] = ['clearablePct', 'scan', 'blocked', 'bendPct', 'meanLen', 'arrows'];
+
+/** One bias setting on one set: its seed-replica aggregates (and set (i)'s real v2 stream). */
+interface SettingResult {
+  bias: number | null;
+  replicas: StreamAggregate[]; // one per seed
+  real: StreamAggregate | null; // set (i) only: generate(i, 2, { clearableBias })
+}
+
+type Position = 'inside' | 'above' | 'below';
+
+interface Verdict {
+  key: AggKey;
+  median: number; // median over seed replicas
+  range: { min: number; max: number }; // over seed replicas
+  band: { min: number; max: number }; // the neutral (unset) replicas' range
+  position: Position; // of `median` against `band`
+  disjoint: boolean; // this setting's replica range does not overlap the band at all
+}
+
+function verdictFor(key: AggKey, setting: SettingResult, neutral: SettingResult): Verdict {
+  const values = setting.replicas.map((a) => a[key]);
+  const bandValues = neutral.replicas.map((a) => a[key]);
+  const m = med(values);
+  const range = minMax(values);
+  const band = minMax(bandValues);
+  const position: Position = m > band.max ? 'above' : m < band.min ? 'below' : 'inside';
+  return { key, median: m, range, band, position, disjoint: range.min > band.max || range.max < band.min };
+}
+
+function biasLabel(bias: number | null): string {
+  return bias === null ? 'unset' : String(bias);
+}
+
+function fmtKey(key: AggKey, v: number): string {
+  if (key === 'clearablePct' || key === 'bendPct') return `${v.toFixed(1)}%`;
+  if (key === 'meanLen') return v.toFixed(2);
+  return v.toFixed(1);
+}
+
+function arrowMark(v: Verdict): string {
+  if (v.position === 'inside') return '';
+  return `${v.position === 'above' ? ' ↑' : ' ↓'}${v.disjoint ? '' : ' (ranges overlap)'}`;
+}
+
+function runTransfer(opts: Options): void {
+  const settings: (number | null)[] = [null, ...opts.biases];
+  const seeds = seedList(opts);
+  const indices = indicesInRange(opts.levels!);
+
+  // Set (i): v2 levels. The mask, size and tier do not depend on the bias
+  // (it only reweights fillMask), so each level's neutral board supplies the
+  // mask the seed replicas refill; the "real" stream is generate(i, 2, knobs).
+  const neutralLevels = indices.map((i) => LevelGenerator.generate(i, 2));
+  const setI: SettingResult[] = settings.map((bias) => {
+    const real = aggregateStream(indices.map((i, k) => {
+      const lvl = LevelGenerator.generate(i, 2, knobsFor(bias));
+      const base = neutralLevels[k];
+      if (lvl.shapeName !== base.shapeName || lvl.board.rows !== base.board.rows || lvl.board.cols !== base.board.cols) {
+        throw new Error(`level index ${i}: the bias changed the shape or size, which it must never do`);
+      }
+      return toSample(walkBoard(lvl.board, lvl.arrowCount, `level index ${i} bias ${biasLabel(bias)}`));
+    }));
+    const replicas = seeds.map((s) => aggregateStream(neutralLevels.map((base, k) => fillAndWalk(
+      base.mask, base.board.rows, base.board.cols, withBias(Difficulties.config(base.difficulty), bias), s,
+      `level index ${indices[k]} bias ${biasLabel(bias)} seed ${s}`,
+    ))));
+    return { bias, replicas, real };
+  });
+
+  // Set (ii): level-1-sized boards, Normal config.
+  const boards = sizeSweepBoards(opts);
+  const perBoard = new Map<number | null, SweepSample[][]>(); // bias -> board -> seed samples
+  const setII: SettingResult[] = settings.map((bias) => {
+    const cfg = withBias(NORMAL_CFG(), bias);
+    const grid = boards.map((b) => seeds.map((s) => fillAndWalk(
+      b.mask, b.rows, b.cols, cfg, s, `${b.shape.name} ${b.rows}x${b.cols} bias ${biasLabel(bias)} seed ${s}`,
+    )));
+    perBoard.set(bias, grid);
+    const replicas = seeds.map((_, si) => aggregateStream(grid.map((bySeed) => bySeed[si])));
+    return { bias, replicas, real: null };
+  });
+
+  const verdicts = (set: SettingResult[]) => set.map((st) => ({
+    bias: st.bias,
+    byKey: Object.fromEntries(AGG_KEYS.map((k) => [k, verdictFor(k, st, set[0])])) as Record<AggKey, Verdict>,
+  }));
+  const vI = verdicts(setI);
+  const vII = verdicts(setII);
+
+  const moved = vII.filter((v) => v.bias !== null && v.byKey.clearablePct.position !== 'inside');
+  const up = moved.filter((v) => v.byKey.clearablePct.position === 'above').map((v) => v.bias);
+  const down = moved.filter((v) => v.byKey.clearablePct.position === 'below').map((v) => v.bias);
+  const premiseHolds = moved.length > 0;
+  const lookChanged = (bias: number | null): string[] => {
+    const out: string[] = [];
+    for (const [setName, vs] of [['set (i)', vI], ['set (ii)', vII]] as const) {
+      const v = vs.find((x) => x.bias === bias)!;
+      for (const key of ['bendPct', 'meanLen'] as const) {
+        if (v.byKey[key].position !== 'inside') out.push(`${setName} ${key === 'bendPct' ? 'bend%' : 'meanLen'} ${v.byKey[key].position}`);
+      }
+    }
+    return out;
+  };
+
+  // Set (ii) per board: medians over seeds against that board's neutral seed band.
+  const boardRows = boards.map((b, bi) => {
+    const cell = (bias: number | null, f: (x: SweepSample) => number) => perBoard.get(bias)![bi].map(f);
+    return {
+      board: `${b.shape.name} ${b.rows}×${b.cols}`,
+      byBias: settings.map((bias) => ({
+        bias,
+        arrows: med(cell(bias, (x) => x.arrows)),
+        clearablePct: med(cell(bias, (x) => x.clearablePct)),
+        clearableRange: minMax(cell(bias, (x) => x.clearablePct)),
+        blocked: med(cell(bias, (x) => x.blocked)),
+        blockedRange: minMax(cell(bias, (x) => x.blocked)),
+        scan: med(cell(bias, (x) => x.scan)),
+      })),
+    };
+  });
+  const blockedFive = settings.map((bias) => {
+    const si = settings.indexOf(bias);
+    const ok = boardRows.filter((r) => r.byBias[si].blocked <= 5);
+    ok.sort((a, b) => b.byBias[si].arrows - a.byBias[si].arrows);
+    return { bias, largest: ok[0] ?? null, count: ok.length, si };
+  });
+
+  if (opts.json) {
+    console.log(JSON.stringify({
+      note: HONESTY_BOUND, mode: 'transfer', levels: opts.levels, biases: opts.biases, seeds: opts.sweepSeeds,
+      shapes: opts.sweepShapes, rows: opts.sweepRows,
+      setI: setI.map((st, k) => ({ bias: st.bias, real: st.real, replicas: st.replicas, verdicts: vI[k].byKey })),
+      setII: setII.map((st, k) => ({ bias: st.bias, replicas: st.replicas, verdicts: vII[k].byKey })),
+      perBoard: boardRows,
+      premise: { holds: premiseHolds, raises: up, lowers: down },
+      brandGate: settings.map((bias) => ({ bias, changes: lookChanged(bias) })),
+    }, null, 2));
+    return;
+  }
+
+  printHonestyBound();
+  console.log(`clearableBias transfer grid: b in {unset, ${opts.biases.join(', ')}} (sweep points, not shipped values).`);
+  console.log(`Set (i): generator v2, displayed levels ${opts.levels![0]}-${opts.levels![1]} (n=${indices.length} levels). `
+    + `Each seed replica refills every level's own v2 mask with its tier config + b and DotNetRandom(s), s = ${seeds.join(', ')}; `
+    + '"real v2" is generate(i, 2, { clearableBias: b }) on the level\'s own stream.');
+  console.log(`Set (ii): ${sizeSweepHeader(opts, seeds, `n=${boards.length} boards per seed.`)}`);
+  console.log('Per stream: clearable@0 / scan / blocked / arrows are medians over the boards; bend% and meanLen are pooled over all arrows.');
+  console.log('Band = the min–max of the 5 unset seed replicas. ↑/↓ = the median over seed replicas lies above/below the band; '
+    + '"(ranges overlap)" = some replica still falls inside it.');
+
+  const setTable = (title: string, set: SettingResult[], vs: typeof vI) => {
+    console.log('');
+    console.log(title);
+    console.log('');
+    const headers = ['b', 'clearable@0 median [replica min–max]', 'scan', 'blocked', 'bend% (pooled)', 'meanLen (pooled)', 'arrows'];
+    if (set[0].real !== null) headers.push('real v2: clearable@0 / scan / blocked / bend% / meanLen');
+    console.log(table(headers, set.map((st, k) => {
+      const v = vs[k].byKey;
+      const cellFor = (key: AggKey) => `${fmtKey(key, v[key].median)} [${fmtKey(key, v[key].range.min)}–${fmtKey(key, v[key].range.max)}]${st.bias === null ? ' (band)' : arrowMark(v[key])}`;
+      const row: (string | number)[] = [biasLabel(st.bias), cellFor('clearablePct'), cellFor('scan'), cellFor('blocked'), cellFor('bendPct'), cellFor('meanLen'), cellFor('arrows')];
+      if (st.real !== null) {
+        const r = st.real;
+        row.push(`${fmtKey('clearablePct', r.clearablePct)} / ${r.scan.toFixed(1)} / ${r.blocked.toFixed(1)} / ${fmtKey('bendPct', r.bendPct)} / ${r.meanLen.toFixed(2)}`);
+      }
+      return row;
+    })));
+  };
+  setTable(`Set (i): v2 levels ${opts.levels![0]}-${opts.levels![1]}`, setI, vI);
+  setTable(`Set (ii): level-1-sized boards (${boards.length} boards x ${seeds.length} seeds)`, setII, vII);
+
+  console.log('');
+  console.log('Set (ii) per board: median over seeds; the unset column shows the seed min–max band; ↑/↓ = outside that board\'s band.');
+  for (const [title, key, rangeKey, digits] of [
+    ['clearable@0 %', 'clearablePct', 'clearableRange', 1],
+    ['blocked taps', 'blocked', 'blockedRange', 1],
+  ] as const) {
+    console.log('');
+    console.log(`Per board, ${title}:`);
+    console.log('');
+    console.log(table(['board', ...settings.map(biasLabel)], boardRows.map((r) => {
+      const neutral = r.byBias[0];
+      const band = neutral[rangeKey];
+      return [r.board, ...r.byBias.map((x, si) => {
+        const v = x[key];
+        if (si === 0) return `${v.toFixed(digits)} [${fmtRange(band, digits)}]`;
+        const mark = v > band.max ? ' ↑' : v < band.min ? ' ↓' : '';
+        return `${v.toFixed(digits)}${mark}`;
+      })];
+    })));
+  }
+  console.log('');
+  console.log('Per board, median arrows:');
+  console.log('');
+  console.log(table(['board', ...settings.map(biasLabel)], boardRows.map((r) => [r.board, ...r.byBias.map((x) => x.arrows)])));
+
+  console.log('');
+  console.log('Largest set (ii) board whose median blocked taps <= 5, per b (a pointer for W3-12, not a gate):');
+  console.log('');
+  console.log(table(['b', 'boards with median blocked <= 5', 'largest (by median arrows)', 'arrows', 'clearable@0', 'blocked'],
+    blockedFive.map((x) => {
+      if (x.largest === null) return [biasLabel(x.bias), 0, 'none', '-', '-', '-'];
+      const c = x.largest.byBias[x.si];
+      return [biasLabel(x.bias), `${x.count}/${boards.length}`, x.largest.board, c.arrows, fmtPct(c.clearablePct), c.blocked.toFixed(1)];
+    })));
+
+  console.log('');
+  console.log(`Premise check (set (ii), median clearable@0 over seed replicas vs the unset band): `
+    + (premiseHolds
+      ? `HOLDS. Raised above the band by b = ${up.join(', ') || 'none'}; lowered below it by b = ${down.join(', ') || 'none'}.`
+      : 'premise does not hold: no b moves median clearable-at-t=0 outside the neutral band.'));
+  console.log('Brand gate (bend% or meanLen median outside its unset band on either set = "changes arrow look"):');
+  for (const bias of opts.biases) {
+    const changes = lookChanged(bias);
+    console.log(`  b=${bias}: ${changes.length === 0 ? 'inside both bands' : `changes arrow look (${changes.join('; ')})`}`);
+  }
+}
+
 // ---- Entry point --------------------------------------------------------
 
 function runMode(mode: Mode, opts: Options): void {
@@ -761,6 +1294,8 @@ function runMode(mode: Mode, opts: Options): void {
     case 'tier-report': return runTierReport(opts);
     case 'capacity': return runCapacity(opts);
     case 'clamp-shortfall': return runClampShortfall(opts);
+    case 'size-sweep': return runSizeSweep(opts);
+    case 'transfer': return runTransfer(opts);
   }
 }
 

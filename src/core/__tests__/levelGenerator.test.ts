@@ -1,5 +1,6 @@
 import { BoardLogic } from '../boardLogic';
 import { Difficulties, Difficulty } from '../difficulty';
+import { Direction, toDelta } from '../direction';
 import { DotNetRandom } from '../dotnetRandom';
 import type { GenVersion } from '../generatorVersion';
 import { LevelGenerator } from '../levelGenerator';
@@ -196,9 +197,9 @@ test('v1 corpus fingerprint: levels 0-299 serialize identically forever', () => 
  * greedy loop that clears the board also counts the removals, so there is no
  * second O(n^2) scan just to get a count.
  */
-function sweep(version: GenVersion, count: number): void {
+function sweep(version: GenVersion, count: number, knobs?: W311Knobs): void {
   for (let i = 0; i < count; i++) {
-    const lvl = LevelGenerator.generate(i, version);
+    const lvl = LevelGenerator.generate(i, version, knobs);
     const board = lvl.board;
 
     for (let r = 0; r < board.rows; r++) {
@@ -294,6 +295,221 @@ test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () =
         }
       }
       if (!solveGreedy(board)) throw new Error(`${shape.name} rows=${rows}: not solvable`);
+    }
+  }
+});
+
+
+// ---- W3-11: the clearable-fraction knob (v2 only, dark at neutral) ---------
+//
+// `clearableBias` scales the fill's candidate weight of every head whose exit
+// lane holds no mask cell at all. It changes weights only, never the
+// candidate set, so the peel proof above (fill completeness + solvability)
+// holds at any bias > 0. Unset, the path is skipped: v2 is W3-10's output.
+
+interface W311Knobs {
+  clearableBias?: number;
+}
+
+/** The v2 corpus 0..299, serialized exactly like the v1 fingerprint above. */
+function v2CorpusFingerprint(knobs?: W311Knobs): string {
+  const lines: string[] = [];
+  for (let i = 0; i < V1_CORPUS_SIZE; i++) {
+    const lvl = LevelGenerator.generate(i, 2, knobs);
+    lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
+    for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
+  }
+  return checksumLines(lines);
+}
+
+function serializeLevel(lvl: { shapeName: string; board: BoardLogic }): string {
+  return [lvl.shapeName, lvl.board.rows, lvl.board.cols, ...lvl.board.arrows().map((a) => a.toLine())].join('\n');
+}
+
+test('W3-11 neutral: with clearableBias unset, generate(i, 2) equals the W3-10 output for 0-299', () => {
+  // 04d0ec7e is W3-10's v2 corpus (c31dd8e), EXECUTED by W3-10's fp.ts and
+  // re-EXECUTED by W3-11 against a `git archive c31dd8e src/core` copy. Unlike
+  // v1's d01abbd8 this is not frozen forever: a later task that changes v2
+  // content on purpose (W3-09's clamp, W3-14's curve, W3-18's shapes) re-pins
+  // it with its own evidence. What this test pins is that the knob, unset,
+  // changes nothing.
+  expect(v2CorpusFingerprint()).toBe('04d0ec7e');
+});
+
+test('W3-11 neutral: an empty knobs object and an explicit undefined bias are the same boards', () => {
+  for (let i = 0; i < 60; i++) {
+    const plain = serializeLevel(LevelGenerator.generate(i, 2));
+    expect(serializeLevel(LevelGenerator.generate(i, 2, {}))).toBe(plain);
+    expect(serializeLevel(LevelGenerator.generate(i, 2, { clearableBias: undefined }))).toBe(plain);
+  }
+});
+
+test('W3-11: clearableBias 1 is the identity (same weights, same draws, same boards as unset)', () => {
+  // The biased path picks with an untruncated u * total; for integer weights
+  // that selects exactly what the truncated neutral pick selects, and the
+  // path adds no RNG draw. So b=1 must reproduce the neutral corpus.
+  expect(v2CorpusFingerprint({ clearableBias: 1 })).toBe('04d0ec7e');
+});
+
+test('W3-11: clearableBias 0 throws (so do negative, NaN and infinite values)', () => {
+  const cfg0 = { ...Difficulties.config(Difficulty.Normal), clearableBias: 0 };
+  expect(() => LevelGenerator.fillMask([[true, true], [true, true]], 2, 2, cfg0, new DotNetRandom(1))).toThrow(/clearableBias/);
+  for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    expect(() => LevelGenerator.generate(0, 2, { clearableBias: bad })).toThrow(/clearableBias/);
+  }
+});
+
+test('W3-11: v1 takes no knobs (v1 is frozen; a bias there would be silently ignored otherwise)', () => {
+  expect(() => LevelGenerator.generate(0, 1, { clearableBias: 2 })).toThrow(/v2/);
+  expect(() => LevelGenerator.generate(0, undefined, { clearableBias: 2 })).toThrow(/v2/);
+  // No knobs, or an unset bias, is still plain v1.
+  expect(serializeLevel(LevelGenerator.generate(3, 1, {}))).toBe(serializeLevel(LevelGenerator.generate(3)));
+});
+
+const SET_II_SHAPES = ['Circle', 'Square', 'Heart'] as const;
+
+function shapeByName(name: string) {
+  const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
+  const shape = all.find((s) => s.name === name);
+  if (shape === undefined) throw new Error(`no shape ${name}`);
+  return shape;
+}
+
+/** A level-1-sized board (W3-11 set (ii)): Normal config, square shapes so cols = rows. */
+function fillSmall(name: string, rows: number, seedValue: number, clearableBias?: number) {
+  const shape = shapeByName(name);
+  const cols = clamp(roundHalfToEven(rows * shape.aspect), 4, 46);
+  const mask = shape.rasterize(rows, cols);
+  const cfg = { ...Difficulties.config(Difficulty.Normal), clearableBias };
+  const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(seedValue));
+  const board = new BoardLogic(rows, cols);
+  for (const a of arrows) board.add(a);
+  return { mask, rows, cols, board, arrows };
+}
+
+test('W3-11: the bias moves clearable-at-deal in both directions (Circle/Square/Heart, rows 12 and 16, seeds 1-5)', () => {
+  const fraction = (clearableBias?: number): number => {
+    let clearable = 0;
+    let total = 0;
+    for (const name of SET_II_SHAPES) {
+      for (const rows of [12, 16]) {
+        for (let s = 1; s <= 5; s++) {
+          const { board, arrows } = fillSmall(name, rows, s, clearableBias);
+          for (const a of arrows) if (board.canExit(a)) clearable++;
+          total += arrows.length;
+        }
+      }
+    }
+    return clearable / total;
+  };
+  const neutral = fraction(undefined);
+  expect(fraction(0.1)).toBeLessThan(neutral);
+  expect(fraction(10)).toBeGreaterThan(neutral);
+});
+
+test('W3-11 mechanism: at deal, an arrow is clearable exactly when its head lane holds no mask cell', () => {
+  // The brief's INFERENCE, checked: the knob targets exactly the arrows the
+  // probe counts as clearable at t=0.
+  for (const clearableBias of [undefined, 0.1, 10]) {
+    for (const name of SET_II_SHAPES) {
+      for (const rows of [8, 12, 16]) {
+        for (let s = 1; s <= 3; s++) {
+          const { mask, board, arrows } = fillSmall(name, rows, s, clearableBias);
+          for (const a of arrows) {
+            const [dr, dc] = toDelta(a.headDir);
+            let r = a.head.r + dr;
+            let c = a.head.c + dc;
+            let laneHasMask = false;
+            while (r >= 0 && r < board.rows && c >= 0 && c < board.cols) {
+              if (mask[r][c]) laneHasMask = true;
+              r += dr;
+              c += dc;
+            }
+            if (board.canExit(a) === laneHasMask) {
+              throw new Error(`${name} rows=${rows} seed=${s} bias=${clearableBias}: canExit disagrees with the mask lane at ${a.toLine()}`);
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test('W3-11 targeting: an overwhelming bias carves a lane-empty head whenever one is legal (a vanishing one never does)', () => {
+  // Replays each fill in carve order (fillMask returns arrows in the order it
+  // carved them). At every step it recomputes the legal candidates on the
+  // still-unfilled cells, independently of fillMask, and splits them by
+  // "no mask cell in the lane". At 1e9 the pick must be lane-empty whenever
+  // any lane-empty candidate is legal; at 1e-9 it must be lane-blocked
+  // whenever any lane-blocked candidate is legal.
+  const laneHits = (grid: readonly (readonly boolean[])[], r: number, c: number, d: Direction): boolean => {
+    const [dr, dc] = toDelta(d);
+    for (let rr = r + dr, cc = c + dc; rr >= 0 && rr < grid.length && cc >= 0 && cc < grid[0].length; rr += dr, cc += dc) {
+      if (grid[rr][cc]) return true;
+    }
+    return false;
+  };
+  const dirs = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
+  for (const [clearableBias, wantEmpty] of [[1e9, true], [1e-9, false]] as const) {
+    let decisive = 0;
+    for (const name of SET_II_SHAPES) {
+      for (const rows of [10, 14]) {
+        for (let s = 1; s <= 3; s++) {
+          const { mask, arrows } = fillSmall(name, rows, s, clearableBias);
+          const need = mask.map((row) => [...row]);
+          arrows.forEach((a, step) => {
+            let wantedIsLegal = false;
+            for (let r = 0; r < need.length && !wantedIsLegal; r++) {
+              for (let c = 0; c < need[0].length && !wantedIsLegal; c++) {
+                if (!need[r][c]) continue;
+                for (const d of dirs) {
+                  if (laneHits(need, r, c, d)) continue; // not a legal head now
+                  if (!laneHits(mask, r, c, d) === wantEmpty) { wantedIsLegal = true; break; }
+                }
+              }
+            }
+            const headEmpty = !laneHits(mask, a.head.r, a.head.c, a.headDir);
+            if (wantedIsLegal) {
+              decisive++;
+              if (headEmpty !== wantEmpty) {
+                throw new Error(`${name} rows=${rows} seed=${s} bias=${clearableBias} step ${step}: carved ${a.toLine()} although a ${wantEmpty ? 'lane-empty' : 'lane-blocked'} head was legal`);
+              }
+            }
+            for (const cell of a.cells) need[cell.r][cell.c] = false;
+          });
+        }
+      }
+    }
+    expect(decisive).toBeGreaterThan(100); // the check actually constrained many carves
+  }
+});
+
+test('W3-11: sweep(2) passes at clearableBias 0.1 and at 10', () => {
+  sweep(2, 300, { clearableBias: 0.1 });
+  sweep(2, 300, { clearableBias: 10 });
+});
+
+test('W3-11: every shape fills and solves at extreme biases (peel proof holds for any bias > 0)', () => {
+  const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
+  const plan: [number, number][] = [
+    [0.1, 12], [0.1, 24], [0.1, 46], [10, 12], [10, 24], [10, 46], [1e-6, 24], [1e6, 24],
+  ];
+  for (const [clearableBias, rows] of plan) {
+    const cfg = { ...Difficulties.config(Difficulty.Normal), clearableBias };
+    for (const shape of all) {
+      const cols = clamp(roundHalfToEven(rows * shape.aspect), 4, 46);
+      const mask = shape.rasterize(rows, cols);
+      const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, new DotNetRandom(1234));
+      const board = new BoardLogic(rows, cols);
+      for (const a of arrows) board.add(a);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (!board.isEmpty(r, c) !== mask[r][c]) {
+            throw new Error(`${shape.name} rows=${rows} bias=${clearableBias}: fill != mask at ${r},${c}`);
+          }
+        }
+      }
+      if (!solveGreedy(board)) throw new Error(`${shape.name} rows=${rows} bias=${clearableBias}: not solvable`);
     }
   }
 });

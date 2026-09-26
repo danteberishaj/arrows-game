@@ -29,6 +29,17 @@ export interface DifficultyConfig {
   /** Chance to take an allowed bend at each eligible step. */
   readonly bendChance: number;
   readonly hearts: number;
+  /**
+   * W3-11, generator v2 only: v1 and daily configs never set it. `fillMask`
+   * multiplies the pick weight of every candidate head whose exit lane holds
+   * no mask cell at all (the arrows that are clearable the moment the board
+   * is dealt) by this factor: above 1 deals more of them, below 1 fewer. It
+   * changes weights only, never the candidate set, so every board still
+   * fills and solves. Must be finite and > 0 (`fillMask` throws otherwise).
+   * Undefined is neutral: the path is skipped and the output is byte-identical
+   * to a config without the field. 1 is also the identity.
+   */
+  readonly clearableBias?: number;
 }
 
 const CYCLE: readonly Difficulty[] = [

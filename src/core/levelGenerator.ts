@@ -33,6 +33,18 @@ export interface GeneratedLevel {
 }
 
 /**
+ * W3-11: v2-only generation knobs. Every field is optional and an unset field
+ * is neutral, so `generate(i, 2)`, `generate(i, 2, {})` and
+ * `generate(i, 2, { clearableBias: undefined })` deal the same board. The
+ * difficulty probe's `--bias` sets one value for every tier; W3-14's curve
+ * rows will set it per level.
+ */
+export interface V2Knobs {
+  /** See `DifficultyConfig.clearableBias`. */
+  readonly clearableBias?: number;
+}
+
+/**
  * The shape `LevelGenerator.generate(levelIndex, version)` deals, without
  * building the board (W4-01; versioned by W3-05). Must stay equivalent to
  * generation at every version (`__tests__/shapeCatalogue.test.ts`,
@@ -75,15 +87,25 @@ function generateV1(levelIndex: number): GeneratedLevel {
  * - sizing clamps at `V2_MAX_GRID_DIM` (`buildV2`), not v1's literal 46.
  * Difficulty, hearts, arrow rules and `fillMask` are v1's. v1 is untouched.
  */
-function generateV2(levelIndex: number): GeneratedLevel {
+function generateV2(levelIndex: number, knobs?: V2Knobs): GeneratedLevel {
   const difficulty = Difficulties.forLevel(levelIndex);
-  const cfg = Difficulties.config(difficulty);
+  const cfg = v2Config(difficulty, knobs);
   const rng = new DotNetRandom(seed(levelIndex));
 
   const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
   const shape = pickForLevelV2(levelIndex);
 
   return buildV2(shape, difficulty, cfg, rng, targetCells);
+}
+
+/**
+ * v2's tier config plus its knobs. With no knob set it returns
+ * `Difficulties.config` itself, so neutral v2 reads exactly what W3-10 read.
+ */
+function v2Config(difficulty: Difficulty, knobs: V2Knobs | undefined): DifficultyConfig {
+  const base = Difficulties.config(difficulty);
+  if (knobs === undefined || knobs.clearableBias === undefined) return base;
+  return { ...base, clearableBias: knobs.clearableBias };
 }
 
 /**
@@ -178,8 +200,17 @@ const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as 
  * Ported from Assets/_Game/Scripts/Core/LevelGenerator.cs.
  */
 export const LevelGenerator = {
-  generate(levelIndex: number, version: GenVersion = 1): GeneratedLevel {
-    return version === 2 ? generateV2(levelIndex) : generateV1(levelIndex);
+  /**
+   * `knobs` (W3-11) are v2-only analysis/curve overrides; unset fields are
+   * neutral. v1 is frozen, so passing a knob with v1 throws instead of being
+   * silently ignored.
+   */
+  generate(levelIndex: number, version: GenVersion = 1, knobs?: V2Knobs): GeneratedLevel {
+    if (version === 2) return generateV2(levelIndex, knobs);
+    if (knobs !== undefined && knobs.clearableBias !== undefined) {
+      throw new Error('LevelGenerator.generate: clearableBias is a v2-only knob; v1 is frozen');
+    }
+    return generateV1(levelIndex);
   },
 
   /**
@@ -291,6 +322,36 @@ export const LevelGenerator = {
     const span = Math.max(rows, cols);
     const cap = Math.min(cfg.maxLen, span);
 
+    // W3-11 clearable bias (v2 only; undefined skips all of this). `need`
+    // equals the mask right now, so the four bounds above are the MASK's
+    // first/last cells per row and column. A candidate head's lane never
+    // holds a still-unfilled cell (`rayClearOfNeed`), so a mask cell in its
+    // lane can only be an arrow carved earlier, which blocks it at deal. "No
+    // mask cell in the lane" is therefore exactly "clearable at deal"; for Up,
+    // the head is the first mask cell of its column. Those (cell, direction)
+    // pairs are fixed by the mask, so they are marked once, as one bit per
+    // direction per cell (a per-candidate closure over the bounds measured
+    // about 7% slower at bias 1).
+    const bias = cfg.clearableBias;
+    const biasFactor = bias === undefined ? 1 : bias;
+    let clearAtDealDirs: Uint8Array | null = null; // bit (1 << d) set: lane d from this cell holds no mask cell
+    if (bias !== undefined) {
+      if (!(bias > 0 && Number.isFinite(bias))) {
+        throw new Error(`fillMask: clearableBias must be a finite number > 0; got ${bias}`);
+      }
+      clearAtDealDirs = new Uint8Array(cellCount);
+      for (let r = 0; r < rows; r++) {
+        if (rowLast[r] < 0) continue; // no mask cell in this row
+        clearAtDealDirs[r * cols + rowFirst[r]] |= 1 << Direction.Left;
+        clearAtDealDirs[r * cols + rowLast[r]] |= 1 << Direction.Right;
+      }
+      for (let c = 0; c < cols; c++) {
+        if (colLast[c] < 0) continue; // no mask cell in this column
+        clearAtDealDirs[colFirst[c] * cols + c] |= 1 << Direction.Up;
+        clearAtDealDirs[colLast[c] * cols + c] |= 1 << Direction.Down;
+      }
+    }
+
     const inBounds = (r: number, c: number) => r >= 0 && r < rows && c >= 0 && c < cols;
 
     // A head can exit when it is the outermost still-needed cell in its row or
@@ -395,13 +456,21 @@ export const LevelGenerator = {
               if (inBounds(n2r + pr, n2c + pc) && need[n2r + pr][n2c + pc]) { w *= 10; break; }
             }
           }
+          if (clearAtDealDirs !== null && (clearAtDealDirs[cellIndex] & (1 << d)) !== 0) w *= biasFactor;
           cands.push({ r, c, d, w });
           weightTotal += w;
         }
       }
       if (cands.length === 0) break; // unreachable by construction; guards against surprises
 
-      let pick = Math.trunc(rng.nextDouble() * weightTotal);
+      // Neutral: the shipped truncated pick. Biased: weights can be
+      // fractional, and a truncated pick would give a fractional candidate a
+      // chance of either 0 or a whole unit depending on whether its interval
+      // happens to hold an integer, so the pick stays a real number. For
+      // integer weights both select the same candidate (floor(x) < n iff
+      // x < n), so bias 1 deals the neutral board.
+      const u = rng.nextDouble();
+      let pick = bias === undefined ? Math.trunc(u * weightTotal) : u * weightTotal;
       let ci = 0;
       for (; ci < cands.length; ci++) { pick -= cands[ci].w; if (pick < 0) break; }
       if (ci >= cands.length) ci = cands.length - 1;
