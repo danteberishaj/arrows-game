@@ -7,12 +7,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { stampGenSwitchLevel } from './src/core/generatorVersion';
 import { SaveSystem } from './src/core/saveSystem';
-import { CONSENT_GATE, META_GALLERY, TELEMETRY_TRANSPORT } from './src/featureFlags';
+import { CONSENT_GATE, META_GALLERY, META_THEME_TRANSITION, TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
   DEV_LEVEL_INDEX,
@@ -26,6 +26,7 @@ import { AdHost, adInitController, initAds, playerConsentSource } from './src/ui
 import { GalleryScreen } from './src/ui/GalleryScreen';
 import { GameScreen } from './src/ui/GameScreen';
 import { HomeScreen } from './src/ui/HomeScreen';
+import { ScreenScrim } from './src/ui/ScreenScrim';
 import { ScreenSlot, useLeavingScreen } from './src/ui/screenHandoff';
 import { SplashScreen } from './src/ui/SplashScreen';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
@@ -40,6 +41,7 @@ import {
 } from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { initSaveSystem } from './src/ui/storage';
+import { createThemeScrimTransition, useThemeToggle } from './src/ui/themeTransition';
 import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
 import { ftueRoute } from './src/ui/ftueRoute';
@@ -92,6 +94,11 @@ function syncTelemetryDisabled(): void {
   Telemetry.configure({ disabled: PERF_MODE || RemoteConfig.telemetryKilled() });
 }
 
+/** The one persisted theme write (the toggle's; hydration only reads). */
+function writeDarkMode(dark: boolean): void {
+  SaveSystem.darkMode = dark;
+}
+
 const perfTelemetryUnmountProbe = perfTelemetrySink
   ? () => console.log(`[telemetry-perf] sinkCount=${perfTelemetrySink.events.length}`)
   : undefined;
@@ -108,9 +115,11 @@ export default function App() {
   const [dailyDay, setDailyDay] = useState<number | null>(null);
   const [dark, setDark] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  // Reanimated reads the system reduce-motion setting once at app start.
+  const reducedMotion = useReducedMotion();
   // Capture diagnostic (P-02 Stage B, ruling F01): Reanimated's own value,
   // read once at app start, exposed only in PERF or EXPO_PUBLIC_CAPTURE_DIAG builds.
-  const diagLabel = reducedMotionDiagLabel(CAPTURE_DIAG_ENABLED, useReducedMotion());
+  const diagLabel = reducedMotionDiagLabel(CAPTURE_DIAG_ENABLED, reducedMotion);
 
   useEffect(() => {
     // uiautomator cannot dump a screen that animates forever (the menu's Play
@@ -239,12 +248,23 @@ export default function App() {
     });
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    setDark((d) => {
-      SaveSystem.darkMode = !d;
-      return !d;
-    });
-  }, []);
+  // W2-08 (META_THEME_TRANSITION): the toggle dips through a flat scrim in the
+  // destination palette's bg and swaps the theme (and the StatusBar style, which
+  // follows `dark`) under full cover. Reduced motion skips the scrim (owner
+  // 2026-09-25, as W2-04): the plain cut. OFF: today's one-frame flip.
+  const themeScrimOpacity = useSharedValue(0);
+  const createThemeScrim = useMemo(
+    () => (META_THEME_TRANSITION && !reducedMotion
+      ? (onRest: () => void) => createThemeScrimTransition(themeScrimOpacity, onRest)
+      : null),
+    [reducedMotion, themeScrimOpacity],
+  );
+  const { toggleTheme, scrim: themeScrim, scrimDark } = useThemeToggle({
+    dark,
+    setDark,
+    persistDark: writeDarkMode,
+    createScrim: createThemeScrim,
+  });
 
   const p = paletteFor(dark);
 
@@ -337,6 +357,8 @@ export default function App() {
         // only lingers, invisible, until the next UI frame).
         <ScreenSlot key={slotKey('gallery')} leaving={leaving === 'gallery'}>{galleryScreen}</ScreenSlot>
       )}
+      {/* W2-08: above every screen branch; opacity 0 and untouchable at rest. */}
+      {themeScrim && <ScreenScrim color={paletteFor(scrimDark).bg} opacity={themeScrimOpacity} />}
       {!PERF_MODE && __DEV__ && <AdHost palette={p} />}
     </GestureHandlerRootView>
     </SafeAreaProvider>

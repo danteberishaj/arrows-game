@@ -23,6 +23,7 @@ const NAMED_META_FLAGS = [
   'META_REVIEW_PROMPT', // W4-11
   'META_BLOCKED_INK_HOLD', // W2-09
   'META_HEART_REFILL_POP', // W2-07
+  'META_THEME_TRANSITION', // W2-08
 ];
 
 const savedEnv = { ...process.env };

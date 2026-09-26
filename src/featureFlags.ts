@@ -145,3 +145,13 @@ export const META_BLOCKED_INK_HOLD = process.env.EXPO_PUBLIC_META_BLOCKED_INK_HO
  * pip recolours with no motion, exactly as before.
  */
 export const META_HEART_REFILL_POP = process.env.EXPO_PUBLIC_META_HEART_REFILL_POP === '1';
+
+/**
+ * W2-08: the menu's theme toggle dips through a flat scrim in the DESTINATION
+ * palette's background (cover 180 ms, swap the theme and write it once under
+ * full cover, uncover 180 ms; W2-04's scrim and timings, src/ui/themeTransition.ts)
+ * instead of re-colouring every view in one frame. A luminance dip through a flat
+ * colour, not a content cross-fade. Reduced motion keeps the plain cut. OFF: the
+ * toggle flips the theme in one frame, exactly as before.
+ */
+export const META_THEME_TRANSITION = process.env.EXPO_PUBLIC_META_THEME_TRANSITION === '1';
