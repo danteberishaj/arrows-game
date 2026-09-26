@@ -3,10 +3,10 @@ import { arrowCenterline, type Pt } from './arrowGeometry';
 
 /**
  * Tap forgiveness radius in SCREEN points: half of the 44 pt minimum target
- * (Apple HIG; Material asks for 48 dp). A dense board's cells are 8-22 pt at
- * fit-to-view, so the finger's contact patch always covers several arrows;
- * hit-testing by distance to the ink picks the one the player is looking at
- * instead of whichever cell the touch centroid happened to land in.
+ * (Apple HIG; Material asks for 48 dp). 20x20-46x46 boards are 7.4-19.3 pt per cell at
+ * fit-to-view on the logged 360-411 dp wide viewports (docs/board-legibility-2026-09-26.md),
+ * so the finger's contact patch always covers several arrows; hit-testing by distance to
+ * the ink picks the one the player is looking at, not the cell the touch centroid hit.
  */
 export const TAP_RADIUS_PT = 22;
 
