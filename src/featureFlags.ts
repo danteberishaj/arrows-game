@@ -136,3 +136,12 @@ export const META_REVIEW_PROMPT = process.env.EXPO_PUBLIC_META_REVIEW_PROMPT ===
  * unchanged. OFF: the shipped easeOutQuad mix, value for value.
  */
 export const META_BLOCKED_INK_HOLD = process.env.EXPO_PUBLIC_META_BLOCKED_INK_HOLD === '1';
+
+/**
+ * W2-07: the heart an earned rewarded continue refills gets a pop of its own.
+ * The pip starts below rest (1 / 1.35) and springs up to 1, the mirror of the
+ * loss overshoot, once the lose panel is gone (with META_PANEL_MOTION, after
+ * its exit settles) (src/ui/heartPip.ts). Retry and Next never pop. OFF: the
+ * pip recolours with no motion, exactly as before.
+ */
+export const META_HEART_REFILL_POP = process.env.EXPO_PUBLIC_META_HEART_REFILL_POP === '1';

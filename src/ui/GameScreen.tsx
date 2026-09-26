@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { AppState, PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -22,7 +30,12 @@ import {
   type TapOutcome,
 } from '../telemetry/levelAggregator';
 import { reviewDeclineReason } from '../core/reviewPolicy';
-import { META_LEVEL_TRANSITION, META_PANEL_MOTION, META_REVIEW_PROMPT } from '../featureFlags';
+import {
+  META_HEART_REFILL_POP,
+  META_LEVEL_TRANSITION,
+  META_PANEL_MOTION,
+  META_REVIEW_PROMPT,
+} from '../featureFlags';
 import { Ads } from './ads';
 import { ART_WIN_SILHOUETTE_DP, ART_WIN_SILHOUETTE_ENABLED } from './artConfig';
 import { BoardView } from './BoardView';
@@ -38,6 +51,11 @@ import {
   type FtueSessionLogEvent,
 } from './ftueSessionLog';
 import { HeaderButton } from './HeaderButton';
+import {
+  HEART_PIP_LOSS_START_SCALE,
+  HEART_PIP_REFILL_START_SCALE,
+  pipPopKind,
+} from './heartPip';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
   createDailySession, createLevelSession, createTutorialSession, levelGenVersion,
@@ -208,6 +226,12 @@ export function GameScreen({
   const newlyDiscoveredRef = useRef(false);
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
+  // W2-07 (META_HEART_REFILL_POP): bumped only by an earned rewarded continue,
+  // so the refilled pip pops and Retry / Next (which also refill pips) do not.
+  // With W2-05's panel motion the bump waits for the lose panel's exit to
+  // settle, and the refilled pip stays spent until then. OFF: never changes.
+  const [refillToken, setRefillToken] = useState(0);
+  const [refillPending, setRefillPending] = useState(false);
   const [tutorialLine, setTutorialLine] = useState(() => initialTutorialLine(activeTutorialId));
   const [phase, setPhase] = useState<GamePhase>('playing');
   const [terminalPending, setTerminalPending] = useState(false);
@@ -261,6 +285,11 @@ export function GameScreen({
     panelPresence?.getSnapshot ?? readNoPresence,
   );
   const panelExiting = panelState === 'exiting';
+  useEffect(() => {
+    if (!refillPending || panelState !== 'hidden') return;
+    setRefillPending(false);
+    setRefillToken((token) => token + 1);
+  }, [panelState, refillPending]);
   heartsRef.current = hearts;
   const clearHint = useCallback(() => setHint(null), []);
 
@@ -413,6 +442,7 @@ export function GameScreen({
     setPhase('playing');
     setHint(null);
     setAdShowFailed(false);
+    setRefillPending(false);
   }, [cancelStallHint, panelPresence, terminalTransition]);
 
   const loadLevel = useCallback((index: number) => {
@@ -762,6 +792,11 @@ export function GameScreen({
     heartsRef.current = 1;
     setHearts(1);
     setPhase('playing');
+    if (META_HEART_REFILL_POP) {
+      // W2-07: the refilled pip pops once the panel is gone (at once without W2-05).
+      if (panelPresence) setRefillPending(true);
+      else setRefillToken((token) => token + 1);
+    }
   }, [levelScrim, panelPresence, reducedMotion, terminalTransition]);
 
   /** Rewarded hint: pulse an arrow that can slither out right now. */
@@ -962,7 +997,13 @@ export function GameScreen({
           )}
         </View>
         <View style={[styles.headerRight, activeTutorialId && styles.tutorialHeaderRight]}>
-          <HeartPips left={hearts} max={level.hearts} palette={p} />
+          <HeartPips
+            // W2-07: a continue refills from 0; the pip shows it with its pop.
+            left={refillPending ? 0 : hearts}
+            max={level.hearts}
+            palette={p}
+            refillToken={refillToken}
+          />
           {!activeTutorialId && (
             <HeaderButton
               label="💡"
@@ -1100,21 +1141,24 @@ const MissionLabel = React.memo(function MissionLabel({
 /**
  * The heart row, one pip per heart. A pip that just went out pops (scale
  * ~1.35 springing back) as it dims — losing a life is unmistakable
- * (GameManager.SpendHeart).
+ * (GameManager.SpendHeart). W2-07: a pip an earned continue refilled springs
+ * up from below rest (heartPip.ts decides which pop plays).
  */
 const HeartPips = React.memo(function HeartPips({
   left,
   max,
   palette,
+  refillToken,
 }: {
   left: number;
   max: number;
   palette: Palette;
+  refillToken: number;
 }) {
   return (
     <View style={{ flexDirection: 'row' }}>
       {Array.from({ length: max }, (_, i) => (
-        <HeartPip key={i} filled={i < left} palette={palette} />
+        <HeartPip key={i} filled={i < left} palette={palette} refillToken={refillToken} />
       ))}
     </View>
   );
@@ -1132,28 +1176,41 @@ const HEART_PATH =
 const HEART_SIZE = 22;
 /** Spent-pip outline width in viewBox units (≈1.8 dp at HEART_SIZE 22). */
 const SPENT_PIP_STROKE = 2; // OWNER-PICKED STARTING VALUE
+/** The pip's spring back to rest, for the loss pop and (W2-07) the refill pop. */
+const HEART_PIP_SPRING = { damping: 9, stiffness: 240 } as const;
+/**
+ * W2-07: with the flag ON the pop's start scale is written in a layout effect,
+ * so it reaches the UI thread with the commit that changes the pip. The refill
+ * commit comes from a passive effect (the panel's exit settling), whose own
+ * passive effects React flushes after paint: with useEffect the filled pip
+ * showed one frame at rest before shrinking (emulator capture,
+ * artifacts/W2-07). A tap's commit (the loss pop) already flushes them before
+ * paint. OFF: useEffect, exactly as before. The flag is a build-time constant,
+ * so the hook order never changes.
+ */
+const usePipPopEffect = META_HEART_REFILL_POP ? useLayoutEffect : useEffect;
 
 const HeartPip = React.memo(function HeartPip({
   filled,
   palette,
+  refillToken,
 }: {
   filled: boolean;
   palette: Palette;
+  refillToken: number;
 }) {
   const k = useSharedValue(1);
   const prev = useRef(filled);
-  useEffect(() => {
-    if (prev.current && !filled) {
-      k.value = 1.35;
-      // Decorative heart-pip scale follows the player's system setting.
-      k.value = withSpring(1, {
-        damping: 9,
-        stiffness: 240,
-        reduceMotion: ReduceMotion.System,
-      });
-    }
+  const prevToken = useRef(refillToken);
+  usePipPopEffect(() => {
+    const kind = pipPopKind(prev.current, filled, prevToken.current, refillToken);
     prev.current = filled;
-  }, [filled]);
+    prevToken.current = refillToken;
+    if (kind === 'none') return;
+    k.value = kind === 'loss' ? HEART_PIP_LOSS_START_SCALE : HEART_PIP_REFILL_START_SCALE;
+    // Decorative heart-pip scale follows the player's system setting.
+    k.value = withSpring(1, { ...HEART_PIP_SPRING, reduceMotion: ReduceMotion.System });
+  }, [filled, refillToken]);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
   return (
     <Animated.View style={[style, { marginHorizontal: 1 }]}>
