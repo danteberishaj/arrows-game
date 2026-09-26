@@ -157,7 +157,8 @@ Every level is a recognizable **picture made of arrows**: the arrows completely 
 silhouette of a shape, so the board reads as a square, a circle, a heart, a star, a trophy…
 Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole grid).
 
-- **Shape by tier** (`src/core/shapeLibrary.ts:280-306`): each tier has its own pool. **Normal**
+- **Shape by tier (generator v1, the shipped generator)** (`src/core/shapeLibrary.ts:262-289`):
+  each tier has its own pool. **Normal**
   draws plain fills — square, rectangle, circle, diamond. **Hard** draws geometric figures —
   circle, diamond, triangle, plus, hexagon, hourglass, pentagon, octagon, ring, X. **Super Hard**
   draws picture-book silhouettes — heart, star, trophy, crescent moon, flower, lightning
@@ -165,6 +166,20 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   Shapes are defined as point-in-polygon / implicit-inequality tests in a normalized −1..1
   space (`shapeLibrary.ts:10-15`), so they rasterize cleanly to *any* board size (no bitmaps; sampled 3×3 per cell so
   thin features like the crescent's horns stay clean, `shapeLibrary.ts:43,53-56`).
+- **Shape selection (generator v2)** (`src/core/shapeBag.ts`; W3-10, dark behind `GEN_V2_ENABLED`):
+  v2 drops the tier pools for a **capacity-aware shuffled bag** over the whole `SHAPE_CATALOGUE`
+  (minus `RETIRED_SHAPE_IDS`). A shape's capacity is its cell count at rows = `V2_MAX_GRID_DIM`
+  (46, provisional until W3-09). Levels are dealt in windows; a window admits every shape whose
+  capacity covers the largest cell target any of its levels can draw, is exactly as long as that
+  set, and deals it as a seeded Fisher–Yates shuffle, swapping its first two shapes once if the
+  first would repeat the previous level. So no shape repeats back to back, every admitted shape
+  appears once per window, and no board is capped below its target by the clamp. Until W3-14's
+  curve, a v2 level draws its target from v1's tier bands as the first draw of its seeded random,
+  so every window admits the same 18 shapes (the eight below 720 cells at the clamp — Bolt, Arrow,
+  Trophy, Rocket, Pine, Star, Hourglass, Crescent — sit out). Measured by
+  `npm run analysis:probe -- --version 2 --levels 1-1000 --shape-report --clamp-shortfall`:
+  0 back-to-back repeats, 0 clamp shortfalls, every admitted shape 55–56 times, all 18 seen by
+  level 18 (v1 over the same levels: 107 repeats, 65 levels at the clamp).
 - **Tier schedule** (`src/core/difficulty.ts:34-49`): a repeating 6-level cycle Normal, Normal,
   Hard, Normal, Normal, Super Hard. The tier configs do not depend on the level index
   (`difficulty.ts:51-67`).
@@ -206,7 +221,8 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   functions of (level index, generator version); each install has a switch level below which v1
   is used; a shipped generator version is frozen by golden fingerprints and never edited. So
   resume / retry reproduce the same picture. (W3-05: `src/core/generatorVersion.ts`,
-  `GEN_V2_ENABLED` off, and v2 is still identical to v1.)
+  `GEN_V2_ENABLED` off. Since W3-10, v2 deals its own boards; see "Shape selection
+  (generator v2)".)
 
 (The engine-free core — `ShapeLibrary`, `LevelGenerator`, `BoardLogic`, `ArrowPath`,
 `Difficulty`, `Direction`, `DotNetRandom`, `SaveSystem` in `src/core` — imports no React Native,

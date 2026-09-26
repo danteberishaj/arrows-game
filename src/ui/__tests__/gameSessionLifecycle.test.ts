@@ -107,8 +107,10 @@ describe('game session lifecycle', () => {
 
     expect(generate).toHaveBeenCalledTimes(2);
     expect(generate).toHaveBeenLastCalledWith(7, 2);
-    // v2 delegates to v1 until W3-10: the same board either way.
-    expect(serializeBoard(v2.level)).toEqual(serializeBoard(LevelGenerator.generate(7, 1)));
+    // W3-10 retired "v2 delegates to v1": the session holds v2's own board,
+    // which is not the v1 board of the same index.
+    expect(serializeBoard(v2.level)).toEqual(serializeBoard(LevelGenerator.generate(7, 2)));
+    expect(serializeBoard(v2.level)).not.toEqual(serializeBoard(LevelGenerator.generate(7, 1)));
     // W3-06: board_mount tags each session with the version it was actually
     // dealt with, not a value recomputed later (avoids drift once W3-10 lands).
     expect(v1.genVersion).toBe(1);

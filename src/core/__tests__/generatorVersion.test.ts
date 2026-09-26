@@ -135,18 +135,11 @@ function serialize(level: GeneratedLevel): string {
   return lines.join('\n');
 }
 
-describe('W3-05 the seam is content-neutral', () => {
-  // W3-10 explicitly retires this test when it gives v2 its own content.
-  test('v2 delegates to v1 until W3-10', () => {
-    const mismatches: number[] = [];
-    for (let i = 0; i < 300; i += 1) {
-      if (serialize(LevelGenerator.generate(i, 2)) !== serialize(LevelGenerator.generate(i, 1))) {
-        mismatches.push(i);
-      }
-    }
-    expect(mismatches).toEqual([]);
-  });
-
+describe('W3-05 the seam', () => {
+  // "v2 delegates to v1 until W3-10" was retired by W3-10, which gives v2 its
+  // own content (the capacity-aware shape bag). v2's invariants now live in
+  // shapeBag.test.ts and levelGenerator.test.ts's sweep(2); v1's content is
+  // pinned by levelGenerator.test.ts's goldens and corpus fingerprint.
   test('generate(i) with no version is exactly generate(i, 1)', () => {
     for (const i of [0, 5, 239, 3827]) {
       expect(serialize(LevelGenerator.generate(i))).toBe(serialize(LevelGenerator.generate(i, 1)));

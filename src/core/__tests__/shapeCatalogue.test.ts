@@ -91,8 +91,9 @@ test('cheap shape lookup stays equivalent to full level generation', () => {
 
 test('W3-05: the cheap lookup is versioned and stays equivalent to generation at both versions', () => {
   // W4-01's contract for any generator version: shapeNameForLevel(i, v) is the
-  // shape generate(i, v) deals. v2 delegates to v1 until W3-10 adds its branch
-  // (and extends this test with it); the collection fold relies on this.
+  // shape generate(i, v) deals; the collection fold relies on this. W3-10 gave
+  // v2 its own branch (the shape bag, which picks without building the board);
+  // shapeBag.test.ts extends this to v2 levels 0-1999 and v1 levels 0-999.
   const indices = [...Array.from({ length: 300 }, (_, index) => index), 239, 917, 935, 3827, 5363];
   for (const version of [1, 2] as const) {
     const mismatches = indices.filter(

@@ -16,6 +16,18 @@ export {
 export { LevelGenerator, seed, shapeNameForLevel } from './levelGenerator';
 export type { GeneratedLevel } from './levelGenerator';
 export {
+  V2_MAX_GRID_DIM,
+  bagCandidates,
+  bagWindowFor,
+  isClampShortfall,
+  pickForLevelV2,
+  placeholderWindowMaxTarget,
+  shapeCapacity,
+  v2Cols,
+  windowSetAt,
+} from './shapeBag';
+export type { BagWindow, WindowMaxTarget } from './shapeBag';
+export {
   GEN_V2_ENABLED,
   classifySwitchLevel,
   resolveGenVersion,

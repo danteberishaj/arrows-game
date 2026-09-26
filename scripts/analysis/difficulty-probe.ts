@@ -1,7 +1,9 @@
 /**
- * Difficulty probe (generator v1): a uniform-sampling search-cost proxy over
- * the shipping generator, so every later W3 task pins a number that this
- * script actually measured instead of an invented threshold.
+ * Difficulty probe (generator v1, and v2 since W3-10): a uniform-sampling
+ * search-cost proxy over the shipping generator, so every later W3 task pins a
+ * number that this script actually measured instead of an invented threshold.
+ * `--version 2` drives `LevelGenerator.generate(i, 2)` (dark behind
+ * GEN_V2_ENABLED) and measures its clamp at `V2_MAX_GRID_DIM`.
  *
  * Run: npx tsx scripts/analysis/difficulty-probe.ts -- <flags>
  * (or `npm run analysis:probe -- <flags>`)
@@ -31,8 +33,16 @@ import {
   Difficulty,
   DotNetRandom,
   LevelGenerator,
+  SHAPE_CATALOGUE,
   ShapeDef,
   ShapeLibrary,
+  V2_MAX_GRID_DIM,
+  bagCandidates,
+  bagWindowFor,
+  placeholderWindowMaxTarget,
+  shapeCapacity,
+  v2Cols,
+  windowSetAt,
 } from '../../src/core';
 
 const HONESTY_BOUND =
@@ -57,7 +67,8 @@ interface Options {
   version: 1 | 2;
   viewport: Viewport | null;
   json: boolean;
-  mode: Mode;
+  /** Aggregate modes run in the order given (W3-10: `--shape-report --clamp-shortfall`). */
+  modes: readonly Mode[];
 }
 
 interface LevelRow {
@@ -122,15 +133,22 @@ function parseArgs(argv: readonly string[]): Options {
     }
   }
 
-  if (modeFlags.length > 1) {
-    throw new Error(`Only one aggregate mode may be given at a time; got ${modeFlags.join(', ')}`);
+  if (modeFlags.length > 1 && json) {
+    throw new Error(`--json takes one aggregate mode at a time; got ${modeFlags.join(', ')}`);
   }
-  const mode: Mode = modeFlags[0] ?? 'rows';
-  if (mode !== 'capacity' && levels === null) {
-    const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
-    throw new Error(`--levels a-b is required for ${flagName}`);
+  const modes: Mode[] = modeFlags.length === 0 ? ['rows'] : [...new Set(modeFlags)];
+  for (const mode of modes) {
+    if (mode !== 'capacity' && levels === null) {
+      const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
+      throw new Error(`--levels a-b is required for ${flagName}`);
+    }
   }
-  return { levels, version, viewport, json, mode };
+  return { levels, version, viewport, json, modes };
+}
+
+/** The grid clamp a generator version sizes against (v1's literal 46; v2's V2_MAX_GRID_DIM). */
+function maxDimFor(version: 1 | 2): number {
+  return version === 2 ? V2_MAX_GRID_DIM : 46;
 }
 
 function parseLevelsRange(raw: string | undefined): [number, number] {
@@ -202,8 +220,8 @@ function ascending(values: readonly number[]): number[] {
  * `arrowCount` removals (the in-probe reconciliation that proves every board
  * was fully walked) and exits non-zero otherwise.
  */
-function buildRow(index: number, viewport: Viewport | null): LevelRow {
-  const level = LevelGenerator.generate(index);
+function buildRow(index: number, version: 1 | 2, viewport: Viewport | null): LevelRow {
+  const level = LevelGenerator.generate(index, version);
   const board = level.board;
   const maskCells = countTrue(level.mask);
   const arrowCount = level.arrowCount;
@@ -316,7 +334,7 @@ function printHonestyBound(): void {
 
 function runRows(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, opts.viewport));
+  const rows = indices.map((i) => buildRow(i, opts.version, opts.viewport));
 
   if (opts.json) {
     console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'rows', version: opts.version, levels: opts.levels, rows }, null, 2));
@@ -346,7 +364,7 @@ function runRows(opts: Options): void {
 
 function runPerTier(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const byTier = new Map<Difficulty, LevelRow[]>(tiers.map((t) => [t, []]));
   for (const r of rows) byTier.get(r.tier)!.push(r);
@@ -385,7 +403,7 @@ function runBands(opts: Options): void {
   const [lo, hi] = opts.levels!;
   const length = hi - lo + 1;
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null));
 
   const bands: { lo: number; hi: number; rows: LevelRow[] }[] = [];
   let prevBoundary = 0;
@@ -424,8 +442,66 @@ function runBands(opts: Options): void {
   ));
 }
 
+/**
+ * The longest run of levels with no first appearance, measured from the
+ * range's first level to each first appearance in turn (W3-01's "novelty
+ * drought": v1 levels 1-200 go from Crown@60 to Hexagon@117, 57 levels).
+ */
+function longestFirstAppearanceGap(
+  firstLevel: number,
+  firstAppearance: ReadonlyMap<string, number>,
+): { gap: number; from: number; to: number } {
+  const firsts = [...new Set(firstAppearance.values())].sort((a, b) => a - b);
+  let best = { gap: 0, from: firstLevel, to: firstLevel };
+  let prev = firstLevel;
+  for (const level of firsts) {
+    if (level - prev > best.gap) best = { gap: level - prev, from: prev, to: level };
+    prev = level;
+  }
+  return best;
+}
+
+/** v2 only: the bag windows that deal a level range, and the shapes they admit. */
+interface V2Admission {
+  windows: number;
+  firstOrdinal: number;
+  lastOrdinal: number;
+  setSizes: number[];
+  truncated: number; // windows whose length differs from their admissible set size (always 0)
+  admittedEverywhere: string[];
+  excludedEverywhere: string[];
+}
+
+function v2Admission(indices: readonly number[]): V2Admission {
+  const windows = new Map<number, ReturnType<typeof bagWindowFor>>();
+  for (const index of indices) {
+    const w = bagWindowFor(index);
+    windows.set(w.ordinal, w);
+  }
+  const list = [...windows.values()].sort((a, b) => a.ordinal - b.ordinal);
+  const inAll = new Set(SHAPE_CATALOGUE);
+  const inAny = new Set<string>();
+  let truncated = 0;
+  for (const w of list) {
+    const names = new Set(w.order.map((s) => s.name));
+    for (const id of [...inAll]) if (!names.has(id)) inAll.delete(id);
+    for (const id of names) inAny.add(id);
+    if (windowSetAt(w.start).length !== w.order.length) truncated++;
+  }
+  return {
+    windows: list.length,
+    firstOrdinal: list[0].ordinal,
+    lastOrdinal: list[list.length - 1].ordinal,
+    setSizes: [...new Set(list.map((w) => w.order.length))].sort((a, b) => a - b),
+    truncated,
+    admittedEverywhere: SHAPE_CATALOGUE.filter((id) => inAll.has(id)),
+    excludedEverywhere: SHAPE_CATALOGUE.filter((id) => !inAny.has(id)),
+  };
+}
+
 function runShapeReport(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
+  const maxDim = maxDimFor(opts.version);
   const counts = new Map<string, number>();
   const firstAppearance = new Map<string, number>();
   const clampHits = new Map<string, number>();
@@ -434,17 +510,19 @@ function runShapeReport(opts: Options): void {
   let prevShape: string | null = null;
 
   for (const index of indices) {
-    const level = LevelGenerator.generate(index);
+    const level = LevelGenerator.generate(index, opts.version);
     const name = level.shapeName;
     counts.set(name, (counts.get(name) ?? 0) + 1);
     if (!firstAppearance.has(name)) firstAppearance.set(name, index + 1);
     if (prevShape !== null && prevShape === name) backToBack++;
     prevShape = name;
-    if (level.board.rows === 46 || level.board.cols === 46) {
+    if (level.board.rows === maxDim || level.board.cols === maxDim) {
       clampHits.set(name, (clampHits.get(name) ?? 0) + 1);
       totalClampLevels++;
     }
   }
+  const drought = longestFirstAppearanceGap(opts.levels![0], firstAppearance);
+  const admission = opts.version === 2 ? v2Admission(indices) : null;
 
   const total = indices.length;
   const shapes = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({
@@ -457,27 +535,49 @@ function runShapeReport(opts: Options): void {
 
   if (opts.json) {
     console.log(JSON.stringify(
-      { note: HONESTY_BOUND, mode: 'shape-report', levels: opts.levels, shapes, backToBackRepeats: backToBack, totalClampLevels },
+      {
+        note: HONESTY_BOUND, mode: 'shape-report', version: opts.version, levels: opts.levels, shapes,
+        backToBackRepeats: backToBack, totalClampLevels, longestFirstAppearanceGap: drought, v2Admission: admission,
+      },
       null, 2,
     ));
     return;
   }
 
   printHonestyBound();
-  console.log(`Shape census over displayed levels ${opts.levels![0]}-${opts.levels![1]}`);
+  console.log(`Shape census over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})`);
   console.log('');
   console.log(table(
-    ['shape', 'count', 'share', 'first appearance', 'clamp hits (rows or cols = 46)'],
+    ['shape', 'count', 'share', 'first appearance', `clamp hits (rows or cols = ${maxDim})`],
     shapes.map((s) => [s.name, s.count, fmtPct(s.sharePct), s.firstAppearance, `${s.clampHits}/${s.count}`]),
   ));
   console.log('');
   console.log(`Back-to-back repeats: ${backToBack}`);
-  console.log(`Rows or cols hit 46 on ${totalClampLevels} levels`);
+  console.log(`Rows or cols hit ${maxDim} on ${totalClampLevels} levels`);
+  console.log(`Longest first-appearance gap: ${drought.gap} levels (level ${drought.from} to level ${drought.to})`);
+  if (admission !== null) {
+    const size = admission.setSizes.length === 1 ? admission.setSizes[0] : null;
+    const total = indices.length;
+    console.log('');
+    console.log(`v2 bag: ${admission.windows} windows (ordinals ${admission.firstOrdinal}-${admission.lastOrdinal}), `
+      + `admissible set size(s) ${admission.setSizes.join(', ')}, truncated windows ${admission.truncated}`);
+    console.log(`Admitted in every window (${admission.admittedEverywhere.length}): ${admission.admittedEverywhere.join(', ')}`);
+    console.log(`Excluded from every window (${admission.excludedEverywhere.length}): ${admission.excludedEverywhere.join(', ') || 'none'}`);
+    if (size !== null) {
+      const expected = total / size;
+      const worst = Math.max(...admission.admittedEverywhere.map((id) => Math.abs((counts.get(id) ?? 0) - expected)));
+      const latest = Math.max(...firstAppearance.values()) - opts.levels![0] + 1;
+      console.log(`Expected count per admitted shape: ${total} / ${size} = ${expected.toFixed(2)}; `
+        + `largest deviation ${worst.toFixed(2)} (${worst <= 1 ? 'within' : 'OUTSIDE'} +-1)`);
+      console.log(`Latest first appearance: ${latest} levels into the range (set size ${size}: `
+        + `${latest <= size ? 'no later than the set size' : 'LATER than the set size'})`);
+    }
+  }
 }
 
 function runTierReport(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
-  const rows = indices.map((i) => buildRow(i, null));
+  const rows = indices.map((i) => buildRow(i, opts.version, null));
   const tiers = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard];
   const ranges = new Map<Difficulty, { min: number; max: number }>();
   for (const tier of tiers) {
@@ -543,6 +643,7 @@ function allShapes(): readonly ShapeDef[] {
 }
 
 function runCapacity(opts: Options): void {
+  if (opts.version === 2) return runCapacityV2(opts);
   const cfg = Difficulties.config(Difficulty.Normal);
   const data = allShapes().map((shape) => {
     const cols = clampCols(46, shape.aspect);
@@ -570,12 +671,51 @@ function runCapacity(opts: Options): void {
   ));
 }
 
+/**
+ * v2 capacity: every bag candidate (SHAPE_CATALOGUE minus RETIRED_SHAPE_IDS)
+ * at rows = V2_MAX_GRID_DIM, via the bag's own `shapeCapacity`, with whether
+ * the placeholder curve's window admits it. Under the placeholder every window
+ * holds a Super Hard level, so every window has the same set.
+ */
+function runCapacityV2(opts: Options): void {
+  const cfg = Difficulties.config(Difficulty.Normal);
+  const maxDim = V2_MAX_GRID_DIM;
+  const windowMax = placeholderWindowMaxTarget(0, Difficulties.cycleLength);
+  const admitted = new Set(windowSetAt(0).map((s) => s.name));
+  const data = bagCandidates().map((shape) => {
+    const cols = v2Cols(maxDim, shape.aspect, maxDim);
+    const cells = shapeCapacity(shape, maxDim);
+    const mask = shape.rasterize(maxDim, cols);
+    const arrowCounts = [1, 2, 3, 4, 5].map((s) => LevelGenerator.fillMask(mask, maxDim, cols, cfg, new DotNetRandom(s)).length);
+    return { name: shape.name, cols, cells, medianArrows: median(ascending(arrowCounts)), admitted: admitted.has(shape.name) };
+  }).sort((a, b) => b.cells - a.cells);
+
+  if (opts.json) {
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'capacity', version: 2, maxDim, windowMaxTarget: windowMax, shapes: data }, null, 2));
+    return;
+  }
+
+  printHonestyBound();
+  console.log(`v2 per-shape capacity at the grid clamp (rows=V2_MAX_GRID_DIM=${maxDim}, cols=v2Cols(${maxDim}, aspect))`);
+  console.log(`Admission: capacity >= the placeholder window max target ${windowMax} (v1 tier bands).`);
+  console.log('Arrows use the Normal config, median over DotNetRandom(1..5).');
+  console.log('');
+  console.log(table(
+    ['shape', 'cols', 'cells', 'median arrows (Normal, seeds 1-5)', `v2 admitted (>= ${windowMax})`],
+    data.map((d) => [d.name, d.cols, d.cells, d.medianArrows, d.admitted ? 'yes' : 'no']),
+  ));
+  const excluded = data.filter((d) => !d.admitted).map((d) => d.name);
+  console.log('');
+  console.log(`Admitted ${data.length - excluded.length} of ${data.length}; excluded (${excluded.length}): ${excluded.join(', ')}`);
+}
+
 function runClampShortfall(opts: Options): void {
   const indices = indicesInRange(opts.levels!);
+  const maxDim = maxDimFor(opts.version);
   const findings = indices
     .map((index) => {
-      const level = LevelGenerator.generate(index);
-      if (level.board.rows !== 46 && level.board.cols !== 46) return null;
+      const level = LevelGenerator.generate(index, opts.version);
+      if (level.board.rows !== maxDim && level.board.cols !== maxDim) return null;
       const maskCells = countTrue(level.mask);
       if (maskCells >= level.targetCells) return null;
       const cfg = Difficulties.config(level.difficulty);
@@ -594,31 +734,26 @@ function runClampShortfall(opts: Options): void {
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'clamp-shortfall', levels: opts.levels, findings }, null, 2));
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'clamp-shortfall', version: opts.version, levels: opts.levels, findings }, null, 2));
     return;
   }
 
   printHonestyBound();
-  console.log(`Clamp shortfalls over displayed levels ${opts.levels![0]}-${opts.levels![1]}`);
-  console.log('(rows or cols hit the 46 clamp AND the mask fell short of the drawn cell target)');
+  console.log(`Clamp shortfalls over displayed levels ${opts.levels![0]}-${opts.levels![1]} (generator v${opts.version})`);
+  console.log(`(rows or cols hit the ${maxDim} clamp AND the mask fell short of the drawn cell target)`);
   console.log('');
   console.log(table(
     ['level', 'shape', 'tier', 'rows×cols', 'mask cells', 'drawn target', 'tier range'],
     findings.map((f) => [f.level, f.shapeName, f.tier, `${f.rows}×${f.cols}`, f.maskCells, f.targetCells, f.tierRange]),
   ));
+  console.log('');
+  console.log(`Clamp shortfalls: ${findings.length}`);
 }
 
 // ---- Entry point --------------------------------------------------------
 
-function main(): void {
-  const opts = parseArgs(process.argv.slice(2));
-
-  if (opts.version === 2) {
-    console.error('generator v2 not implemented');
-    process.exit(1);
-  }
-
-  switch (opts.mode) {
+function runMode(mode: Mode, opts: Options): void {
+  switch (mode) {
     case 'rows': return runRows(opts);
     case 'per-tier': return runPerTier(opts);
     case 'bands': return runBands(opts);
@@ -627,6 +762,14 @@ function main(): void {
     case 'capacity': return runCapacity(opts);
     case 'clamp-shortfall': return runClampShortfall(opts);
   }
+}
+
+function main(): void {
+  const opts = parseArgs(process.argv.slice(2));
+  opts.modes.forEach((mode, k) => {
+    if (k > 0) console.log('');
+    runMode(mode, opts);
+  });
 }
 
 main();

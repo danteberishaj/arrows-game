@@ -27,6 +27,10 @@
  * Output defaults to the OS temp dir; images are not committed. Pass
  * `--out artifacts/<TASK-ID>` to keep a copy under the repo's gitignored
  * `artifacts/` for an owner-review artifact.
+ *
+ * W3-10: both modes also print each shape's generator-v2 admission — whether
+ * the v2 shape bag deals it under the placeholder curve (its capacity at
+ * `V2_MAX_GRID_DIM`, from `shapeCapacity`, against the window max target).
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -41,6 +45,10 @@ import {
   LevelGenerator,
   ShapeDef,
   ShapeLibrary,
+  V2_MAX_GRID_DIM,
+  placeholderWindowMaxTarget,
+  shapeCapacity,
+  windowSetAt,
 } from '../../src/core';
 import { arrowArt, STROKE } from '../../src/ui/arrowGeometry';
 import { Daylight } from '../../src/ui/theme';
@@ -100,6 +108,25 @@ function rasterAt(shape: ShapeDef, rows: number): Raster {
   return { rows, cols, mask, cells, fillFraction: cells / (rows * cols) };
 }
 
+/** Generator v2's admission of `shape` under the placeholder curve (W3-10). */
+interface V2Admission {
+  readonly admitted: boolean;
+  readonly capacity: number;
+  readonly windowMax: number;
+}
+
+function v2Admission(shape: ShapeDef): V2Admission {
+  const windowMax = placeholderWindowMaxTarget(0, Difficulties.cycleLength);
+  const admitted = windowSetAt(0).some((s) => s.name === shape.name);
+  return { admitted, capacity: shapeCapacity(shape, V2_MAX_GRID_DIM), windowMax };
+}
+
+function v2AdmissionLabel(a: V2Admission): string {
+  return a.admitted
+    ? `v2: admitted (cap ${a.capacity} >= ${a.windowMax})`
+    : `v2: excluded (cap ${a.capacity} < ${a.windowMax})`;
+}
+
 function asciiMask(mask: readonly (readonly boolean[])[]): string {
   return mask.map((row) => row.map((cell) => (cell ? '#' : '.')).join('')).join('\n');
 }
@@ -151,6 +178,7 @@ async function runSingle(name: string, rows: number, outDir: string): Promise<vo
     + `cols=${clampRaster.cols}, cells=${clampRaster.cells} `
     + `(${(clampRaster.fillFraction * 100).toFixed(1)}%)`
     + (rows === GRID_CLAMP_ROWS ? ' — same run as above, since rows=46 IS the clamp' : ''));
+  console.log(`Generator ${v2AdmissionLabel(v2Admission(shape))} at V2_MAX_GRID_DIM=${V2_MAX_GRID_DIM}`);
   console.log('');
   console.log('ASCII mask:');
   console.log(asciiMask(raster.mask));
@@ -199,6 +227,7 @@ function escapeXml(value: string): string {
 interface ShapeCells {
   readonly shape: ShapeDef;
   readonly rasters: readonly Raster[]; // one per CONTACT_SHEET_ROWS entry, same order
+  readonly v2: V2Admission;
 }
 
 function contactSheetSvg(entries: readonly ShapeCells[]): string {
@@ -231,6 +260,12 @@ function contactSheetSvg(entries: readonly ShapeCells[]): string {
     labels.push(
       `<text x="${TEXT_LEFT_PX}" y="${rowCenter}" fill="${Daylight.ink}" font-family="sans-serif" `
       + `font-size="${ROW_LABEL_FONT_PX}" font-weight="${BOLD_WEIGHT}">${escapeXml(entry.shape.name)}</text>`,
+      `<text x="${TEXT_LEFT_PX}" y="${rowCenter + ROW_LABEL_FONT_PX + 2}" `
+      + `fill="${entry.v2.admitted ? Daylight.inkDim : '#D1264C'}" font-family="sans-serif" `
+      + `font-size="${CAPTION_FONT_PX - 1}">${entry.v2.admitted ? 'v2: admitted' : 'v2: excluded'}</text>`,
+      `<text x="${TEXT_LEFT_PX}" y="${rowCenter + ROW_LABEL_FONT_PX + 2 + CAPTION_FONT_PX}" `
+      + `fill="${Daylight.inkDim}" font-family="sans-serif" font-size="${CAPTION_FONT_PX - 1}">`
+      + `${escapeXml(`cap ${entry.v2.capacity} ${entry.v2.admitted ? '>=' : '<'} ${entry.v2.windowMax}`)}</text>`,
     );
 
     entry.rasters.forEach((raster, colIndex) => {
@@ -275,16 +310,20 @@ async function runAll(outDir: string): Promise<void> {
   const entries: ShapeCells[] = shapes.map((shape) => ({
     shape,
     rasters: CONTACT_SHEET_ROWS.map((rows) => rasterAt(shape, rows)),
+    v2: v2Admission(shape),
   }));
 
   console.log(`Shape catalogue: ${shapes.length} shapes x ${CONTACT_SHEET_ROWS.length} row counts `
     + `= ${shapes.length * CONTACT_SHEET_ROWS.length} tiles.`);
   console.log('');
-  console.log(['shape', ...CONTACT_SHEET_ROWS.map((r) => `rows=${r}`)].join('\t'));
+  console.log(['shape', ...CONTACT_SHEET_ROWS.map((r) => `rows=${r}`), `v2 (V2_MAX_GRID_DIM=${V2_MAX_GRID_DIM})`].join('\t'));
   for (const entry of entries) {
     const cells = entry.rasters.map((r) => `${r.cells}/${r.rows * r.cols} (${r.rows}x${r.cols})`);
-    console.log([entry.shape.name, ...cells].join('\t'));
+    console.log([entry.shape.name, ...cells, v2AdmissionLabel(entry.v2)].join('\t'));
   }
+  const excluded = entries.filter((e) => !e.v2.admitted).map((e) => e.shape.name);
+  console.log('');
+  console.log(`v2 admits ${entries.length - excluded.length} of ${entries.length}; excluded (${excluded.length}): ${excluded.join(', ')}`);
   const empties = entries.flatMap((e) => e.rasters
     .filter((r) => r.cells === 0)
     .map((r) => `${e.shape.name}@rows=${r.rows}`));

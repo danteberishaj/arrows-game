@@ -1,6 +1,7 @@
 import { BoardLogic } from '../boardLogic';
 import { Difficulties, Difficulty } from '../difficulty';
 import { DotNetRandom } from '../dotnetRandom';
+import type { GenVersion } from '../generatorVersion';
 import { LevelGenerator } from '../levelGenerator';
 import { ShapeLibrary } from '../shapeLibrary';
 
@@ -195,11 +196,9 @@ test('v1 corpus fingerprint: levels 0-299 serialize identically forever', () => 
  * greedy loop that clears the board also counts the removals, so there is no
  * second O(n^2) scan just to get a count.
  */
-function sweep(version: number, count: number): void {
-  if (version !== 1) throw new Error(`sweep: generator version ${version} is not wired up yet`);
-
+function sweep(version: GenVersion, count: number): void {
   for (let i = 0; i < count; i++) {
-    const lvl = LevelGenerator.generate(i);
+    const lvl = LevelGenerator.generate(i, version);
     const board = lvl.board;
 
     for (let r = 0; r < board.rows; r++) {
@@ -247,6 +246,12 @@ function sweep(version: number, count: number): void {
 
 test('sweep: 300 consecutive v1 levels fill exactly, never overlap and greedy-solve to empty', () => {
   sweep(1, V1_CORPUS_SIZE);
+});
+
+// W3-10: v2 deals its own boards (the capacity-aware shape bag), so the same
+// net runs over them. Replaces W3-05's "v2 delegates to v1 until W3-10".
+test('sweep: 300 consecutive v2 levels fill exactly, never overlap and greedy-solve to empty', () => {
+  sweep(2, 300);
 });
 
 // Mirrors levelGenerator.ts's own board-sizing math (roundHalfToEven + the

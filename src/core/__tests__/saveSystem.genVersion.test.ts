@@ -8,8 +8,9 @@ import { catalogueIndexOf } from '../shapeCatalogue';
  * generator version that dealt it, `resolveGenVersion(index, genSwitchLevel)`
  * from core, with no PERF/DEV override.
  *
- * v2 delegates to v1 until W3-10, so the shapes cannot tell the versions apart.
- * This file therefore (a) forces GEN_V2_ENABLED on for the resolver's default
+ * Written while v2 still delegated to v1 (retired by W3-10), when the shapes
+ * could not tell the versions apart. This file therefore (a) forces
+ * GEN_V2_ENABLED on for the resolver's default
  * and (b) wraps the real `shapeNameForLevel` in a spy, to observe WHICH version
  * the fold asked for. Both mocks keep the real behaviour; only the flag moves.
  * Kept out of saveSystem.test.ts so the forced flag cannot leak into it.

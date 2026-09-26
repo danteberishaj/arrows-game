@@ -4,6 +4,13 @@ import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
 import { DotNetRandom } from './dotnetRandom';
 import type { GenVersion } from './generatorVersion';
+import {
+  V2_MAX_GRID_DIM,
+  V2_MIN_GRID_ROWS,
+  isClampShortfall,
+  pickForLevelV2,
+  v2Cols,
+} from './shapeBag';
 import { ShapeDef, ShapeLibrary } from './shapeLibrary';
 
 /** One generated puzzle plus its metadata. */
@@ -28,8 +35,8 @@ export interface GeneratedLevel {
 /**
  * The shape `LevelGenerator.generate(levelIndex, version)` deals, without
  * building the board (W4-01; versioned by W3-05). Must stay equivalent to
- * generation at every version (`__tests__/shapeCatalogue.test.ts`); the shape
- * collection fold relies on it. v2 delegates to v1 until W3-10 adds its branch.
+ * generation at every version (`__tests__/shapeCatalogue.test.ts`,
+ * `__tests__/shapeBag.test.ts`); the shape collection fold relies on it.
  */
 export function shapeNameForLevel(levelIndex: number, version: GenVersion = 1): string {
   return version === 2 ? shapeNameForLevelV2(levelIndex) : shapeNameForLevelV1(levelIndex);
@@ -40,9 +47,9 @@ function shapeNameForLevelV1(levelIndex: number): string {
   return ShapeLibrary.pick(difficulty, new DotNetRandom(seed(levelIndex))).name;
 }
 
-/** W3-05 seam: content-neutral until W3-10 gives v2 its own pick. */
+/** W3-10: v2's shape is the bag's pick, which needs no board (and no RNG). */
 function shapeNameForLevelV2(levelIndex: number): string {
-  return shapeNameForLevelV1(levelIndex);
+  return pickForLevelV2(levelIndex).name;
 }
 
 /**
@@ -60,11 +67,87 @@ function generateV1(levelIndex: number): GeneratedLevel {
 }
 
 /**
- * v2: delegates to v1 until W3-10 (the seam is content-neutral; the test
- * "v2 delegates to v1 until W3-10" pins that and W3-10 retires it).
+ * v2 (W3-10; dark behind GEN_V2_ENABLED). Differs from v1 in three ways:
+ * - the cell target is the FIRST draw of the level's `DotNetRandom(seed(i))`
+ *   (placeholder: v1's tier band, until W3-14's curve);
+ * - the shape is the capacity-aware bag's pick (`shapeBag.ts`), which draws
+ *   nothing from that stream;
+ * - sizing clamps at `V2_MAX_GRID_DIM` (`buildV2`), not v1's literal 46.
+ * Difficulty, hearts, arrow rules and `fillMask` are v1's. v1 is untouched.
  */
 function generateV2(levelIndex: number): GeneratedLevel {
-  return generateV1(levelIndex);
+  const difficulty = Difficulties.forLevel(levelIndex);
+  const cfg = Difficulties.config(difficulty);
+  const rng = new DotNetRandom(seed(levelIndex));
+
+  const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
+  const shape = pickForLevelV2(levelIndex);
+
+  return buildV2(shape, difficulty, cfg, rng, targetCells);
+}
+
+/**
+ * v2's sizing: v1's density-probe fit (`buildFromShape`), with the target
+ * already drawn and the clamp at `V2_MAX_GRID_DIM`. Kept separate from
+ * `buildFromShape`, which v1 and the daily board share, so no v2 change can
+ * reach a shipped board.
+ */
+function buildV2(
+  shape: ShapeDef,
+  difficulty: Difficulty,
+  cfg: DifficultyConfig,
+  rng: DotNetRandom,
+  targetCells: number,
+): GeneratedLevel {
+  const maxDim = V2_MAX_GRID_DIM;
+  const probeRows = 24;
+  const probeCols = v2Cols(probeRows, shape.aspect, maxDim);
+  const probeFill = Math.max(
+    0.05,
+    countTrue(shape.rasterize(probeRows, probeCols)) / (probeRows * probeCols),
+  );
+  const rows = clamp(
+    Math.round(Math.sqrt(targetCells / (probeFill * shape.aspect))),
+    V2_MIN_GRID_ROWS,
+    maxDim,
+  );
+  const cols = v2Cols(rows, shape.aspect, maxDim);
+
+  const mask = shape.rasterize(rows, cols);
+  let maskCells = countTrue(mask);
+  if (maskCells === 0) {
+    // safety: degenerate raster -> fall back to a full grid (as v1)
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) mask[r][c] = true;
+    maskCells = rows * cols;
+  }
+  // No silent shortfall (W3-10 step 4). The bag only deals shapes whose
+  // capacity covers the target, so a board at the clamp holds its target.
+  if (isDev() && isClampShortfall(rows, cols, maskCells, targetCells, maxDim)) {
+    throw new Error(
+      `generateV2: ${shape.name} ${rows}x${cols} holds ${maskCells} cells at the clamp, ` +
+        `below its target ${targetCells}`,
+    );
+  }
+
+  const arrows = LevelGenerator.fillMask(mask, rows, cols, cfg, rng);
+
+  const board = new BoardLogic(rows, cols);
+  for (const a of arrows) board.add(a);
+
+  return {
+    board,
+    hearts: cfg.hearts,
+    difficulty,
+    arrowCount: arrows.length,
+    shapeName: shape.name,
+    mask,
+    targetCells,
+  };
+}
+
+/** `__DEV__` read at call time; undefined (false) under node jest and tsx. */
+function isDev(): boolean {
+  return typeof __DEV__ !== 'undefined' && Boolean(__DEV__);
 }
 
 const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as const;
