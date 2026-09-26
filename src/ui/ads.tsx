@@ -159,7 +159,7 @@ export function AdHost({ palette }: { palette: Palette }) {
               onPress={() => finish(false)}
               style={[styles.smallBtn, { borderColor: p.border }]}
             >
-              <Text style={{ color: p.inkDim, fontWeight: '600' }}>Skip</Text>
+              <Text style={{ color: p.inkDim, fontFamily: Fonts.semi }}>Skip</Text>
             </Pressable>
             <Pressable
               disabled={!done}
@@ -169,7 +169,7 @@ export function AdHost({ palette }: { palette: Palette }) {
                 { backgroundColor: done ? p.accent : p.heartLost },
               ]}
             >
-              <Text style={{ color: p.inkOnAccent, fontWeight: '700' }}>Claim</Text>
+              <Text style={{ color: p.inkOnAccent, fontFamily: Fonts.bold }}>Claim</Text>
             </Pressable>
           </View>
         ) : (
@@ -178,7 +178,7 @@ export function AdHost({ palette }: { palette: Palette }) {
             onPress={() => finish(true)}
             style={[styles.claimBtn, { backgroundColor: done ? p.accent : p.heartLost }]}
           >
-            <Text style={{ color: p.inkOnAccent, fontWeight: '700' }}>Close</Text>
+            <Text style={{ color: p.inkOnAccent, fontFamily: Fonts.bold }}>Close</Text>
           </Pressable>
         )}
       </View>
@@ -1028,6 +1028,7 @@ const styles = StyleSheet.create({
   },
   sub: {
     fontSize: 12,
+    fontFamily: Fonts.semi,
     marginBottom: 18,
   },
   row: {
