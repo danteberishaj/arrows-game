@@ -16,6 +16,13 @@ export {
 export { LevelGenerator, seed, shapeNameForLevel } from './levelGenerator';
 export type { GeneratedLevel } from './levelGenerator';
 export {
+  GEN_V2_ENABLED,
+  classifySwitchLevel,
+  resolveGenVersion,
+  stampGenSwitchLevel,
+} from './generatorVersion';
+export type { GenSwitchSave, GenVersion } from './generatorVersion';
+export {
   DAILY_POOL_V1,
   DAILY_VERSIONS,
   dailyPoolFor,

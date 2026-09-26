@@ -40,7 +40,7 @@ import {
 import { HeaderButton } from './HeaderButton';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
-  createDailySession, createLevelSession, createTutorialSession,
+  createDailySession, createLevelSession, createTutorialSession, levelGenVersion,
   LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS,
   TerminalTransitionGuard,
   type GamePhase,
@@ -165,7 +165,7 @@ export function GameScreen({
       ? createDailySession(daily.day, revisionRef.current)
       : tutorialId
         ? createTutorialSession(tutorialId, revisionRef.current)
-        : createLevelSession(index, revisionRef.current);
+        : createLevelSession(index, revisionRef.current, levelGenVersion(index));
     levelAggregatorRef.current.start(
       initial.index,
       initial.level.arrowCount,
@@ -408,7 +408,7 @@ export function GameScreen({
 
   const loadLevel = useCallback((index: number) => {
     revisionRef.current += 1;
-    loadSession(createLevelSession(index, revisionRef.current));
+    loadSession(createLevelSession(index, revisionRef.current, levelGenVersion(index)));
   }, [loadSession]);
 
   const loadTutorial = useCallback((id: TutorialId) => {

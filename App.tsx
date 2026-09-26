@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useReducedMotion } from 'react-native-reanimated';
 import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
+import { stampGenSwitchLevel } from './src/core/generatorVersion';
 import { SaveSystem } from './src/core/saveSystem';
 import { CONSENT_GATE, META_GALLERY, TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
@@ -135,6 +136,11 @@ export default function App() {
     // writes to AsyncStorage, so saved progress cannot be overwritten.
     initSaveSystem()
       .then(() => {
+        // W3-05: stamp the generator switch level once, from the HYDRATED save
+        // and before any screen can deal or fold a campaign board. A no-op
+        // while GEN_V2_ENABLED is false, after a failed hydrate
+        // (persistenceHealthy false) and when the key is already present.
+        stampGenSwitchLevel(SaveSystem);
         setDark(SaveSystem.darkMode);
         setSoundOn(SaveSystem.soundOn);
         // Install id + session count (W6-05). This whole effect returns above

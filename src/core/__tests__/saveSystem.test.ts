@@ -760,3 +760,76 @@ describe('W4-11 store-review bookkeeping', () => {
     expect(SaveSystem.registeredKeys.reviewLastDay).toBe('arrows_review_last_day');
   });
 });
+
+describe('W3-05 generator switch level', () => {
+  const KEY = 'arrows_gen_switch_level';
+  let previousHealthy: boolean;
+
+  beforeEach(() => {
+    previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true); // initSaveSystem() read the save
+  });
+
+  afterEach(() => {
+    SaveSystem.setPersistenceHealthy(previousHealthy);
+  });
+
+  test('absent reads null and is not stamped', () => {
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+    expect(SaveSystem.genSwitchLevelStamped).toBe(false);
+  });
+
+  test('a stored 0 is a real value (fresh-install switch), and 41 reads back as 41', () => {
+    store.setInt(KEY, 0);
+    expect(SaveSystem.genSwitchLevel).toBe(0);
+    expect(SaveSystem.genSwitchLevelStamped).toBe(true);
+    store.setInt(KEY, 41);
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+  });
+
+  test('a stored negative value is invalid: it reads null, yet counts as stamped so nothing rewrites it', () => {
+    store.setInt(KEY, -5);
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+    expect(SaveSystem.genSwitchLevelStamped).toBe(true);
+    store.setInt(KEY, 2.5);
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+    expect(SaveSystem.genSwitchLevelStamped).toBe(true);
+  });
+
+  test('a stored -1 is P-01 row 20\'s "not stamped" sentinel (getInt(key, -1))', () => {
+    store.setInt(KEY, -1);
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+    expect(SaveSystem.genSwitchLevelStamped).toBe(false);
+  });
+
+  test('setGenSwitchLevel writes exactly arrows_gen_switch_level while healthy', () => {
+    expect(SaveSystem.setGenSwitchLevel(41)).toBe(true);
+    expect([...store.map]).toEqual([[KEY, 41]]);
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+  });
+
+  test('setGenSwitchLevel refuses a negative or non-integer level (the store never holds an invalid stamp)', () => {
+    expect(SaveSystem.setGenSwitchLevel(-3)).toBe(false);
+    expect(SaveSystem.setGenSwitchLevel(1.5)).toBe(false);
+    expect(SaveSystem.setGenSwitchLevel(Number.NaN)).toBe(false);
+    expect(store.map.has(KEY)).toBe(false);
+  });
+
+  test('persistence not healthy: setGenSwitchLevel writes nothing (a stamp derived from defaults would be wrong)', () => {
+    SaveSystem.setPersistenceHealthy(false);
+    expect(SaveSystem.setGenSwitchLevel(0)).toBe(false);
+    expect(store.map.has(KEY)).toBe(false);
+  });
+
+  test('resetProgress is unchanged by W3-05: it keeps the switch level', () => {
+    SaveSystem.setGenSwitchLevel(41);
+    SaveSystem.resetProgress();
+    expect(store.deleted).not.toContain(KEY);
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+  });
+
+  test('the key is P-01 registry row 20 (no key added or renamed)', () => {
+    expect(SaveSystem.persistenceKeys).toContain(KEY);
+    expect(SaveSystem.registeredKeys.genSwitchLevel).toBe(KEY);
+  });
+});

@@ -15,18 +15,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
 import { Difficulties, Difficulty, LevelGenerator } from '../src/core';
-import type { GeneratedLevel } from '../src/core';
+import type { GeneratedLevel, GenVersion } from '../src/core';
 import { arrowArt, STROKE } from '../src/ui/arrowGeometry';
 import { Daylight, InkNight, Palette } from '../src/ui/theme';
 
 const CELL = 40;
 const OUT = path.join(__dirname, '..', 'store', 'marketing');
 
-/** First SuperHard level whose silhouette is the named shape. */
-function findLevel(shapeName: string): GeneratedLevel {
+/**
+ * First SuperHard level whose silhouette is the named shape, at generator
+ * `version` (W3-05; default v1, the boards shipped players are dealt).
+ */
+function findLevel(shapeName: string, version: GenVersion = 1): GeneratedLevel {
   for (let i = 5; i < 6 * 400; i += 6) {
     if (Difficulties.forLevel(i) !== Difficulty.SuperHard) continue;
-    const lvl = LevelGenerator.generate(i);
+    const lvl = LevelGenerator.generate(i, version);
     if (lvl.shapeName === shapeName) return lvl;
   }
   throw new Error(`no ${shapeName} level found`);

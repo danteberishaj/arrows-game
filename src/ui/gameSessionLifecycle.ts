@@ -2,10 +2,13 @@ import {
   buildTutorialLevel,
   generateDaily,
   LevelGenerator,
+  resolveGenVersion,
   SaveSystem,
   type GeneratedLevel,
+  type GenVersion,
   type TutorialId,
 } from '../core';
+import { PERF_GEN_VERSION, PERF_MODE } from '../perfMode';
 import type { LevelMode } from '../telemetry/levelAggregator';
 import {
   BLOCKER_FLASH_MS,
@@ -35,15 +38,31 @@ export interface LevelSession {
 }
 
 /**
+ * W3-05: the generator version that deals campaign level `index` in this app.
+ * - PERF_MODE: EXPO_PUBLIC_PERF_GEN_VERSION (2 selects v2, else 1). A PERF
+ *   build never hydrates a save, so it has no switch level.
+ * - Otherwise: core `resolveGenVersion(index, SaveSystem.genSwitchLevel)`,
+ *   which is 1 while GEN_V2_ENABLED is false.
+ * The collection fold resolves versions in core without the PERF branch
+ * (ruling F11); PERF runs record no collection bits.
+ */
+export function levelGenVersion(index: number): GenVersion {
+  if (PERF_MODE) return PERF_GEN_VERSION;
+  return resolveGenVersion(index, SaveSystem.genSwitchLevel);
+}
+
+/**
  * Generate the level before publishing the next session to React. Keeping the
  * generator outside a state-updater callback prevents React from replaying an
  * expensive generation when it verifies updater purity in development.
+ * `version` is required (W3-05) so no campaign caller silently gets v1:
+ * GameScreen passes `levelGenVersion(index)`.
  */
-export function createLevelSession(index: number, revision: number): LevelSession {
+export function createLevelSession(index: number, revision: number, version: GenVersion): LevelSession {
   return {
     index,
     revision,
-    level: LevelGenerator.generate(index),
+    level: LevelGenerator.generate(index, version),
     mode: 'campaign',
     day: null,
   };

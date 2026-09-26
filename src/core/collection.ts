@@ -92,9 +92,11 @@ export function countSeen(masks: ShapeMasks): number {
  *   re-ORs bits that are already set.
  * - `fromLevel >= toLevel` folds nothing and returns `through = fromLevel`
  *   (never lowered: after a progress reset the pointer can lead the level).
- * - `shapeNameForLevel(i)` must return the shape level i actually dealt. A
- *   name that is not in the catalogue sets no bit; collection.test.ts fails the
- *   build if any generated name is unmapped.
+ * - `shapeNameForLevel(i)` must return the shape level i actually dealt, at
+ *   the generator version that dealt it (W3-05: SaveSystem's campaignShapeName
+ *   resolves the version per index). A name that is not in the catalogue sets
+ *   no bit; collection.test.ts fails the build if any generated name is
+ *   unmapped.
  * - `shouldStop` (optional) ends the call early: it is checked before every
  *   level after the first, so a call that has anything to fold always folds at
  *   least one level (progress even when one level costs more than the caller's

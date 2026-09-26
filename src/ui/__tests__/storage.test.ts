@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LevelGenerator, SaveSystem, catalogueIndexOf, type IntStore } from '../../core';
+import { LevelGenerator, SaveSystem, catalogueIndexOf, stampGenSwitchLevel, type IntStore } from '../../core';
 import { EMPTY_SHAPE_MASKS, markSeen, type ShapeMasks } from '../../core/collection';
 import { initSaveSystem } from '../storage';
 
@@ -515,5 +515,123 @@ describe('W4-07 shape collection across cold starts', () => {
     const writtenKeys = storage.multiSet.mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
     expect(writtenKeys).toEqual([]);
     expect(disk.get('arrows_current_level')).toBe(seed.find(([key]) => key === 'arrows_current_level')?.[1]);
+  });
+});
+
+// ---- W3-05: the generator switch level stamped at boot, over AsyncStorage ---
+
+describe('W3-05 boot classification of the generator switch level', () => {
+  const KEY = 'arrows_gen_switch_level';
+
+  /** Every key any multiSet call wrote since the last clearAllMocks. */
+  function writtenKeys(): string[] {
+    return storage.multiSet.mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
+  }
+
+  const LEVEL_40: ReadonlyArray<[string, string]> = [
+    ['arrows_schema_version', '1'],
+    ['arrows_current_level', '40'],
+    ['arrows_total_solved', '40'],
+  ];
+
+  test('a save at arrows_current_level = 40, flag forced ON: the real initSaveSystem then the stamp writes 41', async () => {
+    const disk = useMapBackedStorage(LEVEL_40);
+    await coldStart();
+
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBe(41);
+    await settlePersistence();
+
+    // A stamp that ran before hydration would have read level 0 and written 0 or 1.
+    expect(disk.get(KEY)).toBe('41');
+    expect(storage.multiSet.mock.calls).toEqual([[[[KEY, '41']]]]);
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+
+    // A fresh HydratedIntStore over the same disk reads the stamp back.
+    await coldStart();
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+  });
+
+  test('ordering hazard: a stamp attempted while initSaveSystem is still hydrating writes nothing', async () => {
+    const disk = useMapBackedStorage(LEVEL_40);
+
+    const booting = initSaveSystem();
+    // initSaveSystem marks persistence unhealthy before its read resolves.
+    expect(SaveSystem.persistenceHealthy).toBe(false);
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBeNull();
+    await booting;
+    await settlePersistence();
+    expect(writtenKeys()).not.toContain(KEY);
+    expect(disk.has(KEY)).toBe(false);
+
+    // Once hydrated, the same call classifies the real save.
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBe(41);
+    await settlePersistence();
+    expect(disk.get(KEY)).toBe('41');
+  });
+
+  test('a fresh install, flag forced ON, writes 0', async () => {
+    const disk = useMapBackedStorage([]);
+    await coldStart();
+
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBe(0);
+    await settlePersistence();
+
+    expect(disk.get(KEY)).toBe('0');
+    expect(SaveSystem.genSwitchLevel).toBe(0);
+  });
+
+  test('the shipped flag (OFF) writes nothing: no multiSet contains the key', async () => {
+    const disk = useMapBackedStorage(LEVEL_40);
+    await coldStart();
+
+    expect(stampGenSwitchLevel(SaveSystem)).toBeNull();
+    await settlePersistence();
+
+    expect(writtenKeys()).not.toContain(KEY);
+    expect(disk.has(KEY)).toBe(false);
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+  });
+
+  test('a present key is never rewritten on a later boot, even after the player moved on', async () => {
+    const disk = useMapBackedStorage(LEVEL_40);
+    await coldStart();
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBe(41);
+    SaveSystem.setCurrentLevel(45); // five more clears this session
+    await settlePersistence();
+
+    storage.multiSet.mockClear();
+    await coldStart();
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBeNull();
+    await settlePersistence();
+
+    expect(writtenKeys()).not.toContain(KEY);
+    expect(disk.get(KEY)).toBe('41');
+    expect(SaveSystem.genSwitchLevel).toBe(41);
+  });
+
+  test('a stored -5 reads as null and is not rewritten', async () => {
+    const disk = useMapBackedStorage([...LEVEL_40, [KEY, '-5']]);
+    await coldStart();
+
+    expect(SaveSystem.genSwitchLevel).toBeNull();
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBeNull();
+    await settlePersistence();
+
+    expect(writtenKeys()).not.toContain(KEY);
+    expect(disk.get(KEY)).toBe('-5');
+  });
+
+  test('a failed hydrate stamps nothing (SAVE-GUARD / persistenceHealthy)', async () => {
+    const disk = useMapBackedStorage(LEVEL_40);
+    storage.multiGet.mockRejectedValue(new Error('persistence unavailable'));
+    await coldStart();
+    expect(SaveSystem.persistenceHealthy).toBe(false);
+
+    expect(stampGenSwitchLevel(SaveSystem, true)).toBeNull();
+    await settlePersistence();
+
+    expect(writtenKeys()).toEqual([]);
+    expect(disk.has(KEY)).toBe(false);
+    expect(SaveSystem.genSwitchLevel).toBeNull();
   });
 });

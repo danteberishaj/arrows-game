@@ -1,3 +1,5 @@
+import type { GenVersion } from './core/generatorVersion';
+
 const rawPerfLevel = process.env.EXPO_PUBLIC_PERF_LEVEL;
 const parsedPerfLevel = rawPerfLevel === undefined ? Number.NaN : Number(rawPerfLevel);
 
@@ -26,6 +28,21 @@ export const PERF_FEEDBACK =
  */
 export const PERF_GRID_POINTS =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_GRID_POINTS === '1';
+
+/**
+ * W3-05: EXPO_PUBLIC_PERF_GEN_VERSION=2 makes a PERF build deal generator v2;
+ * anything else (unset included) is v1. PERF builds never hydrate a save, so
+ * they have no switch level: this is the only way a capture selects v2, and an
+ * unset variable keeps benchmark.mjs measuring the v1 39x39 board at 3827.
+ */
+export function parsePerfGenVersion(raw: string | undefined): GenVersion {
+  return Number(raw) === 2 ? 2 : 1;
+}
+
+/** Generator version of a PERF build; 1 outside PERF_MODE (never read there). */
+export const PERF_GEN_VERSION: GenVersion = PERF_MODE
+  ? parsePerfGenVersion(process.env.EXPO_PUBLIC_PERF_GEN_VERSION)
+  : 1;
 
 export type PerfScreen = 'splash' | 'menu' | 'game';
 

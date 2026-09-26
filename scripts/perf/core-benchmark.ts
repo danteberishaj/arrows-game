@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import { BoardLogic, LevelGenerator } from '../../src/core';
+import { BoardLogic, LevelGenerator, type GenVersion } from '../../src/core';
 import { arrowArt } from '../../src/ui/arrowGeometry';
 
 const DEFAULT_LEVELS = [239, 917, 935, 3827, 5363];
@@ -7,6 +7,8 @@ const CELL = 40;
 
 interface Options {
   levels: number[];
+  /** W3-05: generator version to benchmark (`--gen-version 1|2`, default 1). */
+  genVersion: GenVersion;
   warmup: number;
   runs: number;
   batch: number;
@@ -38,6 +40,7 @@ interface Fixture {
 function parseOptions(argv: string[]): Options {
   const options: Options = {
     levels: [],
+    genVersion: 1,
     warmup: 5,
     runs: 30,
     batch: 20,
@@ -50,6 +53,7 @@ function parseOptions(argv: string[]): Options {
     if (arg === '--pretty') options.pretty = true;
     else if (arg === '--metadata') options.metadataOnly = true;
     else if (arg === '--level') options.levels.push(...parseLevels(argv[++i], '--level'));
+    else if (arg === '--gen-version') options.genVersion = parseGenVersion(argv[++i]);
     else if (arg === '--warmup') options.warmup = parseNonNegativeInt(argv[++i], '--warmup');
     else if (arg === '--runs') options.runs = parsePositiveInt(argv[++i], '--runs');
     else if (arg === '--batch') options.batch = parsePositiveInt(argv[++i], '--batch');
@@ -59,6 +63,12 @@ function parseOptions(argv: string[]): Options {
   if (options.levels.length === 0) options.levels = [...DEFAULT_LEVELS];
   options.levels = [...new Set(options.levels)];
   return options;
+}
+
+function parseGenVersion(raw: string | undefined): GenVersion {
+  if (raw === '1') return 1;
+  if (raw === '2') return 2;
+  throw new Error('--gen-version must be 1 or 2');
 }
 
 function parseLevels(raw: string | undefined, flag: string): number[] {
@@ -81,8 +91,8 @@ function parseNonNegativeInt(raw: string | undefined, flag: string): number {
   return value;
 }
 
-function buildFixture(level: number): Fixture {
-  const generated = LevelGenerator.generate(level);
+function buildFixture(level: number, genVersion: GenVersion): Fixture {
+  const generated = LevelGenerator.generate(level, genVersion);
   const arrows = [...generated.board.arrows()];
   const lines = arrows.map((arrow) => arrow.toLine());
   const blockedArrow = arrows.find((arrow) => !generated.board.canExit(arrow)) ?? null;
@@ -153,7 +163,7 @@ function runTimed(options: Options, fixtures: readonly Fixture[]) {
     for (const fixture of fixtures) {
       for (let batch = 0; batch < options.batch; batch++) {
         let started = performance.now();
-        const generated = LevelGenerator.generate(fixture.level);
+        const generated = LevelGenerator.generate(fixture.level, options.genVersion);
         let elapsed = performance.now() - started;
         if (record) generationMs.push(elapsed);
         sink += generated.arrowCount;
@@ -195,7 +205,7 @@ function runTimed(options: Options, fixtures: readonly Fixture[]) {
 
 function main() {
   const options = parseOptions(process.argv.slice(2));
-  const fixtures = options.levels.map(buildFixture);
+  const fixtures = options.levels.map((level) => buildFixture(level, options.genVersion));
 
   if (options.metadataOnly) {
     const metadata = fixtures.map(({ lines: _lines, ...fixture }) => fixture);
@@ -209,6 +219,7 @@ function main() {
     runtime: { node: process.version, platform: process.platform, arch: process.arch },
     config: {
       levels: options.levels,
+      genVersion: options.genVersion,
       warmup: options.warmup,
       runs: options.runs,
       batch: options.batch,

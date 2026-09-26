@@ -3,6 +3,7 @@ import { BoardLogic } from './boardLogic';
 import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
 import { DotNetRandom } from './dotnetRandom';
+import type { GenVersion } from './generatorVersion';
 import { ShapeDef, ShapeLibrary } from './shapeLibrary';
 
 /** One generated puzzle plus its metadata. */
@@ -24,17 +25,57 @@ export interface GeneratedLevel {
   targetCells: number;
 }
 
-export function shapeNameForLevel(levelIndex: number): string {
+/**
+ * The shape `LevelGenerator.generate(levelIndex, version)` deals, without
+ * building the board (W4-01; versioned by W3-05). Must stay equivalent to
+ * generation at every version (`__tests__/shapeCatalogue.test.ts`); the shape
+ * collection fold relies on it. v2 delegates to v1 until W3-10 adds its branch.
+ */
+export function shapeNameForLevel(levelIndex: number, version: GenVersion = 1): string {
+  return version === 2 ? shapeNameForLevelV2(levelIndex) : shapeNameForLevelV1(levelIndex);
+}
+
+function shapeNameForLevelV1(levelIndex: number): string {
   const difficulty = Difficulties.forLevel(levelIndex);
   return ShapeLibrary.pick(difficulty, new DotNetRandom(seed(levelIndex))).name;
+}
+
+/** W3-05 seam: content-neutral until W3-10 gives v2 its own pick. */
+function shapeNameForLevelV2(levelIndex: number): string {
+  return shapeNameForLevelV1(levelIndex);
+}
+
+/**
+ * v1: the shipped generator body, moved verbatim from `generate` (W3-05).
+ * Frozen: the five golden checksums and the W3-02 corpus fingerprint pin it.
+ */
+function generateV1(levelIndex: number): GeneratedLevel {
+  const difficulty = Difficulties.forLevel(levelIndex);
+  const cfg = Difficulties.config(difficulty);
+  const rng = new DotNetRandom(seed(levelIndex));
+
+  const shape = ShapeLibrary.pick(difficulty, rng);
+
+  return LevelGenerator.buildFromShape(shape, difficulty, cfg, rng);
+}
+
+/**
+ * v2: delegates to v1 until W3-10 (the seam is content-neutral; the test
+ * "v2 delegates to v1 until W3-10" pins that and W3-10 retires it).
+ */
+function generateV2(levelIndex: number): GeneratedLevel {
+  return generateV1(levelIndex);
 }
 
 const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as const;
 
 /**
  * Runtime, infinite level generator. Difficulty, the chosen shape and the
- * random seed are pure functions of the level index, so the same index always
- * reproduces the same board (Retry / resume are stable).
+ * random seed are pure functions of (level index, generator version), so the
+ * same index at the same version always reproduces the same board (Retry /
+ * resume are stable). Which version deals an index on an install is
+ * `resolveGenVersion` (generatorVersion.ts); every caller that omits the
+ * version gets v1.
  *
  * Each level is a recognizable SHAPE (square / circle / heart / star / trophy
  * / ...) drawn by packing every cell of the shape's silhouette with arrows.
@@ -54,14 +95,8 @@ const DIRS = [Direction.Up, Direction.Down, Direction.Left, Direction.Right] as 
  * Ported from Assets/_Game/Scripts/Core/LevelGenerator.cs.
  */
 export const LevelGenerator = {
-  generate(levelIndex: number): GeneratedLevel {
-    const difficulty = Difficulties.forLevel(levelIndex);
-    const cfg = Difficulties.config(difficulty);
-    const rng = new DotNetRandom(seed(levelIndex));
-
-    const shape = ShapeLibrary.pick(difficulty, rng);
-
-    return LevelGenerator.buildFromShape(shape, difficulty, cfg, rng);
+  generate(levelIndex: number, version: GenVersion = 1): GeneratedLevel {
+    return version === 2 ? generateV2(levelIndex) : generateV1(levelIndex);
   },
 
   /**
@@ -71,7 +106,8 @@ export const LevelGenerator = {
    * reuses the exact pipeline instead of copying it.
    *
    * The RNG is consumed in the same order as before the split: `generate`
-   * still draws `ShapeLibrary.pick` first and hands the SAME `rng` on, so
+   * (v1, `generateV1`) still draws `ShapeLibrary.pick` first and hands the
+   * SAME `rng` on, so
    * every campaign board is unchanged (the golden checksums in
    * `__tests__/levelGenerator.test.ts` are the net).
    */

@@ -6,6 +6,7 @@ import {
   sanitizeMask,
   type ShapeMasks,
 } from './collection';
+import { resolveGenVersion } from './generatorVersion';
 import { shapeNameForLevel } from './levelGenerator';
 import { catalogueIndexOf } from './shapeCatalogue';
 import {
@@ -153,6 +154,8 @@ const PersistenceKeys: readonly string[] = Object.freeze(Object.values(Keys));
  */
 const SCHEMA_VERSION = 1;
 const FTUE_NOT_STARTED_STAGE = 0; // OWNER-PICKED STARTING VALUE
+/** P-01 row 20: `arrows_gen_switch_level` reads -1 via getInt(key, -1) when never stamped (0 is real). */
+const GEN_SWITCH_NOT_STAMPED = -1;
 const CONSENT_BITS_MASK = 0b1111;
 
 let persistenceHealthy = false;
@@ -182,15 +185,31 @@ function nonNegativeInt(v: number): number {
   return Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : 0;
 }
 
+/** Raw stored switch level; GEN_SWITCH_NOT_STAMPED when absent. */
+function rawGenSwitchLevel(): number {
+  return store.getInt(Keys.genSwitchLevel, GEN_SWITCH_NOT_STAMPED);
+}
+
+/** The stored switch level when valid (a non-negative integer), else null. */
+function readGenSwitchLevel(): number | null {
+  const raw = rawGenSwitchLevel();
+  return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+}
+
 /**
  * W4-07: the shape campaign level `levelIndex` dealt, for the collection fold.
- * v1 for every index until W3's generator-version seam exists; then W3-05
- * routes it through core `resolveGenVersion(index, genSwitchLevel)` with no
- * PERF/DEV override (ruling F11). Must equal LevelGenerator.generate(i)
- * .shapeName (collection.test.ts, shapeCatalogue.test.ts).
+ * W3-05 routes it through core `resolveGenVersion(index, genSwitchLevel)` with
+ * no PERF/DEV override (ruling F11), so a level's collection bit is the shape
+ * of the generator version that deals it on this install. Must equal
+ * LevelGenerator.generate(i, version).shapeName (collection.test.ts,
+ * shapeCatalogue.test.ts, saveSystem.genVersion.test.ts).
+ *
+ * After a progress reset (no UI caller today) the switch level is kept, so a
+ * replayed level below it is still dealt, and folded, as v1: the bits stay
+ * consistent with the boards.
  */
 function campaignShapeName(levelIndex: number): string {
-  return shapeNameForLevel(levelIndex);
+  return shapeNameForLevel(levelIndex, resolveGenVersion(levelIndex, readGenSwitchLevel()));
 }
 
 const NOT_NEW: { readonly newlyDiscovered: boolean } = Object.freeze({ newlyDiscovered: false });
@@ -305,6 +324,55 @@ export const SaveSystem = {
 
   setCurrentLevel(index: number): void {
     store.setInt(Keys.currentLevel, Math.max(0, index));
+  },
+
+  // ---- Generator switch level (W3-05) -----------------------------------
+  //
+  // MIGRATION AND WIPE RISK (W3-05):
+  // - The key is one additive int (P-01 row 20). No existing key is read
+  //   differently, rewritten or removed, and SCHEMA_VERSION is not bumped.
+  // - It is written once, by stampGenSwitchLevel (generatorVersion.ts) at the
+  //   first healthy boot with GEN_V2_ENABLED; with the flag OFF (shipped) it is
+  //   never written.
+  // - If the key is lost while arrows_current_level survives, the next flag-ON
+  //   boot reclassifies the install as existing at current + 1. At worst one
+  //   board (the current index) is re-dealt as v1 once. No progress is lost.
+  // - INFERENCE, not tested: Android Auto Backup restores the AsyncStorage
+  //   database as a whole, so the switch level and current level restore
+  //   together (UNVERIFIED-DEVICE).
+  // - The store stays int-only.
+  // - Not part of resetProgress() (P-01's six-key lock; whether a reset clears
+  //   it is part of the owner's reset-set decision, W1-11 question 5).
+
+  /**
+   * First campaign index dealt by generator v2 on this install, or null:
+   * absent (never stamped) or invalid (negative or non-integer). The resolver
+   * yields v1 for null, and nothing rewrites an invalid stored value.
+   */
+  get genSwitchLevel(): number | null {
+    return readGenSwitchLevel();
+  },
+
+  /**
+   * True when the key holds anything but P-01's "not stamped" sentinel (-1 via
+   * getInt(key, -1)), valid or corrupt. The boot stamp writes only when false,
+   * so a stamp is permanent and a corrupt value (e.g. -5) is left as stored.
+   */
+  get genSwitchLevelStamped(): boolean {
+    return rawGenSwitchLevel() !== GEN_SWITCH_NOT_STAMPED;
+  },
+
+  /**
+   * Writes `arrows_gen_switch_level`. Returns false and writes nothing while
+   * persistence is unhealthy (a switch level derived from in-memory defaults
+   * would be wrong: P-01's rule for derived values) or for a level that is not
+   * a non-negative integer (the store never holds an invalid stamp).
+   */
+  setGenSwitchLevel(level: number): boolean {
+    if (!persistenceHealthy) return false;
+    if (!Number.isSafeInteger(level) || level < 0) return false;
+    store.setInt(Keys.genSwitchLevel, level);
+    return true;
   },
 
   // ---- First-time user experience (W1-03) ------------------------------

@@ -58,8 +58,8 @@ jest.mock('../gameSessionLifecycle', () => {
   const actual = jest.requireActual('../gameSessionLifecycle');
   return {
     ...actual,
-    createLevelSession: (index: number, revision: number) => {
-      const session = actual.createLevelSession(index, revision);
+    createLevelSession: (index: number, revision: number, version: 1 | 2) => {
+      const session = actual.createLevelSession(index, revision, version);
       return mockEmptyMask ? { ...session, level: { ...session.level, mask: [] } } : session;
     },
   };

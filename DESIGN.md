@@ -203,7 +203,10 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   The tier bands overlap. What difficulty should mean is set in `PRODUCT.md` (legibility,
   density, clearable fraction at deal, silhouette novelty), never tap order.
 - **Determinism**: difficulty, the chosen shape, the board size and the layout are all pure
-  functions of the level index, so resume / retry reproduce the same picture.
+  functions of (level index, generator version); each install has a switch level below which v1
+  is used; a shipped generator version is frozen by golden fingerprints and never edited. So
+  resume / retry reproduce the same picture. (W3-05: `src/core/generatorVersion.ts`,
+  `GEN_V2_ENABLED` off, and v2 is still identical to v1.)
 
 (The engine-free core — `ShapeLibrary`, `LevelGenerator`, `BoardLogic`, `ArrowPath`,
 `Difficulty`, `Direction`, `DotNetRandom`, `SaveSystem` in `src/core` — imports no React Native,

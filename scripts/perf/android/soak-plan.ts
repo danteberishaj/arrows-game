@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import type { GenVersion } from '../../../src/core/generatorVersion';
 import { LevelGenerator } from '../../../src/core/levelGenerator';
 
 export interface SoakTap {
@@ -32,7 +33,11 @@ export interface SoakPlan {
  * Builds one warmup immediately before the requested measured range. The app
  * can then advance through every level without restarting its Android process.
  */
-export function createSoakPlan(startLevelIndex: number, measuredLevelCount: number): SoakPlan {
+export function createSoakPlan(
+  startLevelIndex: number,
+  measuredLevelCount: number,
+  version: GenVersion = 1,
+): SoakPlan {
   if (!Number.isSafeInteger(startLevelIndex) || startLevelIndex < 1) {
     throw new Error('The soak start level must be a safe integer greater than zero');
   }
@@ -44,16 +49,20 @@ export function createSoakPlan(startLevelIndex: number, measuredLevelCount: numb
     schemaVersion: 1,
     startLevelIndex,
     measuredLevelCount,
-    warmup: createLevelPlan(startLevelIndex - 1),
+    warmup: createLevelPlan(startLevelIndex - 1, version),
     measured: Array.from(
       { length: measuredLevelCount },
-      (_, offset) => createLevelPlan(startLevelIndex + offset),
+      (_, offset) => createLevelPlan(startLevelIndex + offset, version),
     ),
   };
 }
 
-function createLevelPlan(levelIndex: number): SoakLevelPlan {
-  const generated = LevelGenerator.generate(levelIndex);
+/**
+ * `version` (W3-05, default 1) must match the generator version the PERF build
+ * deals (EXPO_PUBLIC_PERF_GEN_VERSION, unset = 1), or the taps miss the board.
+ */
+function createLevelPlan(levelIndex: number, version: GenVersion = 1): SoakLevelPlan {
+  const generated = LevelGenerator.generate(levelIndex, version);
   const initialLines = generated.board.arrows().map((arrow) => arrow.toLine());
   const taps: SoakTap[] = [];
 
