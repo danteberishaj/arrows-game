@@ -9,3 +9,12 @@ jest.mock(
   'react-native-safe-area-context',
   () => require('react-native-safe-area-context/jest/mock').default,
 );
+// W4-11 (ruling F33): GameScreen loads expo-store-review lazily and only with
+// META_REVIEW_PROMPT on; no ui test may reach its native module. Tests that
+// exercise the ask mock it themselves with call recording.
+jest.mock('expo-store-review', () => ({
+  isAvailableAsync: jest.fn(async () => false),
+  requestReview: jest.fn(async () => undefined),
+  hasAction: jest.fn(async () => false),
+  storeUrl: jest.fn(() => null),
+}));

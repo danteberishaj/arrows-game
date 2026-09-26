@@ -538,6 +538,42 @@ export const SaveSystem = {
     return { newlyDiscovered: true };
   },
 
+  // ---- Store-review bookkeeping (W4-11) ---------------------------------
+  // The decision is src/core/reviewPolicy.ts (pure); GameScreen reads these
+  // two keys for it and records an ask before the OS call. Neither key is part
+  // of resetProgress(): a progress reset must not re-open the lifetime asks.
+
+  /**
+   * Store-review requests made over the install's lifetime (0 = never). Raw:
+   * a corrupt value reaches the policy unchanged, and the policy fails closed.
+   */
+  get reviewCount(): number {
+    return store.getInt(Keys.reviewCount, 0);
+  },
+
+  /**
+   * Local day (today()'s unit) of the last store-review request; 0 = never.
+   * Raw, like reviewCount. A day after today suppresses the ask (P-01 row 19).
+   */
+  get reviewLastDay(): number {
+    return store.getInt(Keys.reviewLastDay, 0);
+  },
+
+  /**
+   * Records one store-review request on `day`: `arrows_review_last_day = day`
+   * and `arrows_review_count + 1`. Called BEFORE the OS call, whatever the OS
+   * then shows (Play and Apple may show nothing and do not say). Skipped, and
+   * false returned, while persistence is unhealthy: a count derived from
+   * in-memory defaults would overwrite the real one on disk (P-01's rule for
+   * derived values). The caller must not ask the OS when this returns false.
+   */
+  recordReviewRequest(day: number): boolean {
+    if (!persistenceHealthy) return false;
+    store.setInt(Keys.reviewLastDay, day);
+    store.setInt(Keys.reviewCount, nonNegativeInt(store.getInt(Keys.reviewCount, 0)) + 1);
+    return true;
+  },
+
   // ---- Shape collection (W4-07) ----------------------------------------
   // Pure bit logic: src/core/collection.ts. The only reader is the flagged
   // gallery (W4-09); recording is invisible and ships ON behind the literal

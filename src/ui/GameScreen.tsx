@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AppState, PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   ReduceMotion,
@@ -21,7 +21,8 @@ import {
   appLevelAggregator,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
-import { META_LEVEL_TRANSITION, META_PANEL_MOTION } from '../featureFlags';
+import { reviewDeclineReason } from '../core/reviewPolicy';
+import { META_LEVEL_TRANSITION, META_PANEL_MOTION, META_REVIEW_PROMPT } from '../featureFlags';
 import { Ads } from './ads';
 import { ART_WIN_SILHOUETTE_DP, ART_WIN_SILHOUETTE_ENABLED } from './artConfig';
 import { BoardView } from './BoardView';
@@ -72,9 +73,18 @@ import {
   PANEL_EXIT_MS,
   PANEL_LOSS_ENTER_MS,
   PANEL_WIN_ENTER_MS,
+  STAR_STAGGER_MS,
   type PresenceState,
 } from './overlayPresence';
 import { createPanelPresence, PanelOverlayFrame, type PanelPresence } from './PanelPresence';
+import {
+  loadStoreReview,
+  REVIEW_DWELL_MS,
+  REVIEW_FLOW_WAIT_MAX_MS,
+  reviewDiag,
+  reviewSession,
+  settleWithin,
+} from './reviewPrompt';
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Fonts, Palette } from './theme';
@@ -176,6 +186,13 @@ export function GameScreen({
   // W4-11 reads this at the delayed won-phase commit. Keep the stage-2
   // snapshot even when this clear immediately advances persisted stage to 3.
   const assistedAtClearRef = useRef(false);
+  // W4-11: whether the last clear lost no heart, kept for the delayed ask.
+  const perfectAtClearRef = useRef(false);
+  // W4-11: the pending ask (REVIEW_DWELL_MS after the won commit) and the
+  // in-flight OS review flow that Next / Done wait for.
+  const reviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reviewFlowRef = useRef<Promise<void> | null>(null);
+  const reviewWaitRef = useRef(false);
   // W4-07: whether the last clear added a shape to the collection (its bit was
   // 0). Data only, set on the clear path before the won panel; W5's silhouette
   // celebration decides whether and how to show it.
@@ -187,6 +204,8 @@ export function GameScreen({
   const [terminalPending, setTerminalPending] = useState(false);
   const [hint, setHint] = useState<{ arrow: ArrowPath; id: number } | null>(null);
   const [adBusy, setAdBusy] = useState(false);
+  const adBusyRef = useRef(adBusy);
+  adBusyRef.current = adBusy;
   // Continue (lose panel) and hint each have their own rewarded unit (M3).
   const rewardedReady = useSyncExternalStore(Ads.subscribeRewardedReady, readRewardedReady);
   const hintReady = useSyncExternalStore(subscribeHintReady, readHintReady);
@@ -379,6 +398,7 @@ export function GameScreen({
     tutorialGraceAvailableRef.current = next.tutorialId === 'T2';
     removalsThisBoardRef.current = 0;
     assistedAtClearRef.current = false;
+    perfectAtClearRef.current = false;
     setTutorialLine(initialTutorialLine(next.tutorialId));
     exitCombo.current = null;
     setPhase('playing');
@@ -442,6 +462,7 @@ export function GameScreen({
       const ftueStageAtClear = SaveSystem.ftueStage;
       assistedAtClearRef.current = ftueStageAtClear === ASSIST_STAGE;
       const perfect = heartsRef.current === level.hearts;
+      perfectAtClearRef.current = perfect;
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
         if (!beginTerminalTransition('won', WON_PANEL_DELAY_MS, () => {
@@ -569,8 +590,86 @@ export function GameScreen({
     terminalTransition,
   ]);
 
+  /** W4-11: drop a pending (not yet fired) store-review ask. */
+  const cancelReviewAsk = useCallback(() => {
+    if (reviewTimerRef.current === null) return;
+    clearTimeout(reviewTimerRef.current);
+    reviewTimerRef.current = null;
+  }, []);
+
+  /**
+   * W4-11: the dwell on the win panel is over and the player is still on it.
+   * Ask only if the policy allows it, never while an ad is up and never when
+   * this panel's Next would show an interstitial (a daily never does).
+   */
+  const askForReview = useCallback(() => {
+    if (adBusyRef.current) return;
+    const input = {
+      perfect: perfectAtClearRef.current,
+      assisted: assistedAtClearRef.current,
+      totalSolved: SaveSystem.totalSolved,
+      today: SaveSystem.today(),
+      count: SaveSystem.reviewCount,
+      lastDay: SaveSystem.reviewLastDay,
+      askedThisSession: reviewSession.asked,
+    };
+    const decline = reviewDeclineReason(input)
+      ?? (!SaveSystem.persistenceHealthy ? 'persistence_unhealthy'
+        : dailyDay === null && Ads.interstitialDue ? 'interstitial_due'
+          : null);
+    reviewDiag(`check decline=${decline ?? 'none'} ${JSON.stringify(input)}`);
+    if (decline !== null) return;
+    reviewSession.asked = true;
+    reviewFlowRef.current = requestStoreReview(input.today).finally(() => {
+      reviewFlowRef.current = null;
+    });
+  }, [dailyDay]);
+
+  // W4-11 (META_REVIEW_PROMPT): arm the ask when the won panel commits, in
+  // campaign and daily mode. Leaving the panel (the phase changes), unmounting
+  // or the app leaving the foreground cancels it: JS timers do not run while
+  // Android has the app paused, so a kept timer would ask right at resume.
+  // OFF: no timer and no listener; expo-store-review is never loaded.
+  useEffect(() => {
+    if (!META_REVIEW_PROMPT || phase !== 'won' || benchmarkMode || activeTutorialId) {
+      return undefined;
+    }
+    reviewTimerRef.current = setTimeout(() => {
+      reviewTimerRef.current = null;
+      askForReview();
+    }, REVIEW_DWELL_MS);
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') cancelReviewAsk();
+    });
+    return () => {
+      cancelReviewAsk();
+      appState.remove();
+    };
+  }, [activeTutorialId, askForReview, benchmarkMode, cancelReviewAsk, phase]);
+
+  /**
+   * W4-11: Next / Done wait (at most REVIEW_FLOW_WAIT_MAX_MS) for an in-flight
+   * review flow, so its card never lands over an interstitial or the next
+   * board. Resolves false for a second press made while already waiting.
+   */
+  const waitForReviewFlow = useCallback(async (flow: Promise<void>): Promise<boolean> => {
+    if (reviewWaitRef.current) return false;
+    reviewWaitRef.current = true;
+    try {
+      await settleWithin(flow, REVIEW_FLOW_WAIT_MAX_MS);
+    } finally {
+      reviewWaitRef.current = false;
+    }
+    return true;
+  }, []);
+
   /** "Next level" after a clear: the paced interstitial slots in between. */
   const onNextLevel = useCallback(async () => {
+    // W4-11: leaving the panel drops a pending ask. Nothing is awaited unless
+    // a review flow is in flight (never with the flag OFF).
+    cancelReviewAsk();
+    const reviewFlow = reviewFlowRef.current;
+    if (reviewFlow && !(await waitForReviewFlow(reviewFlow))) return;
     if (levelScrim) {
       // A press while a transition (or its ad) runs is ignored, before any ad
       // is asked for.
@@ -605,15 +704,19 @@ export function GameScreen({
       setAdBusy(false);
     }
     loadLevel(levelIndex + 1);
-  }, [benchmarkMode, levelIndex, levelScrim, loadLevel]);
+  }, [benchmarkMode, cancelReviewAsk, levelIndex, levelScrim, loadLevel, waitForReviewFlow]);
 
   /** "Done" after a daily clear (W4-06): back to the menu; no ad, no next board, no scrim. */
   const dailyDonePressedRef = useRef(false);
-  const onDailyDone = useCallback(() => {
+  const onDailyDone = useCallback(async () => {
     if (dailyDonePressedRef.current) return;
     dailyDonePressedRef.current = true;
+    // W4-11: as Next (no await unless a review flow is in flight).
+    cancelReviewAsk();
+    const reviewFlow = reviewFlowRef.current;
+    if (reviewFlow) await waitForReviewFlow(reviewFlow);
     onHome();
-  }, [onHome]);
+  }, [cancelReviewAsk, onHome, waitForReviewFlow]);
 
   /** "Retry" on the lose panel (a daily rebuilds the same day's board). */
   const onRetry = useCallback(() => {
@@ -917,6 +1020,29 @@ function initialTutorialLine(tutorialId: TutorialId | undefined): string {
   return '';
 }
 
+/**
+ * W4-11: the only store-review call site (storePolicyGuard.test.ts). Fire and
+ * forget: the panel never awaits it (Next / Done may, bounded). The bookkeeping
+ * is written after isAvailableAsync says yes and BEFORE the OS call, whatever
+ * the OS then shows: Play and Apple may show nothing and never say which.
+ * Never throws: a missing native module or a failed request is only logged.
+ */
+async function requestStoreReview(today: number): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    const StoreReview = loadStoreReview();
+    const available = await StoreReview.isAvailableAsync();
+    reviewDiag(`isAvailableAsync=${available} after ${Date.now() - startedAt} ms`);
+    if (!available) return;
+    if (!SaveSystem.recordReviewRequest(today)) return;
+    reviewDiag(`request count=${SaveSystem.reviewCount} lastDay=${SaveSystem.reviewLastDay}`);
+    await StoreReview.requestReview();
+    reviewDiag(`request resolved after ${Date.now() - startedAt} ms`);
+  } catch (error) {
+    reviewDiag(`request failed after ${Date.now() - startedAt} ms: ${String(error)}`);
+  }
+}
+
 const readRewardedReady = () => Ads.rewardedReady;
 const subscribeNoPresence = () => () => undefined;
 const readNoPresence = (): PresenceState => 'hidden';
@@ -1045,7 +1171,7 @@ function Stars({
           key={i}
           filled={i < earned}
           big={i === Math.floor(total / 2)}
-          delay={FIRST_STAR_DELAY_MS + i * 170}
+          delay={FIRST_STAR_DELAY_MS + i * STAR_STAGGER_MS}
           palette={palette}
           feedbackEnabled={feedbackEnabled}
         />

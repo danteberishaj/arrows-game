@@ -700,3 +700,63 @@ describe('W4-07 shape collection', () => {
     expect(COLLECTION_KEYS.map((key) => store.getInt(key, -1))).toEqual(before);
   });
 });
+
+describe('W4-11 store-review bookkeeping', () => {
+  const REVIEW_KEYS = ['arrows_review_count', 'arrows_review_last_day'];
+  let previousHealthy: boolean;
+
+  beforeEach(() => {
+    previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true); // initSaveSystem() read the save
+  });
+
+  afterEach(() => {
+    SaveSystem.setPersistenceHealthy(previousHealthy);
+  });
+
+  test('both keys read 0 on a fresh store (never asked)', () => {
+    expect(SaveSystem.reviewCount).toBe(0);
+    expect(SaveSystem.reviewLastDay).toBe(0);
+  });
+
+  test('recordReviewRequest(day) writes lastDay = day and count + 1, and touches no other key', () => {
+    store.setInt('arrows_total_solved', 30);
+    expect(SaveSystem.recordReviewRequest(2460)).toBe(true);
+    expect(SaveSystem.reviewCount).toBe(1);
+    expect(SaveSystem.reviewLastDay).toBe(2460);
+
+    expect(SaveSystem.recordReviewRequest(2551)).toBe(true);
+    expect(SaveSystem.reviewCount).toBe(2);
+    expect(SaveSystem.reviewLastDay).toBe(2551);
+    expect([...store.map.keys()].sort()).toEqual(['arrows_total_solved', ...REVIEW_KEYS].sort());
+  });
+
+  test('corrupt values are returned raw, so the policy can fail closed on them', () => {
+    store.setInt('arrows_review_count', -2);
+    store.setInt('arrows_review_last_day', Number.NaN);
+    expect(SaveSystem.reviewCount).toBe(-2);
+    expect(SaveSystem.reviewLastDay).toBeNaN();
+  });
+
+  test('persistence not healthy: nothing is recorded (a count derived from defaults would overwrite the real one)', () => {
+    store.setInt('arrows_review_count', 2);
+    SaveSystem.setPersistenceHealthy(false);
+    expect(SaveSystem.recordReviewRequest(2460)).toBe(false);
+    expect(store.getInt('arrows_review_count', -1)).toBe(2);
+    expect(store.getInt('arrows_review_last_day', -1)).toBe(-1);
+  });
+
+  test('resetProgress keeps both keys (a progress reset must not re-open the three lifetime asks)', () => {
+    SaveSystem.recordReviewRequest(2460);
+    SaveSystem.resetProgress();
+    for (const key of REVIEW_KEYS) expect(store.deleted).not.toContain(key);
+    expect(SaveSystem.reviewCount).toBe(1);
+    expect(SaveSystem.reviewLastDay).toBe(2460);
+  });
+
+  test('the keys are the P-01 registry rows 18-19 (no key added or renamed)', () => {
+    for (const key of REVIEW_KEYS) expect(SaveSystem.persistenceKeys).toContain(key);
+    expect(SaveSystem.registeredKeys.reviewCount).toBe('arrows_review_count');
+    expect(SaveSystem.registeredKeys.reviewLastDay).toBe('arrows_review_last_day');
+  });
+});

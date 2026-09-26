@@ -834,6 +834,15 @@ export const Ads = {
   },
 
   /**
+   * Read-only: whether the pacing says the next showInterstitialIfDue() will
+   * try to show an ad (it may still find none ready). W4-11 reads it so the
+   * store-review ask never comes right before an interstitial.
+   */
+  get interstitialDue(): boolean {
+    return isInterstitialDue(finishedGames(), GAMES_PER_INTERSTITIAL);
+  },
+
+  /**
    * Shows a full-screen ad if one is due (every Nth finished game) and
    * resolves when it closes — call between a clear and the next level.
    * Skips silently when not due or nothing is ready.

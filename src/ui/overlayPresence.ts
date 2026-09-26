@@ -38,6 +38,8 @@ export const PANEL_EXIT_MS = PANEL_WIN_ENTER_MS;
 export const PANEL_ENTER_SCALE = 0.94; // OWNER-PICKED STARTING VALUE
 /** The first win-panel star starts its spring this long after the panel mounts (Stars, unchanged). */
 export const FIRST_STAR_DELAY_MS = 250;
+/** Each later star starts this long after the previous one (Stars' literal, named for W4-11). */
+export const STAR_STAGGER_MS = 170;
 /**
  * Backstop margin, derived: the win entrance settles no later than the first
  * star starts even when its completion callback is lost (180 + 70 = 250).

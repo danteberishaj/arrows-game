@@ -116,3 +116,14 @@ export const META_DAILY = process.env.EXPO_PUBLIC_META_DAILY === '1';
  * route is unreachable; the collection keeps accruing harmlessly.
  */
 export const META_GALLERY = process.env.EXPO_PUBLIC_META_GALLERY === '1';
+
+/**
+ * W4-11: the OS store-review prompt (expo-store-review: Play In-App Review /
+ * StoreKit) after a perfect campaign or daily clear, gated by
+ * src/core/reviewPolicy.ts and asked REVIEW_DWELL_MS after the win panel
+ * commits (src/ui/reviewPrompt.ts). No button, no question, no reward: the OS
+ * card is the only thing the player sees, and usually nothing appears at all.
+ * OFF: expo-store-review is never loaded or called and the two review keys
+ * sit untouched, exactly as before (rollback).
+ */
+export const META_REVIEW_PROMPT = process.env.EXPO_PUBLIC_META_REVIEW_PROMPT === '1';

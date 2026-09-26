@@ -20,6 +20,7 @@ const NAMED_META_FLAGS = [
   'META_PANEL_MOTION', // W2-05
   'META_DAILY', // W4-06
   'META_GALLERY', // W4-09
+  'META_REVIEW_PROMPT', // W4-11
 ];
 
 const savedEnv = { ...process.env };
