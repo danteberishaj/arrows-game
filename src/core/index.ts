@@ -38,6 +38,7 @@ export {
   CEILING_BASE_CELLS,
   LEVEL1_CLEARABLE_BIAS,
   LEVEL1_TARGET_CELLS,
+  V1_FLOOR_BASE_CELLS,
   V1_TIER_TEXTURE,
   V2_CURVE,
   curvePointAt,
@@ -48,6 +49,7 @@ export type { BagWindow, WindowMaxTarget } from './shapeBag';
 export {
   GEN_V2_ENABLED,
   classifySwitchLevel,
+  hasV1Floor,
   resolveGenVersion,
   stampGenSwitchLevel,
 } from './generatorVersion';

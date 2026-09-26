@@ -24,7 +24,9 @@
  *   all fit (`windowSetAt`). Because a window's length is chosen together with
  *   its set, no window is ever cut short.
  * - **Where the set changes.** v2 deals from W3-14's curve (`curve.ts`): the
- *   default window max target is `curveWindowMaxTarget(V2_CURVE)`. While the
+ *   default window max target is `curveWindowMaxTarget(V2_CURVE)`, a fresh
+ *   install's; an existing player's bag reads the floored targets
+ *   (`curveWindowMaxTarget(V2_CURVE, true)`, V2-FINISH) and is its own deal. While the
  *   curve rises, later windows admit fewer shapes; the window just before a
  *   rise ends at the rise and holds the top-k shapes by capacity, k = the
  *   levels left before it; each still appears exactly once. Once the curve
@@ -102,6 +104,7 @@ export const placeholderWindowMaxTarget: WindowMaxTarget = (start, end) => {
 };
 
 const curveWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
+const flooredWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
 
 /**
  * W3-14: the bag's view of a difficulty curve, the largest cell target any
@@ -113,15 +116,22 @@ const curveWmtCache = new WeakMap<CurveTable, WindowMaxTarget>();
  * (a memo only: a deep player's first v2 pick builds every window from level
  * 0, and re-deriving targets per window measured slower than W3-10 at level
  * 20,000). One function per table (the bag's window cache is keyed by it).
+ *
+ * `v1Floor` (V2-FINISH): the same view of an existing player's floored
+ * targets (`configV2(d, i, curve, true)`), so their bag admits only shapes
+ * that hold the floored targets. Max(curve, floor) never falls either, so the
+ * last-cycle read stays exact. It is a second function per table: an existing
+ * player's windows are their own deal, built from level 0 like a fresh one's.
  */
-export function curveWindowMaxTarget(curve: CurveTable): WindowMaxTarget {
-  let wmt = curveWmtCache.get(curve);
+export function curveWindowMaxTarget(curve: CurveTable, v1Floor = false): WindowMaxTarget {
+  const cache = v1Floor ? flooredWmtCache : curveWmtCache;
+  let wmt = cache.get(curve);
   if (wmt === undefined) {
     const targets: number[] = [];
     const targetAt = (i: number): number => {
       let t = targets[i];
       if (t === undefined) {
-        t = Difficulties.configV2(Difficulties.forLevel(i), i, curve).maxCells;
+        t = Difficulties.configV2(Difficulties.forLevel(i), i, curve, v1Floor).maxCells;
         targets[i] = t;
       }
       return t;
@@ -134,7 +144,7 @@ export function curveWindowMaxTarget(curve: CurveTable): WindowMaxTarget {
       }
       return max;
     };
-    curveWmtCache.set(curve, wmt);
+    cache.set(curve, wmt);
   }
   return wmt;
 }

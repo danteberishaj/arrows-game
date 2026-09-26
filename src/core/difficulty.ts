@@ -1,7 +1,7 @@
 /**
  * Endless difficulty schedule. Ported from Assets/_Game/Scripts/Core/Difficulty.cs.
  */
-import { V2_CURVE, curvePointAt, type CurveTable } from './curve';
+import { V1_FLOOR_BASE_CELLS, V2_CURVE, curvePointAt, type CurveTable } from './curve';
 
 export enum Difficulty {
   Normal,
@@ -87,16 +87,29 @@ export const Difficulties = {
    * left unset where it is exactly 1 (the identity, so the neutral path).
    * Arrow length, bends and hearts are v1's for the tier, unchanged. `config`
    * (v1 and the daily) never reads the curve.
+   *
+   * `v1Floor` (V2-FINISH, an existing player: `hasV1Floor(switchLevel)`): the
+   * base cells are at least `V1_FLOOR_BASE_CELLS` and the bias at most 1, so
+   * the board is never smaller or easier than the fresh curve's, nor than
+   * v1's measured size for the tier. Both are one-sided, so the floor never
+   * lowers a board; from the point where the curve passes the floor with a
+   * neutral bias (S400: its ceiling) it changes nothing.
    */
-  configV2(d: Difficulty, levelIndex: number, curve: CurveTable = V2_CURVE): DifficultyConfig {
+  configV2(d: Difficulty, levelIndex: number, curve: CurveTable = V2_CURVE, v1Floor = false): DifficultyConfig {
     const v1 = Difficulties.config(d);
     const p = curvePointAt(curve, levelIndex);
     const weight = d === Difficulty.Hard ? p.tierTexture.Hard
       : d === Difficulty.SuperHard ? p.tierTexture.SuperHard
       : p.tierTexture.Normal;
-    const cells = Math.round((p.baseCells * weight) / p.tierTexture.Normal);
+    let base = p.baseCells;
+    let bias = p.clearableBias;
+    if (v1Floor) {
+      if (base < V1_FLOOR_BASE_CELLS) base = V1_FLOOR_BASE_CELLS;
+      if (bias > 1) bias = 1;
+    }
+    const cells = Math.round((base * weight) / p.tierTexture.Normal);
     const cfg: DifficultyConfig = { ...v1, minCells: cells, maxCells: cells };
-    return p.clearableBias === 1 ? cfg : { ...cfg, clearableBias: p.clearableBias };
+    return bias === 1 ? cfg : { ...cfg, clearableBias: bias };
   },
 
   displayName(d: Difficulty): string {

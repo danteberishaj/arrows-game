@@ -4,7 +4,7 @@ import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties, Difficulty, DifficultyConfig } from './difficulty';
 import { Direction, opposite, toDelta } from './direction';
 import { DotNetRandom } from './dotnetRandom';
-import type { GenVersion } from './generatorVersion';
+import { hasV1Floor, type GenVersion } from './generatorVersion';
 import {
   curveWindowMaxTarget,
   isClampShortfall,
@@ -51,6 +51,16 @@ export interface V2Knobs {
    * bias and the bag's windows alike.
    */
   readonly curve?: CurveTable;
+  /**
+   * V2-FINISH: the install's switch level (`SaveSystem.genSwitchLevel`, W3-05).
+   * Above 0, an existing player: v2 deals with the v1 floor
+   * (`hasV1Floor`), from its own floored bag. 0, null or unset: a fresh
+   * install's curve (also the DEV/PERF forced-v2 paths). It is install
+   * context, not a content override, so v1 accepts and ignores it (every
+   * level below the switch is v1's frozen board). A negative or fractional
+   * value throws.
+   */
+  readonly switchLevel?: number | null;
 }
 
 /**
@@ -59,8 +69,8 @@ export interface V2Knobs {
  * generation at every version (`__tests__/shapeCatalogue.test.ts`,
  * `__tests__/shapeBag.test.ts`); the shape collection fold relies on it.
  */
-export function shapeNameForLevel(levelIndex: number, version: GenVersion = 1): string {
-  return version === 2 ? shapeNameForLevelV2(levelIndex) : shapeNameForLevelV1(levelIndex);
+export function shapeNameForLevel(levelIndex: number, version: GenVersion = 1, switchLevel: number | null = 0): string {
+  return version === 2 ? shapeNameForLevelV2(levelIndex, switchLevel) : shapeNameForLevelV1(levelIndex);
 }
 
 function shapeNameForLevelV1(levelIndex: number): string {
@@ -70,10 +80,19 @@ function shapeNameForLevelV1(levelIndex: number): string {
 
 /**
  * W3-10: v2's shape is the bag's pick, which needs no board (and no RNG); its
- * windows follow the shipped curve (W3-14), as `generateV2` does.
+ * windows follow the shipped curve (W3-14), floored for an existing player
+ * (V2-FINISH), as `generateV2` does.
  */
-function shapeNameForLevelV2(levelIndex: number): string {
-  return pickForLevelV2(levelIndex).name;
+function shapeNameForLevelV2(levelIndex: number, switchLevel: number | null): string {
+  return pickForLevelV2(levelIndex, curveWindowMaxTarget(V2_CURVE, v1FloorFor(switchLevel))).name;
+}
+
+/** `hasV1Floor`, after refusing a switch level no install can hold. */
+function v1FloorFor(switchLevel: number | null | undefined): boolean {
+  if (switchLevel !== null && switchLevel !== undefined && !(Number.isSafeInteger(switchLevel) && switchLevel >= 0)) {
+    throw new RangeError(`generator v2: switch level must be a non-negative integer or null, got ${switchLevel}`);
+  }
+  return hasV1Floor(switchLevel);
 }
 
 /**
@@ -99,6 +118,10 @@ function generateV1(levelIndex: number): GeneratedLevel {
  * - the curve also sets W3-11's clearable bias per level;
  * - the shape is the capacity-aware bag's pick (`shapeBag.ts`) over the
  *   curve's windows, which draws nothing from that stream;
+ * - an existing player (`knobs.switchLevel` > 0, V2-FINISH) gets the v1 floor:
+ *   floored targets and bias (`configV2(d, i, curve, true)`) and the bag over
+ *   those floored targets, so the board is a pure function of (level index,
+ *   switch level);
  * - sizing (`v2GridFor`) caps cols at `V2_MAX_GRID_COLS` and rows at
  *   `v2MaxRows(aspect)` (W3-09), not v1's literal 46.
  * Difficulty tiers, hearts, arrow rules and `fillMask` are v1's. v1 is untouched.
@@ -106,26 +129,28 @@ function generateV1(levelIndex: number): GeneratedLevel {
 function generateV2(levelIndex: number, knobs?: V2Knobs): GeneratedLevel {
   const difficulty = Difficulties.forLevel(levelIndex);
   const curve = knobs?.curve ?? V2_CURVE;
-  const cfg = v2Config(difficulty, levelIndex, curve, knobs);
+  const v1Floor = v1FloorFor(knobs?.switchLevel);
+  const cfg = v2Config(difficulty, levelIndex, curve, v1Floor, knobs);
   const rng = new DotNetRandom(seed(levelIndex));
 
   const targetCells = rng.next(cfg.minCells, cfg.maxCells + 1);
-  const shape = pickForLevelV2(levelIndex, curveWindowMaxTarget(curve));
+  const shape = pickForLevelV2(levelIndex, curveWindowMaxTarget(curve, v1Floor));
 
   return buildV2(shape, difficulty, cfg, rng, targetCells);
 }
 
 /**
- * v2's config at this level: the curve's (`Difficulties.configV2`), with a
- * `clearableBias` knob replacing the curve's bias when set.
+ * v2's config at this level: the curve's (`Difficulties.configV2`, floored for
+ * an existing player), with a `clearableBias` knob replacing the bias when set.
  */
 function v2Config(
   difficulty: Difficulty,
   levelIndex: number,
   curve: CurveTable,
+  v1Floor: boolean,
   knobs: V2Knobs | undefined,
 ): DifficultyConfig {
-  const base = Difficulties.configV2(difficulty, levelIndex, curve);
+  const base = Difficulties.configV2(difficulty, levelIndex, curve, v1Floor);
   if (knobs === undefined || knobs.clearableBias === undefined) return base;
   return { ...base, clearableBias: knobs.clearableBias };
 }
@@ -212,7 +237,8 @@ export const LevelGenerator = {
   /**
    * `knobs` (W3-11) are v2-only analysis/curve overrides; unset fields are
    * neutral. v1 is frozen, so passing a knob with v1 throws instead of being
-   * silently ignored.
+   * silently ignored. `knobs.switchLevel` (V2-FINISH) is install context, not
+   * an override: v1 accepts and ignores it.
    */
   generate(levelIndex: number, version: GenVersion = 1, knobs?: V2Knobs): GeneratedLevel {
     if (version === 2) return generateV2(levelIndex, knobs);

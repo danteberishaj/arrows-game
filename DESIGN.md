@@ -175,7 +175,7 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   as a seeded Fisher–Yates shuffle, swapping its first two shapes once if the first would repeat
   the previous level. So no shape repeats back to back, each dealt shape appears once per window,
   and no board is capped below its target by the clamp. Since W3-14 the targets come from the
-  difficulty curve (below), so windows shrink while it rises. Under the placeholder curve (S400)
+  difficulty curve (below), so windows shrink while it rises. Under the shipped curve (S400)
   every bag candidate is dealt at first, and from level 361 on 15 of 26: Triangle, Star, Trophy,
   Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat and Fish cannot hold the saturated Super Hard
   target of 609 cells. Measured by `npm run analysis:probe -- --version 2 --curve
@@ -187,9 +187,16 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   clearable bias, from a breakpoint table indexed by level (`src/core/curve.ts`,
   `Difficulties.configV2`): level 1 is the owner's pick (88 cells, bias 3), and the targets climb
   linearly to a measured ceiling (base 339 cells: Normal 339, Hard 515, Super Hard 609, the
-  largest whose boards stay at or under 250 arrows), after which difficulty is flat. Which level
-  the ceiling sits at is the owner's W3-16 pick among `docs/curve-candidates-2026-09-26.md`'s
-  candidates; `V2_CURVE` holds S400 as a placeholder.
+  largest whose boards stay at or under 250 arrows), after which difficulty is flat. `V2_CURVE` is
+  the owner's W3-16 pick among `docs/curve-candidates-2026-09-26.md`'s candidates: S400, the
+  ceiling at level 400 (the bias falls 3 → 1 over the same ramp).
+  **Existing players** (V2-FINISH): an install whose switch level is above 0 played v1 first, so its
+  v2 boards carry a **v1 floor**: base cells at least 333 (Normal 333, Hard 506, Super Hard 598)
+  and no bias above neutral. 333 is the smallest base whose own v2 boards reach v1's per-tier
+  median arrows over levels 1–3000 (83 / 125 / 150; `npm run analysis:probe -- --version 2
+  --v1-floor`). S400 passes it at level 391, so from its ceiling on the floor changes nothing
+  but the deal: an existing player's bag is built from the floored targets, so their board is a
+  pure function of (level index, switch level).
 - **Full fill, guaranteed solvable** (`LevelGenerator`, `src/core/levelGenerator.ts:22-41`): the
   silhouette is packed so **every shape cell holds an arrow**, and the board is solvable *by
   construction*. Both come from one "peel" rule — only ever carve an arrow whose head has a

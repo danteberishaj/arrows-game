@@ -20,6 +20,19 @@
 export type GenVersion = 1 | 2;
 
 /**
+ * V2-FINISH (the owner's W3-16 ruling): whether this install's v2 boards carry
+ * the v1 floor. An install stamped above 0 played v1 before v2 turned on
+ * (`classifySwitchLevel`: currentLevel + 1), so its v2 boards are never
+ * smaller or easier than v1's for their tier. A fresh install (0) rides the
+ * curve from level 1. Unstamped or corrupt (null) never reaches v2 through
+ * `resolveGenVersion`; the DEV/PERF forced-v2 paths pass nothing and deal
+ * like a fresh install.
+ */
+export function hasV1Floor(switchLevel: number | null | undefined): boolean {
+  return switchLevel !== null && switchLevel !== undefined && switchLevel > 0;
+}
+
+/**
  * Build-time switch for the v2 generator. OFF: every install is dealt v1 at
  * every index and nothing is stamped. Rollback after a flip is setting this
  * back to false in a new build; the cost is that a player standing on a v2

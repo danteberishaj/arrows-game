@@ -70,12 +70,16 @@ function versionsAsked(): Map<number, unknown> {
   return asked;
 }
 
-/** Ground truth from the FULL generator at the version each level was dealt. */
+/**
+ * Ground truth from the FULL generator at the version each level was dealt,
+ * for this install's switch level (V2-FINISH: an existing player's v2 boards
+ * carry the v1 floor, so the switch level is part of the board).
+ */
 function truthMasks(to: number, switchLevel: number | null): ShapeMasks {
   let masks = EMPTY_SHAPE_MASKS;
   for (let i = 0; i < to; i += 1) {
     const version = switchLevel !== null && i >= switchLevel ? 2 : 1;
-    masks = markSeen(masks, catalogueIndexOf(LevelGenerator.generate(i, version).shapeName));
+    masks = markSeen(masks, catalogueIndexOf(LevelGenerator.generate(i, version, { switchLevel }).shapeName));
   }
   return masks;
 }
@@ -99,13 +103,17 @@ test('flag ON, switch 41: the campaign-clear fast path records level 50 at v2 an
   store.setInt('arrows_shapes_through_level', 40);
   SaveSystem.setCurrentLevel(41);
   SaveSystem.recordCampaignClear(40);
-  expect(lookup.mock.calls).toEqual([[40, 1]]);
+  expect(lookup.mock.calls).toEqual([[40, 1, 41]]);
 
   lookup.mockClear();
   store.setInt('arrows_shapes_through_level', 50);
   SaveSystem.setCurrentLevel(51);
   SaveSystem.recordCampaignClear(50);
-  expect(lookup.mock.calls).toEqual([[50, 2]]);
+  // V2-FINISH: the fold asks with the install's switch level, so level 50 is the floored board.
+  expect(lookup.mock.calls).toEqual([[50, 2, 41]]);
+  const want = [LevelGenerator.generate(40, 1), LevelGenerator.generate(50, 2, { switchLevel: 41 })]
+    .reduce((m, lvl) => markSeen(m, catalogueIndexOf(lvl.shapeName)), EMPTY_SHAPE_MASKS);
+  expect(SaveSystem.shapesSeen).toEqual(want);
 });
 
 test('flag ON, key absent (never stamped) or corrupt (-5): every level folds at v1', () => {
@@ -128,4 +136,28 @@ test('flag ON, fresh-install switch 0: every level folds at v2', () => {
   SaveSystem.syncCollection(5000);
   expect(new Set(versionsAsked().values())).toEqual(new Set([2]));
   expect(SaveSystem.shapesSeen).toEqual(truthMasks(12, 0));
+});
+
+test('V2-FINISH: every fold call carries the install\'s switch level (the board the player was actually dealt)', () => {
+  store.setInt('arrows_current_level', 50);
+  store.setInt('arrows_gen_switch_level', 41);
+  SaveSystem.syncCollection(5000);
+  const switchLevels = new Set(lookup.mock.calls.map((call) => call[2]));
+  expect(switchLevels).toEqual(new Set([41]));
+});
+
+test('V2-FINISH: an existing player\'s folded bits are the floored boards\' shapes, not a fresh install\'s', () => {
+  // Switch at 1 (a daily-only player): levels 1..79 are v2 with the v1 floor.
+  store.setInt('arrows_current_level', 80);
+  store.setInt('arrows_gen_switch_level', 1);
+  SaveSystem.syncCollection(5000);
+  expect(SaveSystem.shapesSeen).toEqual(truthMasks(80, 1));
+
+  // Positive control: the same levels dealt as a fresh install's v2 (switch 0)
+  // are different shapes, so a fold that dropped the switch level would be caught.
+  let freshNames = 0;
+  for (let i = 1; i < 80; i += 1) {
+    if (LevelGenerator.generate(i, 2).shapeName !== LevelGenerator.generate(i, 2, { switchLevel: 1 }).shapeName) freshNames += 1;
+  }
+  expect(freshNames).toBeGreaterThan(20);
 });

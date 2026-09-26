@@ -75,6 +75,20 @@
  *   `ARROW_CEILING` arrows, neutral and at the bias-tail floor.
  * Every one of them reads arrow counts and search cost from boards the
  * shipping `generate(i, 2, { curve })` produced, never the table back.
+ *
+ * V2-FINISH (the owner's W3-16 picks: S400 ships; existing players get a v1
+ * floor):
+ * - `--v1-floor` measures `V1_FLOOR_BASE_CELLS`: v1's per-tier median arrows
+ *   over displayed levels 1-3000 (with 300-level bands, since v1's config
+ *   never reads the level), then the smallest base cells on
+ *   `V1_TIER_TEXTURE` whose own v2 boards (a flat curve, neutral, v2's bag
+ *   and sizing, the same levels) reach every tier's v1 median, with every
+ *   larger scanned base up to `CEILING_BASE_CELLS` reaching it too.
+ * - `--switch-report` is W3-14's (g) again with the floor: for a player who
+ *   meets v2 at displayed level L, v1 against a fresh install's v2 and an
+ *   existing player's floored v2 (`generate(i, 2, { switchLevel })`), over
+ *   the next 60 and 300 levels; plus the floored boards' per-tier arrows
+ *   below the ceiling and their heaviest board over the (e) sample.
  */
 import {
   ArrowPath,
@@ -83,6 +97,7 @@ import {
   Difficulty,
   DifficultyConfig,
   DotNetRandom,
+  GeneratedLevel,
   LevelGenerator,
   SHAPE_CATALOGUE,
   ShapeDef,
@@ -94,6 +109,7 @@ import {
   LEVEL1_CLEARABLE_BIAS,
   LEVEL1_TARGET_CELLS,
   MIN_LEGIBLE_CELL_PT,
+  V1_FLOOR_BASE_CELLS,
   V1_TIER_TEXTURE,
   V2Knobs,
   V2_CURVE,
@@ -103,6 +119,7 @@ import {
   bagCandidates,
   bagWindowFor,
   buildTutorialLevel,
+  curvePointAt,
   curveWindowMaxTarget,
   placeholderWindowMaxTarget,
   shapeCapacity,
@@ -129,7 +146,8 @@ const BAND_FRACTIONS = [1 / 8, 1 / 4, 1 / 2, 3 / 4, 1] as const;
 type Mode =
   | 'rows' | 'per-tier' | 'bands' | 'shape-report' | 'tier-report' | 'capacity' | 'clamp-shortfall'
   | 'size-sweep' | 'transfer' | 'start-sweep' | 'tutorial'
-  | 'candidates' | 'curve-report' | 'ceiling' | 'flat-reference';
+  | 'candidates' | 'curve-report' | 'ceiling' | 'flat-reference'
+  | 'v1-floor' | 'switch-report';
 
 /** W3-11 set (ii) defaults: level-1-sized boards (brief step 4). */
 const SIZE_SWEEP_DEFAULT_SHAPES = ['Circle', 'Square', 'Heart'] as const;
@@ -354,6 +372,8 @@ function parseArgs(argv: readonly string[]): Options {
       case '--candidates':
       case '--curve-report':
       case '--ceiling':
+      case '--v1-floor':
+      case '--switch-report':
         modeFlags.push(arg.slice(2) as Mode);
         break;
       case '--size-sweep':
@@ -377,7 +397,8 @@ function parseArgs(argv: readonly string[]): Options {
   const modes: Mode[] = modeFlags.length === 0 ? ['rows'] : [...new Set(modeFlags)];
   for (const mode of modes) {
     const needsLevels = mode !== 'capacity' && mode !== 'size-sweep' && mode !== 'start-sweep' && mode !== 'tutorial'
-      && mode !== 'candidates' && mode !== 'curve-report' && mode !== 'ceiling' && mode !== 'flat-reference';
+      && mode !== 'candidates' && mode !== 'curve-report' && mode !== 'ceiling' && mode !== 'flat-reference'
+      && mode !== 'v1-floor' && mode !== 'switch-report';
     if (needsLevels && levels === null) {
       const flagName = mode === 'rows' ? '(the default row mode)' : `--${mode}`;
       throw new Error(`--levels a-b is required for ${flagName}`);
@@ -415,9 +436,12 @@ function parseArgs(argv: readonly string[]): Options {
   }
   // W3-14: the curve deals v2 only; the curve modes measure v2.
   if (curve !== null && version !== 2) throw new Error('--curve is a generator v2 table; add --version 2');
-  const curveModes: Mode[] = ['candidates', 'curve-report', 'ceiling', 'flat-reference'];
+  const curveModes: Mode[] = ['candidates', 'curve-report', 'ceiling', 'flat-reference', 'v1-floor', 'switch-report'];
   if (modes.some((m) => curveModes.includes(m)) && version !== 2) {
-    throw new Error('--candidates, --curve-report and --ceiling measure generator v2; add --version 2');
+    throw new Error('--candidates, --curve-report, --ceiling, --v1-floor and --switch-report measure generator v2; add --version 2');
+  }
+  if ((modes.includes('v1-floor') || modes.includes('switch-report')) && (curve !== null || bias !== null || levels !== null)) {
+    throw new Error('--v1-floor and --switch-report measure the shipped curve over their own ranges; drop --curve/--bias/--levels');
   }
   if (modes.includes('candidates') && curve !== null) throw new Error('--candidates builds its own curves; drop --curve');
   if (modes.includes('ceiling') && (curve !== null || bias !== null)) throw new Error('--ceiling builds its own saturated curves; drop --curve/--bias');
@@ -2729,6 +2753,204 @@ function runCeiling(opts: Options): void {
     + `src/core/curve.ts holds ${CEILING_BASE_CELLS}${ceiling === CEILING_BASE_CELLS ? ' (matches)' : ' (DIFFERS: update it)'}.`);
 }
 
+// ---- V2-FINISH: the v1 floor and the switch report ---------------------------
+
+/** v1's per-tier size is measured over these displayed levels (v1 is flat, so any long range will do). Method. */
+const V1_FLOOR_LEVELS: readonly [number, number] = [1, 3000];
+/** The band width that shows v1's per-tier medians do not move with the level. Method. */
+const V1_FLOOR_BAND = 300;
+/** The scan runs from here up to CEILING_BASE_CELLS by 1; the first value must fail, or the scan does not bracket the floor. Method. */
+const V1_FLOOR_SCAN_START = 320;
+/** The switch report's levels (displayed): W3-14's (g) set. */
+const SWITCH_REPORT_LEVELS = SWITCH_LEVELS;
+/** The report's windows, in 6-level cycles: (g)'s 10 (60 levels) and 50 (300 levels, the flat reference's resolved block). Method. */
+const SWITCH_REPORT_WINDOWS = [SWITCH_WINDOW_CYCLES, MONOTONE_BLOCK_CYCLES] as const;
+/** The flat reference's measured block-to-block noise (docs/curve-candidates-2026-09-26.md, "The flat reference (a)"). */
+const FLAT_NOISE_60 = 0.343;
+const FLAT_NOISE_300 = 0.063;
+/** S400's ceiling (displayed level 400): the last row of V2_CURVE. */
+const SHIPPED_CEILING_INDEX = V2_CURVE[V2_CURVE.length - 1].levelIndex;
+
+type TierTriple = [number, number, number];
+
+function tierIndex(d: Difficulty): 0 | 1 | 2 {
+  return d === Difficulty.Normal ? 0 : d === Difficulty.Hard ? 1 : 2;
+}
+
+/** Per-tier arrow counts of `deal(i)` for displayed levels lo..hi (no walk: arrows only). */
+function tierArrows(deal: (i: number) => GeneratedLevel, lo: number, hi: number): number[][] {
+  const out: number[][] = [[], [], []];
+  for (let i = lo - 1; i <= hi - 1; i++) {
+    const level = deal(i);
+    out[tierIndex(level.difficulty)].push(level.arrowCount);
+  }
+  return out;
+}
+
+function tierMedians(arrows: readonly number[][]): TierTriple {
+  return [med(arrows[0]), med(arrows[1]), med(arrows[2])];
+}
+
+function fmtTriple(t: readonly number[]): string {
+  return t.join(' / ');
+}
+
+interface FloorScanRow {
+  baseCells: number;
+  targets: TierTriple;
+  medians: TierTriple;
+  n: TierTriple;
+  pass: boolean;
+}
+
+function runV1Floor(opts: Options): void {
+  const [lo, hi] = V1_FLOOR_LEVELS;
+  const v1 = tierArrows((i) => LevelGenerator.generate(i, 1), lo, hi);
+  const v1Med = tierMedians(v1);
+  const bands: { levels: string; medians: TierTriple }[] = [];
+  for (let b = lo; b <= hi; b += V1_FLOOR_BAND) {
+    const e = Math.min(hi, b + V1_FLOOR_BAND - 1);
+    bands.push({ levels: `${b}-${e}`, medians: tierMedians(tierArrows((i) => LevelGenerator.generate(i, 1), b, e)) });
+  }
+
+  const rows: FloorScanRow[] = [];
+  for (let base = V1_FLOOR_SCAN_START; base <= CEILING_BASE_CELLS; base++) {
+    const curve: CurveTable = [{ levelIndex: 0, baseCells: base, tierTexture: V1_TIER_TEXTURE }];
+    const arrows = tierArrows((i) => LevelGenerator.generate(i, 2, { curve }), lo, hi);
+    const medians = tierMedians(arrows);
+    const targets: TierTriple = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard]
+      .map((d) => Difficulties.configV2(d, 0, curve).maxCells) as TierTriple;
+    rows.push({ baseCells: base, targets, medians, n: [arrows[0].length, arrows[1].length, arrows[2].length],
+      pass: medians.every((m, t) => m >= v1Med[t]) });
+  }
+  let floor: number | null = null;
+  for (let k = rows.length - 1; k >= 0 && rows[k].pass; k--) floor = rows[k].baseCells;
+  const bracketed = !rows[0].pass;
+  const crossing = (() => {
+    for (let i = 0; i <= SHIPPED_CEILING_INDEX; i++) if (curvePointAt(V2_CURVE, i).baseCells >= (floor ?? Infinity)) return i + 1;
+    return null;
+  })();
+
+  if (opts.json) {
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'v1-floor', levels: V1_FLOOR_LEVELS, v1: { medians: v1Med,
+      n: [v1[0].length, v1[1].length, v1[2].length], bands }, rows, floor, bracketed, shipped: V1_FLOOR_BASE_CELLS }, null, 2));
+    return;
+  }
+  printHonestyBound();
+  console.log(`V2-FINISH v1 floor. v1's size per tier = its median arrows over displayed levels ${lo}-${hi} `
+    + `(n = ${v1[0].length} / ${v1[1].length} / ${v1[2].length}; the probe's p50): Normal / Hard / Super Hard = ${fmtTriple(v1Med)}.`);
+  console.log('');
+  console.log(`v1 per ${V1_FLOOR_BAND}-level band (Difficulties.config never reads the level, so these move only by noise):`);
+  console.log(table(['levels', 'median arrows N / H / SH'], bands.map((b) => [b.levels, fmtTriple(b.medians)])));
+  console.log('');
+  console.log(`v2 dealt from a flat curve at each base (targets base x ${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : `
+    + `${V1_TIER_TEXTURE.SuperHard}, neutral bias, v2's own bag and sizing, generate(i, 2, { curve })), same levels. Pass: every tier's `
+    + 'median arrows at or above v1\'s.');
+  console.log(table(['base cells', 'targets N / H / SH', 'median arrows N / H / SH', 'n', 'pass'],
+    rows.map((r) => [r.baseCells, fmtTriple(r.targets), fmtTriple(r.medians), fmtTriple(r.n), r.pass ? 'yes' : 'no'])));
+  console.log('');
+  if (!bracketed) console.log(`WARNING: the first scanned base (${V1_FLOOR_SCAN_START}) already passes; the scan does not bracket the floor.`);
+  console.log(`V1_FLOOR_BASE_CELLS = ${floor ?? `none (the ceiling ${CEILING_BASE_CELLS} itself fails)`}: the smallest scanned base with every larger `
+    + `scanned base up to CEILING_BASE_CELLS = ${CEILING_BASE_CELLS} passing too. S400 reaches it at displayed level ${crossing ?? 'never'}. `
+    + `src/core/curve.ts holds ${V1_FLOOR_BASE_CELLS}${floor === V1_FLOOR_BASE_CELLS ? ' (matches)' : ' (DIFFERS: update it)'}.`);
+}
+
+interface SwitchWindow {
+  cycles: number;
+  levels: string;
+  v1: number;
+  fresh: number;
+  existing: number;
+  freshRatio: number;
+  existingRatio: number;
+}
+
+function runSwitchReport(opts: Options): void {
+  const walked = new Map<string, WalkMetrics>();
+  const scanOf = (kind: 'v1' | 'fresh' | 'existing', i: number, switchLevel: number): number => {
+    const key = `${kind}:${i}`; // an existing player's boards do not depend on which switch level > 0 (tested)
+    let m = walked.get(key);
+    if (m === undefined) {
+      const level = kind === 'v1' ? LevelGenerator.generate(i, 1)
+        : LevelGenerator.generate(i, 2, { switchLevel: kind === 'existing' ? switchLevel : 0 });
+      m = walkBoard(level.board, level.arrowCount, `${kind} level index ${i}`);
+      walked.set(key, m);
+    }
+    return m.scanTaps;
+  };
+  const cycleMedian = (kind: 'v1' | 'fresh' | 'existing', cycle: number, switchLevel: number): number => {
+    const scans = [];
+    for (let k = 0; k < Difficulties.cycleLength; k++) scans.push(scanOf(kind, cycle * Difficulties.cycleLength + k, switchLevel));
+    return med(scans);
+  };
+
+  const report = SWITCH_REPORT_LEVELS.map((level) => {
+    const switchLevel = Math.max(1, level - 1); // the index they meet v2 at; any value > 0 deals the same boards
+    const c = Math.floor((level - 1) / Difficulties.cycleLength);
+    const windows: SwitchWindow[] = SWITCH_REPORT_WINDOWS.map((cycles) => {
+      const per = (kind: 'v1' | 'fresh' | 'existing') => {
+        const ms = [];
+        for (let cc = c; cc < c + cycles; cc++) ms.push(cycleMedian(kind, cc, switchLevel));
+        return med(ms);
+      };
+      const v1 = per('v1');
+      const fresh = per('fresh');
+      const existing = per('existing');
+      return { cycles, levels: `${c * 6 + 1}-${(c + cycles) * 6}`, v1, fresh, existing, freshRatio: fresh / v1, existingRatio: existing / v1 };
+    });
+    return { level, switchLevel, windows };
+  });
+
+  // The floored boards below the ceiling, per tier, against v1's per-tier medians over the floor's own range.
+  const [flo, fhi] = V1_FLOOR_LEVELS;
+  const v1Arrows = tierArrows((i) => LevelGenerator.generate(i, 1), flo, fhi);
+  const v1Med = tierMedians(v1Arrows);
+  const below = tierArrows((i) => LevelGenerator.generate(i, 2, { switchLevel: 1 }), 2, SHIPPED_CEILING_INDEX);
+  const belowMed = tierMedians(below);
+  const share = (xs: readonly number[], m: number) => xs.filter((x) => x < m).length / xs.length;
+
+  // The heaviest floored board over the (e) sample, against ARROW_CEILING.
+  let heavy = { max: -1, at: -1, shape: '' };
+  let overCeiling = 0;
+  let sampled = 0;
+  for (let i = 0; i < HEAVY_SAMPLE_END; i += HEAVY_SAMPLE_STEP) {
+    const level = LevelGenerator.generate(i, 2, { switchLevel: 1 });
+    sampled++;
+    if (level.arrowCount > heavy.max) heavy = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}` };
+    if (level.arrowCount > ARROW_CEILING) overCeiling++;
+  }
+
+  if (opts.json) {
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'switch-report', floorBaseCells: V1_FLOOR_BASE_CELLS, report,
+      belowCeiling: { levels: [2, SHIPPED_CEILING_INDEX], medians: belowMed, n: below.map((b) => b.length), v1Medians: v1Med,
+        shareBelowV1Median: below.map((b, t) => share(b, v1Med[t])), v1ShareBelowOwnMedian: v1Arrows.map((a, t) => share(a, v1Med[t])) },
+      heavy: { ...heavy, overCeiling, sampled } }, null, 2));
+    return;
+  }
+  printHonestyBound();
+  console.log(`V2-FINISH switch report (W3-14's (g) with the v1 floor, V1_FLOOR_BASE_CELLS = ${V1_FLOOR_BASE_CELLS}). A player who meets v2 at `
+    + 'displayed level L: the median of the cycle-median scan over the cycles from the one holding L, for v1, a fresh install\'s v2 '
+    + '(generate(i, 2)) and an existing player\'s floored v2 (generate(i, 2, { switchLevel })). Resolution: the flat curve\'s own '
+    + `block-to-block noise is ${fmtRel(FLAT_NOISE_60)} over 60 levels and ${fmtRel(FLAT_NOISE_300)} over 300 (W3-14).`);
+  console.log('');
+  const headers = ['switch at L', 'window', 'v1 scan', 'fresh v2 scan', 'fresh / v1', 'existing v2 scan', 'existing / v1'];
+  const rows: (string | number)[][] = [];
+  for (const r of report) {
+    for (const w of r.windows) {
+      rows.push([r.level, `${w.cycles * 6} levels (${w.levels})`, w.v1.toFixed(0), w.fresh.toFixed(0), w.freshRatio.toFixed(2),
+        w.existing.toFixed(0), w.existingRatio.toFixed(2)]);
+    }
+  }
+  console.log(table(headers, rows));
+  console.log('');
+  console.log(`Existing player's v2 boards at displayed levels 2-${SHIPPED_CEILING_INDEX} (below the ceiling; n = ${fmtTriple(below.map((b) => b.length))}): `
+    + `median arrows N / H / SH ${fmtTriple(belowMed)} against v1's ${fmtTriple(v1Med)} (levels ${flo}-${fhi}). `
+    + `Share of boards below v1's median: ${below.map((b, t) => fmtRel(share(b, v1Med[t]))).join(' / ')} `
+    + `(v1's own boards: ${v1Arrows.map((a, t) => fmtRel(share(a, v1Med[t]))).join(' / ')}).`);
+  console.log(`Heaviest existing-player board over indices 0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} (${sampled} boards): `
+    + `${heavy.max} arrows (index ${heavy.at}, ${heavy.shape}); over ARROW_CEILING = ${ARROW_CEILING}: ${overCeiling}.`);
+}
+
 // ---- Entry point --------------------------------------------------------
 
 function runMode(mode: Mode, opts: Options): void {
@@ -2748,6 +2970,8 @@ function runMode(mode: Mode, opts: Options): void {
     case 'curve-report': return runCurveReport(opts);
     case 'ceiling': return runCeiling(opts);
     case 'flat-reference': return runFlatReference(opts);
+    case 'v1-floor': return runV1Floor(opts);
+    case 'switch-report': return runSwitchReport(opts);
   }
 }
 

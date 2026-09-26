@@ -21,11 +21,17 @@
  * bag can read a window's largest target from its last cycle
  * (`shapeBag.ts` `curveWindowMaxTarget`).
  *
- * Which table ships is the owner's W3-16 pick. Until then `V2_CURVE` is one of
- * W3-14's exploration candidates (ruling W3-7: ceiling at displayed level 100,
- * 400 or 1000), chosen as a placeholder, not a recommendation. The candidates
- * and their measured reports: `docs/curve-candidates-2026-09-26.md`, produced by
- * `npm run analysis:probe -- --candidates`.
+ * The shipped table is the owner's W3-16 pick, W3-14's candidate S400 (ceiling
+ * at displayed level 400, flat after). The other candidates live only in the
+ * probe and the doc, for reference: `docs/curve-candidates-2026-09-26.md`,
+ * produced by `npm run analysis:probe -- --candidates`.
+ *
+ * Existing players (V2-FINISH, the owner's W3-16 ruling): an install whose
+ * switch level is above 0 played v1 before v2 turned on, so its v2 boards
+ * carry a v1 floor (`V1_FLOOR_BASE_CELLS`, applied by
+ * `Difficulties.configV2(d, i, curve, true)`): base cells never below the
+ * floor, and no easing bias above 1 (v1 has none). A fresh install (switch
+ * level 0) follows the curve from level 1.
  *
  * Pure core: no imports.
  */
@@ -100,15 +106,36 @@ export const ARROW_CEILING = 250;
 export const CEILING_BASE_CELLS = 339;
 
 /**
- * The shipped v2 curve, dark behind GEN_V2_ENABLED. PLACEHOLDER until the
- * owner's W3-16 pick: W3-14 candidate `S400` (the middle of ruling W3-7's
- * grid), not a recommendation.
+ * The v1 floor for existing players (V2-FINISH; the owner's W3-16 ruling: "a
+ * new board is never smaller than the old generator's size for that tier, so
+ * nothing suddenly gets easy"), in base cells on `V1_TIER_TEXTURE` (Normal
+ * 333, Hard 506, Super Hard 598).
+ *
+ * How "v1's size for that tier" is computed: v1 is flat by construction
+ * (`Difficulties.config(d)` never reads the level), so its size per tier is
+ * one number, its median arrow count over displayed levels 1-3000: Normal 83,
+ * Hard 125, Super Hard 150 (300-level bands move only within noise). v2 sizes
+ * boards by cells, not arrows, so the floor is the smallest base cells whose
+ * own v2 boards (a flat curve at that base, neutral bias, v2's bag and sizing,
+ * levels 1-3000) have every tier's median arrows at or above v1's, with every
+ * larger scanned base up to the ceiling passing too. It is below
+ * `CEILING_BASE_CELLS`, so from S400's ceiling on the floor is inert.
+ * MEASURED 2026-09-26: `npm run analysis:probe -- --version 2 --v1-floor`
+ * (docs/next-level/reports/V2-FINISH.md, part 1).
  */
+export const V1_FLOOR_BASE_CELLS = 333;
+
+/**
+ * The shipped v2 curve, dark behind GEN_V2_ENABLED: W3-14's candidate `S400`,
+ * the owner's W3-16 pick (ceiling at displayed level 400, flat after; bias
+ * 3 -> 1 over the same ramp).
+ */
+// OWNER PICK 2026-09-26 (W3-16, docs/curve-candidates-2026-09-26.md)
 export const V2_CURVE: CurveTable = [
   // Level 1. `npm run analysis:probe -- --start-sweep --targets 88,145`, 2026-09-26,
   // docs/level1-sweep-2026-09-26.md row B `b3/12/Circle` (owner pick W3-13).
   { levelIndex: 0, baseCells: LEVEL1_TARGET_CELLS, tierTexture: V1_TIER_TEXTURE, clearableBias: LEVEL1_CLEARABLE_BIAS },
-  // Saturation at displayed level 400 (candidate S400; ruling W3-7's grid point). Bias back to neutral.
+  // Saturation at displayed level 400 (candidate S400, the owner's W3-16 pick). Bias back to neutral.
   // `npm run analysis:probe -- --version 2 --candidates`, 2026-09-26,
   // docs/curve-candidates-2026-09-26.md row "S400".
   { levelIndex: 400 - 1, baseCells: CEILING_BASE_CELLS, tierTexture: V1_TIER_TEXTURE },

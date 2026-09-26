@@ -207,9 +207,14 @@ function readGenSwitchLevel(): number | null {
  * After a progress reset (no UI caller today) the switch level is kept, so a
  * replayed level below it is still dealt, and folded, as v1: the bits stay
  * consistent with the boards.
+ *
+ * V2-FINISH: the switch level is also passed on, because an existing player's
+ * v2 boards (switch level > 0) carry the v1 floor and come from their own
+ * floored bag, a different deal from a fresh install's.
  */
 function campaignShapeName(levelIndex: number): string {
-  return shapeNameForLevel(levelIndex, resolveGenVersion(levelIndex, readGenSwitchLevel()));
+  const switchLevel = readGenSwitchLevel();
+  return shapeNameForLevel(levelIndex, resolveGenVersion(levelIndex, switchLevel), switchLevel);
 }
 
 const NOT_NEW: { readonly newlyDiscovered: boolean } = Object.freeze({ newlyDiscovered: false });
