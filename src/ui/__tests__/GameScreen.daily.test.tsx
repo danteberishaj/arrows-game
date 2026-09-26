@@ -200,7 +200,8 @@ describe('daily mode', () => {
     expect(mockBoardViewProps!.board.count()).toBe(expected.arrowCount);
     expect(screen.getByText('TODAY')).toBeTruthy();
     expect(screen.queryByText(/LEVEL/)).toBeNull();
-    expect(screen.getByText(`${expected.arrowCount} left`)).toBeTruthy();
+    // W5-03: the counter is a digits slot plus ' left', read as one element.
+    expect(screen.getByLabelText(`${expected.arrowCount} left`)).toBeTruthy();
   });
 
   test('a clear records the solve and the day, never the campaign pointer or the ad counter', () => {

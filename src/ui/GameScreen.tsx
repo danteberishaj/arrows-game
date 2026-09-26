@@ -110,6 +110,15 @@ const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
 const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
 
 /**
+ * W5-03: the `{remaining} left` counter's digits sit in a slot as wide as this
+ * digit repeated once per digit of the board's arrow count, so " left" never
+ * moves on a tap. `node scripts/analysis/font-digits.mjs`: Fredoka's digits are
+ * proportional (SemiBold 1 = 383 … 2 = 577 units), `2` is the widest in both
+ * weights, no digit pair is kerned, and there is no `tnum` feature to switch on.
+ */
+const WIDEST_DIGIT = '2';
+
+/**
  * Height of two tutorial lines as the text will lay out: lineHeight scales with
  * the font scale, and Android rounds each line UP to whole pixels
  * (CustomLineHeightSpan: ceil), e.g. 23 dp at 3.5x = 80.5 px -> 81 px. A
@@ -928,9 +937,26 @@ export function GameScreen({
                     color={diffColor}
                   />
                 )}
-                <Text style={[styles.diffLabel, { color: diffColor }]}>
-                  {remaining} left
-                </Text>
+                {/* W5-03: one element for screen readers, as the single Text was. */}
+                <View
+                  accessible
+                  accessibilityLabel={`${remaining} left`}
+                  style={styles.counterRow}
+                >
+                  <View>
+                    <Text
+                      style={[styles.diffLabel, styles.counterGhost]}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      {WIDEST_DIGIT.repeat(String(level.arrowCount).length)}
+                    </Text>
+                    <Text style={[styles.diffLabel, styles.counterDigits, { color: diffColor }]}>
+                      {remaining}
+                    </Text>
+                  </View>
+                  <Text style={[styles.diffLabel, { color: diffColor }]}>{' left'}</Text>
+                </View>
               </View>
             </View>
           )}
@@ -1284,6 +1310,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 2,
+  },
+  // W5-03: the counter slot. The invisible ghost sets its width by normal text
+  // layout (font scale and the web engine included); the digits are anchored
+  // to its right edge and keep their own measured width, so a sub-pixel
+  // rounding of the slot can never wrap them.
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  counterGhost: { opacity: 0 },
+  counterDigits: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    textAlign: 'right',
   },
   overlay: {
     position: 'absolute',
