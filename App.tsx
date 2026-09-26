@@ -15,6 +15,7 @@ import { SaveSystem } from './src/core/saveSystem';
 import { CONSENT_GATE, META_GALLERY, TELEMETRY_TRANSPORT } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
+  DEV_LEVEL_INDEX,
   PERF_FEEDBACK,
   PERF_LEVEL_INDEX,
   PERF_MODE,
@@ -203,6 +204,13 @@ export default function App() {
   }, []);
 
   const onPlay = useCallback(() => {
+    if (DEV_LEVEL_INDEX !== null) {
+      // W3-06 (ruling F28): a dev-only level jump always opens the requested
+      // index, bypassing ftueRoute instead of routing into a tutorial board.
+      setTutorialId(undefined);
+      showScreen('game');
+      return;
+    }
     const route = ftueRoute({
       enabled: FTUE_ENABLED,
       perfMode: PERF_MODE,
@@ -271,7 +279,7 @@ export default function App() {
       <GameScreen
         palette={p}
         tutorialId={tutorialId}
-        initialLevelIndex={PERF_LEVEL_INDEX ?? undefined}
+        initialLevelIndex={DEV_LEVEL_INDEX ?? PERF_LEVEL_INDEX ?? undefined}
         benchmarkMode={PERF_MODE}
         feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
         onTelemetryProbeUnmount={perfTelemetryUnmountProbe}

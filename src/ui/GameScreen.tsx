@@ -298,10 +298,10 @@ export function GameScreen({
     ftueMountedSessionRef.current = session;
     ftueBoardMountedAtRef.current = Date.now();
     if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
-    writeFtueSessionLog(formatFtueSessionLog({
-      type: 'board_mount',
-      board: session.tutorialId ?? session.index,
-    }, 0));
+    writeFtueSessionLog(formatFtueSessionLog(
+      { type: 'board_mount', board: session.tutorialId ?? session.index, gen: session.genVersion, arrows: session.level.arrowCount, shape: session.level.shapeName },
+      0,
+    ));
   }, [session]);
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
   useEffect(() => () => levelScrim?.dispose(), [levelScrim]);

@@ -1,11 +1,26 @@
 import { formatFtueSessionLog } from '../ftueSessionLog';
 
 describe('formatFtueSessionLog', () => {
-  it('formats board_mount for tutorial ids and campaign level indexes', () => {
-    expect(formatFtueSessionLog({ type: 'board_mount', board: 'T1' }, 12.9))
-      .toBe('[ftue] board_mount T1 12');
-    expect(formatFtueSessionLog({ type: 'board_mount', board: 0 }, 13.9))
-      .toBe('[ftue] board_mount 0 13');
+  it('formats board_mount for tutorial ids and campaign level indexes, tagged with the generator version (W3-06)', () => {
+    expect(formatFtueSessionLog(
+      { type: 'board_mount', board: 'T1', gen: 1, arrows: 12, shape: 'Circle' },
+      12.9,
+    )).toBe('[ftue] board_mount T1 12 gen=1 arrows=12 shape=Circle');
+    expect(formatFtueSessionLog(
+      { type: 'board_mount', board: 0, gen: 1, arrows: 20, shape: 'Plus' },
+      13.9,
+    )).toBe('[ftue] board_mount 0 13 gen=1 arrows=20 shape=Plus');
+  });
+
+  it('pins the W3-06 acceptance example, and formats gen=2', () => {
+    expect(formatFtueSessionLog(
+      { type: 'board_mount', board: 11, gen: 1, arrows: 54, shape: 'Bolt' },
+      0,
+    )).toBe('[ftue] board_mount 11 0 gen=1 arrows=54 shape=Bolt');
+    expect(formatFtueSessionLog(
+      { type: 'board_mount', board: 41, gen: 2, arrows: 80, shape: 'Diamond' },
+      0,
+    )).toBe('[ftue] board_mount 41 0 gen=2 arrows=80 shape=Diamond');
   });
 
   it('formats removal', () => {

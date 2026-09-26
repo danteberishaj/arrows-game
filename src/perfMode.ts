@@ -44,6 +44,35 @@ export const PERF_GEN_VERSION: GenVersion = PERF_MODE
   ? parsePerfGenVersion(process.env.EXPO_PUBLIC_PERF_GEN_VERSION)
   : 1;
 
+const rawDevLevel = process.env.EXPO_PUBLIC_DEV_LEVEL;
+const parsedDevLevel = rawDevLevel === undefined ? Number.NaN : Number(rawDevLevel);
+
+/**
+ * W3-06: EXPO_PUBLIC_DEV_LEVEL opens a specific campaign index on the first
+ * Play, with persistence and ads left running normally (unlike PERF_MODE,
+ * which boots straight into the game with both disabled). Read only at
+ * module load, exactly like PERF_LEVEL_INDEX, and never gated on `__DEV__`
+ * (ruling F10): this module is imported by node-jest tests (the 'core'
+ * project), which do not define that global. Unset (every player build)
+ * keeps the normal current-level boot.
+ */
+export const DEV_LEVEL_INDEX =
+  Number.isSafeInteger(parsedDevLevel) && parsedDevLevel >= 0
+    ? parsedDevLevel
+    : null;
+
+const rawDevGenVersion = process.env.EXPO_PUBLIC_DEV_GEN_VERSION;
+
+/**
+ * W3-06: EXPO_PUBLIC_DEV_GEN_VERSION forces `levelGenVersion`
+ * (gameSessionLifecycle.ts) to this version for every campaign index,
+ * independent of the stamped switch level, of PERF_GEN_VERSION, and of
+ * EXPO_PUBLIC_DEV_LEVEL (each is "read only when set", W3-06 brief). `null`
+ * (unset, or any value other than '1'/'2') changes nothing.
+ */
+export const DEV_GEN_VERSION: GenVersion | null =
+  rawDevGenVersion === '1' ? 1 : rawDevGenVersion === '2' ? 2 : null;
+
 export type PerfScreen = 'splash' | 'menu' | 'game';
 
 /**

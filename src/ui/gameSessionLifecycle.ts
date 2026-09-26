@@ -8,7 +8,7 @@ import {
   type GenVersion,
   type TutorialId,
 } from '../core';
-import { PERF_GEN_VERSION, PERF_MODE } from '../perfMode';
+import { DEV_GEN_VERSION, PERF_GEN_VERSION, PERF_MODE } from '../perfMode';
 import type { LevelMode } from '../telemetry/levelAggregator';
 import {
   BLOCKER_FLASH_MS,
@@ -35,18 +35,30 @@ export interface LevelSession {
   tutorialId?: TutorialId;
   /** W4-06: the daily board's own day number (fixed at entry); null otherwise. */
   day: number | null;
+  /**
+   * W3-06: the generator version this session's board was actually dealt
+   * with (the exact value passed to `LevelGenerator.generate`, not one
+   * recomputed later from state that may have moved on). Tutorial and daily
+   * boards are unversioned and always 1. `board_mount`'s `gen=` field.
+   */
+  genVersion: GenVersion;
 }
 
 /**
- * W3-05: the generator version that deals campaign level `index` in this app.
- * - PERF_MODE: EXPO_PUBLIC_PERF_GEN_VERSION (2 selects v2, else 1). A PERF
- *   build never hydrates a save, so it has no switch level.
+ * W3-05/W3-06: the generator version that deals campaign level `index` in
+ * this app.
+ * - EXPO_PUBLIC_DEV_GEN_VERSION (W3-06), if set, wins outright: it forces the
+ *   version for every index, for a playtest build that needs a specific
+ *   version regardless of PERF_MODE or the stamped switch level.
+ * - Otherwise PERF_MODE: EXPO_PUBLIC_PERF_GEN_VERSION (2 selects v2, else 1).
+ *   A PERF build never hydrates a save, so it has no switch level.
  * - Otherwise: core `resolveGenVersion(index, SaveSystem.genSwitchLevel)`,
  *   which is 1 while GEN_V2_ENABLED is false.
- * The collection fold resolves versions in core without the PERF branch
- * (ruling F11); PERF runs record no collection bits.
+ * The collection fold resolves versions in core without the PERF/DEV branches
+ * (ruling F11); PERF and DEV_LEVEL runs record no collection bits.
  */
 export function levelGenVersion(index: number): GenVersion {
+  if (DEV_GEN_VERSION !== null) return DEV_GEN_VERSION;
   if (PERF_MODE) return PERF_GEN_VERSION;
   return resolveGenVersion(index, SaveSystem.genSwitchLevel);
 }
@@ -65,6 +77,7 @@ export function createLevelSession(index: number, revision: number, version: Gen
     level: LevelGenerator.generate(index, version),
     mode: 'campaign',
     day: null,
+    genVersion: version,
   };
 }
 
@@ -77,6 +90,8 @@ export function createTutorialSession(id: TutorialId, revision: number): LevelSe
     mode: 'tutorial',
     tutorialId: id,
     day: null,
+    // Authored, not generated: there is no v2 tutorial content (non-goal).
+    genVersion: 1,
   };
 }
 
@@ -92,6 +107,8 @@ export function createDailySession(day: number, revision: number): LevelSession 
     level: generateDaily(day),
     mode: 'daily',
     day,
+    // generateDaily is unversioned (always the v1-equivalent buildFromShape path).
+    genVersion: 1,
   };
 }
 

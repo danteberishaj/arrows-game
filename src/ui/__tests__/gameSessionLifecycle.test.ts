@@ -61,6 +61,8 @@ describe('game session lifecycle', () => {
     expect(tutorial.tutorialId).toBe('T1');
     expect(tutorial.mode).toBe('tutorial');
     expect(tutorial.level.arrowCount).toBe(buildTutorialLevel('T1').arrowCount);
+    // W3-06: tutorial boards are authored, not generated; board_mount tags them gen 1.
+    expect(tutorial.genVersion).toBe(1);
   });
 
   it('W4-06: a daily session is generateDaily(day), and a Retry rebuilds the identical board', () => {
@@ -87,6 +89,9 @@ describe('game session lifecycle', () => {
     // Never the campaign generator, never the campaign pointer.
     expect(generate).not.toHaveBeenCalled();
     expect(setCurrentLevel).not.toHaveBeenCalled();
+    // W3-06: generateDaily is unversioned; board_mount tags daily boards gen 1.
+    expect(first.genVersion).toBe(1);
+    expect(retry.genVersion).toBe(1);
   });
 
   it('W4-06: campaign and tutorial sessions carry no day', () => {
@@ -97,12 +102,17 @@ describe('game session lifecycle', () => {
   it('W3-05: a campaign session deals the generator version it is given', () => {
     const generate = jest.spyOn(LevelGenerator, 'generate');
 
+    const v1 = createLevelSession(18, 0, 1);
     const v2 = createLevelSession(7, 0, 2);
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(generate).toHaveBeenLastCalledWith(7, 2);
     // v2 delegates to v1 until W3-10: the same board either way.
     expect(serializeBoard(v2.level)).toEqual(serializeBoard(LevelGenerator.generate(7, 1)));
+    // W3-06: board_mount tags each session with the version it was actually
+    // dealt with, not a value recomputed later (avoids drift once W3-10 lands).
+    expect(v1.genVersion).toBe(1);
+    expect(v2.genVersion).toBe(2);
   });
 
   it('W3-05: outside PERF_MODE, levelGenVersion is the core resolver over the stamped switch level (flag OFF => 1)', () => {
@@ -189,6 +199,44 @@ describe('game session lifecycle', () => {
     });
   });
 
+  describe('W3-06 EXPO_PUBLIC_DEV_GEN_VERSION', () => {
+    const saved = { ...process.env };
+
+    afterEach(() => {
+      process.env = { ...saved };
+    });
+
+    function devLifecycle(env: Record<string, string | undefined>) {
+      process.env = { ...saved, ...env };
+      let result!: {
+        perf: typeof import('../../perfMode');
+        lifecycle: typeof import('../gameSessionLifecycle');
+      };
+      jest.isolateModules(() => {
+        result = {
+          perf: require('../../perfMode') as typeof import('../../perfMode'),
+          lifecycle: require('../gameSessionLifecycle') as typeof import('../gameSessionLifecycle'),
+        };
+      });
+      return result;
+    }
+
+    it('forces the version for every index, independent of the stamped switch level', () => {
+      const { lifecycle } = devLifecycle({ EXPO_PUBLIC_DEV_GEN_VERSION: '2' });
+      expect([0, 40, 3827].map((index) => lifecycle.levelGenVersion(index))).toEqual([2, 2, 2]);
+    });
+
+    it('overrides EXPO_PUBLIC_PERF_GEN_VERSION under PERF_MODE too', () => {
+      const { perf, lifecycle } = devLifecycle({
+        EXPO_PUBLIC_PERF_LEVEL: '3827',
+        EXPO_PUBLIC_PERF_GEN_VERSION: '2',
+        EXPO_PUBLIC_DEV_GEN_VERSION: '1',
+      });
+      expect(perf.PERF_MODE).toBe(true);
+      expect(lifecycle.levelGenVersion(3827)).toBe(1);
+    });
+  });
+
   it('W3-05: App stamps the switch level after hydration and before the first screen (source order)', () => {
     // App.tsx cannot run under node jest; the stamp itself is tested over the
     // real initSaveSystem in storage.test.ts. This guards only its placement.
@@ -205,6 +253,23 @@ describe('game session lifecycle', () => {
     expect(ready).toBeLessThan(failed);
     // Called exactly once: never from the failed-hydrate branch.
     expect(source.split('stampGenSwitchLevel(').length - 1).toBe(1);
+  });
+
+  it('W3-06: EXPO_PUBLIC_DEV_LEVEL bypasses ftueRoute in onPlay instead of routing into a tutorial (ruling F28, source order)', () => {
+    // App.tsx cannot run under node jest (see the stamp guard above); this
+    // checks only that the bypass sits before the ftueRoute call it must skip.
+    const source = readFileSync(join(__dirname, '..', '..', '..', 'App.tsx'), 'utf8');
+    const onPlay = source.indexOf('const onPlay = useCallback(');
+    const devCheck = source.indexOf('DEV_LEVEL_INDEX !== null', onPlay);
+    const routeCall = source.indexOf('ftueRoute({', onPlay);
+    expect(onPlay).toBeGreaterThan(0);
+    expect(devCheck).toBeGreaterThan(onPlay);
+    expect(devCheck).toBeLessThan(routeCall);
+  });
+
+  it('W3-06: the game screen opens EXPO_PUBLIC_DEV_LEVEL (falling back to PERF_LEVEL_INDEX) as its initial index', () => {
+    const source = readFileSync(join(__dirname, '..', '..', '..', 'App.tsx'), 'utf8');
+    expect(source).toContain('initialLevelIndex={DEV_LEVEL_INDEX ?? PERF_LEVEL_INDEX ?? undefined}');
   });
 
   it('waits for fatal feedback cleanup before showing the lose panel', () => {
