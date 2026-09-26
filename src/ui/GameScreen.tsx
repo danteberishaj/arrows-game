@@ -7,7 +7,15 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { AppState, PixelRatio, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  AppState,
+  type LayoutChangeEvent,
+  PixelRatio,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   ReduceMotion,
@@ -37,7 +45,11 @@ import {
   META_REVIEW_PROMPT,
 } from '../featureFlags';
 import { Ads } from './ads';
-import { ART_WIN_SILHOUETTE_DP, ART_WIN_SILHOUETTE_ENABLED } from './artConfig';
+import {
+  ART_HEADER_SILHOUETTE_ENABLED,
+  ART_WIN_SILHOUETTE_DP,
+  ART_WIN_SILHOUETTE_ENABLED,
+} from './artConfig';
 import { BoardView } from './BoardView';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
@@ -970,6 +982,7 @@ export function GameScreen({
                     difficulty={level.difficulty}
                     shapeName={level.shapeName}
                     color={diffColor}
+                    mask={level.mask}
                   />
                 )}
                 {/* W5-03: one element for screen readers, as the single Text was. */}
@@ -1126,17 +1139,84 @@ const MissionLabel = React.memo(function MissionLabel({
   difficulty,
   shapeName,
   color,
+  mask,
 }: {
   difficulty: Difficulty;
   shapeName: string;
   color: string;
+  /** W5-06: the level's silhouette mask (empty on W1's tutorial boards). */
+  mask: readonly (readonly boolean[])[];
 }) {
+  // W5-06: the badge takes the word's place; an empty mask keeps the word.
+  if (ART_HEADER_SILHOUETTE_ENABLED && mask.length > 0) {
+    return <MissionBadgeRow difficulty={difficulty} shapeName={shapeName} color={color} mask={mask} />;
+  }
   return (
     <Text style={[styles.diffLabel, { color }]}>
       {Difficulties.displayName(difficulty)} · {shapeName} ·{' '}
     </Text>
   );
 });
+
+/**
+ * W5-06: the header badge's edge per font scale: the tier Text's line height,
+ * read from its first layout and kept for later game screens, so only the
+ * first header at a font scale draws a frame without the badge. Exported for
+ * the tests, which start each case unmeasured.
+ */
+export const HEADER_BADGE_LINE_BY_FONT_SCALE = new Map<number, number>();
+
+/**
+ * W5-06 (ART_HEADER_SILHOUETTE_ENABLED): `Super Hard · [badge] · `. The badge
+ * replaces the shape-name word (the element count is unchanged), is drawn in
+ * the word's colour with the even-odd rule, carries the shape name for screen
+ * readers, and is exactly one line tall, so the row and the header keep their
+ * height.
+ */
+function MissionBadgeRow({
+  difficulty,
+  shapeName,
+  color,
+  mask,
+}: {
+  difficulty: Difficulty;
+  shapeName: string;
+  color: string;
+  mask: readonly (readonly boolean[])[];
+}) {
+  const { fontScale } = useWindowDimensions();
+  const [line, setLine] = useState<number | null>(
+    () => HEADER_BADGE_LINE_BY_FONT_SCALE.get(fontScale) ?? null,
+  );
+  const onTierLayout = useCallback((e: LayoutChangeEvent) => {
+    const height = e.nativeEvent.layout.height;
+    if (line !== null || !(height > 0)) return; // read once
+    HEADER_BADGE_LINE_BY_FONT_SCALE.set(fontScale, height);
+    setLine(height);
+  }, [fontScale, line]);
+  const path = useMemo(() => (line === null ? '' : silhouettePath(mask, line)), [line, mask]);
+  return (
+    <View style={styles.missionBadgeRow}>
+      <Text onLayout={onTierLayout} style={[styles.diffLabel, { color }]}>
+        {Difficulties.displayName(difficulty)} ·{' '}
+      </Text>
+      {line !== null && (
+        <Svg
+          testID="header-silhouette"
+          accessible
+          accessibilityLabel={shapeName}
+          width={line}
+          height={line}
+        >
+          <SvgPath d={path} fill={color} fillRule="evenodd" />
+        </Svg>
+      )}
+      <Text style={[styles.diffLabel, { color }]}>
+        {' '}·{' '}
+      </Text>
+    </View>
+  );
+}
 
 /**
  * The heart row, one pip per heart. A pip that just went out pops (scale
@@ -1367,6 +1447,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 2,
+  },
+  // W5-06: the badge row; `center` keeps the one-line-tall badge inside the
+  // texts' line box. Its baseline (for missionLabelRow) is the tier Text's.
+  missionBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   // W5-03: the counter slot. The invisible ghost sets its width by normal text
   // layout (font scale and the web engine included); the digits are anchored

@@ -19,3 +19,13 @@ export const ART_WIN_SILHOUETTE_ENABLED = process.env.EXPO_PUBLIC_ART_WIN_SILHOU
  * (artifacts/W5-01/silhouette-sheet-{48,64,96}dp.png) in W5-20.
  */
 export const ART_WIN_SILHOUETTE_DP = 64; // OWNER-PICKED STARTING VALUE
+
+/**
+ * W5-06: the game header's mission row shows the level's silhouette
+ * (src/ui/silhouette.ts) in place of the shape-name word: `Super Hard · [badge]
+ * · 202 left`. The badge is drawn in the word's tier colour with the even-odd
+ * rule, is exactly one text line tall (measured from the row, never a
+ * constant), and carries the shape name for screen readers. Tutorial boards
+ * (empty mask) keep the word. OFF: the row renders exactly as before.
+ */
+export const ART_HEADER_SILHOUETTE_ENABLED = process.env.EXPO_PUBLIC_ART_HEADER_SILHOUETTE === '1';
