@@ -28,6 +28,16 @@ export interface Palette {
   ink: string;
   inkDim: string;
   inkOnAccent: string;
+  /**
+   * W5-05 (ART_PANEL_DEPTH_ENABLED only): the win / lose panel's fill. Depth by value, never a shadow: a lightness
+   * step at the hue and saturation of `surface`. The panel edge must reach 3:1 against the composited scrim, by the
+   * fill itself or by the `border` hairline against both (contrastAudit.ts `panel-edge-*`).
+   */
+  surfaceRaised: string;
+  /** W5-05 (flag only): the win overlay's scrim, `#RRGGBBAA` (today's colour, black, with its alpha stepped). */
+  scrimWon: string;
+  /** W5-05 (flag only): the lose overlay's scrim, `#RRGGBBAA` (today: `bg` at 0.86). */
+  scrimLost: string;
 }
 
 export const Daylight: Palette = {
@@ -48,6 +58,10 @@ export const Daylight: Palette = {
   ink: '#191724', // ink arrows/text
   inkDim: '#6D6988', // muted secondary text (W0-06 solver: L 47.8 -> 47.3)
   inkOnAccent: '#FFFFFF',
+  // W5-05 candidate set B (artifacts/W5-05/owner-panel-depth.png; the owner picks A, B, C or none in W5-20):
+  surfaceRaised: '#FAF9FD', // OWNER-PICKED STARTING VALUE: surface's hue/sat at L 98.5; 3.21:1 on the won scrim
+  scrimWon: '#00000073', // OWNER-PICKED STARTING VALUE: today's black at 0.45 (115/255)
+  scrimLost: '#FFFFFFDB', // OWNER-PICKED STARTING VALUE: today's bg at 0.86 (219/255); the hairline carries the edge
 };
 
 export const InkNight: Palette = {
@@ -68,6 +82,11 @@ export const InkNight: Palette = {
   ink: '#EFEDF9', // moonlit arrows/text
   inkDim: '#A29DC1',
   inkOnAccent: '#FFFFFF',
+  // W5-05: a lighter Night fill loses the hairline edge until it reaches 3:1 on its own (L >= 45, where panel text
+  // fails), so every candidate set keeps Ink Night's panel at today's value and its hairline carries the edge.
+  surfaceRaised: '#201D30', // OWNER-PICKED STARTING VALUE: = surface
+  scrimWon: '#00000073', // OWNER-PICKED STARTING VALUE: today's black at 0.45
+  scrimLost: '#13111CDB', // OWNER-PICKED STARTING VALUE: today's bg at 0.86
 };
 
 export const paletteFor = (dark: boolean): Palette => (dark ? InkNight : Daylight);

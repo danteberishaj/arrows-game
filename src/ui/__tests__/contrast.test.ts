@@ -5,12 +5,17 @@ import {
   USAGES,
   type Role,
   audit,
+  auditUsage,
   composite,
+  compositeScrim,
   contrastRatio,
   gateFor,
   hexToHsl,
   hslToHex,
+  panelEdges,
+  parseScrim,
   relativeLuminance,
+  scrimInfo,
   solveLightness,
 } from '../contrastAudit';
 
@@ -109,10 +114,82 @@ describe('changed tokens keep hue and saturation', () => {
 });
 
 describe('every text and state colour meets its gate', () => {
-  for (const row of audit()) {
+  // W5-05's panel-edge rows are alternatives (fill OR hairline): gated per edge below.
+  for (const row of audit().filter((r) => !r.usage.edge)) {
     const name = `${row.palette} / ${row.usage.id}`;
     it(`${name}: ${row.usage.fgRole} ${row.fg} on ${row.usage.bgRole} ${row.bg} >= ${row.gate}`, () => {
       expect(row.ratio).toBeGreaterThanOrEqual(row.gate);
     });
   }
+});
+
+/**
+ * W5-05 (ART_PANEL_DEPTH_ENABLED): the win / lose panel's EDGE against its scrim composited over `bg` exactly as
+ * rendered (8-bit alpha, per channel). The gate is 3:1: WCAG 2.1 SC 1.4.11's non-text threshold, applied BY ANALOGY
+ * to a panel edge. The edge passes when the fill (`surfaceRaised`) meets it against the composited scrim, OR the
+ * `border` hairline meets it against both the composited scrim and the fill.
+ */
+describe('W5-05 panel edge against the composited scrim (flag-ON tokens)', () => {
+  const EDGES = ['panel-edge-won', 'panel-edge-lost'];
+
+  it('the rows exist for both outcomes and both alternatives', () => {
+    for (const edge of EDGES) {
+      const rows = USAGES.filter((u) => u.edge?.id === edge);
+      expect(rows.map((u) => u.edge!.via).sort()).toEqual(['fill', 'hairline', 'hairline']);
+      expect(rows.every((u) => u.kind === 'boundary' && gateFor(u) === 3)).toBe(true);
+    }
+  });
+
+  for (const { name, palette } of PALETTES) {
+    it.each(EDGES)(`${name} / %s reaches 3:1 by the fill or by the hairline`, (edge) => {
+      const e = panelEdges().find((x) => x.palette === name && x.edge === edge)!;
+      const detail = e.rows.map((r) => `${r.usage.id} ${r.fg} on ${r.bg} = ${r.ratio.toFixed(2)}`).join('; ');
+      if (!e.pass) throw new Error(`${name} ${edge}: no alternative reaches 3:1 (${detail})`);
+      expect(['fill', 'hairline']).toContain(e.via);
+    });
+  }
+
+  it('the scrim is composited over bg per 8-bit channel, as RN draws #RRGGBBAA', () => {
+    expect(parseScrim('#00000073')).toEqual({ colour: '#000000', alpha: 115 / 255 });
+    expect(compositeScrim('#00000073', '#FFFFFF')).toBe('#8C8C8C'); // today's rgba(0,0,0,0.45) over Daylight bg
+    expect(compositeScrim('#FFFFFFDB', '#FFFFFF')).toBe('#FFFFFF'); // bg at 0.86 over bg is bg
+    expect(() => parseScrim('#000000')).toThrow();
+  });
+
+  it('the panel content rows gated on `surface` also pass on `surfaceRaised` (the flag-ON panel fill)', () => {
+    const PANEL_ROWS = ['panel-title-won', 'panel-title-lost', 'star-earned', 'star-unearned', 'win-silhouette',
+      'panel-subline', 'retry-label', 'retry-outline', 'panel-hairline', 'streak-line'];
+    for (const { name, palette } of PALETTES) {
+      for (const id of PANEL_ROWS) {
+        const u = USAGES.find((x) => x.id === id)!;
+        expect(u.bgRole).toBe('surface');
+        const row = auditUsage(name, palette, { ...u, bgRole: 'surfaceRaised' });
+        if (row.ratio < row.gate) {
+          throw new Error(`${name} / ${id}: ${row.fg} on surfaceRaised ${row.bg} = ${row.ratio.toFixed(2)} < ${row.gate}`);
+        }
+      }
+    }
+  });
+
+  it('surfaceRaised is a lightness step at the hue and saturation of surface; the scrims keep their colour', () => {
+    for (const { palette } of PALETTES) {
+      const hsl = hexToHsl(palette.surface);
+      const l = hexToHsl(palette.surfaceRaised).l;
+      // Re-generate at surface's hue/sat and the raised lightness: 8-bit rounding may move it by one step.
+      const regen = [l - 0.2, l - 0.1, l, l + 0.1, l + 0.2].map((x) => hslToHex({ ...hsl, l: Math.min(100, Math.max(0, x)) }));
+      expect(regen).toContain(palette.surfaceRaised);
+      expect(parseScrim(palette.scrimWon).colour).toBe('#000000'); // today's won scrim colour
+      expect([palette.bg, '#000000']).toContain(parseScrim(palette.scrimLost).colour); // today's (bg) or the won black
+    }
+  });
+
+  it('pins the starting set (B); the W5-20 pick commit replaces these six values with the owner\'s set', () => {
+    const tokens = (p: (typeof PALETTES)[number]['palette']) => [p.surfaceRaised, p.scrimWon, p.scrimLost];
+    expect(tokens(PALETTES[0].palette)).toEqual(['#FAF9FD', '#00000073', '#FFFFFFDB']);
+    expect(tokens(PALETTES[1].palette)).toEqual(['#201D30', '#00000073', '#13111CDB']);
+  });
+
+  it('the flag-OFF panel is untouched: today\'s scrims still measure 2.90 / 1.21 / 1.16 / 1.14 (information only)', () => {
+    expect(scrimInfo().map((r) => r.ratio.toFixed(2))).toEqual(['2.90', '1.16', '1.21', '1.14']);
+  });
 });

@@ -15,6 +15,7 @@ import {
   PALETTES,
   Role,
   audit,
+  panelEdges,
   scrimInfo,
   solveLightness,
   type Hsl,
@@ -38,12 +39,14 @@ function printAudit(): number {
       console.log(
         [
           u.id.padEnd(30), u.kind.padEnd(8), fg.padEnd(20), `${u.bgRole} ${r.bg}`.padEnd(20), size.padEnd(12),
-          r.ratio.toFixed(2).padStart(6), r.gate.toFixed(1).padStart(5), (r.pass ? 'PASS' : 'FAIL').padEnd(6), u.site,
+          r.ratio.toFixed(2).padStart(6), r.gate.toFixed(1).padStart(5), (u.edge ? (r.pass ? 'EDGE-OK' : 'EDGE-FAIL') : r.pass ? 'PASS' : 'FAIL').padEnd(9), u.site,
         ].join('  '),
       );
     }
   }
-  console.log('\n== Information only, not gated here (W5-05 owns): panel `surface` against its composited scrim');
+  console.log('\n== W5-05 panel edges (ART_PANEL_DEPTH_ENABLED): an EDGE-* row reports its edge, which passes by the fill OR by the hairline');
+  for (const e of panelEdges()) console.log(`${e.palette.padEnd(10)} ${e.edge.padEnd(16)} ${e.pass ? 'PASS' : 'FAIL'} via ${e.via}`);
+  console.log('\n== Information only (the flag-OFF panel): `surface` against its composited scrim');
   for (const s of scrimInfo()) {
     console.log(`${s.palette.padEnd(10)} ${s.state.padEnd(5)} scrim ${s.scrim}  ratio ${s.ratio.toFixed(2)}`);
   }

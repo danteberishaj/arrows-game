@@ -29,3 +29,11 @@ export const ART_WIN_SILHOUETTE_DP = 64; // OWNER-PICKED STARTING VALUE
  * (empty mask) keep the word. OFF: the row renders exactly as before.
  */
 export const ART_HEADER_SILHOUETTE_ENABLED = process.env.EXPO_PUBLIC_ART_HEADER_SILHOUETTE === '1';
+
+/**
+ * W5-05: the win and lose panels get depth by value alone (no shadow, gradient or glow): the panel fill
+ * is `surfaceRaised` and the scrims are the palette's `scrimWon` / `scrimLost` (theme.ts), whose composited panel
+ * edge is gated at 3:1 (contrastAudit.ts `panel-edge-*`), plus a spacing hierarchy (outcome, evidence, action).
+ * OFF: the panels render exactly as before.
+ */
+export const ART_PANEL_DEPTH_ENABLED = process.env.EXPO_PUBLIC_ART_PANEL_DEPTH === '1';

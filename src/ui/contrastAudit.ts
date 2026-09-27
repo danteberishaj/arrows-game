@@ -18,9 +18,9 @@
  *     token reaches it; its disabled state is carried by opacity (W0-02).
  *   - The disabled Continue button's fill edge: WCAG 1.4.11 exempts inactive components.
  *     Its LABEL is still a gated text row (PRODUCT.md states no exemption for text).
- *   - The win/lose panel fill against its composited scrim: W5-05 owns those rows and the
- *     scrim tokens (ruling W5-1). `scrimInfo()` computes them for the script to print as
- *     information only; they are not gated here.
+ *   - The flag-OFF win/lose panel (`surface` under 'rgba(0,0,0,0.45)' / `bg` at 0.86): `scrimInfo()`
+ *     prints it as information only. The flag-ON panel (W5-05, ART_PANEL_DEPTH_ENABLED:
+ *     `surfaceRaised` under `scrimWon` / `scrimLost`) IS gated: the `panel-edge-*` rows below.
  *   - Board grid dots and lines (META_BOARD_GRID, POLISH-T4, ruling R4): decorative texture
  *     under the arrows. Direction is carried by the arrowhead and a lane by the arrows
  *     themselves, so it is not a meaningful graphic (WCAG 1.4.11). Dots `border`@0.40, lines
@@ -51,6 +51,17 @@ export interface Usage {
   /** Text rows: `file:line` whose source line is `fontSize: <sizePx>` (checked by the test). */
   sizeSite?: string;
   note?: string;
+  /**
+   * W5-05: the background as RENDERED when it is not the opaque `bgRole` token, e.g. a `#RRGGBBAA` scrim token
+   * composited over `bg` (`compositeScrim`). Default `p[bgRole]`.
+   */
+  bgComposite?: (p: Palette) => string;
+  /**
+   * W5-05: a boundary with alternatives (the brief's panel edge: the fill against the composited scrim, OR the
+   * hairline against both the scrim and the fill). The rows sharing `id` form one edge; it passes when every row
+   * of at least one `via` passes, and each of its rows reports that verdict as `pass` (`ratio` stays its own).
+   */
+  edge?: { id: string; via: 'fill' | 'hairline' };
 }
 
 export const PALETTES: ReadonlyArray<{ name: string; palette: Palette }> = [
@@ -97,6 +108,19 @@ export function composite(fg: string, alpha: number, bg: string): string {
   const k = parseHex(bg);
   const mix = (x: number, y: number) => x * alpha + y * (1 - alpha);
   return toHex({ r: mix(f.r, k.r), g: mix(f.g, k.g), b: mix(f.b, k.b) });
+}
+
+/** A `#RRGGBBAA` scrim token as its colour and 8-bit alpha (RN draws `#RRGGBBAA` with alpha AA / 255). */
+export function parseScrim(scrim: string): { colour: string; alpha: number } {
+  const m = /^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(scrim);
+  if (!m) throw new Error(`not a #RRGGBBAA scrim: ${scrim}`);
+  return { colour: `#${m[1].toUpperCase()}`, alpha: parseInt(m[2], 16) / 255 };
+}
+
+/** A `#RRGGBBAA` scrim composited over the opaque colour under it, per 8-bit channel. */
+export function compositeScrim(scrim: string, under: string): string {
+  const { colour, alpha } = parseScrim(scrim);
+  return composite(colour, alpha, under);
 }
 
 /**
@@ -219,30 +243,41 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35' },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
-  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:976`, sizeSite: `${GS}:1434` },
-  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:969`, sizeSite: `${GS}:1444` },
-  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:856`, sizeSite: `${GS}:1448` },
-  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:855`, sizeSite: `${GS}:1448` },
-  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:854`, sizeSite: `${GS}:1448` },
-  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1305` },
-  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1310`, note: 'outline stroke, no fill' },
+  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:987`, sizeSite: `${GS}:1445` },
+  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:980`, sizeSite: `${GS}:1455` },
+  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:867`, sizeSite: `${GS}:1459` },
+  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:866`, sizeSite: `${GS}:1459` },
+  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:865`, sizeSite: `${GS}:1459` },
+  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1316` },
+  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1321`, note: 'outline stroke, no fill' },
 
   // Win / lose panel (on `surface`)
-  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:869`, sizeSite: `${GS}:1496` },
-  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:869`, sizeSite: `${GS}:1496` },
-  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1393` },
-  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1393` },
-  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:881`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
-  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:892`, sizeSite: `${GS}:1512` },
-  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:917`, sizeSite: `${GS}:1523` },
-  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:917`, sizeSite: `${GS}:1523` },
-  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:917`, sizeSite: `${GS}:1523`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:668)' },
-  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:936`, sizeSite: `${GS}:1523`, note: 'also the daily "Done" label (W4-06)' },
-  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:936`, sizeSite: `${GS}:1523` },
-  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:936`, sizeSite: `${GS}:1523` },
-  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:929` },
-  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1091` },
-  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:941`, sizeSite: `${GS}:1527` },
+  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:880`, sizeSite: `${GS}:1507` },
+  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:880`, sizeSite: `${GS}:1507` },
+  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1404` },
+  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1404` },
+  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:892`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
+  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:903`, sizeSite: `${GS}:1527` },
+  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:928`, sizeSite: `${GS}:1542` },
+  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:928`, sizeSite: `${GS}:1542` },
+  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:928`, sizeSite: `${GS}:1542`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:668)' },
+  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:947`, sizeSite: `${GS}:1542`, note: 'also the daily "Done" label (W4-06)' },
+  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:947`, sizeSite: `${GS}:1542` },
+  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:947`, sizeSite: `${GS}:1542` },
+  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:940` },
+  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1102` },
+  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:952`, sizeSite: `${GS}:1546` },
+
+  // W5-05 (ART_PANEL_DEPTH_ENABLED): the panel's EDGE against its composited scrim, gated at 3:1 (WCAG 2.1
+  // SC 1.4.11's non-text threshold, applied by analogy to a panel edge). Fill = `surfaceRaised`, scrim =
+  // `scrimWon` / `scrimLost` composited over `bg` exactly as rendered (the board under the scrim is not modelled).
+  // Per edge: via 'fill' (the fill against the scrim) OR via 'hairline' (`border` against the scrim AND the fill).
+  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:858`, edge: { id: 'panel-edge-won', via: 'fill' } },
+  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1102`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1102`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:858`, edge: { id: 'panel-edge-lost', via: 'fill' } },
+  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1102`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1102`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
 
   // Shape gallery (W4-09, META_GALLERY), on `bg`. Filled versus outlined carries
   // collected versus not, so the colours only have to be legible (PRODUCT.md:63).
@@ -271,7 +306,7 @@ export interface AuditRow {
 }
 
 export function auditUsage(paletteName: string, p: Palette, u: Usage): AuditRow {
-  const bg = p[u.bgRole];
+  const bg = u.bgComposite ? u.bgComposite(p) : p[u.bgRole];
   const over = u.fgOver ? u.fgOver(p) : bg;
   const fg = u.fgAlpha === undefined ? p[u.fgRole] : composite(p[u.fgRole], u.fgAlpha, over);
   const ratio = contrastRatio(fg, bg);
@@ -280,7 +315,35 @@ export function auditUsage(paletteName: string, p: Palette, u: Usage): AuditRow 
 }
 
 export function audit(): AuditRow[] {
-  return PALETTES.flatMap(({ name, palette }) => USAGES.map((u) => auditUsage(name, palette, u)));
+  const rows = PALETTES.flatMap(({ name, palette }) => USAGES.map((u) => auditUsage(name, palette, u)));
+  // W5-05 edges: a row of an edge reports the EDGE's verdict (some `via` whose rows all meet the gate).
+  const verdict = new Map<string, boolean>();
+  for (const r of rows) {
+    if (!r.usage.edge) continue;
+    const key = `${r.palette}/${r.usage.edge.id}`;
+    const vias = rows.filter((x) => x.palette === r.palette && x.usage.edge?.id === r.usage.edge!.id);
+    const ok = (['fill', 'hairline'] as const).some((via) => {
+      const own = vias.filter((x) => x.usage.edge!.via === via);
+      return own.length > 0 && own.every((x) => x.ratio >= x.gate);
+    });
+    verdict.set(key, ok);
+  }
+  return rows.map((r) => (r.usage.edge ? { ...r, pass: verdict.get(`${r.palette}/${r.usage.edge.id}`)! } : r));
+}
+
+/** W5-05: each palette's panel edges, with the ratios of every alternative (for the report and the script). */
+export function panelEdges(): Array<{ palette: string; edge: string; pass: boolean; via: string; rows: AuditRow[] }> {
+  const rows = audit().filter((r) => r.usage.edge);
+  const keys = [...new Set(rows.map((r) => `${r.palette}|${r.usage.edge!.id}`))];
+  return keys.map((k) => {
+    const [palette, edge] = k.split('|');
+    const own = rows.filter((r) => r.palette === palette && r.usage.edge!.id === edge);
+    const via = (['fill', 'hairline'] as const).find((v) => {
+      const x = own.filter((r) => r.usage.edge!.via === v);
+      return x.length > 0 && x.every((r) => r.ratio >= r.gate);
+    });
+    return { palette, edge, pass: via !== undefined, via: via ?? 'none', rows: own };
+  });
 }
 
 /**

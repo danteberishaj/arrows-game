@@ -48,6 +48,7 @@ import {
 import { Ads } from './ads';
 import {
   ART_HEADER_SILHOUETTE_ENABLED,
+  ART_PANEL_DEPTH_ENABLED,
   ART_WIN_SILHOUETTE_DP,
   ART_WIN_SILHOUETTE_ENABLED,
 } from './artConfig';
@@ -848,7 +849,17 @@ export function GameScreen({
   const panelRewardedReady = holdPressedAdState || rewardedReady;
   const panelAdShowFailed = !holdPressedAdState && adShowFailed;
   const overlayMounted = !activeTutorialId && (phase !== 'playing' || panelExiting);
-  const overlayScrimColor = panelPhase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)';
+  // W5-05 (ART_PANEL_DEPTH_ENABLED): the panel's depth comes from value alone (no shadow, gradient or
+  // glow): its fill and both scrims are palette tokens whose composited edge is gated (contrastAudit.ts
+  // `panel-edge-*`). OFF: today's scrims and `surface`, unchanged.
+  const overlayScrimColor = ART_PANEL_DEPTH_ENABLED
+    ? panelPhase === 'lost' ? p.scrimLost : p.scrimWon
+    : panelPhase === 'lost' ? hexA(p.bg, 0.86) : 'rgba(0,0,0,0.45)';
+  const panelFill = ART_PANEL_DEPTH_ENABLED ? p.surfaceRaised : p.surface;
+  // W5-05: spacing hierarchy only (outcome, then evidence, then action). `null` spreads to nothing, so the
+  // flag-OFF style objects are exactly today's.
+  const depthTitleSpacing = ART_PANEL_DEPTH_ENABLED ? styles.panelTitleDepth : null;
+  const depthSubSpacing = ART_PANEL_DEPTH_ENABLED ? styles.panelSubDepth : null;
 
   const diffColor =
     level.difficulty === Difficulty.SuperHard ? p.heartText
@@ -866,7 +877,7 @@ export function GameScreen({
 
   const panelContent = overlayMounted ? (
     <>
-      <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart }]}>
+      <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}>
         {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
       </Text>
       {panelPhase === 'won' && winSilhouette !== '' && (
@@ -889,7 +900,7 @@ export function GameScreen({
           feedbackEnabled={feedbackEnabled}
         />
       )}
-      <Text style={[styles.panelSub, { color: p.inkDim }]}>
+      <Text style={[styles.panelSub, { color: p.inkDim, ...depthSubSpacing }]}>
         {panelPhase === 'won'
           ? dailyDay !== null
             ? `${DAILY_WIN_PREFIX} · ${level.shapeName} · ${level.arrowCount} arrows`
@@ -1079,7 +1090,7 @@ export function GameScreen({
           state={panelState}
           scrimColor={overlayScrimColor}
           overlayStyle={styles.overlay}
-          panelStyle={[styles.panel, { backgroundColor: p.surface, borderColor: p.border }]}
+          panelStyle={[styles.panel, { backgroundColor: panelFill, borderColor: p.border }]}
         >
           {panelContent}
         </PanelOverlayFrame>
@@ -1088,7 +1099,7 @@ export function GameScreen({
           testID={benchmarkMode ? 'perf-terminal-overlay' : undefined}
           style={[styles.overlay, { backgroundColor: overlayScrimColor }]}
         >
-          <View style={[styles.panel, { backgroundColor: p.surface, borderColor: p.border }]}>
+          <View style={[styles.panel, { backgroundColor: panelFill, borderColor: p.border }]}>
             {panelContent}
           </View>
         </View>
@@ -1496,6 +1507,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: Fonts.bold,
   },
+  // W5-05 (flag only): the outcome stands apart from its evidence (title -> badge / stars / subline 4 dp more)...
+  panelTitleDepth: {
+    marginBottom: 4, // OWNER-PICKED STARTING VALUE
+  },
   // W5-04: the stars row's own 10 dp top margin, so title, badge and stars
   // are evenly spaced.
   winSilhouette: {
@@ -1513,6 +1528,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semi,
     marginTop: 6,
     marginBottom: 20,
+  },
+  // ...and the evidence from the action (subline -> first button 28 dp instead of 20).
+  panelSubDepth: {
+    marginBottom: 28, // OWNER-PICKED STARTING VALUE
   },
   button: {
     borderRadius: 14,
