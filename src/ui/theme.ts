@@ -100,3 +100,56 @@ export const Fonts = {
   semi: 'Fredoka_600SemiBold',
   bold: 'Fredoka_700Bold',
 } as const;
+
+/** One text role's type: exactly the keys its style had before W5-08 (a role without a family keeps none). */
+export interface TypeStyle {
+  readonly fontSize: number;
+  readonly fontFamily?: string;
+  readonly letterSpacing?: number;
+}
+
+const type = (t: TypeStyle): TypeStyle => Object.freeze(t);
+
+/**
+ * W5-08: every text size the app draws, one named entry per role, holding exactly the fontSize, fontFamily and
+ * letterSpacing its style had before (no value changed). DESIGN.md's type scale is in Unity 1080x1920 units and was
+ * never translated into dp; changing any value here, or merging roles into a scale, is a W5-20 owner question. A
+ * style spreads its entry and keeps its other keys (margins, lineHeight, position). Computed sizes stay computed:
+ * HeaderButton's glyph (size x 0.44) and the Wordmark's letters (its `size`, which the menu passes from `wordmark`).
+ */
+export const Type = Object.freeze({
+  // Menu (HomeScreen)
+  wordmark: type({ fontSize: 56 }),
+  menuLevel: type({ fontSize: 24, fontFamily: Fonts.bold, letterSpacing: 0.5 }),
+  menuTier: type({ fontSize: 15, fontFamily: Fonts.semi, letterSpacing: 0.5 }),
+  menuPlay: type({ fontSize: 22, fontFamily: Fonts.bold, letterSpacing: 1 }),
+  menuStats: type({ fontSize: 13, fontFamily: Fonts.semi }),
+  /** W4-06 / W4-09 entry row. OWNER-PICKED STARTING VALUE (W4-06: the tier label's size). */
+  menuEntry: type({ fontSize: 15, fontFamily: Fonts.semi, letterSpacing: 0.5 }),
+  // Game header (GameScreen)
+  gameLevel: type({ fontSize: 24, fontFamily: Fonts.bold, letterSpacing: 1 }),
+  /** The tutorial line (it also carries gameLevel's family and spacing, so the drawn text is unchanged). */
+  gameTutorial: type({ fontSize: 18, fontFamily: Fonts.bold, letterSpacing: 1 }),
+  /** Tier, shape name, "N left", "Hint unavailable ·". */
+  gameTier: type({ fontSize: 12, fontFamily: Fonts.semi, letterSpacing: 0.5 }),
+  // Win / lose panel (GameScreen)
+  panelTitle: type({ fontSize: 24, fontFamily: Fonts.bold }),
+  /** The win stars (the ★ glyph in the OS font: no family; with W5-02's ART_ICONS_ENABLED, the star icon's edge). */
+  star: type({ fontSize: 34 }),
+  starBig: type({ fontSize: 44 }),
+  panelSub: type({ fontSize: 14, fontFamily: Fonts.semi }),
+  panelButton: type({ fontSize: 16, fontFamily: Fonts.bold }),
+  panelStreak: type({ fontSize: 13, fontFamily: Fonts.semi }),
+  // Shape gallery (GalleryScreen, W4-09)
+  /** OWNER-PICKED STARTING VALUE (W4-09: the menu tier label's size). */
+  galleryCount: type({ fontSize: 15, fontFamily: Fonts.semi, letterSpacing: 0.5 }),
+  /** OWNER-PICKED STARTING VALUE (W4-09). */
+  galleryName: type({ fontSize: 12, fontFamily: Fonts.semi }),
+  // The dev-only simulated ad (ads.tsx AdHost, __DEV__ only)
+  adTag: type({ fontSize: 11, fontFamily: Fonts.bold, letterSpacing: 2 }),
+  adTitle: type({ fontSize: 18, fontFamily: Fonts.bold }),
+  adCount: type({ fontSize: 44, fontFamily: Fonts.bold }),
+  adSub: type({ fontSize: 12, fontFamily: Fonts.semi }),
+});
+
+export type TypeRole = keyof typeof Type;

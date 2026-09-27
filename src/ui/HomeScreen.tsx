@@ -27,7 +27,7 @@ import { HeaderButton } from './HeaderButton';
 import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
 import { useStopWhenScreenLeaves } from './screenHandoff';
-import { Fonts, Palette } from './theme';
+import { Palette, Type } from './theme';
 import { Wordmark } from './Wordmark';
 
 /**
@@ -171,7 +171,7 @@ export function HomeScreen({
   const column = (
     <>
       <View style={styles.upper}>
-        <Wordmark size={56} palette={p} />
+        <Wordmark size={Type.wordmark.fontSize} palette={p} />
 
         <Text style={[styles.levelLabel, { color: p.accentLight }]}>
           Level {resumeIndex + 1}
@@ -378,7 +378,7 @@ const HEADER_TOP = 14;
 const HEADER_BUTTON = 44;
 /** The stats line: its distance above the bottom inset and its size (BASE values). */
 const STATS_BOTTOM = 32;
-const STATS_FONT_SIZE = 13; // = styles.stats.fontSize (kept literal there: contrastAudit.ts reads that line)
+const STATS_FONT_SIZE = Type.menuStats.fontSize; // = styles.stats' size (W5-08: both read the menuStats token)
 /** The stats line's separator (GameManager.BuildStatsLine); W4-10's entry row uses it too. */
 const STATS_SEPARATOR = '   ·   ';
 
@@ -475,16 +475,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   levelLabel: {
-    fontSize: 24,
-    fontFamily: Fonts.bold,
+    ...Type.menuLevel,
     marginTop: 30,
-    letterSpacing: 0.5,
   },
   diffLabel: {
-    fontSize: 15,
-    fontFamily: Fonts.semi,
+    ...Type.menuTier,
     marginTop: 6,
-    letterSpacing: 0.5,
   },
   play: {
     width: 250,
@@ -494,14 +490,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   playText: {
-    fontSize: 22,
-    fontFamily: Fonts.bold,
-    letterSpacing: 1,
+    ...Type.menuPlay,
   },
   stats: {
     position: 'absolute',
-    fontSize: 13,
-    fontFamily: Fonts.semi,
+    ...Type.menuStats,
   },
   // W4-10: same anchor; a line too long for the width wraps centred, inside margins.
   statsComposed: {
@@ -519,9 +512,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dailyText: {
-    fontSize: 15, // OWNER-PICKED STARTING VALUE (the tier label's size)
-    fontFamily: Fonts.semi,
-    letterSpacing: 0.5,
+    ...Type.menuEntry,
   },
   // W4-09/W4-10: the entry row (daily, separator, gallery).
   entryRow: {

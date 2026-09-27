@@ -18,6 +18,7 @@ import {
   scrimInfo,
   solveLightness,
 } from '../contrastAudit';
+import { Type, type TypeRole } from '../theme';
 
 const ROOT = join(__dirname, '..', '..', '..');
 
@@ -74,7 +75,15 @@ describe('every usage row names a real site', () => {
   it.each(USAGES.map((u) => [u.id, u] as const))('%s', (_id, u) => {
     expect(lineAt(u.site)).toMatch(new RegExp(`\\.${u.fgRole}\\b`));
     if (u.kind === 'text' && u.sizeSite) {
-      expect(lineAt(u.sizeSite)).toMatch(new RegExp(`fontSize: ${u.sizePx}\\b`));
+      // A literal `fontSize: N`, or (W5-08) a `Type.<role>` token of that size.
+      const line = lineAt(u.sizeSite);
+      const token = /\bType\.(\w+)/.exec(line);
+      if (token) {
+        expect(Object.keys(Type)).toContain(token[1]);
+        expect(Type[token[1] as TypeRole].fontSize).toBe(u.sizePx);
+      } else {
+        expect(line).toMatch(new RegExp(`fontSize: ${u.sizePx}\\b`));
+      }
     }
   });
 });

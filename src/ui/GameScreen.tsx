@@ -121,7 +121,7 @@ import {
 } from './reviewPrompt';
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
-import { Fonts, Palette } from './theme';
+import { Palette, Type } from './theme';
 
 /** POLISH-T4 "#" button: the menu's 44 dp HeaderButton, 16 dp (the header's
  * side padding) plus the safe-area inset from the bottom-right corner. */
@@ -1423,17 +1423,18 @@ function Star({
     transform: [{ scale: k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
   }));
   const starColor = filled ? palette.accent : palette.starUnearned;
+  const starType = big ? Type.starBig : Type.star;
   return (
     <Animated.View style={style}>
       {ART_ICONS_ENABLED ? (
         // W5-02: only the leaf changes; the box keeps the glyph's line height so the panel keeps its height.
         <View style={{ height: big ? 50 : 40, justifyContent: 'center', marginHorizontal: 6 }}>
-          <Icon name="star" size={big ? 44 : 34} color={starColor} />
+          <Icon name="star" size={starType.fontSize} color={starColor} />
         </View>
       ) : (
         <Text
           style={{
-            fontSize: big ? 44 : 34,
+            fontSize: starType.fontSize,
             lineHeight: big ? 50 : 40,
             color: starColor,
             marginHorizontal: 6,
@@ -1477,9 +1478,7 @@ const styles = StyleSheet.create({
   },
   tutorialHeaderRight: { flexShrink: 0 },
   levelLabel: {
-    fontSize: 24, // was 18: 18 bold is body text and accentLight fails 4.5:1 (W0-06); matches Home
-    fontFamily: Fonts.bold,
-    letterSpacing: 1,
+    ...Type.gameLevel, // 24 (was 18: 18 bold is body text and accentLight fails 4.5:1, W0-06); matches Home
   },
   tutorialLabelBox: {
     flexShrink: 1,
@@ -1487,13 +1486,11 @@ const styles = StyleSheet.create({
   },
   tutorialLabel: {
     flexShrink: 1,
-    fontSize: 18,
+    ...Type.gameTutorial,
     lineHeight: TUTORIAL_LINE_HEIGHT,
   },
   diffLabel: {
-    fontSize: 12,
-    fontFamily: Fonts.semi,
-    letterSpacing: 0.5,
+    ...Type.gameTier,
   },
   missionLabelRow: {
     flexDirection: 'row',
@@ -1539,8 +1536,7 @@ const styles = StyleSheet.create({
     minWidth: 280,
   },
   panelTitle: {
-    fontSize: 24,
-    fontFamily: Fonts.bold,
+    ...Type.panelTitle,
   },
   // W5-05 (flag only): the outcome stands apart from its evidence (title -> badge / stars / subline 4 dp more)...
   panelTitleDepth: {
@@ -1559,8 +1555,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   panelSub: {
-    fontSize: 14,
-    fontFamily: Fonts.semi,
+    ...Type.panelSub,
     marginTop: 6,
     marginBottom: 20,
   },
@@ -1574,13 +1569,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   buttonText: {
-    fontSize: 16,
-    fontFamily: Fonts.bold,
+    ...Type.panelButton,
   },
   streak: {
-    fontSize: 13,
+    ...Type.panelStreak,
     marginTop: 14,
-    fontFamily: Fonts.semi,
   },
   // W5-02 (ART_ICONS_ENABLED): a label with an icon inside it (Continue's heart, the streak's sparkle).
   labelRow: {

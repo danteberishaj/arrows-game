@@ -22,7 +22,7 @@ import {
   type GalleryTile,
 } from './galleryLayout';
 import { HeaderButton } from './HeaderButton';
-import { Fonts, Palette } from './theme';
+import { Palette, Type } from './theme';
 
 /**
  * W4-09 (META_GALLERY): the shape gallery. A calm, non-tappable wall of the
@@ -257,9 +257,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   count: {
-    fontSize: 15, // OWNER-PICKED STARTING VALUE (the menu tier label's size)
-    fontFamily: Fonts.semi,
-    letterSpacing: 0.5,
+    ...Type.galleryCount,
   },
   row: {
     flexDirection: 'row',
@@ -275,8 +273,7 @@ const styles = StyleSheet.create({
   },
   name: {
     marginTop: NAME_GAP_DP,
-    fontSize: 12, // OWNER-PICKED STARTING VALUE
+    ...Type.galleryName,
     lineHeight: NAME_LINE_DP,
-    fontFamily: Fonts.semi,
   },
 });

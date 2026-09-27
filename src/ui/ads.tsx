@@ -30,7 +30,7 @@ import {
   umpRequestOptions,
   type UmpApi,
 } from './umpConsent';
-import { Fonts, Palette } from './theme';
+import { Fonts, Palette, Type } from './theme';
 
 /**
  * Ads on Google AdMob (react-native-google-mobile-ads, classic API, no
@@ -1012,23 +1012,18 @@ const styles = StyleSheet.create({
     minWidth: 280,
   },
   tag: {
-    fontSize: 11,
-    fontFamily: Fonts.bold,
-    letterSpacing: 2,
+    ...Type.adTag,
   },
   title: {
-    fontSize: 18,
-    fontFamily: Fonts.bold,
+    ...Type.adTitle,
     marginTop: 8,
   },
   count: {
-    fontSize: 44,
-    fontFamily: Fonts.bold,
+    ...Type.adCount,
     marginVertical: 10,
   },
   sub: {
-    fontSize: 12,
-    fontFamily: Fonts.semi,
+    ...Type.adSub,
     marginBottom: 18,
   },
   row: {
