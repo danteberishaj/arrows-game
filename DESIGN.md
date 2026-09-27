@@ -324,20 +324,59 @@ is a pressed style, scale 0.94 while held, with no tween either way (`HeaderButt
 **Required** (`PRODUCT.md`, Principle 4 and Accessibility): under the OS reduce-motion setting,
 feedback that carries information (blocker flash, blocked arrow, hint) renders a **static
 equivalent** and honours the setting; it is never forced on with `ReduceMotion.Never`. Decorative
-motion (heart pop, star pops, Play breathing, splash) may simply be skipped.
+motion (heart pop, star pops, Play breathing, splash) may simply be skipped. **Vestibular motion**
+(hint recentre, pan/fling momentum) **is suppressed**: each states `ReduceMotion.System`, the same
+wording as the comments at each call site ("Vestibular … follows the player's system setting",
+`BoardView.tsx:499,505,753,760`), so under reduced motion it lands on its end value at once — no
+recentre, no fling. No glow, bloom, gradient, confetti or particles appear in any motion state, and
+nothing below adds ambient board motion.
 
-**What ships today** (read from code; runtime captures belong to the tasks named here):
-- **Feedback blackout (defect, owned by W0-04).** The feedback `withTiming` calls use Reanimated's
-  default, so under reduce motion their progress lands on its end value at once. At the end value
-  the blocker flash is fully transparent (`feedbackCurves.ts:25-31`) and the blocked arrow's colour
-  is plain `ink` (`StaticBoardSurface.native.tsx:315-318`, `BoardView.tsx:896-900`); the bump is
-  already zeroed (`StaticBoardSurface.native.tsx:312`, `BoardView.tsx:891`). A blocked tap costs a
-  heart and shows nothing that lasts (the mount frame may still show one or two magenta frames). The hint keeps its static `accent` tint
-  (`StaticBoardSurface.native.tsx:360,366`) but loses its pulse.
-- **Native exit: a stationary dash fading in place** (`nativeExitAnimation.ts:30`,
-  `ArrowsBoardView.kt:269-271`). Shipped and **not yet signed off**; the W2 reduced-motion task
-  owns that sign-off. On web the exit trail's own `withTiming` also lands at its end value, where
-  its opacity `1 − k` is 0, so the web exit vanishes at once (`BoardView.tsx:980,992-995`).
+**What ships today** (each line cites the report that verified it on device, or says it did not):
+- **Blocker flash and blocked arrow hold; they do not black out.** Under reduced motion the blocker
+  stays solid at its 1.6× onset swell for the whole flash lifetime instead of fading
+  (`feedbackCurves.ts:47-53,58-61`), the tapped arrow's colour mix stays `heart` instead of easing
+  toward ink (`feedbackCurves.ts:70-72`), and its bump displacement is held at zero
+  (`BoardView.tsx:1315`, `StaticBoardSurface.native.tsx:414`; W2-09 acceptance 5 measured max
+  |displacement| 0.22 px, below the 1 px recording-pixel floor). The heart holds until the overlay
+  unmounts, then the tapped arrow cuts straight to `ink` — or, with `META_MISSED_MARK` (behind the
+  flag, default OFF, not yet accepted), to the missed mark (R6a) — with no tween frame in between:
+  heart through +317.6 ms, the mark from +334.3 ms, "no tween frame and no motion"
+  (`docs/next-level/reports/POLISH-T5.md` evidence 5). This replaced an earlier defect where the
+  same `withTiming` calls used Reanimated's default and jumped to their end value at once — the
+  blocker already transparent, the arrow already `ink` — fixed by W0-04, with its mount-to-paint
+  lifetime fixed by W0-04b.
+- **Hint** keeps a static `accent` tint at a constant 1.45× stroke swell instead of pulsing
+  (`feedbackCurves.ts:87,91-93`; W0-04).
+- **Native exit: a stationary dash and arrowhead that fade linearly in place, with no translation.**
+  The owner accepted this look 2026-09-27 from the two scale-0 recordings
+  (`docs/next-level/reports/W2-01.md`, "Owner acceptance required";
+  `artifacts/W2-01/android/W2-01-level0-exit-scale0/`,
+  `artifacts/W2-01/android/W2-01-harness-exit-scale0/`). Android holds travelled distance at zero
+  and fades opacity linearly (`ArrowsBoardView.kt:654-667`); the Swift mirror does the same
+  (`ArrowsBoardView.swift:193,202-221`) but was read, not run — **UNVERIFIED-DEVICE**.
+- **Web exit matches the native look.** `ExitTrail` states `ReduceMotion.Never` so its opacity
+  clock keeps running under reduced motion while its own reduced-motion branch holds travel at zero
+  and fades linearly (`BoardView.tsx:1421-1428,1443-1457`; W2-01). This is **INFERRED from code**:
+  Chrome could not be driven in the W2-01 sandbox, so the web look is **UNVERIFIED-WEB**.
+- **Decorative motion is skipped**, each stating `ReduceMotion.System`: heart-pip pop
+  (`GameScreen.tsx:1335`), star pops (`GameScreen.tsx:1405`), Play breathing (`HomeScreen.tsx:145`),
+  splash (`SplashScreen.tsx:79,89,99,109`), and the menu/game screen fade
+  (`screenHandoff.tsx:159-160`). The heart-loss case was verified on device — spent outline visible,
+  no pop (`artifacts/W2-01/android/W2-01-fix-blocked-scale0/frames/00006.png`) — and so was the
+  heart-refill pop, behind `META_HEART_REFILL_POP` (default OFF, not yet accepted): the pip is
+  filled at rest in every frame, none off rest (`docs/next-level/reports/W2-07.md` acceptance 7).
+- **Level→level and theme-toggle scrims are a straight cut, not a zero-duration fade** — both
+  behind their flags, default OFF, not yet accepted (`META_LEVEL_TRANSITION`,
+  `META_THEME_TRANSITION`). Owner ruling 2026-09-25, "skip the fade on reduced motion" (commit
+  `7786143`), applied the same way to the theme scrim in W2-08 (commit `7d81d4b`, "owner ruling for
+  scrims"): the scrim is never created under reduced motion, so Next/Retry and the theme toggle
+  swap in one frame (`GameScreen.tsx:291`, `App.tsx:257`).
+- **Panels**, behind `META_PANEL_MOTION` (default OFF, not yet accepted), are at rest on their
+  first frame, not mid-tween (`docs/next-level/reports/W2-05.md` acceptance 7, `cap/on-win-reduced`).
+- **Press spring**, behind `META_PRESS_SPRING` (default OFF, not yet accepted), states
+  `ReduceMotion.System` (`PressScale.tsx:87,99`); `docs/next-level/reports/POLISH-T9.md` pins this
+  only with a jest config assertion and says it "was not captured" on device —
+  **UNVERIFIED-DEVICE**.
 
 ## Layout
 
