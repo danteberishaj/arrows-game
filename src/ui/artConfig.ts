@@ -48,3 +48,11 @@ export const ART_PAPER_TEXTURE_ENABLED = process.env.EXPO_PUBLIC_ART_PAPER_TEXTU
 
 /** The grain layer's opacity. The owner picks from the 0.02 / 0.04 / 0.06 / 0.08 captures (a sampling grid) in W5-20. */
 export const ART_PAPER_TEXTURE_OPACITY = 0.04; // OWNER-PICKED STARTING VALUE
+
+/**
+ * W5-02: the control marks (back, hint, theme, sound, the win stars, the perfect-streak sparkle, the Continue heart)
+ * are SVG icons from src/ui/icons.tsx instead of OS font glyphs and colour emoji, and every HeaderButton is a circle
+ * (radius size / 2) instead of a rounded square. The sound-off state is its own icon (speaker + slash), so the
+ * button's W0-06 strike is not drawn over it. OFF: every one of these renders exactly as before.
+ */
+export const ART_ICONS_ENABLED = process.env.EXPO_PUBLIC_ART_ICONS === '1';

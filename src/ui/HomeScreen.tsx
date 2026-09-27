@@ -245,8 +245,15 @@ export function HomeScreen({
       )}
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + HEADER_TOP }]}>
-        <HeaderButton label={dark ? '☀' : '☾'} palette={p} onPress={onToggleTheme} size={HEADER_BUTTON} />
-        <HeaderButton label="♪" off={!soundOn} palette={p} onPress={onToggleSound} size={HEADER_BUTTON} />
+        <HeaderButton label={dark ? '☀' : '☾'} icon={dark ? 'sun' : 'moon'} palette={p} onPress={onToggleTheme} size={HEADER_BUTTON} />
+        <HeaderButton
+          label="♪"
+          icon={soundOn ? 'soundOn' : 'soundOff'}
+          off={!soundOn}
+          palette={p}
+          onPress={onToggleSound}
+          size={HEADER_BUTTON}
+        />
       </View>
 
       {composed ? (

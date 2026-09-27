@@ -48,6 +48,7 @@ import {
 import { Ads } from './ads';
 import {
   ART_HEADER_SILHOUETTE_ENABLED,
+  ART_ICONS_ENABLED,
   ART_PANEL_DEPTH_ENABLED,
   ART_WIN_SILHOUETTE_DP,
   ART_WIN_SILHOUETTE_ENABLED,
@@ -65,6 +66,7 @@ import {
   type FtueSessionLogEvent,
 } from './ftueSessionLog';
 import { HeaderButton } from './HeaderButton';
+import { HEART_PATH, Icon } from './icons';
 import {
   HEART_PIP_LOSS_START_SCALE,
   HEART_PIP_REFILL_START_SCALE,
@@ -135,6 +137,12 @@ const GRID_TOGGLE_INSET_PT = 16; // OWNER-PICKED STARTING VALUE (design spec A)
  * keeps every glyph inside its line.
  */
 export const TUTORIAL_LINE_HEIGHT = 23; // OWNER-PICKED STARTING VALUE
+
+/** W5-02 (ART_ICONS_ENABLED): the Continue label's heart and the perfect-streak sparkle, in dp. */
+const CONTINUE_HEART_DP = 16; // OWNER-PICKED STARTING VALUE (the label's font size)
+const STREAK_SPARKLE_DP = 13; // OWNER-PICKED STARTING VALUE (the streak line's font size)
+/** W5-02: the Continue button's screen-reader label once its heart is an icon (the text it read before). */
+const CONTINUE_A11Y_LABEL = 'Continue +♥ (ad)';
 
 /** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
@@ -913,6 +921,7 @@ export function GameScreen({
         <PressScale
           disabled={!panelRewardedReady || adBusy}
           accessibilityState={{ disabled: !panelRewardedReady || adBusy }}
+          {...(ART_ICONS_ENABLED ? { accessibilityLabel: CONTINUE_A11Y_LABEL } : null)}
           style={({ pressed }) => [
             styles.button,
             {
@@ -925,9 +934,22 @@ export function GameScreen({
           ]}
           onPress={onContinueWithAd}
         >
-          <Text style={[styles.buttonText, { color: panelRewardedReady ? p.inkOnAccent : p.inkDim }]}>
-            Continue +♥ (ad)
-          </Text>
+          {ART_ICONS_ENABLED ? (
+            // W5-02: the heart is an icon in the label's colour (the ♥ glyph is a red emoji on Android).
+            <View style={styles.labelRow}>
+              <Text style={[styles.buttonText, { color: panelRewardedReady ? p.inkOnAccent : p.inkDim }]}>
+                Continue +
+              </Text>
+              <Icon name="heart" size={CONTINUE_HEART_DP} color={panelRewardedReady ? p.inkOnAccent : p.inkDim} />
+              <Text style={[styles.buttonText, { color: panelRewardedReady ? p.inkOnAccent : p.inkDim }]}>
+                {' (ad)'}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.buttonText, { color: panelRewardedReady ? p.inkOnAccent : p.inkDim }]}>
+              Continue +♥ (ad)
+            </Text>
+          )}
         </PressScale>
       )}
       <PressScale
@@ -948,11 +970,21 @@ export function GameScreen({
           {panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'}
         </Text>
       </PressScale>
-      {panelPhase === 'won' && SaveSystem.perfectStreak > 1 && (
+      {panelPhase === 'won' && SaveSystem.perfectStreak > 1 && (ART_ICONS_ENABLED ? (
+        // W5-02: sparkle icon, then the text (the ✦ glyph came from whatever font the OS picked).
+        <View style={[styles.labelRow, styles.streakRow]}>
+          <View style={styles.streakSparkle}>
+            <Icon name="sparkle" size={STREAK_SPARKLE_DP} color={p.accentText} />
+          </View>
+          <Text style={[styles.streak, styles.streakText, { color: p.accentText }]}>
+            {SaveSystem.perfectStreak} perfect in a row
+          </Text>
+        </View>
+      ) : (
         <Text style={[styles.streak, { color: p.accentText }]}>
           ✦ {SaveSystem.perfectStreak} perfect in a row
         </Text>
-      )}
+      ))}
     </>
   ) : null;
 
@@ -964,7 +996,7 @@ export function GameScreen({
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={[styles.headerLeft, activeTutorialId && styles.tutorialHeaderLeft]}>
-          <HeaderButton label="‹" palette={p} onPress={onHomePress} />
+          <HeaderButton label="‹" icon="back" palette={p} onPress={onHomePress} />
           {activeTutorialId ? (
             // A box two lines tall at the player's font scale (lineHeight scales
             // with it); one line sits centred in it, level with the buttons.
@@ -1037,6 +1069,7 @@ export function GameScreen({
           {!activeTutorialId && (
             <HeaderButton
               label="💡"
+              icon="hint"
               palette={p}
               onPress={onHint}
               active={!terminalPending && !adBusy && !panelExiting}
@@ -1261,15 +1294,9 @@ const HeartPips = React.memo(function HeartPips({
   );
 });
 
-/** Filled-heart silhouette (24×24 viewBox). SVG fill honours our colour —
- * unlike the bare ♥ glyph, which Android paints as a red emoji regardless of
- * the text `color`, so a spent pip never dimmed (it stayed full red).
- * A spent pip is the same path as an OUTLINE (stroke, no fill), so hearts left
- * read by shape, not by colour alone (W0-06). */
-const HEART_PATH =
-  'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41 0.81 ' +
-  '4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 ' +
-  '11.54L12 21.35z';
+/** The heart pip draws HEART_PATH (icons.tsx, W5-02 moved it there) filled, or
+ * as an OUTLINE (stroke, no fill) once spent, so hearts left read by shape, not
+ * by colour alone (W0-06). */
 const HEART_SIZE = 22;
 /** Spent-pip outline width in viewBox units (≈1.8 dp at HEART_SIZE 22). */
 const SPENT_PIP_STROKE = 2; // OWNER-PICKED STARTING VALUE
@@ -1395,18 +1422,26 @@ function Star({
     opacity: k.value,
     transform: [{ scale: k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
   }));
+  const starColor = filled ? palette.accent : palette.starUnearned;
   return (
     <Animated.View style={style}>
-      <Text
-        style={{
-          fontSize: big ? 44 : 34,
-          lineHeight: big ? 50 : 40,
-          color: filled ? palette.accent : palette.starUnearned,
-          marginHorizontal: 6,
-        }}
-      >
-        ★
-      </Text>
+      {ART_ICONS_ENABLED ? (
+        // W5-02: only the leaf changes; the box keeps the glyph's line height so the panel keeps its height.
+        <View style={{ height: big ? 50 : 40, justifyContent: 'center', marginHorizontal: 6 }}>
+          <Icon name="star" size={big ? 44 : 34} color={starColor} />
+        </View>
+      ) : (
+        <Text
+          style={{
+            fontSize: big ? 44 : 34,
+            lineHeight: big ? 50 : 40,
+            color: starColor,
+            marginHorizontal: 6,
+          }}
+        >
+          ★
+        </Text>
+      )}
     </Animated.View>
   );
 }
@@ -1546,5 +1581,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 14,
     fontFamily: Fonts.semi,
+  },
+  // W5-02 (ART_ICONS_ENABLED): a label with an icon inside it (Continue's heart, the streak's sparkle).
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // The row takes the streak line's top margin; its text keeps the rest of the line's style.
+  streakRow: {
+    marginTop: 14,
+  },
+  streakText: {
+    marginTop: 0,
+  },
+  streakSparkle: {
+    marginRight: 4, // OWNER-PICKED STARTING VALUE (about one space of Fredoka 13)
   },
 });

@@ -97,6 +97,7 @@ export function GalleryScreen({
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <HeaderButton
           label="‹"
+          icon="back"
           palette={p}
           onPress={onBack}
           accessibilityRole="button"
