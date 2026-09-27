@@ -103,21 +103,104 @@ describe('game session lifecycle', () => {
   });
 
   it('W3-05: a campaign session deals the generator version it is given', () => {
-    const generate = jest.spyOn(LevelGenerator, 'generate');
+    // V2-WIRE: pin the ambient switch level so this test does not depend on
+    // execution order against the store-mutating tests below.
+    const previous = SaveSystem.useStore(mapStore([]));
+    try {
+      const generate = jest.spyOn(LevelGenerator, 'generate');
 
-    const v1 = createLevelSession(18, 0, 1);
-    const v2 = createLevelSession(7, 0, 2);
+      const v1 = createLevelSession(18, 0, 1);
+      const v2 = createLevelSession(7, 0, 2);
 
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(generate).toHaveBeenLastCalledWith(7, 2);
-    // W3-10 retired "v2 delegates to v1": the session holds v2's own board,
-    // which is not the v1 board of the same index.
-    expect(serializeBoard(v2.level)).toEqual(serializeBoard(LevelGenerator.generate(7, 2)));
-    expect(serializeBoard(v2.level)).not.toEqual(serializeBoard(LevelGenerator.generate(7, 1)));
-    // W3-06: board_mount tags each session with the version it was actually
-    // dealt with, not a value recomputed later (avoids drift once W3-10 lands).
-    expect(v1.genVersion).toBe(1);
-    expect(v2.genVersion).toBe(2);
+      expect(generate).toHaveBeenCalledTimes(2);
+      // v1 refuses knobs: no third argument at all.
+      expect(generate).toHaveBeenNthCalledWith(1, 18, 1);
+      // V2-WIRE: v2 always carries the install's switch level (unstamped => null).
+      expect(SaveSystem.genSwitchLevel).toBeNull();
+      expect(generate).toHaveBeenNthCalledWith(2, 7, 2, { switchLevel: null });
+      // W3-10 retired "v2 delegates to v1": the session holds v2's own board,
+      // which is not the v1 board of the same index.
+      expect(serializeBoard(v2.level)).toEqual(serializeBoard(LevelGenerator.generate(7, 2, { switchLevel: null })));
+      expect(serializeBoard(v2.level)).not.toEqual(serializeBoard(LevelGenerator.generate(7, 1)));
+      // W3-06: board_mount tags each session with the version it was actually
+      // dealt with, not a value recomputed later (avoids drift once W3-10 lands).
+      expect(v1.genVersion).toBe(1);
+      expect(v2.genVersion).toBe(2);
+    } finally {
+      SaveSystem.useStore(previous);
+    }
+  });
+
+  describe('V2-WIRE: createLevelSession forwards the install\'s stamped switch level to v2 (closes V2-FINISH Concern 3)', () => {
+    it('a fresh install (switch 0) and an existing install (switch 41) at the same level get different boards, each equal to generate(i, 2, { switchLevel })', () => {
+      const generate = jest.spyOn(LevelGenerator, 'generate');
+      const previous = SaveSystem.useStore(mapStore([['arrows_gen_switch_level', 0]]));
+      let fresh: ReturnType<typeof createLevelSession>;
+      try {
+        expect(SaveSystem.genSwitchLevel).toBe(0);
+        fresh = createLevelSession(50, 0, 2);
+        expect(generate).toHaveBeenLastCalledWith(50, 2, { switchLevel: 0 });
+      } finally {
+        SaveSystem.useStore(previous);
+      }
+
+      const previous2 = SaveSystem.useStore(mapStore([['arrows_gen_switch_level', 41]]));
+      let existing: ReturnType<typeof createLevelSession>;
+      try {
+        expect(SaveSystem.genSwitchLevel).toBe(41);
+        existing = createLevelSession(50, 0, 2);
+        expect(generate).toHaveBeenLastCalledWith(50, 2, { switchLevel: 41 });
+      } finally {
+        SaveSystem.useStore(previous2);
+      }
+
+      expect(serializeBoard(fresh.level)).toEqual(
+        serializeBoard(LevelGenerator.generate(50, 2, { switchLevel: 0 })),
+      );
+      expect(serializeBoard(existing.level)).toEqual(
+        serializeBoard(LevelGenerator.generate(50, 2, { switchLevel: 41 })),
+      );
+      // V2-FINISH's floor makes these genuinely different boards, not the
+      // same board relabelled.
+      expect(serializeBoard(fresh.level)).not.toEqual(serializeBoard(existing.level));
+    });
+
+    it('an unstamped install (null) deals the same board as an explicit switch 0 (both "a fresh install\'s curve", V2Knobs\' documented default)', () => {
+      const previous = SaveSystem.useStore(mapStore([]));
+      try {
+        expect(SaveSystem.genSwitchLevel).toBeNull();
+        const unstamped = createLevelSession(50, 0, 2);
+        const freshZero = LevelGenerator.generate(50, 2, { switchLevel: 0 });
+        expect(serializeBoard(unstamped.level)).toEqual(serializeBoard(freshZero));
+        // Also equal to the no-knobs call: null and 0 both mean "no v1 floor".
+        expect(serializeBoard(unstamped.level)).toEqual(serializeBoard(LevelGenerator.generate(50, 2)));
+      } finally {
+        SaveSystem.useStore(previous);
+      }
+    });
+
+    it('a corrupt stored value (-5) reads as null and deals the fresh curve, never a thrown switchLevel', () => {
+      const previous = SaveSystem.useStore(mapStore([['arrows_gen_switch_level', -5]]));
+      try {
+        expect(SaveSystem.genSwitchLevel).toBeNull(); // SaveSystem itself sanitizes -5 to null
+        const session = createLevelSession(50, 0, 2);
+        expect(serializeBoard(session.level)).toEqual(serializeBoard(LevelGenerator.generate(50, 2, { switchLevel: null })));
+      } finally {
+        SaveSystem.useStore(previous);
+      }
+    });
+
+    it('v1 sessions pass nothing regardless of the stamped switch level (v1 is frozen and refuses knobs)', () => {
+      const generate = jest.spyOn(LevelGenerator, 'generate');
+      const previous = SaveSystem.useStore(mapStore([['arrows_gen_switch_level', 41]]));
+      try {
+        const session = createLevelSession(18, 0, 1);
+        expect(generate).toHaveBeenLastCalledWith(18, 1);
+        expect(serializeBoard(session.level)).toEqual(serializeBoard(LevelGenerator.generate(18, 1)));
+      } finally {
+        SaveSystem.useStore(previous);
+      }
+    });
   });
 
   it('W3-05: outside PERF_MODE, levelGenVersion is the core resolver over the stamped switch level (flag OFF => 1)', () => {
@@ -216,11 +299,16 @@ describe('game session lifecycle', () => {
       let result!: {
         perf: typeof import('../../perfMode');
         lifecycle: typeof import('../gameSessionLifecycle');
+        // V2-WIRE: the isolated registry's own '../../core', so a test can spy
+        // on ITS LevelGenerator/SaveSystem (the outer, top-of-file imports are
+        // different module instances under jest.isolateModules).
+        core: typeof import('../../core');
       };
       jest.isolateModules(() => {
         result = {
           perf: require('../../perfMode') as typeof import('../../perfMode'),
           lifecycle: require('../gameSessionLifecycle') as typeof import('../gameSessionLifecycle'),
+          core: require('../../core') as typeof import('../../core'),
         };
       });
       return result;
@@ -239,6 +327,41 @@ describe('game session lifecycle', () => {
       });
       expect(perf.PERF_MODE).toBe(true);
       expect(lifecycle.levelGenVersion(3827)).toBe(1);
+    });
+
+    it('V2-WIRE: forcing v2 via EXPO_PUBLIC_DEV_GEN_VERSION still routes the install\'s stamped switch level into createLevelSession, consistently with the resolver path', () => {
+      const { lifecycle, core } = devLifecycle({ EXPO_PUBLIC_DEV_GEN_VERSION: '2' });
+      // DEV_LEVEL (unlike PERF_MODE) leaves persistence running normally
+      // (perfMode.ts), so this install can carry a real stamped switch level.
+      const previousStore = core.SaveSystem.useStore(mapStore([['arrows_gen_switch_level', 41]]));
+      try {
+        const generate = jest.spyOn(core.LevelGenerator, 'generate');
+        const version = lifecycle.levelGenVersion(3827);
+        expect(version).toBe(2); // forced, independent of the switch level
+        const session = lifecycle.createLevelSession(3827, 0, version);
+        expect(generate).toHaveBeenLastCalledWith(3827, 2, { switchLevel: 41 });
+        expect(serializeBoard(session.level)).toEqual(
+          serializeBoard(core.LevelGenerator.generate(3827, 2, { switchLevel: 41 })),
+        );
+      } finally {
+        core.SaveSystem.useStore(previousStore);
+      }
+    });
+
+    it('V2-WIRE: an unstamped install under the dev jump deals the fresh curve (null switch level), not a thrown/omitted knob', () => {
+      const { lifecycle, core } = devLifecycle({ EXPO_PUBLIC_DEV_GEN_VERSION: '2' });
+      const previousStore = core.SaveSystem.useStore(mapStore([]));
+      try {
+        const generate = jest.spyOn(core.LevelGenerator, 'generate');
+        const version = lifecycle.levelGenVersion(3827);
+        const session = lifecycle.createLevelSession(3827, 0, version);
+        expect(generate).toHaveBeenLastCalledWith(3827, 2, { switchLevel: null });
+        expect(serializeBoard(session.level)).toEqual(
+          serializeBoard(core.LevelGenerator.generate(3827, 2)),
+        );
+      } finally {
+        core.SaveSystem.useStore(previousStore);
+      }
     });
   });
 

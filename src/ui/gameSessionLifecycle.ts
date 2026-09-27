@@ -89,12 +89,26 @@ export function levelGenVersion(index: number): GenVersion {
  * expensive generation when it verifies updater purity in development.
  * `version` is required (W3-05) so no campaign caller silently gets v1:
  * GameScreen passes `levelGenVersion(index)`.
+ *
+ * V2-WIRE (closes V2-FINISH Concern 3): a v2 deal always carries this
+ * install's stamped switch level, whatever selected version 2 — the resolver
+ * (GEN_V2_ENABLED), the W3-06 dev jump (EXPO_PUBLIC_DEV_GEN_VERSION=2), or a
+ * PERF build. `SaveSystem.genSwitchLevel` is null when unstamped (a PERF
+ * build never hydrates a save, so it is always null there); `V2Knobs`
+ * documents null/unset as "a fresh install's curve", so an unstamped install
+ * deals exactly the board it dealt before this wiring. v1 is frozen and
+ * refuses knobs (`LevelGenerator.generate` throws on a v1 call carrying
+ * `curve`/`clearableBias`), so a v1 session passes nothing.
  */
 export function createLevelSession(index: number, revision: number, version: GenVersion): LevelSession {
+  const level =
+    version === 2
+      ? LevelGenerator.generate(index, version, { switchLevel: SaveSystem.genSwitchLevel })
+      : LevelGenerator.generate(index, version);
   return {
     index,
     revision,
-    level: LevelGenerator.generate(index, version),
+    level,
     mode: 'campaign',
     day: null,
     genVersion: version,

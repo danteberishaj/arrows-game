@@ -1,0 +1,160 @@
+# V2-WIRE: `createLevelSession` passes the install's switch level to v2
+
+- **Base:** `e262be1` (RE-CEILING), branch `next-level`. HEAD did not move during the task.
+- **Status:** DONE. Closes V2-FINISH's Concern 3 / RE-CEILING's carried-forward gap: `createLevelSession`
+  (`src/ui/gameSessionLifecycle.ts`) now passes `{ switchLevel: SaveSystem.genSwitchLevel }` on every v2
+  deal, so the tripwire in `src/core/__tests__/v1Floor.test.ts` ("GEN_V2_ENABLED cannot turn on while the
+  campaign session deals v2 without the install's switch level") is satisfied by the real call site, not
+  just by the flag staying off.
+- **Flag:** `GEN_V2_ENABLED = false` throughout (unchanged, `src/core/generatorVersion.ts`). No player
+  sees any different board from this task alone. Node only: no emulator, no native build, no git state
+  change (I own no commit; the controller commits).
+- **Another agent** is editing `src/ui/GameScreen.tsx`, `HomeScreen.tsx`, `HeaderButton.tsx`,
+  `GalleryScreen.tsx`, `ads.tsx`, `theme.ts`, `artConfig.ts`, `contrastAudit.ts`,
+  `__tests__/contrast.test.ts` concurrently. I touched none of them (confirmed by `git diff --stat`,
+  reproduced below).
+
+## What changed
+
+| file | change |
+|---|---|
+| `src/ui/gameSessionLifecycle.ts` | `createLevelSession`: a v2 call now reads `LevelGenerator.generate(index, version, { switchLevel: SaveSystem.genSwitchLevel })`; a v1 call is byte-for-byte what it was (`LevelGenerator.generate(index, version)`, no third argument at all). |
+| `src/ui/__tests__/gameSessionLifecycle.test.ts` | Updated the one test whose spy assertion depended on the old 2-argument v2 call; added a `V2-WIRE` describe block (fresh vs. existing switch level, unstamped/null, corrupt -5, v1-refuses-knobs); added two tests to the `W3-06 EXPO_PUBLIC_DEV_GEN_VERSION` block for the dev-jump; extended the `devLifecycle` test helper to also return the isolated module registry's `core` (needed to spy on `LevelGenerator`/`SaveSystem` inside `jest.isolateModules`). |
+
+Not touched: `src/core/*` (frozen per the brief — I only wired the UI call site), `src/ui/GameScreen.tsx`
+(reads `createLevelSession`/`levelGenVersion` but its own source is unchanged — confirmed by grep before
+and after), any other file in the other agent's list, `SaveSystem.PersistenceKeys`, `package.json`.
+
+```
+$ git diff --stat
+ src/ui/GalleryScreen.tsx                      |  10 +-        <- other agent
+ src/ui/GameScreen.tsx                         | 125 +++++---   <- other agent
+ src/ui/HeaderButton.tsx                       |  48 +++---     <- other agent
+ src/ui/HomeScreen.tsx                         |  36 ++--       <- other agent
+ src/ui/__tests__/contrast.test.ts             |  11 +-         <- other agent
+ src/ui/__tests__/gameSessionLifecycle.test.ts | 149 +++++++++-- <- V2-WIRE
+ src/ui/ads.tsx                                |  15 +-         <- other agent
+ src/ui/artConfig.ts                           |   8 ++         <- other agent
+ src/ui/contrastAudit.ts                       | 114 ++++++---  <- other agent
+ src/ui/gameSessionLifecycle.ts                |  16 ++-        <- V2-WIRE
+ src/ui/theme.ts                               |  53 +++++       <- other agent
+```
+
+## Why this shape (decisions)
+
+1. **v2 always carries the real switch level, regardless of why version 2 was picked.** `createLevelSession`
+   has no idea whether its `version` argument came from the resolver (`resolveGenVersion` once
+   `GEN_V2_ENABLED` flips), the W3-06 dev jump (`EXPO_PUBLIC_DEV_GEN_VERSION=2`), or a PERF build
+   (`EXPO_PUBLIC_PERF_GEN_VERSION=2`) — `levelGenVersion` (unchanged) resolves that upstream and hands
+   `createLevelSession` a plain `1 | 2`. So the simplest correct wiring reads the install's actual
+   `SaveSystem.genSwitchLevel` on every v2 call, unconditionally. This is not a behavior fork by build
+   type; it degrades correctly on its own:
+   - **PERF builds never hydrate a save** (`perfMode.ts`'s own comment), so `SaveSystem.genSwitchLevel` is
+     always `null` there — identical to `V2Knobs`' documented "unset" default (a fresh install's curve),
+     which is exactly what a PERF v2 capture measured before this wiring existed.
+   - **The dev jump (`EXPO_PUBLIC_DEV_LEVEL`/`DEV_GEN_VERSION`) leaves persistence running normally**
+     (`perfMode.ts`: "unlike PERF_MODE, which boots straight into the game with both disabled"), so an
+     install that was previously stamped keeps seeing its real floor even while the dev jump forces every
+     index to v2 — "passes the switch level consistently" (the brief's phrase), tested below.
+2. **v1 passes nothing — not `{ switchLevel: null }`, not any knob at all.** `LevelGenerator.generate`'s v1
+   branch throws if handed a `curve`/`clearableBias` knob (v1 is frozen) but a `switchLevel`-only knob would
+   not throw (it is documented install context v1 "accepts and ignores"). I still kept v1's call at exactly
+   `generate(index, version)`, two arguments, so a v1 board is generated by the identical call it always
+   was — nothing to reason about, nothing new for a future v1 change to accidentally read. This is also why
+   the golden fingerprints below are untouched by inspection, not just by test outcome.
+3. **Unstamped (`null`) and corrupt (`-5`, which `SaveSystem.genSwitchLevel` already sanitizes to `null`,
+   `src/core/saveSystem.ts` `readGenSwitchLevel`) both flow straight through as `{ switchLevel: null }`.**
+   `hasV1Floor(null)` is `false` (`generatorVersion.ts`), so this is exactly "a fresh install's curve" per
+   `V2Knobs`' own doc comment — the same board `generate(i, 2)` (no knobs) deals. Tested directly (below).
+
+## TDD (EXECUTED)
+
+- **RED:** after wiring the call site and before touching any test, `npx jest src/ui/__tests__/gameSessionLifecycle.test.ts src/core/__tests__/v1Floor.test.ts src/core/__tests__/saveSystem.genVersion.test.ts`:
+  ```
+  FAIL core src/ui/__tests__/gameSessionLifecycle.test.ts
+    ● game session lifecycle › W3-05: a campaign session deals the generator version it is given
+      expect(jest.fn()).toHaveBeenLastCalledWith(...expected)
+      Expected: 7, 2
+      Received
+             1: 18, 1
+      ->     2: 7, 2, {"switchLevel": null}
+  Tests: 1 failed, 65 passed, 66 total
+  ```
+  Failed for the right reason: the only assertion that broke is the one hard-coding the pre-wiring
+  2-argument `generate` call; `v1Floor.test.ts`'s tripwire and `saveSystem.genVersion.test.ts` (the
+  collection fold) already passed unmodified, confirming they were exercising a different call site
+  (`campaignShapeName`, not `createLevelSession`) and needed no change.
+- **GREEN:** updated the one failing assertion (now expects the 3-argument call with the install's actual
+  switch level) and added the new coverage listed above. `npx jest src/ui/__tests__/gameSessionLifecycle.test.ts`:
+  `Tests: 34 passed, 34 total` (30 pre-existing behaviors preserved + 1 modified assertion + new
+  `V2-WIRE`/dev-jump tests).
+
+## What the new/changed tests check
+
+- **Fresh vs. existing install, same level, different boards** — sets the store to switch level 0, then to
+  41, calling `createLevelSession(50, 0, 2)` each time: `generate` is asked `(50, 2, { switchLevel: 0 })`
+  and `(50, 2, { switchLevel: 41 })` respectively; each session's serialized board equals
+  `LevelGenerator.generate(50, 2, { switchLevel })` for its own switch level, and the two boards are NOT
+  equal to each other (the floor genuinely changes the board, not just a label).
+- **Unstamped install (`null`)** deals the same board as an explicit switch 0, and the same board as the
+  no-knobs call `generate(50, 2)` — "null/unstamped -> the documented default" from the brief, made
+  concrete against the real generator, not just asserted about the knob shape.
+- **Corrupt stored value (`-5`)** — `SaveSystem.genSwitchLevel` already reads this as `null`
+  (`readGenSwitchLevel`'s own sanitization, untouched by this task); the session's board matches
+  `generate(50, 2, { switchLevel: null })`, i.e., the fresh curve, never a thrown `RangeError` (that only
+  fires inside `v1FloorFor` for a value SaveSystem itself would never hand back — negative/fractional
+  raw numbers are already filtered to `null` upstream).
+- **v1 refuses knobs, in practice** — with a stamped switch level of 41 in the store, `createLevelSession(18, 0, 1)` still calls `generate(18, 1)` with no third argument, and its board equals the plain
+  `generate(18, 1)`.
+- **The W3-06 dev jump passes the switch level consistently** — two new tests in the
+  `W3-06 EXPO_PUBLIC_DEV_GEN_VERSION` block, using `jest.isolateModules` exactly like the existing
+  W3-05-forced-flag test (extending the file's `devLifecycle` helper to also return the isolated `core`
+  module, so the spy watches the SAME `LevelGenerator`/`SaveSystem` instance the isolated
+  `gameSessionLifecycle` imports): with `EXPO_PUBLIC_DEV_GEN_VERSION=2` and a stamped switch level of 41,
+  `levelGenVersion(3827)` still returns `2` (forced, independent of the switch level, as before) and
+  `createLevelSession` calls `generate(3827, 2, { switchLevel: 41 })`, board-equal to
+  `LevelGenerator.generate(3827, 2, { switchLevel: 41 })`. A second test repeats this with an unstamped
+  install: `generate(3827, 2, { switchLevel: null })`, board-equal to `generate(3827, 2)`.
+- **Tripwire regex, checked directly (EXECUTED, node):** `src/core/__tests__/v1Floor.test.ts`'s own check
+  (`/LevelGenerator\.generate\([^)]*switchLevel/.test(call)`, read against the function body up to its
+  first `\n}\n`) returns `true` against the wired `createLevelSession` — printed and confirmed by hand
+  before relying on the suite:
+  ```
+  $ node -e '...' # slices createLevelSession's body, prints the WIRED? check
+  ---WIRED?--- true
+  ```
+
+## Evidence
+
+- **RED** (EXECUTED): `npx jest src/ui/__tests__/gameSessionLifecycle.test.ts src/core/__tests__/v1Floor.test.ts src/core/__tests__/saveSystem.genVersion.test.ts` — `1 failed, 65 passed, 66 total`, failure text above.
+- **GREEN, targeted** (EXECUTED): same three files after the fix — `Test Suites: 3 passed, 3 total`,
+  `Tests: 72 passed, 72 total` (`gameSessionLifecycle.test.ts` grew from 33 to 34 — one assertion changed,
+  six tests added, one pre-existing test unrelated to the switch level was already there; `v1Floor.test.ts`
+  and `saveSystem.genVersion.test.ts` are unchanged by this task at their existing counts).
+- **Frozen pins untouched** (EXECUTED): `npx jest src/core/__tests__/levelGenerator.test.ts src/core/__tests__/dailyBoard.test.ts src/core/__tests__/v1Floor.test.ts` — `3 passed, 3 total`, `81 passed, 81 total`. This
+  is the golden-fingerprint gate (v1 `d01abbd8`, daily `ff12d7b5`, v2 fresh `e802f80a`/existing
+  `d5005b0d`/`ea5e4bf5` per RE-CEILING's re-pin) — I did not touch `src/core`, so these were expected to
+  be identical, and the run confirms it rather than assuming it.
+- **Full repo gate** (EXECUTED): `npx tsc --noEmit` — exit 0, no output. `npx jest` — `Test Suites: 107
+  passed, 107 total`, `Tests: 1775 passed, 1775 total`, `Snapshots: 12 passed, 12 total`, `57.33 s`. Run
+  once, at normal host load, after the FLAKY-TEST fix (below) was also in place; no other agent's suite was
+  mid-edit at that instant (their files show as modified in `git status` but their own suites were green in
+  this run).
+
+## Concerns
+
+1. **`GameScreen.tsx` still calls `createLevelSession(index, revisionRef.current, levelGenVersion(index))`
+   unchanged** (confirmed by grep before starting and not re-touched): this task did not need to change
+   the call site, only what `createLevelSession` does with the version it's given, so the wiring reaches
+   `GameScreen` automatically once `GEN_V2_ENABLED` flips. I did not verify this against the other agent's
+   in-flight `GameScreen.tsx` edits beyond the grep above (their diff is UI/theme work unrelated to session
+   creation, INFERRED from the diff stat, not independently re-read line by line).
+2. **Still Node-only.** No emulator/device run — this task's brief explicitly forbids native builds, and
+   the change has no runtime-visible effect while `GEN_V2_ENABLED = false`. The device-level consequence of
+   this wiring (an existing player's first v2 board matching the floor) is only verified once W3-21 flips
+   the flag; that remains a future task's job, not this one's.
+3. **Scope stayed inside the brief.** I did not touch `src/core/levelGenerator.ts`, `saveSystem.ts`,
+   `generatorVersion.ts`, or any golden test file — the collection fold's switch-level wiring
+   (`campaignShapeName`) was already correct and already tested (`saveSystem.genVersion.test.ts`, five
+   tests covering fresh/existing/unstamped/corrupt/positive-control), so no core change or test extension
+   was needed there; I read it and confirmed rather than assumed.
