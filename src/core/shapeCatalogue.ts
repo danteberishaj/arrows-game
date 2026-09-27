@@ -51,6 +51,7 @@ export const SHAPE_CATALOGUE: readonly string[] = Object.freeze([
   // W3-18: authored after v1; awaiting the owner's recognition test (W3-19), so not in
   // V2_ADMITTED_SHAPE_IDS and dealt by nothing yet.
   'House',
+  'Teacup',
 ]);
 
 export const RETIRED_SHAPE_IDS: ReadonlySet<string> = new Set<string>();
@@ -130,6 +131,7 @@ const V1_SHAPE_DEFINITIONS: ReadonlyMap<string, ShapeDef> = new Map([
 const V2_SHAPE_DEFINITIONS: ReadonlyMap<string, ShapeDef> = new Map([
   ...V1_SHAPE_DEFINITIONS,
   ['House', ShapeLibrary.House],
+  ['Teacup', ShapeLibrary.Teacup],
 ]);
 const NEWEST_SHAPE_DEFINITIONS = V2_SHAPE_DEFINITIONS;
 

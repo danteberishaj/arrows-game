@@ -276,6 +276,21 @@ export const ShapeLibrary = (() => {
     return !(Math.abs(x) <= 0.18 && y <= -0.36); // door
   });
 
+  // Teacup: a bowl that narrows to its foot, a ring handle on the right, and a
+  // flat saucer underneath. Slightly wide.
+  const Teacup = new ShapeDef('Teacup', 1.1, (x, y) => {
+    if (y <= 0.78 && y >= -0.5) {
+      // Bowl: half-width 0.68 at the rim easing in to 0.42 at the foot.
+      const t = (0.78 - y) / 1.28;
+      if (Math.abs(x + 0.14) <= 0.68 - 0.26 * t * t) return true;
+    }
+    const hx = x - 0.5, hy = y - 0.22;
+    const r2 = hx * hx + hy * hy;
+    if (x > -0.14 && r2 <= 0.4 * 0.4 && r2 >= 0.19 * 0.19) return true; // handle
+    const sx = x / 0.96, sy = (y + 0.72) / 0.2;
+    return sx * sx + sy * sy <= 1; // saucer
+  });
+
   // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
   // SuperHard draws the picture-book silhouettes.
   const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
@@ -294,7 +309,7 @@ export const ShapeLibrary = (() => {
     Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
     Pentagon, Octagon, Ring, XMark,
     Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
-    House,
+    House, Teacup,
     SimplePool, MediumPool, ComplexPool,
 
     /** Picks a shape for the tier: each difficulty draws from its own pool. */
