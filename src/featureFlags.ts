@@ -1,8 +1,11 @@
 /**
- * Build-time feature flags shared by W4, W6 and W7 (ruling I-29). Network and
- * kill gates stay literal; player-visible feature gates use EXPO_PUBLIC_*.
- * Other workstreams keep their own flag modules (ftueConfig.ts, motionFlags.ts,
- * artConfig.ts, generatorVersion.ts); audit all of them before a release.
+ * Build-time feature flags shared by W2, W4, W6 and W7 (ruling I-29). Network
+ * and kill gates stay literal; player-visible feature gates use EXPO_PUBLIC_*.
+ * W2's motion flags live here too (there is no motionFlags.ts). Other flag
+ * modules: src/ui/ftueConfig.ts, src/ui/artConfig.ts, src/core/generatorVersion.ts,
+ * and the platform gates over flags below (src/ui/boardGridFlag.ts,
+ * src/ui/missedMarkFlag.ts); src/perfMode.ts reads the PERF/DEV env vars a
+ * release build must never set. Audit all of them before a release.
  */
 
 /**

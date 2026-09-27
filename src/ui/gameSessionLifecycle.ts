@@ -75,7 +75,14 @@ export interface LevelSession {
  * - Otherwise: core `resolveGenVersion(index, SaveSystem.genSwitchLevel)`,
  *   which is 1 while GEN_V2_ENABLED is false.
  * The collection fold resolves versions in core without the PERF/DEV branches
- * (ruling F11); PERF and DEV_LEVEL runs record no collection bits.
+ * (ruling F11). A PERF (benchmarkMode) run records no collection bits, but a
+ * DEV_LEVEL or DEV_GEN_VERSION run does: GameScreen gates the clear's writes
+ * on benchmarkMode only. A DEV_LEVEL clear stores currentLevel = that index +
+ * 1, so the next menu fold marks every level below it as played, and with
+ * DEV_GEN_VERSION=2 the board dealt is v2 while the fold records the shape
+ * the install's own version resolves to (v1 while GEN_V2_ENABLED is false).
+ * Dev builds only: never run one over a save you care about, and no release
+ * profile may set these variables.
  */
 export function levelGenVersion(index: number): GenVersion {
   if (DEV_GEN_VERSION !== null) return DEV_GEN_VERSION;

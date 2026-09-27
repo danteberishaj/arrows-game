@@ -37,6 +37,17 @@ export function hasV1Floor(switchLevel: number | null | undefined): boolean {
  * every index and nothing is stamped. Rollback after a flip is setting this
  * back to false in a new build; the cost is that a player standing on a v2
  * board is re-dealt it as v1 once (W3-05 brief, "Risk and rollback").
+ *
+ * Rollback also touches the shape collection (FINAL-REVIEW finding 10). The
+ * fold names each level's shape with this resolver (saveSystem.ts
+ * `campaignShapeName`), so after a rollback every index resolves to v1. Levels
+ * a player cleared as v2 that the fold had not reached yet (between the fold
+ * pointer and currentLevel), and every level of a later rebuild from level 0
+ * (a damaged collection, FINAL-FIX), are recorded as their v1 shapes: the
+ * gallery gains v1 shapes the player never saw on those levels and misses the
+ * v2 shapes they did see. Bits are never cleared, so this cannot be undone
+ * later; a fold that was caught up at the rollback keeps its v2 bits. It
+ * cannot happen until v2 ships: this has never been true in a release.
  */
 export const GEN_V2_ENABLED = false;
 

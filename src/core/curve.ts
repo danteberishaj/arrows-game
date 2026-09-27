@@ -109,7 +109,9 @@ export const ARROW_CEILING = 250;
  * time per level. The owner picked the scan-matched base instead: a flat
  * curve at 354 deals boards whose median search-cost proxy equals v1's
  * (1.00 over displayed levels 1-3000), and it admits 13 shapes (down to X,
- * 645 cells). Its heaviest board over every index 0-9999 is 190 arrows.
+ * 645 cells). Its heaviest board over every index 0-9999 is 190 arrows on a
+ * fresh install's curve and 195 on an existing player's floored boards, the
+ * population the v1 floor applies to (RE-CEILING.md, "heaviest").
  *
  * History: W3-14 measured 339 on the legacy `DotNetRandom` stream, whose
  * out-of-range draws carve many short arrows (docs/curve-candidates-2026-09-26.md,

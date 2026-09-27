@@ -10,7 +10,7 @@ import {
   V2_CURVE,
 } from '../curve';
 import { Difficulties, Difficulty } from '../difficulty';
-import { GEN_V2_ENABLED, hasV1Floor, resolveGenVersion } from '../generatorVersion';
+import { hasV1Floor, resolveGenVersion } from '../generatorVersion';
 import { LevelGenerator, shapeNameForLevel } from '../levelGenerator';
 import { bagCandidates, curveWindowMaxTarget, pickForLevelV2, shapeCapacity } from '../shapeBag';
 
@@ -286,18 +286,12 @@ test('existing-player v2 corpus pin: generate(i, 2, { switchLevel: 1 }) for 0-29
   expect(checksumLines(lines)).toBe('ea5e4bf5');
 });
 
-describe('V2-FINISH part 1: tripwire for W3-21', () => {
-  test('GEN_V2_ENABLED cannot turn on while the campaign session deals v2 without the install\'s switch level', () => {
-    // The floor needs SaveSystem.genSwitchLevel at the generate call. Today
-    // src/ui/gameSessionLifecycle.ts createLevelSession calls
-    // LevelGenerator.generate(index, version) (fresh-install boards for
-    // everyone), which is right for the DEV/PERF forced-v2 paths only. W3-21
-    // must pass { switchLevel } before flipping the flag.
-    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'ui', 'gameSessionLifecycle.ts'), 'utf8');
-    const body = src.slice(src.indexOf('export function createLevelSession'));
-    const call = body.slice(0, body.indexOf('\n}\n'));
-    const wired = /LevelGenerator\.generate\([^)]*switchLevel/.test(call);
-    if (!wired) expect(GEN_V2_ENABLED).toBe(false);
-    expect(call).toContain('LevelGenerator.generate('); // the check reads the real call site
-  });
-});
+// FINAL-FIX (FINAL-REVIEW finding 16): V2-FINISH part 1's tripwire for W3-21
+// was removed. It asserted GEN_V2_ENABLED === false only while
+// createLevelSession dealt v2 without the install's switch level; V2-WIRE
+// (038fdda) added that wiring, so the assertion could never run again and the
+// test only checked that the file still contained a generate call. The wiring
+// is pinned by behaviour in src/ui/__tests__/gameSessionLifecycle.test.ts
+// ("V2-WIRE: createLevelSession forwards the install's stamped switch level to
+// v2") and the flag by src/core/__tests__/generatorVersion.test.ts ("the v2
+// flag ships OFF").

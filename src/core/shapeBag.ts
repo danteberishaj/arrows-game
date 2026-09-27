@@ -362,7 +362,8 @@ export function windowSetAt(
  * outside [0, 1)). Since V2-FINISH the bag shuffles with `ExactDotNetRandom`,
  * which is exact for every seed; for these seeds both classes draw the same
  * stream (tested), so keeping the reduction leaves every window's order
- * exactly as W3-10 dealt it. The range guard in `buildWindow` stays.
+ * exactly as W3-10 dealt it. The range guard in `shuffledSet` stays (every
+ * window, built or steady-state, is shuffled there).
  */
 const DOTNET_EXACT_SEED_MAX = 161803398;
 

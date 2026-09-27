@@ -107,13 +107,13 @@ function starPolygon(points: number, outer: number, inner: number, startDeg: num
  * without bitmaps.
  */
 export const ShapeLibrary = (() => {
-  // ---- Simple pool (Normal + Hard): square, rectangle, circle -----------------
+  // ---- Plain fills: Square, Rectangle (SimplePool), Circle (SimplePool, MediumPool) ---
 
   const Square = new ShapeDef('Square', 1, () => true);
   const Rectangle = new ShapeDef('Rectangle', 1.5, () => true);
   const Circle = new ShapeDef('Circle', 1, (x, y) => x * x + y * y <= 0.92 * 0.92);
 
-  // ---- Complex pool (SuperHard): heart, star, diamond, triangle, plus, hex, trophy ---
+  // ---- The other v1 shapes, mixed tiers; which pool deals each: the pools at the end ---
 
   const Diamond = new ShapeDef('Diamond', 1, (x, y) => Math.abs(x) + Math.abs(y) <= 0.94);
 

@@ -4,10 +4,12 @@
  * GameScreen.tsx (src/ui/__tests__/storePolicyGuard.test.ts pins that).
  *
  * WHEN it fires, relative to the win panel (GameScreen):
- * - The won phase commits WON_PANEL_DELAY_MS (450 ms) after the last arrow
- *   leaves; the panel enters over PANEL_WIN_ENTER_MS (180 ms, settled by
- *   250 ms at the latest via its backstop); its stars start at 250, 420 and
- *   590 ms and spring for a while after.
+ * - The won phase commits WON_PANEL_DELAY_MS (450 ms) after the clearing tap
+ *   (with META_POST_CLEAR_TIMELINE: the final exit's visible time + the
+ *   350 ms empty-board hold, wonPanelDelayMs); the panel enters over
+ *   PANEL_WIN_ENTER_MS (180 ms, settled by 250 ms at the latest via its
+ *   backstop); its stars start at 250, 420 and 590 ms and spring for a while
+ *   after.
  * - The ask fires REVIEW_DWELL_MS (2000 ms) after that commit, only if the
  *   player is still looking at the panel: Next / Done, leaving, unmounting or
  *   backgrounding the app first cancels it (no ask, nothing recorded).
