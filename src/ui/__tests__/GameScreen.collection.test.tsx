@@ -82,6 +82,19 @@ function clearBoard() {
   });
 }
 
+/**
+ * A fold pointer at `through` with the bit it always comes with. FINAL-FIX:
+ * both masks empty under a pointer above 0 reads as a damaged collection (an
+ * unparseable mask hydrates as absent) and is rebuilt, so a realistic fixture
+ * carries a bit. Index 29 (Umbrella) is dealt by no campaign or daily board
+ * yet, so it never collides with the bit a test checks.
+ */
+const PLACEHOLDER_BIT = 1 << 29;
+function seedFold(through: number): void {
+  store.setInt('arrows_shapes_through_level', through);
+  store.setInt('arrows_shapes_seen_lo', PLACEHOLDER_BIT);
+}
+
 function collectionKeys(): string[] {
   return [...store.map.keys()].filter((key) => key.startsWith('arrows_shapes_')).sort();
 }
@@ -108,7 +121,7 @@ afterEach(() => {
 });
 
 test('a campaign clear with the fold caught up records exactly that level\'s shape and moves through to the new level', () => {
-  store.setInt('arrows_shapes_through_level', LEVEL);
+  seedFold(LEVEL);
   renderGame();
 
   clearBoard();
@@ -117,23 +130,23 @@ test('a campaign clear with the fold caught up records exactly that level\'s sha
   expect(SaveSystem.currentLevel).toBe(LEVEL + 1);
   expect(SaveSystem.shapesThroughLevel).toBe(LEVEL + 1);
   expect(hasSeen(SaveSystem.shapesSeen, shape)).toBe(true);
-  expect(countSeen(SaveSystem.shapesSeen)).toBe(1);
+  expect(countSeen(SaveSystem.shapesSeen)).toBe(2); // that shape + the fixture's placeholder
 });
 
 test('a campaign clear with the fold behind writes no collection key (the next menu mount folds it)', () => {
-  store.setInt('arrows_shapes_through_level', 3);
+  seedFold(3);
   renderGame();
 
   clearBoard();
 
   expect(SaveSystem.currentLevel).toBe(LEVEL + 1);
   expect(SaveSystem.shapesThroughLevel).toBe(3);
-  expect(collectionKeys()).toEqual(['arrows_shapes_through_level']);
-  expect(SaveSystem.shapesSeen).toEqual({ lo: 0, hi: 0 });
+  expect(collectionKeys()).toEqual(['arrows_shapes_seen_lo', 'arrows_shapes_through_level']);
+  expect(SaveSystem.shapesSeen).toEqual({ lo: PLACEHOLDER_BIT, hi: 0 });
 });
 
 test('a daily clear records the daily board\'s shape and never touches the campaign fold', () => {
-  store.setInt('arrows_shapes_through_level', LEVEL);
+  seedFold(LEVEL);
   renderGame({ daily: { day: DAY } });
 
   clearBoard();
@@ -141,13 +154,13 @@ test('a daily clear records the daily board\'s shape and never touches the campa
   const shape = catalogueIndexOf(generateDaily(DAY).shapeName);
   expect(shape).toBeGreaterThanOrEqual(0);
   expect(hasSeen(SaveSystem.shapesSeen, shape)).toBe(true);
-  expect(countSeen(SaveSystem.shapesSeen)).toBe(1);
+  expect(countSeen(SaveSystem.shapesSeen)).toBe(2); // that shape + the fixture's placeholder
   expect(SaveSystem.shapesThroughLevel).toBe(LEVEL);
   expect(SaveSystem.currentLevel).toBe(LEVEL);
 });
 
 test('a loss records nothing', () => {
-  store.setInt('arrows_shapes_through_level', LEVEL);
+  seedFold(LEVEL);
   const screen = renderGame();
   for (let i = 0; i < 3; i += 1) {
     act(() => {
@@ -159,27 +172,30 @@ test('a loss records nothing', () => {
   });
 
   expect(screen.getByText('Retry')).toBeTruthy();
-  expect(collectionKeys()).toEqual(['arrows_shapes_through_level']);
+  expect(collectionKeys()).toEqual(['arrows_shapes_seen_lo', 'arrows_shapes_through_level']);
+  expect(SaveSystem.shapesSeen).toEqual({ lo: PLACEHOLDER_BIT, hi: 0 });
   expect(SaveSystem.shapesThroughLevel).toBe(LEVEL);
 });
 
 test.each(['T1', 'T2'] as const)('a %s tutorial clear records nothing', (tutorialId) => {
   store.setInt('arrows_ftue_stage', tutorialId === 'T1' ? 0 : 1);
-  store.setInt('arrows_shapes_through_level', LEVEL);
+  seedFold(LEVEL);
   renderGame({ tutorialId });
 
   clearBoard();
 
-  expect(collectionKeys()).toEqual(['arrows_shapes_through_level']);
+  expect(collectionKeys()).toEqual(['arrows_shapes_seen_lo', 'arrows_shapes_through_level']);
+  expect(SaveSystem.shapesSeen).toEqual({ lo: PLACEHOLDER_BIT, hi: 0 });
   expect(SaveSystem.shapesThroughLevel).toBe(LEVEL);
 });
 
 test('a benchmark (PERF) clear records nothing', () => {
-  store.setInt('arrows_shapes_through_level', LEVEL);
+  seedFold(LEVEL);
   renderGame({ benchmarkMode: true });
 
   clearBoard();
 
-  expect(collectionKeys()).toEqual(['arrows_shapes_through_level']);
+  expect(collectionKeys()).toEqual(['arrows_shapes_seen_lo', 'arrows_shapes_through_level']);
+  expect(SaveSystem.shapesSeen).toEqual({ lo: PLACEHOLDER_BIT, hi: 0 });
   expect(SaveSystem.currentLevel).toBe(LEVEL);
 });

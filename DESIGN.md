@@ -9,7 +9,7 @@ magenta-rose hearts:
   in-bed session with the lights low.
 
 A **moon/sun toggle on the menu** (next to the sound toggle, `src/ui/HomeScreen.tsx:253-261`)
-flips the variant; the choice persists (`SaveSystem.darkMode`, `src/core/saveSystem.ts:721-726`)
+flips the variant; the choice persists (`SaveSystem.darkMode`, `src/core/saveSystem.ts:783-788`)
 and the screens re-render with the other palette (`App.tsx:262-269`).
 The brand deliberately diverges from the reference game (Arrows – Puzzle Escape): their
 identity is periwinkle *blue* on white; ours is royal *purple* + magenta, day or night.
@@ -145,9 +145,9 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
     line (360 pt, or "· streak saved" from `META_STREAK_FREEZE`) it wraps centred inside 18 pt side
     margins and only after a separator (`HomeScreen.tsx:455-478`). Flags OFF, or before the first
     solve: the menu above, unchanged.
-- **Stats & streaks** (`SaveSystem`, `src/core/saveSystem.ts:509-581`): lifetime **solved count**, a
+- **Stats & streaks** (`SaveSystem`, `src/core/saveSystem.ts:556-628`): lifetime **solved count**, a
   **perfect streak** (consecutive clears with no heart lost; current + best), and a **daily play
-  streak** (consecutive calendar days with ≥1 solve; reads 0 once broken, `saveSystem.ts:538-552`).
+  streak** (consecutive calendar days with ≥1 solve; reads 0 once broken, `saveSystem.ts:585-599`).
   Stored as integers in AsyncStorage through a hydrated cache (`src/ui/storage.ts:4-11`), updated
   on every solve (`GameScreen.tsx:552`).
 

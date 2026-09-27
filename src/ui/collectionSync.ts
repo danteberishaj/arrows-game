@@ -159,8 +159,11 @@ const frameScheduler: FrameScheduler<number> = {
   now: () => performance.now(),
 };
 
-/** The fold over the real SaveSystem; `onSlice` (optional) runs after every slice. */
-function saveSystemSync(onSlice?: () => void) {
+/**
+ * The fold over the real SaveSystem; `onSlice` (optional) runs after every
+ * slice. Exported for the interleaving test (collectionSync.test.ts).
+ */
+export function saveSystemSync(onSlice?: () => void) {
   return (maxSteps: number, shouldStop: () => boolean): SyncSlice => {
     const before = SaveSystem.shapesThroughLevel;
     const pending = SaveSystem.syncCollection(maxSteps, shouldStop);

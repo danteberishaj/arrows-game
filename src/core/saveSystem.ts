@@ -236,10 +236,57 @@ function readShapeMasks(): ShapeMasks {
   };
 }
 
-/** Writes only a mask that gained a bit (the masks only ever grow). */
-function writeShapeMasks(before: ShapeMasks, after: ShapeMasks): void {
-  if (after.lo !== before.lo) store.setInt(Keys.shapesSeenLo, after.lo);
-  if (after.hi !== before.hi) store.setInt(Keys.shapesSeenHi, after.hi);
+/** The stored collection as the fold may use it (FINAL-FIX; see readCollection). */
+interface StoredCollection {
+  /** Each mask's readable bits (sanitizeMask). */
+  readonly masks: ShapeMasks;
+  /** Whether each stored mask is exactly a 30-bit value (absent counts as 0). */
+  readonly loExact: boolean;
+  readonly hiExact: boolean;
+  /** False when the stored masks cannot vouch for the pointer (a rebuild from level 0 is due). */
+  readonly intact: boolean;
+  /** The first campaign level whose shape is known to be in `masks`. */
+  readonly through: number;
+}
+
+/**
+ * FINAL-FIX (FINAL-REVIEW findings 5 and 6): the fold pointer is a claim that
+ * the masks hold the shapes of levels [0, pointer). It is trusted only when
+ * the masks can back it up, and a pointer that cannot be trusted reads as 0:
+ * the next fold re-derives the campaign bits from the generator (the same
+ * catch-up an upgrading player runs), and a re-fold only ORs bits in, so it
+ * is idempotent and drops nothing.
+ * - A stored mask that is not exactly a 30-bit value (negative, fractional,
+ *   NaN, beyond 2^53, or a stray bit 30+) is damaged. Its readable bits are
+ *   kept (sanitizeMask), and it is rewritten by the rebuild's first write.
+ * - Both masks empty while the pointer is above 0 is damage too: folding level
+ *   0 always sets a bit, and HydratedIntStore reads a value it cannot parse as
+ *   absent, so this is what an unparseable mask looks like here.
+ * - A pointer above currentLevel is either a progress reset (the pointer is
+ *   kept, the level is not) or corruption, and the two cannot be told apart;
+ *   0 is right for both, while any higher value could freeze recording or
+ *   skip levels whose bits were never written.
+ */
+function readCollection(currentLevel: number): StoredCollection {
+  const rawLo = store.getInt(Keys.shapesSeenLo, 0);
+  const rawHi = store.getInt(Keys.shapesSeenHi, 0);
+  const masks = { lo: sanitizeMask(rawLo), hi: sanitizeMask(rawHi) };
+  const loExact = masks.lo === rawLo;
+  const hiExact = masks.hi === rawHi;
+  const pointer = nonNegativeInt(store.getInt(Keys.shapesThroughLevel, 0));
+  const intact = loExact && hiExact && !(pointer > 0 && masks.lo === 0 && masks.hi === 0);
+  const through = intact && pointer <= currentLevel ? pointer : 0;
+  return { masks, loExact, hiExact, intact, through };
+}
+
+/**
+ * Writes a mask that gained a bit (the masks only ever grow), and a damaged
+ * mask even when it gained none, so the stored value becomes exactly the
+ * readable bits plus the new ones and stops reading as damaged.
+ */
+function writeShapeMasks(before: StoredCollection, after: ShapeMasks): void {
+  if (after.lo !== before.masks.lo || !before.loExact) store.setInt(Keys.shapesSeenLo, after.lo);
+  if (after.hi !== before.masks.hi || !before.hiExact) store.setInt(Keys.shapesSeenHi, after.hi);
 }
 
 /** Only the four defined consent bits are valid; corrupt values fail closed. */
@@ -605,10 +652,15 @@ export const SaveSystem = {
     // is untouched (a daily is not a campaign level).
     if (!collectionWritable()) return NOT_NEW;
     const index = catalogueIndexOf(shapeName);
-    const before = readShapeMasks();
-    if (index < 0 || hasSeen(before, index)) return NOT_NEW;
-    writeShapeMasks(before, markSeen(before, index));
-    return { newlyDiscovered: true };
+    const before = readCollection(this.currentLevel);
+    if (index < 0 || hasSeen(before.masks, index)) return NOT_NEW;
+    writeShapeMasks(before, markSeen(before.masks, index));
+    if (before.intact) return { newlyDiscovered: true };
+    // FINAL-FIX: the masks just written look intact, so the old pointer would
+    // vouch for campaign bits the damaged mask lost; 0 makes the next fold
+    // rebuild them. And a bit the damaged mask may have held is not "new".
+    store.setInt(Keys.shapesThroughLevel, 0);
+    return NOT_NEW;
   },
 
   // ---- Store-review bookkeeping (W4-11) ---------------------------------
@@ -657,9 +709,14 @@ export const SaveSystem = {
     return readShapeMasks();
   },
 
-  /** Campaign levels 0..N-1 already folded into the collection; corrupt or absent = 0. */
+  /**
+   * Campaign levels 0..N-1 already folded into the collection; absent = 0.
+   * FINAL-FIX: 0 too when the stored pointer is corrupt, above currentLevel,
+   * or not backed by intact masks (see readCollection), so the next fold
+   * rebuilds from level 0.
+   */
   get shapesThroughLevel(): number {
-    return nonNegativeInt(store.getInt(Keys.shapesThroughLevel, 0));
+    return readCollection(this.currentLevel).through;
   },
 
   /**
@@ -668,8 +725,10 @@ export const SaveSystem = {
    * gained a bit) and the new pointer. Every level below currentLevel was
    * solved (setCurrentLevel(i + 1) runs only on a clear), so the bits are
    * reconstructed, not guessed. A cap delays bits and never drops them: the
-   * next call resumes at the pointer. Nothing to fold (pointer at or past the
-   * level, e.g. after a progress reset) reads two keys and writes nothing.
+   * next call resumes at the pointer. Nothing to fold (pointer at the level)
+   * reads four keys and writes nothing. A pointer the masks cannot back up, or
+   * one above the level (after a progress reset, or corrupt), reads as 0, so
+   * the fold rebuilds from level 0 (FINAL-FIX, readCollection).
    * `shouldStop` (optional, e.g. a time budget) ends the call early after at
    * least one level; see foldLevels. Returns the levels still unfolded after
    * this call (0 = caught up).
@@ -677,10 +736,10 @@ export const SaveSystem = {
   syncCollection(maxSteps: number, shouldStop?: () => boolean): number {
     if (!collectionWritable()) return 0;
     const target = this.currentLevel;
-    const through = this.shapesThroughLevel;
+    const before = readCollection(target);
+    const through = before.through;
     if (through >= target) return 0;
-    const before = readShapeMasks();
-    const folded = foldLevels(before, through, target, campaignShapeName, maxSteps, shouldStop);
+    const folded = foldLevels(before.masks, through, target, campaignShapeName, maxSteps, shouldStop);
     if (folded.through === through) return target - through;
     writeShapeMasks(before, folded);
     store.setInt(Keys.shapesThroughLevel, folded.through);
@@ -691,21 +750,24 @@ export const SaveSystem = {
    * A campaign clear of `levelIndex`, called after setCurrentLevel(levelIndex
    * + 1). The O(1) fast path: only when the fold pointer is exactly this level
    * does it record the level's shape and move the pointer on. Otherwise (the
-   * menu fold is still behind, or the pointer leads after a reset) it writes
-   * nothing and the next menu mount's syncCollection catches up.
+   * menu fold is still behind, or a rebuild from level 0 is due, see
+   * readCollection) it writes nothing and the next menu mount's
+   * syncCollection catches up.
    *
    * `newlyDiscovered` is true only when this clear set a bit that was 0. It is
    * false when deferred, because a bit the pending fold may set cannot be
-   * called new. Data only: W5 decides whether anything shows it.
+   * called new, and false over damaged masks, which may have held it. Data
+   * only: W5 decides whether anything shows it.
    */
   recordCampaignClear(levelIndex: number): { newlyDiscovered: boolean } {
     if (!collectionWritable()) return NOT_NEW;
-    if (this.shapesThroughLevel !== levelIndex) return NOT_NEW;
-    const before = readShapeMasks();
-    const folded = foldLevels(before, levelIndex, levelIndex + 1, campaignShapeName, 1);
+    const before = readCollection(this.currentLevel);
+    if (before.through !== levelIndex) return NOT_NEW;
+    const folded = foldLevels(before.masks, levelIndex, levelIndex + 1, campaignShapeName, 1);
     writeShapeMasks(before, folded);
     store.setInt(Keys.shapesThroughLevel, folded.through);
-    return { newlyDiscovered: folded.lo !== before.lo || folded.hi !== before.hi };
+    const gained = folded.lo !== before.masks.lo || folded.hi !== before.masks.hi;
+    return { newlyDiscovered: before.intact && gained };
   },
 
   // ---- Preferences -----------------------------------------------------

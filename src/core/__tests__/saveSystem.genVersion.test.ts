@@ -99,6 +99,9 @@ test('flag ON, switch 41, level 50: the menu fold asks v1 for levels 0..40 and v
 
 test('flag ON, switch 41: the campaign-clear fast path records level 50 at v2 and level 40 at v1', () => {
   store.setInt('arrows_gen_switch_level', 41);
+  // A fold pointer always comes with a bit (FINAL-FIX: empty masks under a
+  // pointer read as damage). Index 29 (Umbrella) is dealt by neither version yet.
+  store.setInt('arrows_shapes_seen_lo', 1 << 29);
 
   store.setInt('arrows_shapes_through_level', 40);
   SaveSystem.setCurrentLevel(41);
@@ -112,7 +115,7 @@ test('flag ON, switch 41: the campaign-clear fast path records level 50 at v2 an
   // V2-FINISH: the fold asks with the install's switch level, so level 50 is the floored board.
   expect(lookup.mock.calls).toEqual([[50, 2, 41]]);
   const want = [LevelGenerator.generate(40, 1), LevelGenerator.generate(50, 2, { switchLevel: 41 })]
-    .reduce((m, lvl) => markSeen(m, catalogueIndexOf(lvl.shapeName)), EMPTY_SHAPE_MASKS);
+    .reduce((m, lvl) => markSeen(m, catalogueIndexOf(lvl.shapeName)), { lo: 1 << 29, hi: 0 });
   expect(SaveSystem.shapesSeen).toEqual(want);
 });
 

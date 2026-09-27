@@ -582,8 +582,11 @@ describe('W4-07 shape collection', () => {
   });
 
   test('a campaign clear with the fold behind writes nothing and is not "new"; the next menu sync records it', () => {
+    // The fold reached level 4 (masks and pointer written together), then the
+    // player cleared on to level 9, e.g. Play pressed before the menu fold finished.
+    store.setInt('arrows_current_level', 4);
+    SaveSystem.syncCollection(5000);
     store.setInt('arrows_current_level', 9);
-    store.setInt('arrows_shapes_through_level', 4); // e.g. Play pressed before the menu fold finished
     SaveSystem.setCurrentLevel(10);
     const set = jest.spyOn(store, 'setInt');
 
@@ -592,20 +595,25 @@ describe('W4-07 shape collection', () => {
 
     expect(SaveSystem.syncCollection(5000)).toBe(0);
     expect(SaveSystem.shapesThroughLevel).toBe(10);
-    expect(SaveSystem.shapesSeen).toEqual(truthMasks(4, 10));
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(0, 10));
   });
 
-  test('a replayed or reset-behind clear (through > levelIndex) writes nothing', () => {
+  test('a replayed clear after a progress reset (the pointer leads the level): the pointer reads as 0 and re-records level 0, dropping no bit', () => {
+    // FINAL-FIX (finding 6): a pointer above currentLevel used to freeze
+    // recording until the player passed it; it now reads as 0, and the re-fold
+    // only ORs bits that are already set.
     store.setInt('arrows_shapes_through_level', 50);
     store.setInt('arrows_shapes_seen_lo', 7);
     SaveSystem.resetProgress();
     SaveSystem.setCurrentLevel(1);
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
     const set = jest.spyOn(store, 'setInt');
 
-    expect(SaveSystem.recordCampaignClear(0)).toEqual({ newlyDiscovered: false });
+    expect(SaveSystem.recordCampaignClear(0)).toEqual({ newlyDiscovered: false }); // level 0's shape is already in lo = 7
+    expect(set.mock.calls).toEqual([['arrows_shapes_through_level', 1]]);
     expect(SaveSystem.syncCollection(5000)).toBe(0);
-    expect(set).not.toHaveBeenCalled();
-    expect(SaveSystem.shapesThroughLevel).toBe(50);
+    expect(SaveSystem.shapesThroughLevel).toBe(1);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(0, 1, { lo: 7, hi: 0 }));
     expect(SaveSystem.shapesSeen).toEqual({ lo: 7, hi: 0 });
   });
 
@@ -621,7 +629,7 @@ describe('W4-07 shape collection', () => {
     expect(SaveSystem.dailyLastDay).toBe(day + 2);
   });
 
-  test('corrupt stored values: a negative through refolds from 0; corrupt masks read as 0 and are rewritten only when a bit is added', () => {
+  test('corrupt stored values: a negative through refolds from 0; corrupt masks keep their readable bits and are rewritten canonical', () => {
     store.setInt('arrows_current_level', 3);
     store.setInt('arrows_shapes_through_level', -8);
     store.setInt('arrows_shapes_seen_lo', -5);
@@ -635,8 +643,10 @@ describe('W4-07 shape collection', () => {
     const expected = truthMasks(0, 3, { lo: 0, hi: 1 << 25 });
     expect(SaveSystem.shapesSeen).toEqual(expected);
     expect(storedMasks().lo).toBe(expected.lo);
-    // Levels 0..2 are low-mask shapes, so the hi key keeps its raw value: no bit was added there.
-    expect(store.getInt('arrows_shapes_seen_hi', 0)).toBe(2 ** 30 + (1 << 25));
+    // Levels 0..2 are low-mask shapes, so no bit was added to hi, but its damaged
+    // raw value is rewritten as its readable bits (FINAL-FIX: a damaged mask
+    // would otherwise keep reading as damaged and force a rebuild every time).
+    expect(store.getInt('arrows_shapes_seen_hi', 0)).toBe(1 << 25);
     expect(SaveSystem.shapesThroughLevel).toBe(3);
   });
 
@@ -698,6 +708,157 @@ describe('W4-07 shape collection', () => {
 
     for (const key of COLLECTION_KEYS) expect(store.deleted).not.toContain(key);
     expect(COLLECTION_KEYS.map((key) => store.getInt(key, -1))).toEqual(before);
+  });
+});
+
+describe('FINAL-FIX collection integrity (FINAL-REVIEW findings 5 and 6)', () => {
+  let previousHealthy: boolean;
+
+  beforeEach(() => {
+    previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true);
+  });
+
+  afterEach(() => {
+    SaveSystem.setPersistenceHealthy(previousHealthy);
+  });
+
+  /** Full-generator truth for campaign levels 0..LEVELS (computed once; the generator is the slow part). */
+  const LEVELS = 21;
+  const names = Array.from({ length: LEVELS + 1 }, (_, i) => LevelGenerator.generate(i).shapeName);
+  function truthMasks(to: number, start: ShapeMasks = EMPTY_SHAPE_MASKS): ShapeMasks {
+    let masks = start;
+    for (let i = 0; i < to; i += 1) masks = markSeen(masks, catalogueIndexOf(names[i]));
+    return masks;
+  }
+  /** A catalogue shape levels 0..LEVELS never deal, so a daily bit is distinguishable from campaign bits. */
+  const dailyShape = ['Fish', 'Mushroom', 'Cat', 'Pine', 'Rocket', 'Butterfly'].find((name) => !names.includes(name))!;
+
+  /** A player at level 20 whose collection is complete and caught up (pointer 20 = currentLevel). */
+  function caughtUpAt20(): void {
+    store.setInt('arrows_current_level', 20);
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(20));
+    expect(store.getInt('arrows_shapes_through_level', -1)).toBe(20);
+  }
+
+  /** Stored mask values no fold could have written and sanitizeMask cannot read back (it reads each as 0). */
+  const UNREADABLE: Array<[string, number]> = [
+    ['negative', -5],
+    ['NaN', Number.NaN],
+    ['beyond 2^53', 2 ** 53 + 2],
+    ['fractional', 1.5],
+  ];
+
+  test.each(UNREADABLE)(
+    'a %s low mask with a VALID pointer: the next menu fold rebuilds levels 0..19 from the generator, so no campaign bit is lost',
+    (_, corrupt) => {
+      caughtUpAt20();
+      store.setInt('arrows_shapes_seen_lo', corrupt); // only the mask; the pointer stays a valid 20
+
+      expect(SaveSystem.shapesThroughLevel).toBe(0); // the pointer no longer vouches for bits it cannot see
+      expect(SaveSystem.syncCollection(5000)).toBe(0);
+      expect(SaveSystem.shapesSeen).toEqual(truthMasks(20));
+      expect(store.getInt('arrows_shapes_seen_lo', -1)).toBe(truthMasks(20).lo);
+      expect(store.getInt('arrows_shapes_through_level', -1)).toBe(20);
+
+      // Recording resumes on the O(1) path.
+      SaveSystem.setCurrentLevel(21);
+      SaveSystem.recordCampaignClear(20);
+      expect(SaveSystem.shapesSeen).toEqual(truthMasks(21));
+      expect(SaveSystem.shapesThroughLevel).toBe(21);
+    },
+  );
+
+  test.each(UNREADABLE)(
+    'a %s low mask, then a campaign clear BEFORE any menu fold: the clear never writes "0 + one bit" over it, and the next fold ends at the truth',
+    (_, corrupt) => {
+      caughtUpAt20();
+      store.setInt('arrows_shapes_seen_lo', corrupt);
+
+      SaveSystem.setCurrentLevel(21);
+      expect(SaveSystem.recordCampaignClear(20)).toEqual({ newlyDiscovered: false });
+      expect(SaveSystem.syncCollection(5000)).toBe(0);
+
+      expect(SaveSystem.shapesSeen).toEqual(truthMasks(21));
+      expect(SaveSystem.shapesThroughLevel).toBe(21);
+    },
+  );
+
+  test.each(UNREADABLE)(
+    'a %s low mask, then a DAILY clear before any menu fold: the daily bit is kept and the next fold restores every campaign bit',
+    (_, corrupt) => {
+      caughtUpAt20();
+      store.setInt('arrows_shapes_seen_lo', corrupt);
+
+      // A bit whose presence the unreadable mask may hide cannot be called new.
+      expect(SaveSystem.registerDailyClear(SaveSystem.today(), dailyShape)).toEqual({ newlyDiscovered: false });
+      expect(SaveSystem.syncCollection(5000)).toBe(0);
+
+      const expected = markSeen(truthMasks(20), catalogueIndexOf(dailyShape));
+      expect(SaveSystem.shapesSeen).toEqual(expected);
+      expect(SaveSystem.shapesThroughLevel).toBe(20);
+    },
+  );
+
+  test('a mask with a stray bit 30+ keeps its readable low bits, is rewritten canonical, and the rest is rebuilt', () => {
+    caughtUpAt20();
+    const readable = 1 << 29; // a bit a future catalogue could have written
+    store.setInt('arrows_shapes_seen_lo', 2 ** 30 + readable);
+
+    expect(SaveSystem.shapesSeen).toEqual({ lo: readable, hi: 0 });
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+
+    expect(store.getInt('arrows_shapes_seen_lo', -1)).toBe(truthMasks(20, { lo: readable, hi: 0 }).lo);
+    expect(SaveSystem.shapesThroughLevel).toBe(20);
+  });
+
+  test('both masks empty while the pointer says levels were folded (HydratedIntStore reads an unparseable mask as absent): rebuilt', () => {
+    caughtUpAt20();
+    store.deleteKey('arrows_shapes_seen_lo'); // what a garbage string on disk becomes after hydrate
+
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(20));
+    expect(SaveSystem.shapesThroughLevel).toBe(20);
+  });
+
+  test('a rebuild done in slices keeps every bit: each slice persists its progress and the next resumes there', () => {
+    caughtUpAt20();
+    store.setInt('arrows_shapes_seen_lo', -5);
+
+    let calls = 0;
+    while (SaveSystem.syncCollection(3) > 0) calls += 1;
+    expect(calls).toBe(6); // 20 levels, 3 per call: 6 calls with work left, the 7th ends caught up
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(20));
+    expect(SaveSystem.shapesThroughLevel).toBe(20);
+  });
+
+  test('finding 6: a pointer above currentLevel reads as 0, the next fold re-derives 0..currentLevel, and recording resumes', () => {
+    store.setInt('arrows_current_level', 12);
+    const earlier = markSeen(EMPTY_SHAPE_MASKS, catalogueIndexOf(dailyShape)); // a daily bit from before
+    store.setInt('arrows_shapes_seen_lo', earlier.lo);
+    store.setInt('arrows_shapes_through_level', 100000); // corrupt: far past the player
+
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(12, earlier));
+    expect(store.getInt('arrows_shapes_through_level', -1)).toBe(12);
+
+    // The fast path records the next clear instead of deferring forever.
+    SaveSystem.setCurrentLevel(13);
+    SaveSystem.recordCampaignClear(12);
+    expect(SaveSystem.shapesThroughLevel).toBe(13);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(13, earlier));
+  });
+
+  test('the pointer at exactly currentLevel is trusted (caught up: O(1), no write)', () => {
+    caughtUpAt20();
+    const set = jest.spyOn(store, 'setInt');
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    expect(set).not.toHaveBeenCalled();
+    expect(SaveSystem.shapesThroughLevel).toBe(20);
+    expect(SaveSystem.shapesSeen).toEqual(truthMasks(20));
   });
 });
 

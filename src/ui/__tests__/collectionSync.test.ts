@@ -4,10 +4,15 @@ import {
   COLLECTION_SYNC_CHUNK_STEPS,
   COLLECTION_SYNC_LATE_FRAME_MS,
   COLLECTION_SYNC_SLICE_MS,
+  saveSystemSync,
   startCollectionSync,
   type FrameScheduler,
   type SyncSlice,
 } from '../collectionSync';
+import { EMPTY_SHAPE_MASKS, markSeen, type ShapeMasks } from '../../core/collection';
+import { LevelGenerator } from '../../core/levelGenerator';
+import { SaveSystem, type IntStore } from '../../core/saveSystem';
+import { SHAPE_CATALOGUE, catalogueIndexOf } from '../../core/shapeCatalogue';
 
 /**
  * W4-07: the menu fold runs in time-bounded slices, one per frame, and stops
@@ -220,4 +225,117 @@ test('stop (unmount) cancels the pending frame and no slice runs afterwards', ()
   expect(frames.cancelled).toHaveLength(1);
   stop(); // idempotent
   expect(frames.cancelled).toHaveLength(1);
+});
+
+// ---- FINAL-FIX (FINAL-REVIEW finding 9): sliced folds interleaved with clears ----
+
+describe('FINAL-FIX: sliced folds interleaved with campaign and daily clears (the real SaveSystem)', () => {
+  class MapStore implements IntStore {
+    readonly map = new Map<string, number>();
+    getInt(key: string, defaultValue: number): number {
+      return this.map.get(key) ?? defaultValue;
+    }
+    setInt(key: string, value: number): void {
+      this.map.set(key, value);
+    }
+    deleteKey(key: string): void {
+      this.map.delete(key);
+    }
+  }
+
+  /** Deterministic PRNG (mulberry32) so a failing trial is reproducible from its seed. */
+  function prng(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const MAX_LEVEL = 90;
+  /** Full-generator truth, computed once (the slow part of this test). */
+  const truthIndex = Array.from({ length: MAX_LEVEL }, (_, i) => catalogueIndexOf(LevelGenerator.generate(i).shapeName));
+  const union = (a: ShapeMasks, b: ShapeMasks): ShapeMasks => ({ lo: (a.lo | b.lo) >>> 0, hi: (a.hi | b.hi) >>> 0 });
+  const includes = (outer: ShapeMasks, inner: ShapeMasks) =>
+    ((outer.lo & inner.lo) >>> 0) === inner.lo && ((outer.hi & inner.hi) >>> 0) === inner.hi;
+  function campaignTruth(to: number): ShapeMasks {
+    let masks = EMPTY_SHAPE_MASKS;
+    for (let i = 0; i < to; i += 1) masks = markSeen(masks, truthIndex[i]);
+    return masks;
+  }
+
+  let previousStore: IntStore;
+  let previousHealthy: boolean;
+  beforeEach(() => {
+    previousStore = SaveSystem.useStore(new MapStore());
+    previousHealthy = SaveSystem.persistenceHealthy;
+    SaveSystem.setPersistenceHealthy(true);
+  });
+  afterEach(() => {
+    SaveSystem.useStore(previousStore);
+    SaveSystem.setPersistenceHealthy(previousHealthy);
+  });
+
+  test('200 seeded interleavings: the pointer never vouches for a missing bit, no bit is invented, and a drained fold equals the generator truth', () => {
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const rand = prng(seed);
+      const store = new MapStore();
+      SaveSystem.useStore(store);
+      // A player with a backlog the fold has not seen (an upgrade), or none.
+      let level = Math.floor(rand() * 40);
+      store.setInt('arrows_current_level', level);
+      let dailies = EMPTY_SHAPE_MASKS;
+      const frames = new ManualFrames();
+      // Up to two live folds: the menu's, plus a gallery's (or a menu still leaving).
+      const folds: Array<() => void> = [];
+      const startFold = () =>
+        folds.push(
+          startCollectionSync({
+            sync: saveSystemSync(),
+            scheduler: frames,
+            budgetSteps: 5000,
+            chunkSteps: 1 + Math.floor(rand() * 20),
+            sliceMs: 3,
+          }),
+        );
+      startFold();
+
+      for (let step = 0; step < 80 && level < MAX_LEVEL - 1; step += 1) {
+        const roll = rand();
+        if (roll < 0.4) {
+          frames.frame();
+        } else if (roll < 0.75) {
+          // A campaign clear: GameScreen's order (setCurrentLevel, then the O(1) record).
+          SaveSystem.setCurrentLevel(level + 1);
+          SaveSystem.recordCampaignClear(level);
+          level += 1;
+        } else if (roll < 0.85) {
+          const shape = SHAPE_CATALOGUE[Math.floor(rand() * SHAPE_CATALOGUE.length)];
+          SaveSystem.registerDailyClear(SaveSystem.today(), shape);
+          dailies = markSeen(dailies, catalogueIndexOf(shape));
+        } else if (roll < 0.93) {
+          folds.shift()?.(); // Play pressed: the menu's fold stops
+        } else if (folds.length < 2) {
+          startFold(); // a menu or gallery mount
+        }
+
+        const seen = SaveSystem.shapesSeen;
+        const through = SaveSystem.shapesThroughLevel;
+        const context = { seed, step, level, through };
+        expect([context, through <= level]).toEqual([context, true]);
+        expect([context, includes(seen, campaignTruth(through))]).toEqual([context, true]); // never vouches for a missing bit
+        expect([context, includes(union(campaignTruth(level), dailies), seen)]).toEqual([context, true]); // never invents one
+      }
+
+      // Drain: a later menu mount's fold catches up completely.
+      for (const stop of folds) stop();
+      startFold();
+      while (frames.frame() > 0);
+      expect([seed, SaveSystem.shapesThroughLevel]).toEqual([seed, level]);
+      expect([seed, SaveSystem.shapesSeen]).toEqual([seed, union(campaignTruth(level), dailies)]);
+    }
+  });
 });

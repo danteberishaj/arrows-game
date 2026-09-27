@@ -455,22 +455,65 @@ describe('W4-07 shape collection across cold starts', () => {
     expect(storage.multiRemove).not.toHaveBeenCalled();
   });
 
-  test('a corrupt or partial collection (unparseable through, negative mask) is rebuilt from the generator', async () => {
+  // FINAL-FIX (FINAL-REVIEW findings 5 and 15): this used to corrupt the
+  // pointer together with the mask, which hid that a corrupt mask under a
+  // VALID pointer was never rebuilt. Each case now corrupts ONLY the mask.
+  test.each([
+    ['a negative number', '-5'],
+    ['an unparseable string (hydrate drops it: the key reads as absent)', 'garbage'],
+    ['a number beyond 2^53', '99999999999999999999'],
+  ])('a corrupt low mask (%s) under a VALID pointer 37 is rebuilt from the generator on the next fold', async (_, raw) => {
     const disk = useMapBackedStorage([
       ...SEEDED,
-      ['arrows_shapes_through_level', 'garbage'],
-      ['arrows_shapes_seen_lo', '-5'],
+      ['arrows_shapes_seen_lo', raw],
+      ['arrows_shapes_through_level', '37'],
     ]);
     await coldStart();
 
-    expect(SaveSystem.shapesThroughLevel).toBe(0);
     expect(SaveSystem.shapesSeen).toEqual({ lo: 0, hi: 0 });
-    SaveSystem.syncCollection(5000);
+    expect(SaveSystem.shapesThroughLevel).toBe(0); // the pointer cannot vouch for bits it cannot see
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
     await settlePersistence();
 
     expect(disk.get('arrows_shapes_seen_lo')).toBe(String(truthMasks(0, 37).lo));
     expect(disk.get('arrows_shapes_through_level')).toBe('37');
     expect(storage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  test('a corrupt low mask under a valid pointer, then a campaign clear before any fold: the clear defers and the next cold start still ends at the truth', async () => {
+    const disk = useMapBackedStorage([
+      ...SEEDED,
+      ['arrows_shapes_seen_lo', '-5'],
+      ['arrows_shapes_through_level', '37'],
+    ]);
+    await coldStart();
+
+    SaveSystem.setCurrentLevel(38);
+    expect(SaveSystem.recordCampaignClear(37)).toEqual({ newlyDiscovered: false });
+    await settlePersistence();
+    expect(disk.get('arrows_shapes_seen_lo')).toBe('-5'); // not overwritten with "0 + one bit"
+
+    await coldStart();
+    expect(SaveSystem.syncCollection(5000)).toBe(0);
+    await settlePersistence();
+    expect(disk.get('arrows_shapes_seen_lo')).toBe(String(truthMasks(0, 38).lo));
+    expect(disk.get('arrows_shapes_through_level')).toBe('38');
+  });
+
+  test('an unparseable pointer over a valid mask refolds from level 0 and ends at the truth', async () => {
+    const disk = useMapBackedStorage([
+      ...SEEDED,
+      ['arrows_shapes_seen_lo', String(truthMasks(0, 37).lo)],
+      ['arrows_shapes_through_level', 'garbage'],
+    ]);
+    await coldStart();
+
+    expect(SaveSystem.shapesThroughLevel).toBe(0);
+    SaveSystem.syncCollection(5000);
+    await settlePersistence();
+
+    expect(disk.get('arrows_shapes_seen_lo')).toBe(String(truthMasks(0, 37).lo));
+    expect(disk.get('arrows_shapes_through_level')).toBe('37');
   });
 
   test('bits a FUTURE catalogue wrote (index 29 in lo, index 55 in hi) survive the fold untouched', async () => {

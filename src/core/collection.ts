@@ -91,7 +91,8 @@ export function countSeen(masks: ShapeMasks): number {
  * - `fromLevel` below 0 (a corrupt stored pointer) starts at 0: refolding only
  *   re-ORs bits that are already set.
  * - `fromLevel >= toLevel` folds nothing and returns `through = fromLevel`
- *   (never lowered: after a progress reset the pointer can lead the level).
+ *   (never lowered here; SaveSystem reads a pointer above the level, or one
+ *   its masks cannot back up, as 0 before it calls this: FINAL-FIX).
  * - `shapeNameForLevel(i)` must return the shape level i actually dealt, at
  *   the generator version that dealt it (W3-05: SaveSystem's campaignShapeName
  *   resolves the version per index). A name that is not in the catalogue sets
