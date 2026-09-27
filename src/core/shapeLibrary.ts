@@ -7,6 +7,8 @@ type Pt = readonly [number, number];
 const PINE_TOP: readonly Pt[] = [[0, 0.95], [0.55, 0.25], [-0.55, 0.25]];
 const PINE_LOWER: readonly Pt[] = [[0, 0.5], [0.8, -0.45], [-0.8, -0.45]];
 const HOUSE_ROOF: readonly Pt[] = [[-0.96, 0.1], [0, 0.95], [0.96, 0.1]];
+// Centres of the umbrella hem's three scallops: the middle of each third of the canopy's width.
+const UMBRELLA_SCALLOP_X: readonly number[] = [-0.98 * 2 / 3, 0, 0.98 * 2 / 3];
 
 /**
  * A scalable shape silhouette. {@link ShapeDef.inside} answers "is this
@@ -309,6 +311,28 @@ export const ShapeLibrary = (() => {
     return x * x + (y + 0.76) * (y + 0.76) <= 0.22 * 0.22; // clapper
   });
 
+  // Umbrella: a domed canopy with three scallops along its hem, a shaft, and a
+  // J-hook handle curling left. Tall enough that the canopy stays wide.
+  const Umbrella = new ShapeDef('Umbrella', 0.85, (x, y) => {
+    if (y >= -0.08) {
+      const ex = x / 0.98, ey = (y + 0.08) / 1.02;
+      if (ex * ex + ey * ey <= 1) {
+        let scallop = false;
+        for (const bx of UMBRELLA_SCALLOP_X) {
+          const dx = x - bx, dy = y + 0.18;
+          if (dx * dx + dy * dy <= 0.3 * 0.3) scallop = true;
+        }
+        if (!scallop) return true;
+      }
+    }
+    if (Math.abs(x) <= 0.14 && y <= 0.22 && y >= -0.6) return true; // shaft
+    const hx = x + 0.22, hy = y + 0.6;
+    const r2 = hx * hx + hy * hy;
+    if (y <= -0.6 && r2 <= 0.36 * 0.36 && r2 >= 0.08 * 0.08) return true; // hook
+    const tx = x + 0.44;
+    return tx * tx + hy * hy <= 0.14 * 0.14; // hook tip
+  });
+
   // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
   // SuperHard draws the picture-book silhouettes.
   const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
@@ -327,7 +351,7 @@ export const ShapeLibrary = (() => {
     Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
     Pentagon, Octagon, Ring, XMark,
     Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
-    House, Teacup, Bell,
+    House, Teacup, Bell, Umbrella,
     SimplePool, MediumPool, ComplexPool,
 
     /** Picks a shape for the tier: each difficulty draws from its own pool. */

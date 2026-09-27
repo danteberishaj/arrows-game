@@ -53,6 +53,7 @@ export const SHAPE_CATALOGUE: readonly string[] = Object.freeze([
   'House',
   'Teacup',
   'Bell',
+  'Umbrella',
 ]);
 
 export const RETIRED_SHAPE_IDS: ReadonlySet<string> = new Set<string>();
@@ -134,6 +135,7 @@ const V2_SHAPE_DEFINITIONS: ReadonlyMap<string, ShapeDef> = new Map([
   ['House', ShapeLibrary.House],
   ['Teacup', ShapeLibrary.Teacup],
   ['Bell', ShapeLibrary.Bell],
+  ['Umbrella', ShapeLibrary.Umbrella],
 ]);
 const NEWEST_SHAPE_DEFINITIONS = V2_SHAPE_DEFINITIONS;
 

@@ -44,4 +44,5 @@ export const SHAPE_CAPACITY_AT_CLAMP: Readonly<Record<string, number>> = Object.
   House: 758,
   Teacup: 737,
   Bell: 743,
+  Umbrella: 702,
 });
