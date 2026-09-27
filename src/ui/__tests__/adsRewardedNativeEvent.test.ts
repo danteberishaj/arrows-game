@@ -34,6 +34,36 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * FLAKY-TEST: this is the only ad suite that requires the REAL
+ * react-native-google-mobile-ads package JS (see the file doc above) instead
+ * of the shared `./helpers/fakeGoogleMobileAds` fake the other ad suites use.
+ * `loadAds()` below does `jest.resetModules()` then `require('../ads')` fresh
+ * for every test, which pulls in that real package's full module graph; V8
+ * caches the compiled bytecode across `resetModules()` (only the module
+ * REGISTRY resets), so this cost is paid in full once per worker process
+ * (measured EXECUTED at normal load, `--maxWorkers=1`, 5 consecutive runs:
+ * the first async test that calls it takes 126-148 ms, every later one in
+ * this file 21-49 ms) and is cheap after that.
+ *
+ * RE-CEILING (2026-09-26) ran the full suite on a host at load average 97
+ * (other sessions' emulators/builds) and saw 2 of this file's 8 tests hit
+ * jest's default "Exceeded timeout of 5000 ms"; run alone right after, 8/8
+ * passed (docs/next-level/reports/RE-CEILING.md). None of this file's
+ * assertions read wall-clock time or elapsed duration — the one
+ * time-dependent case (the 15 s reload) is driven by `jest.advanceTimersByTime`
+ * against the FAKE clock, not real time — so raising jest's real-time watchdog
+ * cannot hide a functional regression: a wrong `Ads.rewardedReady` value would
+ * still fail its assertion immediately, well inside any timeout. What the
+ * default 5000 ms has no margin for is exactly the real, CPU-bound module
+ * load above, once the host is oversubscribed enough that the OS delays this
+ * process's own scheduling by seconds. 20 s is about 100x this file's normal
+ * per-test cost, comfortably above the demonstrated load-97 shortfall, and
+ * still bounded: a genuine hang keeps failing, just with headroom for host
+ * contention instead of Jest's un-contended-host default.
+ */
+jest.setTimeout(20000);
+
 type Handler = (data: unknown) => void;
 
 // One process-wide bus, like RCTDeviceEventEmitter (names must start with
