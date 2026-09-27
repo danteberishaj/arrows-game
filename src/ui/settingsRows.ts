@@ -17,7 +17,7 @@
 export const PRIVACY_POLICY_URL = '';
 
 /** The support contact: the address in store/privacy-policy.md's "Contact" section (pinned by the test). */
-export const SUPPORT_EMAIL = 'ddante.berishaj1@gmail.com';
+export const SUPPORT_EMAIL = 'techsnaxx@gmail.com';
 
 /**
  * The sheet's scrim: `bg` at this opacity over the menu. Measured, not picked: the lowest 0.01 step at which the

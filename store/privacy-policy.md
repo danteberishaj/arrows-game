@@ -146,4 +146,4 @@ If this policy changes, the updated version will be published at the same addres
 ## Contact
 
 Questions about this policy or your data:
-[ddante.berishaj1@gmail.com](mailto:ddante.berishaj1@gmail.com)
+[techsnaxx@gmail.com](mailto:techsnaxx@gmail.com)

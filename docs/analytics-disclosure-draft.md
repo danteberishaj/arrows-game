@@ -59,7 +59,7 @@ Draft language (W7-05 owns the actual wording and placement):
 The "contact us" line above reuses `store/privacy-policy.md:46-48` verbatim
 rather than inventing a new contact path:
 
-> Questions about this policy: **ddante.berishaj1@gmail.com**
+> Questions about this policy: **techsnaxx@gmail.com**
 
 ## 2. Field-by-field Play Data safety mapping
 
