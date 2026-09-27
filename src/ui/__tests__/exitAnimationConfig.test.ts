@@ -41,6 +41,55 @@ describe('exit animation timing', () => {
 });
 
 /**
+ * W5-07: the exit trail's resting width is calibrated on emulator recordings at four candidates (0.144 / 0.18 /
+ * 0.22 / 0.26 cells). A capture build selects one through EXPO_PUBLIC_PERF_EXIT_TRAIL_STROKE_CELLS, read ONLY in a
+ * PERF build (the EXPO_PUBLIC_PERF_EXIT_DURATION_MS precedent); a player build always gets the resting constant.
+ */
+describe('W5-07 capture-only trail width override', () => {
+  const RESTING = 0.26;
+  function strokeWith(env: { perfLevel?: string; stroke?: string }): number {
+    const saved = { ...process.env };
+    let value = Number.NaN;
+    try {
+      delete process.env.EXPO_PUBLIC_PERF_LEVEL;
+      delete process.env.EXPO_PUBLIC_PERF_EXIT_TRAIL_STROKE_CELLS;
+      if (env.perfLevel !== undefined) process.env.EXPO_PUBLIC_PERF_LEVEL = env.perfLevel;
+      if (env.stroke !== undefined) process.env.EXPO_PUBLIC_PERF_EXIT_TRAIL_STROKE_CELLS = env.stroke;
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const cfg = require('../exitAnimationConfig') as typeof import('../exitAnimationConfig');
+        value = cfg.EXIT_TRAIL_STROKE_CELLS;
+      });
+    } finally {
+      process.env = saved;
+    }
+    return value;
+  }
+
+  it('a player build (PERF_MODE off) gets the resting width whatever the env says', () => {
+    expect(strokeWith({})).toBe(RESTING);
+    for (const stroke of ['0.144', '0.18', '0.22', '0.5', '2', 'abc', '0']) {
+      expect(strokeWith({ stroke })).toBe(RESTING);
+    }
+  });
+
+  it('a PERF build reads a candidate width', () => {
+    expect(strokeWith({ perfLevel: '167', stroke: '0.144' })).toBe(0.144);
+    expect(strokeWith({ perfLevel: '167', stroke: '0.18' })).toBe(0.18);
+    expect(strokeWith({ perfLevel: '137', stroke: '0.22' })).toBe(0.22);
+    expect(strokeWith({ perfLevel: '137', stroke: '0.26' })).toBe(0.26);
+    expect(strokeWith({ perfLevel: '167', stroke: '0.5' })).toBe(0.5); // (0, 0.5]: the upper bound is accepted
+  });
+
+  it('a PERF build falls back to the resting width for anything outside (0, 0.5] or non-finite', () => {
+    for (const stroke of ['2', 'abc', '0', '-0.1', '0.5001', '', 'Infinity', 'NaN']) {
+      expect(strokeWith({ perfLevel: '167', stroke })).toBe(RESTING);
+    }
+    expect(strokeWith({ perfLevel: '167' })).toBe(RESTING); // PERF build, variable unset
+  });
+});
+
+/**
  * W2-06 (META_POST_CLEAR_TIMELINE): the final exit may be stretched by FINAL_EXIT_FACTOR. Both native parsers accept
  * only 160..1000 ms and SILENTLY DROP anything else (ArrowsBoardView.kt MIN/MAX_EXIT_DURATION_MS, .swift): the last
  * arrow would vanish with no motion. The sweep covers every normal duration the app can produce: exitTrailDurationMs

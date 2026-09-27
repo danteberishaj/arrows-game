@@ -101,8 +101,25 @@ export function exitLaunchDurationMs(onScreenMs: number, onScreenClock: number):
 /** Human taps normally keep one active; two preserves overlap without runaway nodes. */
 export const MAX_CONCURRENT_EXIT_TRAILS = 2;
 
-/** The slither bead tube's diameter as a fraction of one cell (SlitherExit.cs). */
-export const EXIT_TRAIL_STROKE_CELLS = 0.26;
+/**
+ * The slither bead tube's resting diameter as a fraction of one cell (SlitherExit.cs). W5-07 records it at four
+ * candidates (0.144 = the resting arrow STROKE, 0.18, 0.22, 0.26) and the owner picks in W5-20; the pick commit
+ * changes only this value and its comment.
+ */
+const RESTING_EXIT_TRAIL_STROKE_CELLS = 0.26;
+/**
+ * W5-07 capture-only override (the EXPO_PUBLIC_PERF_EXIT_DURATION_MS precedent): a PERF build may set
+ * EXPO_PUBLIC_PERF_EXIT_TRAIL_STROKE_CELLS to a finite value in (0, 0.5]; anything else, and every player build
+ * (PERF_MODE false), gets the resting value.
+ */
+const configuredTrailStrokeCells = PERF_MODE
+  ? Number(process.env.EXPO_PUBLIC_PERF_EXIT_TRAIL_STROKE_CELLS)
+  : Number.NaN;
+/** The single source of the trail width: the native payload, the web trail and the exit-visibility cap all read it. */
+export const EXIT_TRAIL_STROKE_CELLS =
+  Number.isFinite(configuredTrailStrokeCells) && configuredTrailStrokeCells > 0 && configuredTrailStrokeCells <= 0.5
+    ? configuredTrailStrokeCells
+    : RESTING_EXIT_TRAIL_STROKE_CELLS;
 
 export type ExitAnimationKind = 'none' | 'native-slither' | 'slither';
 
