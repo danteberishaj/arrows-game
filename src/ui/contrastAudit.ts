@@ -318,9 +318,9 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:118`, note: "the scrim over the Play pill's `accent` fill" },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
-  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1052' },
-  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1053' },
-  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1054' },
+  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1095' },
+  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1096' },
+  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1097' },
   { id: 'arrow-missed-mark', fgRole: 'heart', fgAlpha: 0.75, fgOver: darkerOfInkBg, bgRole: 'bg', kind: 'graphic', site: 'src/ui/missedMarks.ts:22', note: 'META_MISSED_MARK (R6): an arrow whose blocked tap cost a heart, for the rest of the level' },
   { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:161' },
   { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:171' },

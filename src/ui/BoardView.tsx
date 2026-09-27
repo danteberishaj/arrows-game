@@ -28,7 +28,15 @@ import {
   SlitherPath,
   STROKE,
 } from './arrowGeometry';
-import { cameraViewport, centreOn, initialCamera, panRange } from './boardCamera';
+import {
+  cameraOnViewportChange,
+  cameraViewport,
+  centreOn,
+  initialCamera,
+  panRange,
+  type HeldCamera,
+  type ViewportCameraStep,
+} from './boardCamera';
 import { boardGridFor, gridRestrokeNeeded, type BoardGrid } from './boardGrid';
 import { BOARD_GRID_ENABLED } from './boardGridFlag';
 import {
@@ -411,28 +419,82 @@ export function BoardView({
     clampPos();
   }, [clampPos]);
 
-  const fitToViewport = useCallback((vw: number, vh: number) => {
+  // Centre the viewport on an arrow (BoardPanZoom.FocusOn) at zoom `s` in a vw x vh viewport: the hint, which on a
+  // zoomed-in board would otherwise pulse off-screen. The camera is passed in, not read back: a shared value written
+  // on the JS thread lands on the UI thread later, so a read in the same JS task returns the old value (the emulator
+  // showed the re-centre after a restore reading the ad-time camera: artifacts/CAMERA-REFIT-AFTER-AD/cap/fix-iter1).
+  const centreOnArrow = useCallback((a: ArrowPath, s: number, vw: number, vh: number) => {
+    const cx = ((a.minCol + a.maxCol + 1) / 2) * CELL;
+    const cy = ((a.minRow + a.maxRow + 1) / 2) * CELL;
+    if (vw < 1 || vh < 1) return;
+    const { tx: txT, ty: tyT } = centreOn(cx, cy, s, vw, vh, boardW, boardH);
+    cancelAnimation(tx);
+    cancelAnimation(ty);
+    // Vestibular horizontal recentring follows the player's system setting.
+    tx.value = withTiming(txT, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+    // Vestibular vertical recentring follows the player's system setting.
+    ty.value = withTiming(tyT, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [boardW, boardH]);
+
+  // CAMERA-REFIT-AFTER-AD: the camera the player had before a viewport change, until the viewport comes back.
+  const heldCamera = useRef<HeldCamera | null>(null);
+  const hintRef = useRef(hint);
+  hintRef.current = hint;
+
+  /**
+   * Places the camera for a layout of vw x vh. A new board (`newBoard`) always opens at its opening camera. Otherwise
+   * cameraOnViewportChange decides: the same viewport keeps the camera; a viewport coming back to the size the player
+   * last had restores the camera held there (a rewarded ad re-lays out the screen while it is up and again when it
+   * closes); any other size is a real change and re-fits (fit or, with META_ZOOMED_CAMERA, ~14 cells across).
+   */
+  const placeCamera = useCallback((vw: number, vh: number, newBoard: boolean) => {
     if (vw < 1 || vh < 1) return;
     measuredLayout.current = { w: vw, h: vh };
     const visible = cameraViewport(vw, vh, cameraBottomInsetRef.current);
-    viewport.value = visible;
-    // Fit (or, with META_ZOOMED_CAMERA, ~14 cells across); pinch-out reaches fit.
     const camera = initialCamera(
       visible.w, visible.h, boardW, boardH, CELL, META_ZOOMED_CAMERA,
     );
     if (camera === null) return;
+    const step: ViewportCameraStep = newBoard
+      ? { action: 'refit', held: null, recentreHint: false }
+      : cameraOnViewportChange({
+        from: viewport.value,
+        to: visible,
+        pose: { scale: scale.value, tx: tx.value, ty: ty.value },
+        held: heldCamera.current,
+        hintId: hintRef.current?.id ?? null,
+      });
+    heldCamera.current = step.held;
+    viewport.value = visible;
+    if (process.env.EXPO_PUBLIC_LOG_BOARD_VIEWPORT === '1') {
+      const pose = step.action === 'restore' ? step.pose : step.action === 'refit' ? camera : null;
+      console.log(`[board-camera] ${newBoard ? 'new-board' : step.action} viewport=${visible.w}x${visible.h}`
+        + (pose ? ` scale=${pose.scale} tx=${pose.tx} ty=${pose.ty}` : ` kept scale=${scale.value} tx=${tx.value} ty=${ty.value}`)
+        + ` held=${step.held ? `${step.held.viewport.w}x${step.held.viewport.h}` : 'none'}`);
+    }
+    if (step.action === 'keep') return;
     minScale.value = camera.minScale;
     maxScale.value = camera.maxScale;
     cancelAnimation(tx);
     cancelAnimation(ty);
-    scale.value = camera.scale;
-    tx.value = camera.tx;
-    ty.value = camera.ty;
+    const pose = step.action === 'restore' ? step.pose : camera;
+    scale.value = pose.scale;
+    tx.value = pose.tx;
+    ty.value = pose.ty;
     if (BOARD_GRID_ENABLED) {
-      gridSentScale.value = camera.scale;
-      setGridScale(camera.scale);
+      gridSentScale.value = pose.scale;
+      setGridScale(pose.scale);
     }
-  }, [boardW, boardH]);
+    if (step.recentreHint && hintRef.current) centreOnArrow(hintRef.current.arrow, pose.scale, visible.w, visible.h);
+  }, [boardW, boardH, centreOnArrow]);
 
   React.useLayoutEffect(() => {
     for (let slot = 0; slot < exitCleanupTimers.length; slot += 1) {
@@ -460,16 +522,16 @@ export function BoardView({
     setPressed(null);
     setMarked(NO_MARKS);
     const measured = measuredLayout.current;
-    fitToViewport(measured.w, measured.h);
-  }, [board, fitToViewport]);
+    placeCamera(measured.w, measured.h, true);
+  }, [board, placeCamera]);
 
-  // A safe-area inset that arrives or changes after layout re-fits the camera
-  // (only while META_ZOOMED_CAMERA is on; OFF the inset is a constant 0).
+  // A safe-area inset that arrives or changes after layout changes the camera's
+  // viewport (only while META_ZOOMED_CAMERA is on; OFF the inset is a constant 0).
   React.useEffect(() => {
     if (!META_ZOOMED_CAMERA) return;
     const measured = measuredLayout.current;
-    fitToViewport(measured.w, measured.h);
-  }, [cameraBottomInset, fitToViewport]);
+    placeCamera(measured.w, measured.h, false);
+  }, [cameraBottomInset, placeCamera]);
 
   const onLayout = useCallback((e: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width: vw, height: vh } = e.nativeEvent.layout;
@@ -480,35 +542,16 @@ export function BoardView({
     setViewportSize((current) =>
       current.w === vw && current.h === vh ? current : { w: vw, h: vh },
     );
-    fitToViewport(vw, vh);
-  }, [fitToViewport]);
+    placeCamera(vw, vh, false);
+  }, [placeCamera]);
 
   // Centre the viewport on the hint arrow (BoardPanZoom.FocusOn) — on a
   // zoomed-in board the pulse would otherwise happen off-screen.
   React.useEffect(() => {
     if (!hint) return;
-    const a = hint.arrow;
-    const cx = ((a.minCol + a.maxCol + 1) / 2) * CELL;
-    const cy = ((a.minRow + a.maxRow + 1) / 2) * CELL;
-    const s = scale.value;
     const { w: vw, h: vh } = viewport.value;
-    if (vw < 1 || vh < 1) return;
-    const { tx: txT, ty: tyT } = centreOn(cx, cy, s, vw, vh, boardW, boardH);
-    cancelAnimation(tx);
-    cancelAnimation(ty);
-    // Vestibular horizontal recentring follows the player's system setting.
-    tx.value = withTiming(txT, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      reduceMotion: ReduceMotion.System,
-    });
-    // Vestibular vertical recentring follows the player's system setting.
-    ty.value = withTiming(tyT, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      reduceMotion: ReduceMotion.System,
-    });
-  }, [hint, boardW, boardH]);
+    centreOnArrow(hint.arrow, scale.value, vw, vh);
+  }, [hint, centreOnArrow]);
 
   // ---- tap -> game move --------------------------------------------------
 

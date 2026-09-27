@@ -1,10 +1,12 @@
 import {
+  cameraOnViewportChange,
   cameraViewport,
   centreOn,
   initialCamera,
   panRange,
   TARGET_CELLS_ACROSS,
   ZOOM_SKIP_FIT_CELL_PT,
+  type ViewportCameraStep,
 } from '../boardCamera';
 
 const CELL = 40;
@@ -241,4 +243,76 @@ describe('cameraViewport (bottom safe-area inset)', () => {
       expect(ylo + boardH * cam.scale).toBeLessThanOrEqual(r.visibleH + 1e-9);
     },
   );
+});
+
+/**
+ * CAMERA-REFIT-AFTER-AD: a rewarded ad re-lays out the game screen (the board view measured 411 x 804.29 dp before
+ * the ad, 828.29 while it was up and 804.29 again after BACK: artifacts/W2-07/perf/invalid/A2-logcat.txt), and every
+ * layout used to re-fit the camera to its opening position. The rule: the camera the player had at a viewport comes
+ * back when the viewport returns to that size (the ad's round trip); a viewport that does not come back is a real
+ * change and re-fits; an unchanged size keeps the camera. A new board always re-fits (BoardView, not this function).
+ */
+describe('cameraOnViewportChange (the camera across a viewport round trip)', () => {
+  const V804 = { w: 411.4285583496094, h: 756.2857055664062 }; // 804.29 raw - 48 inset, the camera's viewport
+  const V828 = { w: 411.4285583496094, h: 780.2857055664062 }; // the same, while the ad is up
+  const PLAYER = { scale: 0.45, tx: -120, ty: -310 }; // a panned / zoomed camera
+  const OPENING = { scale: 0.73, tx: -40, ty: -60 };
+  const poseOf = (step: ViewportCameraStep) => (step.action === 'restore' ? step.pose : undefined);
+
+  it('the ad round trip: the first change re-fits and holds the player\'s camera; the return restores it', () => {
+    const out = cameraOnViewportChange({ from: V804, to: V828, pose: PLAYER, held: null, hintId: null });
+    expect(out.action).toBe('refit');
+    expect(out.held).toEqual({ viewport: V804, pose: PLAYER, hintId: null });
+    const back = cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held: out.held, hintId: null });
+    expect(back.action).toBe('restore');
+    expect(poseOf(back)).toEqual(PLAYER);
+    expect(back.held).toBeNull();
+    expect(back.recentreHint).toBe(false);
+  });
+
+  it('an unchanged viewport (a layout event of the same size) keeps the camera and any hold', () => {
+    const held = { viewport: V804, pose: PLAYER, hintId: null };
+    expect(cameraOnViewportChange({ from: V804, to: { ...V804 }, pose: PLAYER, held: null, hintId: null }))
+      .toEqual({ action: 'keep', held: null, recentreHint: false });
+    expect(cameraOnViewportChange({ from: V828, to: { ...V828 }, pose: OPENING, held, hintId: null }))
+      .toEqual({ action: 'keep', held, recentreHint: false });
+  });
+
+  it('sizes equal within 0.5 dp count as the same viewport (layout floats)', () => {
+    const out = cameraOnViewportChange({ from: V804, to: { w: V804.w + 0.3, h: V804.h - 0.3 }, pose: PLAYER, held: null, hintId: null });
+    expect(out.action).toBe('keep');
+    const moved = cameraOnViewportChange({ from: V804, to: { w: V804.w, h: V804.h + 0.6 }, pose: PLAYER, held: null, hintId: null });
+    expect(moved.action).toBe('refit');
+  });
+
+  it('a real change (a size that does not come back) re-fits, and a further change keeps the FIRST hold', () => {
+    const a = cameraOnViewportChange({ from: V804, to: V828, pose: PLAYER, held: null, hintId: null });
+    const other = { w: 300, h: 500 };
+    const b = cameraOnViewportChange({ from: V828, to: other, pose: OPENING, held: a.held, hintId: null });
+    expect(b.action).toBe('refit');
+    expect(b.held).toEqual(a.held); // the camera of the viewport the player last had
+    const c = cameraOnViewportChange({ from: other, to: V804, pose: OPENING, held: b.held, hintId: null });
+    expect(c.action).toBe('restore');
+    expect(poseOf(c)).toEqual(PLAYER);
+  });
+
+  it('the first layout (no viewport yet) re-fits and holds nothing', () => {
+    const out = cameraOnViewportChange({ from: { w: 0, h: 0 }, to: V804, pose: { scale: 0, tx: 0, ty: 0 }, held: null, hintId: null });
+    expect(out).toEqual({ action: 'refit', held: null, recentreHint: false });
+  });
+
+  it('a hint granted while the ad was up is centred again after the restore; an older hint is not', () => {
+    const held = cameraOnViewportChange({ from: V804, to: V828, pose: PLAYER, held: null, hintId: 3 }).held;
+    expect(held?.hintId).toBe(3);
+    expect(cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held, hintId: 4 }).recentreHint).toBe(true);
+    expect(cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held, hintId: 3 }).recentreHint).toBe(false);
+    expect(cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held, hintId: null }).recentreHint).toBe(false);
+  });
+
+  it('the restored pose is the held one, value for value (no re-clamp drift: same viewport, same bounds)', () => {
+    const b = initialCamera(V804.w, V804.h, 20 * CELL, 20 * CELL, CELL, true)!;
+    const pose = { scale: b.minScale, tx: (V804.w - 20 * CELL * b.minScale) / 2, ty: (V804.h - 20 * CELL * b.minScale) / 2 };
+    const held = cameraOnViewportChange({ from: V804, to: V828, pose, held: null, hintId: null }).held;
+    expect(poseOf(cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held, hintId: null }))).toEqual(pose);
+  });
 });
