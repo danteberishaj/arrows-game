@@ -9,6 +9,10 @@
  * - **Display names are not ids.** A rename changes a display-name map, never the id.
  * - **Capacity.** At most 60 ids. Past 60, add a third additive key through the P-01 migration
  *   pattern. Never repack existing bits.
+ * - **Appending deals nothing (W3-18).** A new id reserves its collection bit and resolves to its
+ *   ShapeDef, but no generator, tier pool or daily pool deals it until the owner's recognition
+ *   test (W3-19) passes and it is added to `V2_ADMITTED_SHAPE_IDS`. v1's pools and the daily pool
+ *   are separate explicit lists, so an append never re-deals a v1, daily or v2 board.
  * - **Obligation on W3.** Any new generator version must provide an equivalent
  *   `shapeNameForLevel(index, version)`. It must extend this task's equivalence test to that
  *   version, and it must register every new shape id here before the shape can appear in a level.
@@ -47,6 +51,44 @@ export const SHAPE_CATALOGUE: readonly string[] = Object.freeze([
 ]);
 
 export const RETIRED_SHAPE_IDS: ReadonlySet<string> = new Set<string>();
+
+/**
+ * W3-18: the catalogue ids generator v2's bag may deal (`shapeBag.ts` `bagCandidates`, before
+ * `RETIRED_SHAPE_IDS`). Fail-closed: an id appended to `SHAPE_CATALOGUE` is not dealt until the
+ * owner's recognition test (W3-19) records a pass for it and it is added here. Adding an id
+ * re-deals v2 from the first window that admits it, so it re-pins both v2 corpus fingerprints
+ * with its own evidence. v1's tier pools (`ShapeLibrary`) and the daily pool (`dailyBoard.ts`)
+ * never read this set.
+ */
+export const V2_ADMITTED_SHAPE_IDS: ReadonlySet<string> = new Set<string>([
+  // The 26 shapes v1 shipped (W3-10 derived the bag from the whole catalogue when it held only these).
+  'Square',
+  'Rectangle',
+  'Circle',
+  'Diamond',
+  'Triangle',
+  'Plus',
+  'Hexagon',
+  'Star',
+  'Heart',
+  'Trophy',
+  'Crescent',
+  'Flower',
+  'Bolt',
+  'Arrow',
+  'Crown',
+  'Hourglass',
+  'Pentagon',
+  'Octagon',
+  'Ring',
+  'X',
+  'Butterfly',
+  'Rocket',
+  'Pine',
+  'Cat',
+  'Mushroom',
+  'Fish',
+]);
 
 // OWNER-PICKED STARTING VALUE: two 30-bit persistence keys.
 export const MAX_CATALOGUE_BITS = 60;

@@ -904,6 +904,7 @@ interface V2Admission {
   truncated: number; // windows whose length differs from their admissible set size (always 0)
   admittedEverywhere: string[];
   excludedEverywhere: string[];
+  notCandidates: string[];
 }
 
 function v2Admission(indices: readonly number[], curve: CurveTable): V2Admission {
@@ -914,7 +915,10 @@ function v2Admission(indices: readonly number[], curve: CurveTable): V2Admission
     windows.set(w.ordinal, w);
   }
   const list = [...windows.values()].sort((a, b) => a.ordinal - b.ordinal);
-  const inAll = new Set(SHAPE_CATALOGUE);
+  // W3-18: only bag candidates can be admitted or excluded by capacity; a catalogue id awaiting
+  // W3-19 (or retired) is not a candidate and is reported separately.
+  const candidates = bagCandidates().map((s) => s.name);
+  const inAll = new Set(candidates);
   const inAny = new Set<string>();
   let truncated = 0;
   for (const w of list) {
@@ -929,8 +933,9 @@ function v2Admission(indices: readonly number[], curve: CurveTable): V2Admission
     lastOrdinal: list[list.length - 1].ordinal,
     setSizes: [...new Set(list.map((w) => w.order.length))].sort((a, b) => a - b),
     truncated,
-    admittedEverywhere: SHAPE_CATALOGUE.filter((id) => inAll.has(id)),
-    excludedEverywhere: SHAPE_CATALOGUE.filter((id) => !inAny.has(id)),
+    admittedEverywhere: candidates.filter((id) => inAll.has(id)),
+    excludedEverywhere: candidates.filter((id) => !inAny.has(id)),
+    notCandidates: SHAPE_CATALOGUE.filter((id) => !candidates.includes(id)),
   };
 }
 
@@ -1002,6 +1007,7 @@ function runShapeReport(opts: Options): void {
       + `admissible set size(s) ${admission.setSizes.join(', ')}, truncated windows ${admission.truncated}`);
     console.log(`Admitted in every window (${admission.admittedEverywhere.length}): ${admission.admittedEverywhere.join(', ')}`);
     console.log(`Excluded from every window (${admission.excludedEverywhere.length}): ${admission.excludedEverywhere.join(', ') || 'none'}`);
+    console.log(`Not bag candidates (awaiting W3-19 or retired) (${admission.notCandidates.length}): ${admission.notCandidates.join(', ') || 'none'}`);
     if (size !== null) {
       const expected = total / size;
       const worst = Math.max(...admission.admittedEverywhere.map((id) => Math.abs((counts.get(id) ?? 0) - expected)));

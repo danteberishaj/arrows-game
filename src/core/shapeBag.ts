@@ -42,15 +42,17 @@
  *   times changes no board.
  *
  * Catalogue contract (W4-01): bag membership is derived from
- * `SHAPE_CATALOGUE`, which is append-only. Retiring a shape from v2 windows
- * means adding it to `RETIRED_SHAPE_IDS`, never removing it from
+ * `SHAPE_CATALOGUE`, which is append-only, filtered by `V2_ADMITTED_SHAPE_IDS`
+ * (W3-18: an appended shape joins the bag only once the owner's recognition
+ * test, W3-19, passes; until then appending re-deals nothing). Retiring a
+ * shape from v2 windows means adding it to `RETIRED_SHAPE_IDS`, never removing it from
  * `SHAPE_CATALOGUE` or changing its index, so W4-07's collection bits stay
  * stable. A shape the bag deals is therefore always a catalogue id.
  */
 import { V2_CURVE, type CurveTable } from './curve';
 import { Difficulties } from './difficulty';
 import { ExactDotNetRandom } from './dotnetRandom';
-import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, shapeDefFor } from './shapeCatalogue';
+import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, V2_ADMITTED_SHAPE_IDS, shapeDefFor } from './shapeCatalogue';
 import {
   CAPACITY_TABLE_MAX_COLS,
   CAPACITY_TABLE_MAX_ROWS,
@@ -285,17 +287,20 @@ export function shapeCapacity(
 }
 
 /**
- * Every shape the bag may deal: `SHAPE_CATALOGUE` in catalogue order, minus
- * `RETIRED_SHAPE_IDS`, each resolved with `shapeDefFor`. The parameters exist
- * so tests can exercise retirement; the game always uses the defaults.
+ * Every shape the bag may deal: `SHAPE_CATALOGUE` in catalogue order, keeping
+ * only ids in `V2_ADMITTED_SHAPE_IDS` (W3-18) and dropping `RETIRED_SHAPE_IDS`,
+ * each resolved with `shapeDefFor`. An id that is not admitted is never
+ * resolved. The parameters exist so tests can exercise retirement and
+ * admission; the game always uses the defaults.
  */
 export function bagCandidates(
   catalogue: readonly string[] = SHAPE_CATALOGUE,
   retired: ReadonlySet<string> = RETIRED_SHAPE_IDS,
+  admitted: ReadonlySet<string> = V2_ADMITTED_SHAPE_IDS,
 ): readonly ShapeDef[] {
   const out: ShapeDef[] = [];
   for (const id of catalogue) {
-    if (retired.has(id)) continue;
+    if (!admitted.has(id) || retired.has(id)) continue;
     const def = shapeDefFor(id);
     if (def === null) throw new Error(`shapeBag: catalogue id '${id}' has no ShapeDef`);
     out.push(def);

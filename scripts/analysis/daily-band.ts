@@ -29,8 +29,11 @@ const LAST_DAY = 3649; // 10 years of days — the window the W4-03 brief names.
 const CAMPAIGN_LEVELS = 200000; // seed-collision search space the W4-03 brief names.
 const DAILY_SEED_DAYS = 20000; // day range the namespace assertion covers.
 
-/** The 26-shape alternative: the whole catalogue, including the two fills. */
-const POOL_26: readonly string[] = SHAPE_CATALOGUE;
+/**
+ * The 26-shape alternative: the whole v1 catalogue, including the two fills. W3-18 appends
+ * shapes no pool deals yet, so this is the catalogue's first 26 ids, not the whole catalogue.
+ */
+const POOL_26: readonly string[] = SHAPE_CATALOGUE.slice(0, 26);
 
 interface PoolReport {
   label: string;

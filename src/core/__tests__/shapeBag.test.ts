@@ -22,7 +22,7 @@ import {
   windowSetAt,
   type WindowMaxTarget,
 } from '../shapeBag';
-import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, catalogueIndexOf, shapeDefFor } from '../shapeCatalogue';
+import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, V2_ADMITTED_SHAPE_IDS, catalogueIndexOf, shapeDefFor } from '../shapeCatalogue';
 import { ShapeDef } from '../shapeLibrary';
 
 // W3-10: generator v2's capacity-aware shuffled shape bag. W3-14: its windows
@@ -50,6 +50,14 @@ const ROWS_CAP = 46;
  * Ring, holds 696. (At W3-10's 46x46 clamp this set was 18 shapes.)
  */
 const AT_LEAST_720 = ['Square', 'Rectangle', 'Circle', 'Plus', 'Hexagon', 'Heart', 'Pentagon', 'Octagon'];
+
+/**
+ * W3-18: the catalogue ids v2 may deal, in catalogue order (`V2_ADMITTED_SHAPE_IDS` is data: the
+ * owner's W3-19 recognition passes). A catalogue id outside it is authored but dealt nowhere yet.
+ */
+const ADMITTED = SHAPE_CATALOGUE.filter((id) => V2_ADMITTED_SHAPE_IDS.has(id));
+/** Catalogue ids authored but awaiting W3-19: no bag window may ever deal one. */
+const PENDING = SHAPE_CATALOGUE.filter((id) => !V2_ADMITTED_SHAPE_IDS.has(id));
 
 function countTrue(mask: readonly (readonly boolean[])[]): number {
   let n = 0;
@@ -214,7 +222,7 @@ describe('W3-14 the clamp (owner pick W3-09) and capacity', () => {
     const expected = SHAPE_CATALOGUE.filter((id) => AT_LEAST_720.includes(id));
     expect(windowSetAt(0, placeholderWindowMaxTarget).map((s) => s.name)).toEqual(expected);
     expect(expected).toHaveLength(8);
-    for (const id of SHAPE_CATALOGUE) {
+    for (const id of ADMITTED) {
       expect([id, independentCapacity(def(id)) >= 720]).toEqual([id, AT_LEAST_720.includes(id)]);
     }
   });
@@ -238,7 +246,7 @@ describe('W3-10 bag invariants over v2 levels 0-1999', () => {
     // window model, confirmed by W3-14). A (k+1)-th shape may still hold this
     // window's targets; it sits the window out because a (k+1)-level window
     // would reach a target it cannot hold. That is counted, not hidden.
-    const ranked = [...SHAPE_CATALOGUE]
+    const ranked = [...ADMITTED]
       .map((id, catalogueIndex) => ({ id, catalogueIndex, cap: independentCapacity(def(id)) }))
       .sort((a, b) => b.cap - a.cap || a.catalogueIndex - b.catalogueIndex);
     let expectedStart = 0;
@@ -263,7 +271,7 @@ describe('W3-10 bag invariants over v2 levels 0-1999', () => {
         if (k < ranked.length && ranked[k].cap === ranked[k - 1].cap) continue;
         expect([window.start, k, ranked[k - 1].cap < curveMax(window.start, window.start + k)]).toEqual([window.start, k, true]);
       }
-      satOut += SHAPE_CATALOGUE.filter((id) => !dealt.includes(id) && independentCapacity(def(id)) >= max).length;
+      satOut += ADMITTED.filter((id) => !dealt.includes(id) && independentCapacity(def(id)) >= max).length;
       expectedStart += size;
       windows += 1;
     }
@@ -484,7 +492,7 @@ describe('W3-10 where the admissible set changes (the W3-14 seam)', () => {
     checkCurve(maxAt, 200);
     const late = bagWindowFor(150, curve(maxAt));
     // Below 400 cells at the W3-09 clamp: Bolt (202) and Arrow (394).
-    expect(late.order.map((s) => s.name).sort()).toEqual(SHAPE_CATALOGUE.filter((id) => id !== 'Bolt' && id !== 'Arrow').sort());
+    expect(late.order.map((s) => s.name).sort()).toEqual(ADMITTED.filter((id) => id !== 'Bolt' && id !== 'Arrow').sort());
   });
 
   test('two admissible shapes alternate with no repeat (every window of size 2 exercises the swap rule)', () => {
@@ -528,8 +536,25 @@ describe('W3-10 where the admissible set changes (the W3-14 seam)', () => {
 });
 
 describe('W3-10 catalogue contract (W4-01)', () => {
-  test('bag membership is SHAPE_CATALOGUE minus RETIRED_SHAPE_IDS, in catalogue order', () => {
-    expect(bagCandidates().map((s) => s.name)).toEqual(SHAPE_CATALOGUE.filter((id) => !RETIRED_SHAPE_IDS.has(id)));
+  test('bag membership is SHAPE_CATALOGUE admitted to v2 (W3-18) minus RETIRED_SHAPE_IDS, in catalogue order', () => {
+    expect(bagCandidates().map((s) => s.name)).toEqual(ADMITTED.filter((id) => !RETIRED_SHAPE_IDS.has(id)));
+  });
+
+  test('W3-18: appending a catalogue id admits nothing: an id not in V2_ADMITTED_SHAPE_IDS is never a candidate (nor resolved)', () => {
+    const names = bagCandidates().map((s) => s.name);
+    // An id with no ShapeDef would throw if the bag tried to resolve it.
+    expect(bagCandidates([...SHAPE_CATALOGUE, 'AuthoredNotAdmitted'], RETIRED_SHAPE_IDS).map((s) => s.name)).toEqual(names);
+    // Admission is explicit: the same id admitted by the caller is resolved (and throws, having no ShapeDef).
+    expect(() => bagCandidates([...SHAPE_CATALOGUE, 'AuthoredNotAdmitted'], RETIRED_SHAPE_IDS,
+      new Set([...V2_ADMITTED_SHAPE_IDS, 'AuthoredNotAdmitted']))).toThrow(/'AuthoredNotAdmitted' has no ShapeDef/);
+    for (const id of PENDING) expect([id, names.includes(id)]).toEqual([id, false]);
+  });
+
+  test('W3-18: no catalogue id awaiting W3-19 is dealt by v2 over levels 0-1999, fresh or with the v1 floor', () => {
+    const fresh = Array.from({ length: V2_LEVELS }, (_, i) => shapeNameForLevel(i, 2));
+    const floored = Array.from({ length: V2_LEVELS }, (_, i) => shapeNameForLevel(i, 2, 1));
+    expect([...new Set([...fresh, ...floored])].filter((n) => !V2_ADMITTED_SHAPE_IDS.has(n))).toEqual([]);
+    for (const id of PENDING) expect([id, fresh.includes(id) || floored.includes(id)]).toEqual([id, false]);
   });
 
   test('retiring a shape drops it from the bag without touching any catalogue index', () => {
@@ -537,7 +562,7 @@ describe('W3-10 catalogue contract (W4-01)', () => {
     const retired = new Set(['Circle']);
     const names = bagCandidates(SHAPE_CATALOGUE, retired).map((s) => s.name);
     expect(names).not.toContain('Circle');
-    expect(names).toEqual(SHAPE_CATALOGUE.filter((id) => id !== 'Circle'));
+    expect(names).toEqual(ADMITTED.filter((id) => id !== 'Circle'));
     expect(SHAPE_CATALOGUE.map((id) => catalogueIndexOf(id))).toEqual(indexBefore);
   });
 });

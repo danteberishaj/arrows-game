@@ -14,7 +14,7 @@
  *
  * Usage:
  *   npx tsx scripts/analysis/shape-preview.ts --name <Shape> --rows <N> [--out <dir>]
- *   npx tsx scripts/analysis/shape-preview.ts --all [--out <dir>]
+ *   npx tsx scripts/analysis/shape-preview.ts --all [--ids <A,B,...>] [--out <dir>]
  *   npm run analysis:shape -- --name Bolt --rows 46
  *
  * `--name/--rows` prints the ASCII mask, cell count, fill fraction and the
@@ -33,6 +33,12 @@
  * so admission varies by level; the sheet prints admission where it is
  * tightest and permanent, at the shipped curve's saturated end (the capacity
  * at the W3-09 clamp, from `shapeCapacity`, against that window max target).
+ *
+ * W3-18: both modes cover every `SHAPE_CATALOGUE` id (in catalogue order), not
+ * only v1's tier pools, so a newly authored shape can be previewed. An id not
+ * in `V2_ADMITTED_SHAPE_IDS` prints "v2: pending W3-19" with its capacity
+ * against the saturated window max: the bag does not deal it until the owner's
+ * recognition test passes. `--ids` limits `--all` to the listed ids.
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -45,12 +51,15 @@ import {
   DifficultyConfig,
   DotNetRandom,
   LevelGenerator,
+  RETIRED_SHAPE_IDS,
+  SHAPE_CATALOGUE,
   ShapeDef,
-  ShapeLibrary,
+  V2_ADMITTED_SHAPE_IDS,
   V2_CURVE,
   V2_MAX_GRID_COLS,
   V2_MAX_GRID_ROWS,
   shapeCapacity,
+  shapeDefFor,
   v2WindowMaxTarget,
 } from '../../src/core';
 import { arrowArt, STROKE } from '../../src/ui/arrowGeometry';
@@ -83,8 +92,13 @@ function countTrue(mask: readonly (readonly boolean[])[]): number {
   return n;
 }
 
+/** Every catalogue shape, in catalogue order (W3-18: includes shapes no pool deals yet). */
 function allShapes(): readonly ShapeDef[] {
-  return [...new Set([...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool])];
+  return SHAPE_CATALOGUE.map((id) => {
+    const shape = shapeDefFor(id);
+    if (shape === null) throw new Error(`catalogue id '${id}' has no ShapeDef`);
+    return shape;
+  });
 }
 
 function shapeByName(name: string): ShapeDef {
@@ -114,6 +128,8 @@ function rasterAt(shape: ShapeDef, rows: number): Raster {
 /** Generator v2's admission of `shape` at the shipped curve's saturated end (W3-14). */
 interface V2Admission {
   readonly admitted: boolean;
+  /** W3-18: not a bag candidate at all (awaiting W3-19's recognition pass, or retired). */
+  readonly status: 'candidate' | 'pending' | 'retired';
   readonly capacity: number;
   readonly windowMax: number;
 }
@@ -122,13 +138,19 @@ function v2Admission(shape: ShapeDef): V2Admission {
   const last = V2_CURVE[V2_CURVE.length - 1].levelIndex;
   const windowMax = v2WindowMaxTarget(last, last + Difficulties.cycleLength);
   const capacity = shapeCapacity(shape);
-  return { admitted: capacity >= windowMax, capacity, windowMax };
+  const status = RETIRED_SHAPE_IDS.has(shape.name) ? 'retired'
+    : V2_ADMITTED_SHAPE_IDS.has(shape.name) ? 'candidate' : 'pending';
+  return { admitted: status === 'candidate' && capacity >= windowMax, status, capacity, windowMax };
+}
+
+function v2AdmissionWord(a: V2Admission): string {
+  if (a.status === 'pending') return 'pending W3-19';
+  if (a.status === 'retired') return 'retired';
+  return a.admitted ? 'admitted' : 'excluded';
 }
 
 function v2AdmissionLabel(a: V2Admission): string {
-  return a.admitted
-    ? `v2: admitted (cap ${a.capacity} >= ${a.windowMax})`
-    : `v2: excluded (cap ${a.capacity} < ${a.windowMax})`;
+  return `v2: ${v2AdmissionWord(a)} (cap ${a.capacity} ${a.capacity >= a.windowMax ? '>=' : '<'} ${a.windowMax})`;
 }
 
 function asciiMask(mask: readonly (readonly boolean[])[]): string {
@@ -266,10 +288,10 @@ function contactSheetSvg(entries: readonly ShapeCells[]): string {
       + `font-size="${ROW_LABEL_FONT_PX}" font-weight="${BOLD_WEIGHT}">${escapeXml(entry.shape.name)}</text>`,
       `<text x="${TEXT_LEFT_PX}" y="${rowCenter + ROW_LABEL_FONT_PX + 2}" `
       + `fill="${entry.v2.admitted ? Daylight.inkDim : '#D1264C'}" font-family="sans-serif" `
-      + `font-size="${CAPTION_FONT_PX - 1}">${entry.v2.admitted ? 'v2: admitted' : 'v2: excluded'}</text>`,
+      + `font-size="${CAPTION_FONT_PX - 1}">${escapeXml(`v2: ${v2AdmissionWord(entry.v2)}`)}</text>`,
       `<text x="${TEXT_LEFT_PX}" y="${rowCenter + ROW_LABEL_FONT_PX + 2 + CAPTION_FONT_PX}" `
       + `fill="${Daylight.inkDim}" font-family="sans-serif" font-size="${CAPTION_FONT_PX - 1}">`
-      + `${escapeXml(`cap ${entry.v2.capacity} ${entry.v2.admitted ? '>=' : '<'} ${entry.v2.windowMax}`)}</text>`,
+      + `${escapeXml(`cap ${entry.v2.capacity} ${entry.v2.capacity >= entry.v2.windowMax ? '>=' : '<'} ${entry.v2.windowMax}`)}</text>`,
     );
 
     entry.rasters.forEach((raster, colIndex) => {
@@ -309,8 +331,8 @@ function contactSheetSvg(entries: readonly ShapeCells[]): string {
   </svg>`;
 }
 
-async function runAll(outDir: string): Promise<void> {
-  const shapes = allShapes();
+async function runAll(outDir: string, ids: readonly string[] | null): Promise<void> {
+  const shapes = ids === null ? allShapes() : ids.map(shapeByName);
   const entries: ShapeCells[] = shapes.map((shape) => ({
     shape,
     rasters: CONTACT_SHEET_ROWS.map((rows) => rasterAt(shape, rows)),
@@ -325,9 +347,12 @@ async function runAll(outDir: string): Promise<void> {
     const cells = entry.rasters.map((r) => `${r.cells}/${r.rows * r.cols} (${r.rows}x${r.cols})`);
     console.log([entry.shape.name, ...cells, v2AdmissionLabel(entry.v2)].join('\t'));
   }
-  const excluded = entries.filter((e) => !e.v2.admitted).map((e) => e.shape.name);
+  const excluded = entries.filter((e) => e.v2.status === 'candidate' && !e.v2.admitted).map((e) => e.shape.name);
+  const notCandidates = entries.filter((e) => e.v2.status !== 'candidate').map((e) => `${e.shape.name} (${v2AdmissionWord(e.v2)})`);
+  const candidates = entries.length - notCandidates.length;
   console.log('');
-  console.log(`v2 admits ${entries.length - excluded.length} of ${entries.length}; excluded (${excluded.length}): ${excluded.join(', ')}`);
+  console.log(`v2 admits ${candidates - excluded.length} of ${candidates} bag candidates at the saturated curve; excluded (${excluded.length}): ${excluded.join(', ') || 'none'}`);
+  console.log(`Not bag candidates (${notCandidates.length}): ${notCandidates.join(', ') || 'none'}`);
   const empties = entries.flatMap((e) => e.rasters
     .filter((r) => r.cells === 0)
     .map((r) => `${e.shape.name}@rows=${r.rows}`));
@@ -347,7 +372,7 @@ function usage(): never {
   console.error(
     'Usage:\n'
     + '  shape-preview --name <Shape> --rows <N> [--out <dir>]\n'
-    + '  shape-preview --all [--out <dir>]',
+    + '  shape-preview --all [--ids <A,B,...>] [--out <dir>]',
   );
   process.exit(1);
 }
@@ -357,6 +382,7 @@ async function main(): Promise<void> {
   let name: string | null = null;
   let rows: number | null = null;
   let all = false;
+  let ids: string[] | null = null;
   let outDir = os.tmpdir();
 
   for (let i = 0; i < argv.length; i++) {
@@ -364,6 +390,7 @@ async function main(): Promise<void> {
       case '--name': name = argv[++i]; break;
       case '--rows': rows = Number(argv[++i]); break;
       case '--all': all = true; break;
+      case '--ids': ids = argv[++i].split(',').map((id) => id.trim()).filter((id) => id.length > 0); break;
       case '--out': outDir = argv[++i]; break;
       default: throw new Error(`Unknown argument: ${argv[i]}`);
     }
@@ -371,11 +398,11 @@ async function main(): Promise<void> {
 
   if (all) {
     if (name !== null || rows !== null) usage();
-    await runAll(outDir);
+    await runAll(outDir, ids);
     return;
   }
 
-  if (name === null || rows === null || !Number.isFinite(rows) || rows <= 0) usage();
+  if (ids !== null || name === null || rows === null || !Number.isFinite(rows) || rows <= 0) usage();
   await runSingle(name!, rows!, outDir);
 }
 

@@ -11,6 +11,7 @@ export {
   MAX_CATALOGUE_BITS,
   RETIRED_SHAPE_IDS,
   SHAPE_CATALOGUE,
+  V2_ADMITTED_SHAPE_IDS,
   catalogueIndexOf,
   shapeDefFor,
 } from './shapeCatalogue';

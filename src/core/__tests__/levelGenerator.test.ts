@@ -13,8 +13,9 @@ import { Direction, toDelta } from '../direction';
 import { DotNetRandom } from '../dotnetRandom';
 import type { GenVersion } from '../generatorVersion';
 import { LevelGenerator, shapeNameForLevel } from '../levelGenerator';
-import { curveWindowMaxTarget, pickForLevelV2 } from '../shapeBag';
-import { ShapeLibrary } from '../shapeLibrary';
+import { curveWindowMaxTarget, pickForLevelV2, v2Cols, v2MaxRows } from '../shapeBag';
+import { SHAPE_CATALOGUE, shapeDefFor } from '../shapeCatalogue';
+import { ShapeLibrary, type ShapeDef } from '../shapeLibrary';
 
 // Ported from Assets/_Game/Scripts/Tests/LevelGeneratorTests.cs.
 
@@ -286,7 +287,13 @@ test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () =
   // W3-01 added a doc comment above it, shifting it from :65). 12 and 24 sample a
   // small and mid-size board so thin features (crescent horns, bolt tips,
   // crown valleys) are exercised well below and at the existing 24-row test.
-  const all = [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool];
+  // W3-18: every catalogue shape too, so a shape authored outside the v1 pools (awaiting W3-19)
+  // is filled and solved at the same three sizes before it can enter v2's bag.
+  const all = [...new Set<ShapeDef>([
+    ...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool,
+    ...SHAPE_CATALOGUE.map((id) => shapeDefFor(id)!),
+  ])];
+  expect(all.length).toBe(SHAPE_CATALOGUE.length);
   const cfg = Difficulties.config(Difficulty.Normal);
 
   for (const rows of [12, 24, 46]) {
@@ -305,6 +312,28 @@ test('every shape fills and solves at rows 12, 24 and 46 (the size clamp)', () =
         }
       }
       if (!solveGreedy(board)) throw new Error(`${shape.name} rows=${rows}: not solvable`);
+    }
+  }
+});
+
+test('W3-18: every catalogue shape fills and solves on its v2 capacity board (rows = v2MaxRows(aspect), at most 37 cols)', () => {
+  // The largest board generator v2 can deal a shape (shapeBag.ts rasterizedCapacity): where a
+  // shape's thin features are finest relative to its arrows, at every tier's arrow lengths.
+  for (const id of SHAPE_CATALOGUE) {
+    const shape = shapeDefFor(id)!;
+    const rows = v2MaxRows(shape.aspect);
+    const cols = v2Cols(rows, shape.aspect);
+    const mask = shape.rasterize(rows, cols);
+    for (const d of [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard]) {
+      const arrows = LevelGenerator.fillMask(mask, rows, cols, Difficulties.config(d), new DotNetRandom(1234));
+      const board = new BoardLogic(rows, cols);
+      for (const a of arrows) board.add(a);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (!board.isEmpty(r, c) !== mask[r][c]) throw new Error(`${id} ${rows}x${cols} d=${d}: fill != mask at ${r},${c}`);
+        }
+      }
+      if (!solveGreedy(board)) throw new Error(`${id} ${rows}x${cols} d=${d}: not solvable`);
     }
   }
 });

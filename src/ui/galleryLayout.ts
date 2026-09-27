@@ -1,5 +1,6 @@
 import { hasSeen, type ShapeMasks } from '../core/collection';
 import { RETIRED_SHAPE_IDS, SHAPE_CATALOGUE, shapeDefFor } from '../core/shapeCatalogue';
+import { galleryShapeIds } from './galleryShapes';
 import { silhouettePath } from './silhouette';
 
 /**
@@ -120,26 +121,30 @@ export interface GalleryWall {
 }
 
 /**
- * The wall for these collection masks, in catalogue (bit) order. A retired
- * shape is shown only if it was collected; `total` is the non-retired
- * catalogue length and `collected` counts collected non-retired shapes, so the
- * count line never reads more than `total` of `total`. Bits this build's
- * catalogue does not know (written by a newer build) are ignored.
+ * The wall for these collection masks, in catalogue (bit) order. An id is
+ * "listed" when a player can be dealt it (`dealable`, W3-18's
+ * `galleryShapeIds`) and it is not retired. A listed id always has a tile; an
+ * unlisted one (retired, or authored but awaiting the owner's recognition
+ * test) has a tile only if it was collected. `total` is the listed count and
+ * `collected` counts collected listed ids, so the count line never reads more
+ * than `total` of `total`. Bits this build's catalogue does not know (written
+ * by a newer build) are ignored.
  */
 export function galleryWall(
   masks: ShapeMasks,
   catalogue: readonly string[] = SHAPE_CATALOGUE,
   retired: ReadonlySet<string> = RETIRED_SHAPE_IDS,
+  dealable: ReadonlySet<string> = galleryShapeIds(),
 ): GalleryWall {
   const tiles: GalleryTile[] = [];
   let collected = 0;
   let total = 0;
   catalogue.forEach((id, index) => {
     const have = hasSeen(masks, index);
-    const isRetired = retired.has(id);
-    if (!isRetired) total += 1;
-    if (have && !isRetired) collected += 1;
-    if (isRetired && !have) return;
+    const listed = dealable.has(id) && !retired.has(id);
+    if (listed) total += 1;
+    if (have && listed) collected += 1;
+    if (!listed && !have) return;
     tiles.push({ id, name: shapeDefFor(id)?.name ?? id, collected: have });
   });
   return { tiles, collected, total };

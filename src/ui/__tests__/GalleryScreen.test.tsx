@@ -4,7 +4,8 @@
  * filled versus outlined in greyscale, the scroll, a tile tap on the real
  * renderer doing nothing, Android back — closes on the emulator captures in
  * artifacts/W4-09/. Here:
- * - one tile per non-retired catalogue shape in catalogue order: collected =
+ * - one tile per non-retired catalogue shape a player can be dealt (W3-18: a
+ *   catalogue id awaiting the owner's recognition test has none), in catalogue order: collected =
  *   the tile path filled in `ink` (even-odd) with the display name in `inkDim`
  *   below; not collected = the same path outlined in `pipSpent`, no fill, no
  *   name; retired and not collected = no tile;
@@ -31,12 +32,23 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: 360, height: 640, scale: 3, fontScale: 1 }),
 }));
 
-const mockCatalogue = { retired: new Set<string>() };
-jest.mock('../../core/shapeCatalogue', () =>
-  Object.defineProperties(
-    { ...jest.requireActual('../../core/shapeCatalogue') },
-    { RETIRED_SHAPE_IDS: { get: () => mockCatalogue.retired, enumerable: true } },
-  ));
+const mockCatalogue = { retired: new Set<string>(), extra: [] as string[] };
+jest.mock('../../core/shapeCatalogue', () => {
+  const actual = jest.requireActual('../../core/shapeCatalogue');
+  return Object.defineProperties(
+    { ...actual },
+    {
+      RETIRED_SHAPE_IDS: { get: () => mockCatalogue.retired, enumerable: true },
+      // W3-18: ids appended to the catalogue that no pool deals yet.
+      SHAPE_CATALOGUE: {
+        get: () => (mockCatalogue.extra.length === 0
+          ? actual.SHAPE_CATALOGUE
+          : [...actual.SHAPE_CATALOGUE, ...mockCatalogue.extra]),
+        enumerable: true,
+      },
+    },
+  );
+});
 
 const mockFlags = { COLLECTION_SYNC_ENABLED: true };
 jest.mock('../../featureFlags', () =>
@@ -133,6 +145,7 @@ beforeEach(() => {
     };
   });
   mockCatalogue.retired = new Set();
+  mockCatalogue.extra = [];
   mockFlags.COLLECTION_SYNC_ENABLED = true;
   onBack = jest.fn();
   store = new MapStore();
@@ -152,7 +165,8 @@ describe('the wall', () => {
   test('fresh collection: every catalogue shape outlined in pipSpent, no fill, no name; count 0 of 26', () => {
     const screen = renderGallery();
     const all = tiles(screen);
-    expect(all.map((t) => t.id)).toEqual([...SHAPE_CATALOGUE]);
+    // W3-18: the 26 shapes a player can be dealt; catalogue ids awaiting W3-19 have no tile.
+    expect(all.map((t) => t.id)).toEqual(SHAPE_CATALOGUE.slice(0, 26));
     const inner = GALLERY_TILE_DP - GALLERY_OUTLINE_DP;
     for (const t of all) {
       expect(t.path.d).toBe(galleryTilePath(t.id, inner));
@@ -202,6 +216,15 @@ describe('the wall', () => {
     expect(ids).toContain('Fish'); // retired, collected: shown filled
     expect(ids).toHaveLength(25);
     expect(screen.getByText('1 of 24')).toBeTruthy(); // Cat; M = 26 - 2 retired
+  });
+
+  test('W3-18: a catalogue id no generator or daily deals yet (awaiting W3-19) gets no tile; M counts only dealable ids', () => {
+    mockCatalogue.extra = ['AuthoredNotDealt'];
+    const screen = renderGallery();
+    const ids = tiles(screen).map((t) => t.id);
+    expect(ids).not.toContain('AuthoredNotDealt');
+    expect(ids).toHaveLength(26);
+    expect(screen.getByText('0 of 26')).toBeTruthy();
   });
 
   test('no level numbers, stars or scores: the count line is the only text with a digit', () => {
