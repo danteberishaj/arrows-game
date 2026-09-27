@@ -93,8 +93,11 @@ export function useLeavingScreen<S extends string>(
   return { leaving, slotKey };
 }
 
-/** One slot's registry: the shared values its screen animates, and whether it is leaving. */
-type LeaveRegistry = { leaving: boolean; values: Set<SharedValue<number>> };
+/**
+ * One slot's registry: the shared values its screen animates, the JS work to stop
+ * when it starts leaving, and whether it is leaving.
+ */
+type LeaveRegistry = { leaving: boolean; values: Set<SharedValue<number>>; stops: Set<() => void> };
 const LeaveContext = createContext<LeaveRegistry | null>(null);
 
 /**
@@ -119,12 +122,50 @@ export function useStopWhenScreenLeaves(...values: SharedValue<number>[]): () =>
 }
 
 /**
+ * FINAL-FIX (FINAL-REVIEW finding 14): a mount effect whose work ends when the
+ * screen starts leaving, not two UI frames later when the hand-off removes it.
+ * `start` runs once after mount and returns its stop. The stop runs once: in the
+ * layout effect of the commit where the enclosing ScreenSlot turns `leaving` (the
+ * successor's mount commit), or on unmount if that never happened. For JS work
+ * that must not land in the successor's first frames (the menu's sliced
+ * collection fold). Outside a ScreenSlot it is a plain mount effect.
+ */
+export function useEffectUntilScreenLeaves(start: () => () => void): void {
+  const registry = useContext(LeaveContext);
+  useEffect(() => {
+    if (registry?.leaving) return undefined;
+    let stop: (() => void) | null = start();
+    const end = () => {
+      const s = stop;
+      stop = null;
+      s?.();
+    };
+    registry?.stops.add(end);
+    return () => {
+      registry?.stops.delete(end);
+      end();
+    };
+    // Started once per mount, like the effects it replaces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registry]);
+}
+
+/**
  * One screen's slot. Shown: `flex: 1`, and (with `fadeIn`) the ~180 ms cross-fade
  * in that App.tsx always used (DESIGN.md "Motion"; system reduce-motion: instant).
  * Leaving: laid over the new screen at opacity 0, untouchable and hidden from
  * accessibility, and its registered animations are stopped (one `scheduleOnUI`
  * for all of them, from the switch commit's layout effect, which runs before the
- * hand-off schedules its frame wait), until the hand-off removes it.
+ * hand-off schedules its frame wait), until the hand-off removes it. Its
+ * `useEffectUntilScreenLeaves` work stops in that same layout effect.
+ *
+ * FINAL-FIX (FINAL-REVIEW finding 8): the fade-in is an `entering` layout
+ * animation, which keeps writing opacity on the UI thread until it ends, over any
+ * style. So the leaving style (opacity 0) sits on a plain View AROUND the animated
+ * one: a parent's opacity multiplies its children's, and a screen left within its
+ * 180 ms fade-in stays invisible over its successor. The outer View is
+ * `collapsable={false}` in both states, so the switch only changes its props and
+ * never re-parents the screen's native views.
  */
 export function ScreenSlot({
   leaving,
@@ -135,10 +176,12 @@ export function ScreenSlot({
   fadeIn?: boolean;
   children: React.ReactNode;
 }) {
-  const [registry] = useState<LeaveRegistry>(() => ({ leaving: false, values: new Set() }));
+  const [registry] = useState<LeaveRegistry>(() => ({ leaving: false, values: new Set(), stops: new Set() }));
   useLayoutEffect(() => {
     registry.leaving = leaving;
-    if (!leaving || registry.values.size === 0) return;
+    if (!leaving) return;
+    for (const stop of [...registry.stops]) stop();
+    if (registry.values.size === 0) return;
     const values = [...registry.values];
     scheduleOnUI(() => {
       'worklet';
@@ -154,13 +197,15 @@ export function ScreenSlot({
   const content = <LeaveContext.Provider value={registry}>{children}</LeaveContext.Provider>;
   if (!fadeIn) return <View {...props}>{content}</View>;
   return (
-    <Animated.View
-      {...props}
-      // Decorative screen fades follow the player's system reduced-motion setting.
-      entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
-    >
-      {content}
-    </Animated.View>
+    <View {...props} collapsable={false}>
+      <Animated.View
+        style={styles.shown}
+        // Decorative screen fades follow the player's system reduced-motion setting.
+        entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+      >
+        {content}
+      </Animated.View>
+    </View>
   );
 }
 

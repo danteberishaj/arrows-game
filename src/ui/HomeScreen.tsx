@@ -26,7 +26,7 @@ import { ftueRoute } from './ftueRoute';
 import { HeaderButton } from './HeaderButton';
 import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
-import { useStopWhenScreenLeaves } from './screenHandoff';
+import { useEffectUntilScreenLeaves, useStopWhenScreenLeaves } from './screenHandoff';
 import { SettingsSheet } from './SettingsSheet';
 import { Palette, Type } from './theme';
 import { Wordmark } from './Wordmark';
@@ -52,6 +52,7 @@ export function HomeScreen({
   onGallery,
   onToggleSound,
   onToggleTheme,
+  isThemeChanging,
 }: {
   palette: Palette;
   dark: boolean;
@@ -63,6 +64,13 @@ export function HomeScreen({
   onGallery?: () => void;
   onToggleSound: () => void;
   onToggleTheme: () => void;
+  /**
+   * FINAL-FIX (FINAL-REVIEW finding 12): true while the theme toggle's dip runs
+   * (App's useThemeToggle). Settings does not open then: its Modal draws above
+   * the scrim, so the swap under full cover would re-colour the open sheet in one
+   * visible frame.
+   */
+  isThemeChanging?: () => boolean;
 }) {
   const p = palette;
   const insets = useSafeAreaInsets(); // keep the corners clear of notches (SafeArea.cs)
@@ -111,7 +119,10 @@ export function HomeScreen({
   const [showGallery] = useState(() => META_GALLERY && SaveSystem.totalSolved >= 1);
   // W7-04 (META_SETTINGS_SHEET): the Settings sheet, mounted only while open.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const openSettings = useCallback(() => {
+    if (isThemeChanging?.()) return;
+    setSettingsOpen(true);
+  }, [isThemeChanging]);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const showDaily = dailyState !== 'hidden';
   const bothEntries = showDaily && showGallery;
@@ -136,8 +147,10 @@ export function HomeScreen({
   }, []);
 
   // W4-07: the collection catches up here (no board, no gameplay frame budget),
-  // in time-bounded slices from 2 s after the mount (collectionSync.ts); unmount stops it.
-  useEffect(() => startMenuCollectionSync(), []);
+  // in time-bounded slices from 2 s after the mount (collectionSync.ts). FINAL-FIX:
+  // it stops when the menu starts leaving, so no slice lands in the next screen's
+  // first frames during the hand-off (screenHandoff.tsx), or on unmount.
+  useEffectUntilScreenLeaves(startMenuCollectionSync);
 
   const diffColor =
     difficulty === Difficulty.SuperHard ? p.heartText

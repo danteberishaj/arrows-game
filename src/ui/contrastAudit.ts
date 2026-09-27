@@ -228,7 +228,7 @@ const GAL = 'src/ui/GalleryScreen.tsx';
 const SS = 'src/ui/SettingsSheet.tsx';
 
 export const USAGES: ReadonlyArray<Usage> = [
-  // Header buttons (menu theme + sound toggles and W7-04's Settings button HomeScreen.tsx:253-272, game back GameScreen.tsx:536).
+  // Header buttons (menu theme + sound toggles and W7-04's Settings button HomeScreen.tsx:266-285, game back GameScreen.tsx:536).
   // The Ink Night theme toggle ☀ and the 💡 hint are emoji: no token reaches them.
   { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:62` },
   { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:62`, note: 'pressed fill is `heartLost` (HeaderButton.tsx:67)' },
@@ -242,17 +242,17 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'header-icon-off', fgRole: 'glyphOff', bgRole: 'surface', kind: 'graphic', site: `${HB}:62`, note: 'W5-02 sound-off icon (speaker + slash; no strike over it) and the disabled hint icon (the icon takes the token, so it is not dimmed)' },
 
   // Menu
-  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:181`, sizeSite: `${HS}:505` },
-  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:145`, sizeSite: `${HS}:509` },
-  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:144`, sizeSite: `${HS}:509` },
-  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:143`, sizeSite: `${HS}:509` },
-  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:202`, sizeSite: `${HS}:520` },
-  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:202`, sizeSite: `${HS}:520` },
-  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:306`, sizeSite: `${HS}:524`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:300)" },
-  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:347`, sizeSite: `${HS}:542`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
-  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:387`, sizeSite: `${HS}:542`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
-  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:224`, sizeSite: `${HS}:542`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
-  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:179` },
+  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:194`, sizeSite: `${HS}:518` },
+  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:158`, sizeSite: `${HS}:522` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:157`, sizeSite: `${HS}:522` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:156`, sizeSite: `${HS}:522` },
+  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:215`, sizeSite: `${HS}:533` },
+  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:215`, sizeSite: `${HS}:533` },
+  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:319`, sizeSite: `${HS}:537`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:313)" },
+  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:360`, sizeSite: `${HS}:555`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:400`, sizeSite: `${HS}:555`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
+  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:237`, sizeSite: `${HS}:555`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
+  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:192` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
   { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1019`, sizeSite: `${GS}:1481` },

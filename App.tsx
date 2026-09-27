@@ -259,7 +259,7 @@ export default function App() {
       : null),
     [reducedMotion, themeScrimOpacity],
   );
-  const { toggleTheme, scrim: themeScrim, scrimDark } = useThemeToggle({
+  const { toggleTheme, scrim: themeScrim, scrimDark, themeChanging } = useThemeToggle({
     dark,
     setDark,
     persistDark: writeDarkMode,
@@ -290,9 +290,10 @@ export default function App() {
         onGallery={onGallery}
         onToggleSound={toggleSound}
         onToggleTheme={toggleTheme}
+        isThemeChanging={themeChanging}
       />
     ),
-    [p, dark, soundOn, onPlay, onDaily, onGallery, toggleSound, toggleTheme],
+    [p, dark, soundOn, onPlay, onDaily, onGallery, toggleSound, toggleTheme, themeChanging],
   );
   const gameScreen = useMemo(
     () => (

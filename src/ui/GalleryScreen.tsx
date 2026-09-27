@@ -22,6 +22,7 @@ import {
   type GalleryTile,
 } from './galleryLayout';
 import { HeaderButton } from './HeaderButton';
+import { useEffectUntilScreenLeaves } from './screenHandoff';
 import { Palette, Type } from './theme';
 
 /**
@@ -65,14 +66,13 @@ export function GalleryScreen({
   const [masks, setMasks] = useState<ShapeMasks>(() => SaveSystem.shapesSeen);
 
   // W4-07 backfill: fold from the first frame after opening (sliced, off the
-  // mount) and show each slice's new bits. Unmount stops it.
-  useEffect(
-    () => startGalleryCollectionSync(() => {
+  // mount) and show each slice's new bits. FINAL-FIX: leaving the gallery (or
+  // unmounting it) stops it, like the menu's fold (screenHandoff.tsx).
+  useEffectUntilScreenLeaves(() =>
+    startGalleryCollectionSync(() => {
       const next = SaveSystem.shapesSeen;
       setMasks((prev) => (prev.lo === next.lo && prev.hi === next.hi ? prev : next));
-    }),
-    [],
-  );
+    }));
 
   // Android back returns to the menu instead of leaving the app.
   useEffect(() => {

@@ -19,7 +19,7 @@ import { act, render } from '@testing-library/react-native';
 import React, { useLayoutEffect } from 'react';
 import type { ReactTestInstance } from 'react-test-renderer';
 import { StyleSheet, Text } from 'react-native';
-import { afterUiFrames, LEAVE_FRAMES, ScreenSlot, useLeavingScreen } from '../screenHandoff';
+import { afterUiFrames, LEAVE_FRAMES, ScreenSlot, useEffectUntilScreenLeaves, useLeavingScreen } from '../screenHandoff';
 
 type Wait = { done: () => void; cancelled: boolean };
 
@@ -184,4 +184,78 @@ test('afterUiFrames reports after the given number of UI frames, and not at all 
   } finally {
     jest.useRealTimers();
   }
+});
+
+// ---- FINAL-FIX (FINAL-REVIEW findings 8 and 14) ------------------------------
+
+test('finding 8: a leaving slot is hidden by a NON-animated host above its fade-in, so a FadeIn still running cannot show it', () => {
+  const view = render(
+    <ScreenSlot leaving={false}>
+      <Text>screen</Text>
+    </ScreenSlot>,
+  );
+  const textBefore = view.getByText('screen');
+  view.rerender(
+    <ScreenSlot leaving>
+      <Text>screen</Text>
+    </ScreenSlot>,
+  );
+  const text = view.getByText('screen', { includeHiddenElements: true });
+  expect(text).toBe(textBefore); // the same instance: the switch does not remount the screen
+
+  // The node the FadeIn layout animation drives (it writes opacity on the UI thread until it ends).
+  const fading = view.UNSAFE_root.findAll((node) => node.props.entering !== undefined)[0];
+  expect(fading).toBeDefined();
+  expect(StyleSheet.flatten(fading.props.style)?.opacity).toBeUndefined();
+  // Opacity 0 sits on an ancestor the layout animation never writes: a parent's 0 multiplies any child opacity.
+  const hiders: ReactTestInstance[] = [];
+  for (let node = fading.parent; node; node = node.parent) {
+    if (StyleSheet.flatten(node.props.style)?.opacity === 0) hiders.push(node);
+  }
+  expect(hiders.length).toBeGreaterThan(0);
+  expect(hiders.every((node) => node.props.entering === undefined)).toBe(true);
+  // A shown slot keeps today's layout: both wrappers fill the screen.
+  view.rerender(
+    <ScreenSlot leaving={false}>
+      <Text>screen</Text>
+    </ScreenSlot>,
+  );
+  expect(StyleSheet.flatten(slotOf(view.getByText('screen')).props.style)).toEqual({ flex: 1 });
+});
+
+test('finding 14: useEffectUntilScreenLeaves stops the work in the commit where its slot starts leaving, once, and on unmount otherwise', () => {
+  const log: string[] = [];
+  function Worker({ name }: { name: string }) {
+    useEffectUntilScreenLeaves(() => {
+      log.push(`start ${name}`);
+      return () => log.push(`stop ${name}`);
+    });
+    return <Text>{name}</Text>;
+  }
+  const view = render(
+    <ScreenSlot leaving={false}>
+      <Worker name="menu" />
+    </ScreenSlot>,
+  );
+  expect(log).toEqual(['start menu']);
+
+  view.rerender(
+    <ScreenSlot leaving>
+      <Worker name="menu" />
+    </ScreenSlot>,
+  );
+  expect(log).toEqual(['start menu', 'stop menu']); // at the leave, while the slot is still mounted
+  view.rerender(
+    <ScreenSlot leaving>
+      <Worker name="menu" />
+    </ScreenSlot>,
+  );
+  view.unmount(); // the hand-off removes the slot: no second stop
+  expect(log).toEqual(['start menu', 'stop menu']);
+
+  // Outside a ScreenSlot (or never left): unmount stops it.
+  log.length = 0;
+  const bare = render(<Worker name="bare" />);
+  bare.unmount();
+  expect(log).toEqual(['start bare', 'stop bare']);
 });

@@ -15,6 +15,7 @@ import {
   COLLECTION_SYNC_START_DELAY_MS,
 } from '../collectionSync';
 import { HomeScreen } from '../HomeScreen';
+import { ScreenSlot } from '../screenHandoff';
 import { Daylight } from '../theme';
 
 const mockFlags = { COLLECTION_SYNC_ENABLED: true };
@@ -210,4 +211,35 @@ test('kill constant off: the menu never folds', () => {
   for (let i = 0; i < 20; i += 1) frame();
 
   expect([...store.map.keys()]).toEqual(['arrows_current_level']);
+});
+
+test('FINAL-FIX (finding 14): the fold stops when the menu STARTS leaving, not only at its removal two UI frames later', () => {
+  store.setInt('arrows_current_level', COLLECTION_SYNC_BUDGET_STEPS);
+  const menu = (leaving: boolean) => (
+    <ScreenSlot leaving={leaving}>
+      <HomeScreen
+        palette={Daylight}
+        dark={false}
+        soundOn
+        onPlay={jest.fn()}
+        onToggleSound={jest.fn()}
+        onToggleTheme={jest.fn()}
+      />
+    </ScreenSlot>
+  );
+  const view = render(menu(false));
+  waitForFoldStart();
+  frame();
+  frame();
+  const atLeave = SaveSystem.shapesThroughLevel;
+  expect(atLeave).toBeGreaterThan(0);
+
+  // Play pressed: the hand-off keeps the menu mounted, invisible, while the game mounts.
+  view.rerender(menu(true));
+  const sync = jest.spyOn(SaveSystem, 'syncCollection');
+  for (let i = 0; i < 20; i += 1) frame();
+
+  expect(sync).not.toHaveBeenCalled();
+  expect(SaveSystem.shapesThroughLevel).toBe(atLeave);
+  view.unmount();
 });

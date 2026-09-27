@@ -109,4 +109,25 @@ describe('flag ON', () => {
     fireEvent.press(menu.getByRole('button', { name: 'Close settings' }));
     expect(menu.queryByTestId('settings-panel')).toBeNull();
   });
+
+  it('FINAL-FIX (finding 12): the button does nothing while the theme dip runs, and opens the sheet once it has ended', () => {
+    let themeChanging = true;
+    const menu = render(
+      <HomeScreen
+        palette={Daylight}
+        dark={false}
+        soundOn
+        onPlay={jest.fn()}
+        onToggleSound={jest.fn()}
+        onToggleTheme={jest.fn()}
+        isThemeChanging={() => themeChanging}
+      />,
+    );
+    fireEvent.press(menu.getByRole('button', { name: 'Settings' }));
+    expect(menu.queryByTestId('settings-panel')).toBeNull();
+
+    themeChanging = false;
+    fireEvent.press(menu.getByRole('button', { name: 'Settings' }));
+    expect(menu.getByTestId('settings-panel')).toBeTruthy();
+  });
 });

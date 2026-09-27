@@ -8,7 +8,7 @@ magenta-rose hearts:
 - **Ink Night** — deep ink-violet night, moonlit near-white arrows. Built for the couch /
   in-bed session with the lights low.
 
-A **moon/sun toggle on the menu** (next to the sound toggle, `src/ui/HomeScreen.tsx:253-261`)
+A **moon/sun toggle on the menu** (next to the sound toggle, `src/ui/HomeScreen.tsx:266-274`)
 flips the variant; the choice persists (`SaveSystem.darkMode`, `src/core/saveSystem.ts:783-788`)
 and the screens re-render with the other palette (`App.tsx:262-269`).
 The brand deliberately diverges from the reference game (Arrows – Puzzle Escape): their
@@ -32,23 +32,23 @@ values below equal `theme.ts` at the commit that last edited this table.
 
 | Role | Token | Daylight (default) | Ink Night | Used for |
 |---|---|---|---|---|
-| bg | `bg` | `#FFFFFF` | `#13111C` | screen background (`GameScreen.tsx:994`, `HomeScreen.tsx:238`, `SplashScreen.tsx:150`); lose scrim at 86% (`GameScreen.tsx:865`) |
+| bg | `bg` | `#FFFFFF` | `#13111C` | screen background (`GameScreen.tsx:994`, `HomeScreen.tsx:251`, `SplashScreen.tsx:150`); lose scrim at 86% (`GameScreen.tsx:865`) |
 | surface | `surface` | `#EFEDF8` | `#201D30` | header/menu buttons (`HeaderButton.tsx:83`), win/lose panel (`GameScreen.tsx:1135`) |
 | border | `border` | `#8E80C5` | `#69629E` | button hairline (`HeaderButton.tsx:84`), panel edge (`GameScreen.tsx:1135`), Retry outline (`GameScreen.tsx:962`); ≥3:1 on `surface` |
 | inactive fill | `heartLost` | `#DBD7ED` | `#3B3653` | pressed header button fill (`HeaderButton.tsx:83`) |
-| glyph off | `glyphOff` | `#8D80C6` | `#6C6398` | off or disabled header glyph and the sound-off strike (`HeaderButton.tsx:62,115`, `HomeScreen.tsx:257`) |
+| glyph off | `glyphOff` | `#8D80C6` | `#6C6398` | off or disabled header glyph and the sound-off strike (`HeaderButton.tsx:62,115`, `HomeScreen.tsx:270`) |
 | spent pip | `pipSpent` | `#988CCB` | `#635B8B` | spent heart, drawn as an outline (`GameScreen.tsx:1348`) |
 | unearned star | `starUnearned` | `#8D80C6` | `#6C6398` | unearned star on the win panel (`GameScreen.tsx:1425`) |
 | ink | `ink` | `#191724` | `#EFEDF9` | arrows (`BoardView.tsx:1095`), wordmark text (`Wordmark.tsx:35`), splash arrow (`SplashScreen.tsx:161`) |
-| ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:875`, `HomeScreen.tsx:145`), panel subline (`GameScreen.tsx:911`), Retry and disabled Continue labels (`GameScreen.tsx:940,969`; the disabled Continue fill is `bg`, `GameScreen.tsx:929`), stats line (`HomeScreen.tsx:306`) |
-| accent | `accent` | `#6D4AEF` | `#7B5BF5` | Play pill (`HomeScreen.tsx:197`), hint and press preview (`StaticBoardSurface.native.tsx:330,494`), "Cleared!" title (`GameScreen.tsx:888`), panel buttons (`GameScreen.tsx:930,963`), earned stars (`GameScreen.tsx:1425`), splash arrowhead (`SplashScreen.tsx:171`) |
-| accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels, both 24 Bold (`GameScreen.tsx:1019`, `HomeScreen.tsx:181`) |
-| accent text | `accentText` | `#6D4AEF` | `#8C70F6` | Hard tier (`GameScreen.tsx:874`, `HomeScreen.tsx:144`), perfect-run line (`GameScreen.tsx:984`); ≥4.5:1 on `bg` and `surface` |
+| ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:875`, `HomeScreen.tsx:158`), panel subline (`GameScreen.tsx:911`), Retry and disabled Continue labels (`GameScreen.tsx:940,969`; the disabled Continue fill is `bg`, `GameScreen.tsx:929`), stats line (`HomeScreen.tsx:319`) |
+| accent | `accent` | `#6D4AEF` | `#7B5BF5` | Play pill (`HomeScreen.tsx:210`), hint and press preview (`StaticBoardSurface.native.tsx:330,494`), "Cleared!" title (`GameScreen.tsx:888`), panel buttons (`GameScreen.tsx:930,963`), earned stars (`GameScreen.tsx:1425`), splash arrowhead (`SplashScreen.tsx:171`) |
+| accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels, both 24 Bold (`GameScreen.tsx:1019`, `HomeScreen.tsx:194`) |
+| accent text | `accentText` | `#6D4AEF` | `#8C70F6` | Hard tier (`GameScreen.tsx:874`, `HomeScreen.tsx:157`), perfect-run line (`GameScreen.tsx:984`); ≥4.5:1 on `bg` and `surface` |
 | accent-core | `accentCore` | `#4A3E8C` | `#CBC4F0` | glyphs on `surface` buttons (`HeaderButton.tsx:62`) |
-| accent-deep | `accentDeep` | `#5636D6` | `#6247D6` | pressed accent buttons (`HomeScreen.tsx:197`, `GameScreen.tsx:930,963`) |
+| accent-deep | `accentDeep` | `#5636D6` | `#6247D6` | pressed accent buttons (`HomeScreen.tsx:210`, `GameScreen.tsx:930,963`) |
 | heart / danger | `heart` | `#E4327D` | `#F0468C` | hearts (`GameScreen.tsx:1343`), blocked arrow and blocker flash (`StaticBoardSurface.native.tsx:372,418`), "Out of hearts" title (`GameScreen.tsx:888`) |
-| heart text | `heartText` | `#E11F71` | `#F0468C` | Super Hard tier (`GameScreen.tsx:873`, `HomeScreen.tsx:143`); ≥4.5:1 on `bg` |
-| on-accent | `inkOnAccent` | `#FFFFFF` | `#FFFFFF` | labels on accent buttons (`HomeScreen.tsx:202`, `GameScreen.tsx:940,969`) |
+| heart text | `heartText` | `#E11F71` | `#F0468C` | Super Hard tier (`GameScreen.tsx:873`, `HomeScreen.tsx:156`); ≥4.5:1 on `bg` |
+| on-accent | `inkOnAccent` | `#FFFFFF` | `#FFFFFF` | labels on accent buttons (`HomeScreen.tsx:215`, `GameScreen.tsx:940,969`) |
 
 Contrast is gated by `src/ui/contrastAudit.ts` and printed by `npx tsx scripts/contrast-audit.ts`
 (Daylight / Ink Night; body text ≥4.5:1, large text and graphics ≥3:1; SemiBold counts as not bold):
@@ -62,11 +62,11 @@ ink on `bg` 17.66 / 16.14; ink-dim 5.22 / 7.23 on `bg` and 4.51 / 6.35 on `surfa
 One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled through
 `@expo-google-fonts/fredoka` (`App.tsx:1-2,108`) as two families, SemiBold and Bold
 (`src/ui/theme.ts:99-102`).
-- Wordmark "▲rrows": size 56 on the menu and splash (`HomeScreen.tsx:179`, `SplashScreen.tsx:153`),
+- Wordmark "▲rrows": size 56 on the menu and splash (`HomeScreen.tsx:192`, `SplashScreen.tsx:153`),
   Bold, `ink` (`Wordmark.tsx:31-40`). The capital A is the brand-mark image `assets/images/mark.png`
   with its violet and magenta baked in (`Wordmark.tsx:25-29`), so it reads on both themes.
-- Menu: "Level N" 24 Bold (`HomeScreen.tsx:504-507`); tier 15 SemiBold (`HomeScreen.tsx:508-511`);
-  Play label 22 Bold (`HomeScreen.tsx:519-521`); stats line 13 SemiBold (`HomeScreen.tsx:522-525`).
+- Menu: "Level N" 24 Bold (`HomeScreen.tsx:517-520`); tier 15 SemiBold (`HomeScreen.tsx:521-524`);
+  Play label 22 Bold (`HomeScreen.tsx:532-534`); stats line 13 SemiBold (`HomeScreen.tsx:535-538`).
 - Game header: "LEVEL N" 24 Bold (`GameScreen.tsx:1480-1482`); tier · shape · count line 12 SemiBold
   (`GameScreen.tsx:1492-1494`).
 - Win/lose panel: title 24 Bold (`GameScreen.tsx:1538-1540`); subline 14 SemiBold
@@ -115,8 +115,8 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
   shape (`GameScreen.tsx:1297-1300`); full = `heart`, spent = a `pipSpent` outline, so the hearts
   left read by shape as well as colour (`GameScreen.tsx:1342-1350`; W0-06).
 - **Button (primary)**: `accent` fill, `inkOnAccent` bold label, **no glow**. The menu Play pill is
-  250 × 68 pt with radius 34 (`HomeScreen.tsx:512-518`); panel buttons have radius 14
-  (`GameScreen.tsx:1566-1570`). Pressed → `accentDeep` and scale 0.94 (`HomeScreen.tsx:197-198`,
+  250 × 68 pt with radius 34 (`HomeScreen.tsx:525-531`); panel buttons have radius 14
+  (`GameScreen.tsx:1566-1570`). Pressed → `accentDeep` and scale 0.94 (`HomeScreen.tsx:210-211`,
   `GameScreen.tsx:930-932,961-963`). The lose panel's Retry is transparent with a 1 pt `border`
   outline (`GameScreen.tsx:962`).
 - **Win / lose panels**: a clear or a loss raises a `surface` panel over a scrim
@@ -125,25 +125,25 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
   "Continue +♥ (ad)" and Retry.
 - **Menu**: `bg`; wordmark (size 56) in the upper-middle, "Level N" beneath it (`accent-light`) with
   the resume level's **difficulty** under that (same colour-coding as the header), big violet
-  Play pill 56 pt below the tier (`HomeScreen.tsx:176-204`). Generous whitespace. **Top-right: two
+  Play pill 56 pt below the tier (`HomeScreen.tsx:189-217`). Generous whitespace. **Top-right: two
   44 pt `surface` buttons**, the theme toggle (☀/☾) and the sound toggle (♪ glyph — `accent-core`
-  when on, `glyphOff` with a diagonal strike when off; persisted) (`HomeScreen.tsx:251-274`, `HeaderButton.tsx:62,104-121`).
+  when on, `glyphOff` with a diagonal strike when off; persisted) (`HomeScreen.tsx:264-287`, `HeaderButton.tsx:62,104-121`).
   Near the bottom, one quiet `ink-dim` **lifetime-stats line** ("N puzzles solved · D-day streak ·
   best perfect run K") — hidden until the first solve, streak/run parts shown only from 2 up
-  (`HomeScreen.tsx:298-310,465-478`).
+  (`HomeScreen.tsx:311-323,478-491`).
   - **Entry row** (`META_DAILY`, `META_GALLERY`): one secondary row 4 pt under the Play pill, two
     quiet `ink-dim` text controls in the tier label's type (SemiBold 15, no pill, no icon) —
     "Today's board" (after today's clear, "Today's board · done", not pressable) and "Gallery" —
     split by the stats line's own `   ·   ` separator, which is the whole gap between the two words.
     Each control's hit box is ≥ 44 × 44 pt, widened 16 pt on its outer side. Hidden until the first
-    solve, like the stats line (`HomeScreen.tsx:206-232`).
+    solve, like the stats line (`HomeScreen.tsx:219-245`).
   - **Composition** (from the first solve, whenever `META_DAILY`, `META_GALLERY` or
     `META_STREAK_FREEZE` is on): the column (wordmark → entry row) is centred in the room between the
     header buttons and the stats band — two stats lines at the system font scale plus a fixed 56 pt
     banner reserve — so it is placed once and never moves when the ad loads or fails
-    (`HomeScreen.tsx:276-296,431-453`). The stats line keeps its anchor; when it is too long for one
+    (`HomeScreen.tsx:289-309,444-466`). The stats line keeps its anchor; when it is too long for one
     line (360 pt, or "· streak saved" from `META_STREAK_FREEZE`) it wraps centred inside 18 pt side
-    margins and only after a separator (`HomeScreen.tsx:455-478`). Flags OFF, or before the first
+    margins and only after a separator (`HomeScreen.tsx:468-491`). Flags OFF, or before the first
     solve: the menu above, unchanged.
 - **Stats & streaks** (`SaveSystem`, `src/core/saveSystem.ts:556-628`): lifetime **solved count**, a
   **perfect streak** (consecutive clears with no heart lost; current + best), and a **daily play
@@ -321,9 +321,10 @@ velocity-driven pan decay have no fixed duration and do not set bounds.
 ### State / screen transitions — 180–380 ms
 
 - **Menu ↔ game**: each screen fades in over 180 ms as it mounts (`FadeIn.duration(180)`,
-  `screenHandoff.tsx:160`, wired for every screen slot at `App.tsx:346,349,353,358`). It is
+  `screenHandoff.tsx:204`, wired for every screen slot at `App.tsx:347,350,354,359`). It is
   entering-only: the leaving screen is held invisible for a couple of frames (PERF-DEADTAG,
-  `screenHandoff.tsx:129-165`) and then removed, not cross-faded.
+  `screenHandoff.tsx:170-210`) and then removed, not cross-faded. The invisibility sits on a plain
+  view around the fading one, so a screen left during its own fade-in stays hidden (FINAL-FIX).
 - **Splash → menu**: the splash fades out over 380 ms, starting 2250 ms after mount
   (`SplashScreen.tsx:110-113`), or over 180 ms when tapped to skip (`SplashScreen.tsx:131`).
 - **Level → level** (`META_LEVEL_TRANSITION`, default OFF — owner acceptance pending): Next and
@@ -356,7 +357,7 @@ animates: the win panel scales from 0.94 and fades in over 180 ms (ease-out cubi
 260 ms (`PANEL_LOSS_ENTER_MS`, **owner pick 2026-09-25**, `overlayPresence.ts:34`), and an earned
 continue's dismissal fades the panel out over the same 180 ms (ease-in quad, `PANEL_EXIT_MS`,
 `overlayPresence.ts:36`, `PanelPresence.tsx:22`). A **button press** is a pressed style, scale
-0.94 while held, with no tween either way (`HeaderButton.tsx:85`, `HomeScreen.tsx:198`,
+0.94 while held, with no tween either way (`HeaderButton.tsx:85`, `HomeScreen.tsx:211`,
 `GameScreen.tsx:932,961`) — behind `META_PRESS_SPRING` it eases and springs instead; see
 Tap-local feedback.
 
@@ -371,7 +372,7 @@ Tap-local feedback.
 ### Ambient (menu only, exactly one) — 1100 ms
 
 - **Play breathing**: the Play pill scales 1.00 → 1.03 and back forever, 1100 ms each way with a
-  sine in-out curve, a 2.2 s cycle (`HomeScreen.tsx:148-168`). It has no entrance spring.
+  sine in-out curve, a 2.2 s cycle (`HomeScreen.tsx:161-181`). It has no entrance spring.
 
 ### Reduce motion
 
@@ -413,9 +414,9 @@ nothing below adds ambient board motion.
   and fades linearly (`BoardView.tsx:1464-1471,1486-1500`; W2-01). This is **INFERRED from code**:
   Chrome could not be driven in the W2-01 sandbox, so the web look is **UNVERIFIED-WEB**.
 - **Decorative motion is skipped**, each stating `ReduceMotion.System`: heart-pip pop
-  (`GameScreen.tsx:1335`), star pops (`GameScreen.tsx:1405`), Play breathing (`HomeScreen.tsx:150`),
+  (`GameScreen.tsx:1335`), star pops (`GameScreen.tsx:1405`), Play breathing (`HomeScreen.tsx:163`),
   splash (`SplashScreen.tsx:79,89,99,109`), and the menu/game screen fade
-  (`screenHandoff.tsx:159-160`). The heart-loss case was verified on device — spent outline visible,
+  (`screenHandoff.tsx:203-204`). The heart-loss case was verified on device — spent outline visible,
   no pop (`artifacts/W2-01/android/W2-01-fix-blocked-scale0/frames/00006.png`) — and so was the
   heart-refill pop, behind `META_HEART_REFILL_POP` (default OFF, not yet accepted): the pip is
   filled at rest in every frame, none off rest (`docs/next-level/reports/W2-07.md` acceptance 7).
@@ -435,7 +436,7 @@ nothing below adds ambient board motion.
 ## Layout
 
 Portrait only (`app.json:6`). Content stays inside the safe-area insets
-(`GameScreen.tsx:206,997`, `HomeScreen.tsx:68,252,306`). Game screen: the header row at the top
+(`GameScreen.tsx:206,997`, `HomeScreen.tsx:76,265,319`). Game screen: the header row at the top
 (back button and level label left, hearts and hint right, 16 pt side padding,
 `GameScreen.tsx:1461-1478`), then the board filling the rest of the screen, fit-to-view
 (`BoardView.tsx:1526-1529`). No bottom bar.

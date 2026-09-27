@@ -88,6 +88,7 @@ export function createThemeScrimTransition(
  *   is coloured with: at rest the next toggle's destination (`!dark`), and from
  *   the swap to the end of the uncover the theme just swapped to, so the flat
  *   layer never changes colour while it is visible.
+ * - `themeChanging()` is true from an accepted press to the end of the uncover.
  */
 export function useThemeToggle({
   dark,
@@ -99,7 +100,12 @@ export function useThemeToggle({
   setDark: Dispatch<SetStateAction<boolean>>;
   persistDark: (dark: boolean) => void;
   createScrim: ((onRest: () => void) => ThemeScrim) | null;
-}): { toggleTheme: () => void; scrim: ThemeScrim | null; scrimDark: boolean } {
+}): {
+  toggleTheme: () => void;
+  scrim: ThemeScrim | null;
+  scrimDark: boolean;
+  themeChanging: () => boolean;
+} {
   // The swapped-to theme while the scrim is up after a swap; null at rest.
   const [swappedTo, setSwappedTo] = useState<boolean | null>(null);
   const scrimRef = useRef<ThemeScrim | null>(null);
@@ -135,9 +141,15 @@ export function useThemeToggle({
     });
   }, [dark, persistDark, scrim, setDark]);
 
+  // FINAL-FIX (FINAL-REVIEW finding 12): the menu asks this before opening its
+  // Settings Modal, which would draw above the scrim and be re-coloured by the
+  // swap in one visible frame. No scrim (flag OFF, reduced motion): never.
+  const themeChanging = useCallback(() => scrim?.busy ?? false, [scrim]);
+
   return {
     toggleTheme: scrim ? dipThroughScrim : flip,
     scrim,
     scrimDark: swappedTo ?? !dark,
+    themeChanging,
   };
 }

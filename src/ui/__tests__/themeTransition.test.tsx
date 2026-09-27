@@ -39,7 +39,13 @@ class FakeDriver implements ScrimDriver {
   }
 }
 
-type Seen = { dark: boolean; scrimDark: boolean; toggle: () => void; scrim: ThemeScrim | null };
+type Seen = {
+  dark: boolean;
+  scrimDark: boolean;
+  toggle: () => void;
+  scrim: ThemeScrim | null;
+  themeChanging: () => boolean;
+};
 
 function setup(withScrim: boolean) {
   const driver = new FakeDriver();
@@ -71,8 +77,8 @@ function setup(withScrim: boolean) {
   let seen: Seen | null = null;
   function Harness() {
     const [dark, setDark] = useState(false);
-    const { toggleTheme, scrim, scrimDark } = useThemeToggle({ dark, setDark, persistDark, createScrim });
-    seen = { dark, scrimDark, toggle: toggleTheme, scrim };
+    const { toggleTheme, scrim, scrimDark, themeChanging } = useThemeToggle({ dark, setDark, persistDark, createScrim });
+    seen = { dark, scrimDark, toggle: toggleTheme, scrim, themeChanging };
     React.useLayoutEffect(() => {
       commits.push(`dark=${dark} scrim=${scrimDark}`);
     });
@@ -205,6 +211,27 @@ describe('ON: the swap happens under full cover', () => {
     view.unmount();
     expect(created[0].state).toBe('disposed');
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('FINAL-FIX (finding 12): themeChanging() says when the menu must not open a Modal over the dip', () => {
+  test('true from the press through the cover, the swap and the uncover; false at rest', () => {
+    const { driver, current } = setup(true);
+    expect(current().themeChanging()).toBe(false);
+    act(() => current().toggle());
+    expect(current().themeChanging()).toBe(true); // covering
+    act(() => driver.coverDone!());
+    expect(current().themeChanging()).toBe(true); // covered, the swap committing
+    act(() => jest.advanceTimersByTime(FRAME_MS));
+    expect(current().themeChanging()).toBe(true); // uncovering
+    act(() => driver.uncoverDone!());
+    expect(current().themeChanging()).toBe(false);
+  });
+
+  test('no scrim (flag OFF, or reduced motion): never changing, the flip is one commit', () => {
+    const { current } = setup(false);
+    act(() => current().toggle());
+    expect(current().themeChanging()).toBe(false);
   });
 });
 
