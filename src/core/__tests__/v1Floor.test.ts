@@ -12,7 +12,7 @@ import {
 import { Difficulties, Difficulty } from '../difficulty';
 import { GEN_V2_ENABLED, hasV1Floor, resolveGenVersion } from '../generatorVersion';
 import { LevelGenerator, shapeNameForLevel } from '../levelGenerator';
-import { curveWindowMaxTarget, pickForLevelV2, shapeCapacity } from '../shapeBag';
+import { bagCandidates, curveWindowMaxTarget, pickForLevelV2, shapeCapacity } from '../shapeBag';
 
 // V2-FINISH part 1 (OWNER PICK 2026-09-26, W3-16): S400 is THE v2 curve, and an
 // existing player (switch level > 0) gets a v1 floor. A fresh install (switch
@@ -29,7 +29,7 @@ const WEIGHT: Record<Difficulty, number> = {
 /** S400's last row: displayed level 400. */
 const CEILING_INDEX = 400 - 1;
 
-/** S400's base cells at `i`, recomputed from its two rows (88 at 0, 339 at 399, flat after). */
+/** S400's base cells at `i`, recomputed from its two rows (88 at 0, the ceiling at 399, flat after). */
 function s400Base(i: number): number {
   if (i >= CEILING_INDEX) return CEILING_BASE_CELLS;
   return LEVEL1_TARGET_CELLS + ((CEILING_BASE_CELLS - LEVEL1_TARGET_CELLS) * i) / CEILING_INDEX;
@@ -50,11 +50,39 @@ function serialize(level: { shapeName: string; targetCells: number; board: Board
 }
 
 describe('V2-FINISH part 1: S400 is the owner\'s curve', () => {
-  test('V2_CURVE is S400: 88 cells at bias 3 on level 1, the 339-cell ceiling at displayed level 400, flat after', () => {
+  test('V2_CURVE is S400: 88 cells at bias 3 on level 1, the owner-picked ceiling (354 cells) at displayed level 400, flat after', () => {
+    // RE-CEILING fix round 1, OWNER PICK 2026-09-27 (option B): W3-14 measured
+    // 339 on the legacy DotNetRandom stream; on ExactDotNetRandom the arrow cap
+    // allows up to 452 (450 with a full-cycle bag window), and the owner picked
+    // 354, the flat base whose v2 boards match v1 on the scan proxy
+    // (docs/next-level/reports/RE-CEILING.md).
+    expect(CEILING_BASE_CELLS).toBe(354);
     expect(V2_CURVE).toEqual([
       { levelIndex: 0, baseCells: 88, tierTexture: V1_TIER_TEXTURE, clearableBias: 3 },
-      { levelIndex: 399, baseCells: 339, tierTexture: V1_TIER_TEXTURE },
+      { levelIndex: 399, baseCells: 354, tierTexture: V1_TIER_TEXTURE },
     ]);
+  });
+
+  test('the ceiling and the floor each carry the owner-pick label (RE-CEILING option B)', () => {
+    const lines = fs.readFileSync(path.join(__dirname, '..', 'curve.ts'), 'utf8').split('\n');
+    for (const name of ['CEILING_BASE_CELLS', 'V1_FLOOR_BASE_CELLS']) {
+      const decl = lines.findIndex((l) => l.startsWith(`export const ${name} =`));
+      expect([name, decl > 0]).toEqual([name, true]);
+      // The label is on one of the lines directly above the declaration, not somewhere in its comment.
+      expect([name, lines.slice(Math.max(0, decl - 3), decl).join('\n')])
+        .toEqual([name, expect.stringContaining('// OWNER PICK 2026-09-27 (RE-CEILING option B, docs/next-level/reports/RE-CEILING.md)')]);
+    }
+  });
+
+  test('the saturated S400 window holds 13 shapes, a full tier cycle, so the bag\'s O(1) steady state can engage (RE-CEILING)', () => {
+    // A Super Hard target above Hexagon's 809 cells (a base above 450) leaves
+    // five-shape windows, which the steady state refuses (shapeBag.ts), so a
+    // deep cold pick would build ~3,950 windows again. 354's target (635)
+    // admits 13: every shape down to X (645).
+    const superHard = target(CEILING_BASE_CELLS, Difficulty.SuperHard);
+    const holding = bagCandidates().filter((shape) => shapeCapacity(shape) >= superHard);
+    expect(holding.length).toBeGreaterThanOrEqual(Difficulties.cycleLength);
+    expect(holding.length).toBe(13);
   });
 
   test('the curve source carries the owner-pick marker (W3-16)', () => {
@@ -66,9 +94,13 @@ describe('V2-FINISH part 1: S400 is the owner\'s curve', () => {
 
 describe('V2-FINISH part 1: the v1 floor', () => {
   test('the floor is measured, sits between level 1 and the ceiling, and every tier\'s floor target is at most S400\'s ceiling target', () => {
-    // MEASURED by `npm run analysis:probe -- --version 2 --v1-floor` (see curve.ts):
-    // 333 on the legacy stream (part 1), 335 on the exact stream (part 2).
-    expect(V1_FLOOR_BASE_CELLS).toBe(335);
+    // 333 on the legacy stream (V2-FINISH part 1) and 335 on the exact stream
+    // (part 2), both calibrated on v1's arrow medians. RE-CEILING fix round 1
+    // (OWNER PICK 2026-09-27, option B): 354, calibrated on the scan proxy
+    // instead; `npm run analysis:probe -- --version 2 --v1-floor` prints both
+    // bases (see curve.ts). It equals the ceiling, so an existing player's
+    // boards are the ceiling's from their first v2 level.
+    expect(V1_FLOOR_BASE_CELLS).toBe(354);
     expect(V1_FLOOR_BASE_CELLS).toBeGreaterThan(LEVEL1_TARGET_CELLS);
     expect(V1_FLOOR_BASE_CELLS).toBeLessThanOrEqual(CEILING_BASE_CELLS);
     for (const d of TIERS) expect([d, target(V1_FLOOR_BASE_CELLS, d) <= target(CEILING_BASE_CELLS, d)]).toEqual([d, true]);
@@ -121,8 +153,15 @@ describe('V2-FINISH part 1: the v1 floor', () => {
         expect([i, d, Difficulties.configV2(d, i, V2_CURVE, true)]).toEqual([i, d, Difficulties.configV2(d, i)]);
       }
     }
-    // ... and it binds strictly below it (so it is not inert everywhere).
-    for (const i of [0, 49, 99, 300]) {
+    // ... and it binds strictly below the index where S400 passes it (so it is
+    // not inert everywhere). RE-CEILING: that index moves with the ceiling, so
+    // it is recomputed here instead of a literal (300 held for the 339 ceiling).
+    // `lastBound` is the last index whose fresh Normal target is still below the floor's.
+    let lastBound = 0;
+    while (target(s400Base(lastBound + 1), Difficulty.Normal) < target(V1_FLOOR_BASE_CELLS, Difficulty.Normal)) lastBound++;
+    expect(lastBound).toBeGreaterThan(99);
+    expect(lastBound).toBeLessThan(CEILING_INDEX);
+    for (const i of [0, 49, 99, lastBound]) {
       expect(Difficulties.configV2(Difficulty.Normal, i, V2_CURVE, true).maxCells)
         .toBeGreaterThan(Difficulties.configV2(Difficulty.Normal, i).maxCells);
     }
@@ -231,7 +270,11 @@ test('existing-player v2 corpus pin: generate(i, 2, { switchLevel: 1 }) for 0-29
   // Serialized exactly like levelGenerator.test.ts's v1 fingerprint and v2 pin.
   // EXECUTED twice (this test and V2-FINISH's scratch fp.ts). Part 1 pinned
   // dbe91425; part 2 re-pinned it (the exact int32 RNG, and the floor it
-  // re-measured, 333 -> 335): d5005b0d. Like the
+  // re-measured, 333 -> 335): d5005b0d. RE-CEILING re-pinned it: first
+  // f2fdde04 (ceiling 450, floor 335; never committed), then the owner's
+  // option B, ceiling and floor both 354, so every floored target is the
+  // ceiling's from the first v2 level: ea5e4bf5 (EXECUTED twice, this test
+  // and RE-CEILING's scratch fp.ts). Like the
   // fresh v2 pin it is not frozen: a task that changes v2 content on purpose
   // re-pins it with its own evidence (W3-21 freezes both).
   const lines: string[] = [];
@@ -240,7 +283,7 @@ test('existing-player v2 corpus pin: generate(i, 2, { switchLevel: 1 }) for 0-29
     lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
     for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
   }
-  expect(checksumLines(lines)).toBe('d5005b0d');
+  expect(checksumLines(lines)).toBe('ea5e4bf5');
 });
 
 describe('V2-FINISH part 1: tripwire for W3-21', () => {

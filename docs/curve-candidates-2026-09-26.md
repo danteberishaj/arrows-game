@@ -1,5 +1,11 @@
 # Generator v2 difficulty curve: candidates (W3-14), 2026-09-26
 
+> **Addendum (RE-CEILING, 2026-09-27):** the ceiling below (339) was measured on the legacy `DotNetRandom`
+> stream. On `ExactDotNetRandom` the arrow cap allows up to **450** (452 by arrows alone); the owner then picked
+> **354** (RE-CEILING option B: v2 matches v1 on the scan proxy), for the ceiling and the existing-player floor
+> alike. The history below is unchanged; see "Addendum: the ceiling re-measured on the exact RNG" at the end,
+> before the appendix.
+
 Saturation level (b) per candidate, and what carries difficulty after it: **S100** saturates at level **67** (difficulty is flat after it, by construction; median blocked, first vs last 50 cycles after saturation: 92.9 -> 89.4 (x0.96)); **S400** saturates at level **343** (difficulty is flat after it, by construction; median blocked, first vs last 50 cycles after saturation: 94.1 -> 94.3 (x1.00)); **S1000** saturates at level **871** (difficulty is flat after it, by construction; median blocked, first vs last 50 cycles after saturation: 81.5 -> 88.2 (x1.08)); **S100b** saturates at level **73** (difficulty is then carried by the clearable bias to level 3000 (look NOT accepted) and flat after it; median blocked, first vs last 50 cycles after saturation: 85.7 -> 115.6 (x1.35)); **S400b** saturates at level **343** (difficulty is then carried by the clearable bias to level 3000 (look NOT accepted) and flat after it; median blocked, first vs last 50 cycles after saturation: 90.3 -> 118.8 (x1.31)); **S1000b** saturates at level **871** (difficulty is then carried by the clearable bias to level 3000 (look NOT accepted) and flat after it; median blocked, first vs last 50 cycles after saturation: 84.3 -> 110.3 (x1.31)). Every candidate is flat from its last table row on: from level 3000 for the bias tails, and from the ceiling level (100, 400 or 1000) for the three bases. At the ceiling v2 is slightly easier than v1 is today: v1's 300-level block median scan over levels 1-3000 runs 183-192, and the three bases' blocks after their ceiling run 174-186.
 
 > Search-cost proxy for a uniform-sampling player. Not a measurement of human difficulty; never correlated with real mistakes (see W3-23).
@@ -1057,6 +1063,99 @@ Key levels (cells from the table; "dealt" is the board generate(i, 2, { curve })
 | 1000 | 997-1002 | 224 | 170 | 0.76 | 97 | 101 | 202 | 193 | 0.96 |
 
 Heaviest board over indices 0-9999: 243 arrows at index 5339 (Super Hard X 37×37); boards over 250: 0; over v1's worst 262: 0. Node generation (same process, alternated, 15 reps each): median 13.33 ms (min 12.57) against v1 index 7157 (262 arrows) 16.82 ms (min 14.28): ratio 0.792.
+
+## Addendum: the ceiling re-measured on the exact RNG (RE-CEILING, 2026-09-27)
+
+Everything above is W3-14's record and is left as it was. It was measured on the legacy `DotNetRandom` port, whose
+int32 defect carves extra short arrows on about 23% of seeds. V2-FINISH part 2 moved v2 to `ExactDotNetRandom`,
+where every base up to 370 stayed at or under 210 arrows, so 339 was stale. Full evidence:
+`docs/next-level/reports/RE-CEILING.md`, raw output in `artifacts/RE-CEILING/`.
+
+> Search-cost proxy for a uniform-sampling player. Not a measurement of human difficulty; never correlated with real mistakes (see W3-23).
+
+**The rule** (the owner's "nothing gets slower", 2026-09-26): the largest base whose neutral boards stay at or
+under 250 arrows over the Hard and Super Hard indices of 0-99,999 every 7 (4,762 boards) **and** over every index
+0-9999 (10,000 boards), so none there is heavier than v1's worst (262, index 7157). The b = 0.3 bias-tail check is
+now information only: the tail candidates were not picked, and S400 never deals a bias below 1.
+
+`npm run analysis:probe -- --version 2 --ceiling` (488,100 boards, 58 min):
+
+| base cells | Super Hard target | shapes admitted | max arrows, sample | max arrows, every index 0-9999 | pass |
+|---|---|---|---|---|---|
+| 330 | 592 | 15 | 177 | 178 | yes |
+| 340 | 610 | 14 | 181 | 180 | yes |
+| 370 | 664 | 11 | 201 | 208 | yes |
+| 400 | 718 | 8 | 233 | 213 | yes |
+| 420 | 754 | 6 | 222 | 217 | yes |
+| 440 | 790 | 6 | 244 | 232 | yes |
+| **450** | **808** | **6** | **244** (index 19565, Square 28×28) | **232** (index 2057, Heart 33×33) | yes |
+| 451 | 810 | 5 | 244 | 239 | yes |
+| 452 | 811 | 5 | 244 | 239 | yes (the rule's literal answer) |
+| 453 | 813 | 5 | 252 (index 7889, Square 29×29) | 252 | no |
+| 460-480 | 826-862 | 5 | 252-254 | 252-256 | no |
+
+(Every 10 from 330 to 480, then every 1 from 451 to 459; the full table is in the report.)
+
+**450, not 452.** 451 and 452 pass the arrow rule, but their Super Hard target is above Hexagon's capacity (809),
+so the saturated bag window holds five shapes, less than a tier cycle, and the bag's O(1) steady state (V2-FINISH
+part 3) cannot engage. EXECUTED: a cold first pick at level 20,000 builds 3,949 windows and takes 123-126 ms
+`--jitless` at 452 (3 processes each, fresh and existing), against 29 windows and 2.0-2.3 ms at 450. Five
+`coldPick.test.ts` / `v1Floor.test.ts` tests fail at 451 and 452 (mutations RC-M2, RC-M3).
+
+**What 450 changes, on the shipped S400** (`--curve-report`, `--switch-report`, `--v1-floor`):
+
+| | ceiling 339 (W3-14, legacy stream) | ceiling 450 (exact stream) |
+|---|---|---|
+| Normal / Hard / Super Hard target at saturation | 339 / 515 / 609 | 450 / 683 / 808 |
+| shapes once saturated | 15 of 26 | **6 of 26** (Square, Heart, Circle, Octagon, Rectangle, Hexagon), from level 358 |
+| saturated median arrows N / H / SH (flat curve, levels 1-3000) | 83 / 126 / 151 (exact stream) | 110 / 171 / 200 |
+| heaviest board, every index 0-9999 (fresh / existing) | 236 legacy; 183 / 188 exact | 232 (index 1067, Heart 33×33) / 232: x0.79 of v1's worst in node time |
+| (e) heaviest, 0-99,999 every 7 (fresh / existing) | 238 legacy; 190 / 191 exact | 237 / 233 |
+| smallest fit cell, 360 dp | 9.15 pt | 9.15 pt (largest board 44 × 37) |
+| clamp shortfalls | 0 | 0 |
+| v2 / v1 scan proxy after the ceiling (300 levels from L = 400 / 1000) | 0.90 / 0.88 | **1.25 / 1.29** |
+| per-level generation, indices 3000-3599, v2 median / p95 (node) | 2.346 / 6.461 ms | **3.548 / 10.340 ms** (v1 in the same processes: 2.453 / 7.589) |
+
+- **The v1 floor stays 335** (`--v1-floor`, scan 320-450: every base 335-450 passes; 334 fails). S400 now passes
+  it at displayed level 274, not 394.
+- **(a) at 300-level blocks fails against the new flat reference** (base 450: 4.7% scan): the shipped plateau
+  drops 5.2% at level 1801, 1,400 levels after the last curve input changes. It is noise the 40-block reference
+  under-states, not a falling curve (the inputs are constant there by construction).
+- **The owner had not seen this plateau.** W3-16's pick was made on a sheet where S400 saturated at about 0.9 of
+  v1 with 15 shapes; the re-measured ceiling saturates at about 1.3 of v1 with 6 shapes and per-level generation
+  about 50% slower than today. The report asked the owner to confirm it or pick the scan-matched alternative.
+
+### Final: the owner picked 354 (RE-CEILING option B, 2026-09-27)
+
+The owner's words: "B: 354 cells". `CEILING_BASE_CELLS` and `V1_FLOOR_BASE_CELLS` are both 354, labelled `// OWNER
+PICK 2026-09-27 (RE-CEILING option B, ...)`. 354 is not the arrow cap's answer. It is the flat base whose v2 boards
+match v1 on the search-cost proxy, reproducible with `npm run analysis:probe -- --version 2 --v1-floor`, which now
+prints both units:
+
+| flat base | median arrows N / H / SH | v2 / v1 scan, levels 1-3000 | 300-level blocks | arrow unit | scan unit |
+|---|---|---|---|---|---|
+| 335 | 83 / 125 / 150 | 0.908 | 0.87-0.94 | pass (V2-FINISH's floor) | no |
+| 352-353 | 88 / 133 / 157 | 0.994 | 0.95-1.02 | pass | no |
+| **354** | **89 / 133 / 157** | **1.000** | 0.96-1.03 | pass | **yes (the floor and the ceiling)** |
+| 355-364 (above the ceiling, context) | 90 / 133-136 / 158-161 | 1.005-1.029 | 0.96-1.07 | pass | yes |
+
+v1: 83 / 125 / 150 arrows, median cycle scan 188.6 (138,000 boards dealt and walked in total).
+
+| on the shipped S400 | 339 (HEAD before) | 450 (arrow cap, not shipped) | **354 (shipped)** |
+|---|---|---|---|
+| Normal / Hard / Super Hard at saturation | 339 / 515 / 609 | 450 / 683 / 808 | **354 / 537 / 635** |
+| shapes once saturated | 15 of 26 | 6 of 26 | **13 of 26, from level 384** (out: Diamond, Triangle, Star, Trophy, Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat, Mushroom, Fish) |
+| heaviest, every index 0-9999 (fresh / existing) | 183 / 188 | 232 / 232 | **190 / 195** (none over 250 or 262) |
+| (e) heaviest, 0-99,999 every 7 (fresh / existing) | 190 / 191 | 237 / 233 | **194 / 197** |
+| existing v2 / v1 scan, below 400 then after | 0.82-0.94, then 0.85-0.91 | 0.82-0.97, then 1.25-1.32 | **0.94-1.04, then 0.94-0.99** |
+| fresh v2 / v1 scan after the ceiling | 0.81-0.90 | 1.25-1.29 | **0.90-0.97** |
+| (a) at 300-level blocks | PASS | FAIL (5.2% against 4.7%) | **PASS** (flat reference at 354: 3.8% / 6.2%) |
+| smallest fit cell, 360 dp; clamp shortfalls | 9.15 pt; 0 | 9.15 pt; 0 | **9.15 pt (largest board 42 × 37); 0** |
+| v2 per level, indices 3000-3599, median / p95, against v1 in the same processes | -3% / -14% | +45% / +36% | **+9% / -6%** |
+
+The typical saturated v2 level is still about 9% slower to generate than v1's in node (2.713 against 2.490 ms,
+disjoint ranges; 6% more arrows). Its p95 is 6% faster. Full timing, tests and fingerprints: the report's "Fix
+round 1".
 
 ## Appendix: per-cycle medians (a), every cycle, every candidate
 

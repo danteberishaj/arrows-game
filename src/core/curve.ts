@@ -96,45 +96,57 @@ export const LEVEL1_CLEARABLE_BIAS = 3;
 export const ARROW_CEILING = 250;
 
 /**
- * The saturated Normal-tier cell target every W3-14 candidate climbs to: the
- * largest base cells whose Hard and Super Hard boards (targets 515 and 609)
- * over indices 0-99,999 sampled every 7 stay at or under `ARROW_CEILING`
- * arrows, neutral (max 238) and at the bias-tail floor 0.3 (max 248); 340
- * already deals 253 at 0.3. MEASURED 2026-09-26: `npm run analysis:probe --
- * --version 2 --ceiling` (docs/curve-candidates-2026-09-26.md, "Ceiling").
+ * The saturated Normal-tier cell target S400 climbs to (Normal 354, Hard 537,
+ * Super Hard 635): the owner's RE-CEILING pick, option B (2026-09-27).
  *
- * That measurement dealt v2 from the legacy `DotNetRandom` stream, whose
- * out-of-range draws carve many short arrows. On `ExactDotNetRandom`
- * (V2-FINISH part 2) the same scan passes every value up to 370 (max 201
- * neutral, 210 at 0.3; the scan no longer brackets), so 339 is now
- * conservative and the probe prints "DIFFERS". It is kept: these cells ARE
- * S400, the owner's W3-16 pick, so re-measuring it is the owner's call
- * (docs/next-level/reports/V2-FINISH.md, Concern 2).
+ * How it was chosen. The arrow cap (the owner's "nothing gets slower":
+ * neutral boards at or under `ARROW_CEILING` over the Hard and Super Hard
+ * indices of 0-99,999 every 7 AND over every index 0-9999, so none there is
+ * heavier than v1's worst, 262) allows up to 452 on `ExactDotNetRandom`, and
+ * up to 450 with a saturated bag window of at least one tier cycle
+ * (`npm run analysis:probe -- --version 2 --ceiling`). 450 made the late game
+ * about 1.3x v1 on the scan proxy, with 6 shapes and about +45% generation
+ * time per level. The owner picked the scan-matched base instead: a flat
+ * curve at 354 deals boards whose median search-cost proxy equals v1's
+ * (1.00 over displayed levels 1-3000), and it admits 13 shapes (down to X,
+ * 645 cells). Its heaviest board over every index 0-9999 is 190 arrows.
+ *
+ * History: W3-14 measured 339 on the legacy `DotNetRandom` stream, whose
+ * out-of-range draws carve many short arrows (docs/curve-candidates-2026-09-26.md,
+ * "Ceiling"). Full record: docs/next-level/reports/RE-CEILING.md.
  */
-export const CEILING_BASE_CELLS = 339;
+// OWNER PICK 2026-09-27 (RE-CEILING option B, docs/next-level/reports/RE-CEILING.md)
+// Measured: `npm run analysis:probe -- --version 2 --v1-floor` (flat 354 scores 1.00 vs v1 on the scan proxy); `--ceiling` (the arrow cap passes up to 452).
+export const CEILING_BASE_CELLS = 354;
 
 /**
  * The v1 floor for existing players (V2-FINISH; the owner's W3-16 ruling: "a
  * new board is never smaller than the old generator's size for that tier, so
  * nothing suddenly gets easy"), in base cells on `V1_TIER_TEXTURE` (Normal
- * 335, Hard 509, Super Hard 601).
+ * 354, Hard 537, Super Hard 635).
  *
- * How "v1's size for that tier" is computed: v1 is flat by construction
- * (`Difficulties.config(d)` never reads the level), so its size per tier is
- * one number, its median arrow count over displayed levels 1-3000: Normal 83,
- * Hard 125, Super Hard 150 (300-level bands move only within noise). v2 sizes
- * boards by cells, not arrows, so the floor is the smallest base cells whose
- * own v2 boards (a flat curve at that base, neutral bias, v2's bag and sizing,
- * levels 1-3000) have every tier's median arrows at or above v1's, with every
- * larger scanned base up to the ceiling passing too. It is below
- * `CEILING_BASE_CELLS`, so from S400's ceiling on the floor is inert.
- * MEASURED 2026-09-26: `npm run analysis:probe -- --version 2 --v1-floor`
- * (docs/next-level/reports/V2-FINISH.md, parts 1 and 2). It measures v2's
- * own boards, so it moves with v2's stream: 333 on the legacy port (part 1),
- * 335 on `ExactDotNetRandom` (part 2), whose boards run about one arrow
- * lighter per tier.
+ * The unit is v1's search-cost proxy (RE-CEILING option B, OWNER PICK
+ * 2026-09-27). v1 is flat by construction (`Difficulties.config(d)` never
+ * reads the level), so it has one scan level: the median of its 6-level
+ * cycle-median scan proxy over displayed levels 1-3000. The floor is the
+ * smallest base whose own v2 boards (a flat curve at that base, neutral bias,
+ * v2's bag and sizing, the same levels) reach it, with every larger scanned
+ * base up to the ceiling reaching it too: 354 (352 and 353 score 0.99).
+ * `npm run analysis:probe -- --version 2 --v1-floor` prints it beside the
+ * older arrow-median base.
+ *
+ * History: V2-FINISH calibrated on v1's median ARROWS per tier (83 / 125 /
+ * 150): 333 on the legacy port, 335 on `ExactDotNetRandom`. At equal arrow
+ * medians v2's plain shapes scan only 0.91 of v1 (v1's picture pool and its
+ * RNG-defect boards are more tangled), so existing players met boards about
+ * 6% easier on the proxy. 354 deals about 7% more arrows than v1's medians
+ * (89 / 133 / 157) to match it. It equals `CEILING_BASE_CELLS`, so an
+ * existing player's boards are the ceiling's from their first v2 level, and
+ * from S400's ceiling on the floor is inert.
  */
-export const V1_FLOOR_BASE_CELLS = 335;
+// OWNER PICK 2026-09-27 (RE-CEILING option B, docs/next-level/reports/RE-CEILING.md)
+// Measured: `npm run analysis:probe -- --version 2 --v1-floor` (the scan-proxy base; flat 354 scores 1.00 vs v1).
+export const V1_FLOOR_BASE_CELLS = 354;
 
 /**
  * The shipped v2 curve, dark behind GEN_V2_ENABLED: W3-14's candidate `S400`,
@@ -148,7 +160,8 @@ export const V2_CURVE: CurveTable = [
   { levelIndex: 0, baseCells: LEVEL1_TARGET_CELLS, tierTexture: V1_TIER_TEXTURE, clearableBias: LEVEL1_CLEARABLE_BIAS },
   // Saturation at displayed level 400 (candidate S400, the owner's W3-16 pick). Bias back to neutral.
   // `npm run analysis:probe -- --version 2 --candidates`, 2026-09-26,
-  // docs/curve-candidates-2026-09-26.md row "S400".
+  // docs/curve-candidates-2026-09-26.md row "S400". The cells are the RE-CEILING
+  // owner pick (339 -> 354, option B; see CEILING_BASE_CELLS).
   { levelIndex: 400 - 1, baseCells: CEILING_BASE_CELLS, tierTexture: V1_TIER_TEXTURE },
 ];
 

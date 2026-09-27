@@ -337,7 +337,7 @@ function serializeLevel(lvl: { shapeName: string; board: BoardLogic }): string {
   return [lvl.shapeName, lvl.board.rows, lvl.board.cols, ...lvl.board.arrows().map((a) => a.toLine())].join('\n');
 }
 
-test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by V2-FINISH part 2: the exact int32 RNG)', () => {
+test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by RE-CEILING: the owner-picked 354 ceiling)', () => {
   // W3-10/W3-11 pinned 04d0ec7e (v1 tier bands, 46x46 clamp). W3-14 changed
   // v2 content on purpose (targets and bias from V2_CURVE, at most 37
   // columns): ec15f0f7. V2-FINISH part 1 (S400 as the owner's pick, the v1
@@ -345,11 +345,16 @@ test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by V2-FINISH part 2: th
   // ExactDotNetRandom, which re-deals the boards whose legacy stream was not
   // .NET's: e802f80a (678 of levels 0-2999 re-dealt; the shape sequence is
   // unchanged). EXECUTED twice, by this test and by V2-FINISH's scratch
-  // fp.ts (docs/next-level/reports/V2-FINISH.md, "Fingerprints"). Unlike v1's
+  // fp.ts (docs/next-level/reports/V2-FINISH.md, "Fingerprints"). RE-CEILING
+  // moved S400's ceiling, which re-targets every level from index 1 and
+  // re-deals the bag's windows: 339 -> 450 (the arrow cap; a54d5f48, never
+  // committed), then the owner's option B, 354: 71dc3369 (EXECUTED twice:
+  // this test and RE-CEILING's scratch fp.ts; docs/next-level/reports/
+  // RE-CEILING.md, "Fix round 1"). Unlike v1's
   // d01abbd8 this is not frozen forever: a later task that changes v2 content
   // on purpose (W3-18's shapes) re-pins it with its own evidence (W3-21
   // freezes it).
-  expect(v2CorpusFingerprint()).toBe('e802f80a');
+  expect(v2CorpusFingerprint()).toBe('71dc3369');
 });
 
 /** V2_CURVE with every bias removed: the same targets and windows, the neutral fill. */

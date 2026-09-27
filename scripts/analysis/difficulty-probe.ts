@@ -70,25 +70,34 @@
  *   board over indices 0-99,999 sampled every 7, the smallest fit cell, the
  *   v1 -> v2 discontinuity at switch levels, and the heaviest board over
  *   0-9999 with its node generation time beside v1's worst (7157).
- * - `--ceiling` measures `CEILING_BASE_CELLS`: the largest saturated base
- *   cells whose Hard and Super Hard boards in that sample stay at or under
- *   `ARROW_CEILING` arrows, neutral and at the bias-tail floor.
+ * - `--ceiling` measures the largest `CEILING_BASE_CELLS` allowed: the
+ *   largest saturated base cells whose neutral boards stay at or under
+ *   `ARROW_CEILING` arrows over the Hard and Super Hard indices of that
+ *   sample AND every index 0-9999, and whose saturated bag window still
+ *   holds a full tier cycle (RE-CEILING; W3-14 also required the bias-tail
+ *   floor 0.3, which is now printed as information only: the tail
+ *   candidates were not picked). Since RE-CEILING's owner pick (option B,
+ *   354) the shipped value is below that maximum; the probe checks it is.
  * Every one of them reads arrow counts and search cost from boards the
  * shipping `generate(i, 2, { curve })` produced, never the table back.
  *
  * V2-FINISH (the owner's W3-16 picks: S400 ships; existing players get a v1
  * floor):
  * - `--v1-floor` measures `V1_FLOOR_BASE_CELLS`: v1's per-tier median arrows
- *   over displayed levels 1-3000 (with 300-level bands, since v1's config
- *   never reads the level), then the smallest base cells on
- *   `V1_TIER_TEXTURE` whose own v2 boards (a flat curve, neutral, v2's bag
- *   and sizing, the same levels) reach every tier's v1 median, with every
- *   larger scanned base up to `CEILING_BASE_CELLS` reaching it too.
+ *   and its scan proxy (the median of its 6-level cycle-median scans) over
+ *   displayed levels 1-3000 (with 300-level bands, since v1's config never
+ *   reads the level), then the smallest base cells on `V1_TIER_TEXTURE` whose
+ *   own v2 boards (a flat curve, neutral, v2's bag and sizing, the same
+ *   levels) reach it, with every larger scanned base up to
+ *   `CEILING_BASE_CELLS` reaching it too, in both units: every tier's arrow
+ *   median (V2-FINISH) and the scan proxy (RE-CEILING option B, the shipped
+ *   unit). Ten bases above the ceiling are printed for context.
  * - `--switch-report` is W3-14's (g) again with the floor: for a player who
  *   meets v2 at displayed level L, v1 against a fresh install's v2 and an
  *   existing player's floored v2 (`generate(i, 2, { switchLevel })`), over
  *   the next 60 and 300 levels; plus the floored boards' per-tier arrows
- *   below the ceiling and their heaviest board over the (e) sample.
+ *   below the ceiling and their heaviest board over the (e) sample and
+ *   (RE-CEILING) over every index 0-9999.
  */
 import {
   ArrowPath,
@@ -2111,8 +2120,13 @@ const SWITCH_WINDOW_CYCLES = 10;
  * candidate's own input-flat plateau moved more than that. Method, not a gate.
  */
 const FLAT_REFERENCE_LEVELS: readonly [number, number] = [1, 12000];
-/** `--ceiling`'s default scan (base cells); the refinement steps by 1 between the last pass and the first failure. */
-const CEILING_SCAN: readonly number[] = [330, 335, 340, 345, 350, 355, 360, 365, 370];
+/**
+ * `--ceiling`'s scan (base cells); the refinement steps by 1 between the last pass and the first failure. Method.
+ * W3-14 scanned 330-370 by 5 on the legacy stream (it bracketed at 339/340). RE-CEILING (2026-09-26) re-scans on
+ * `ExactDotNetRandom`, where every value up to 370 passes (V2-FINISH Concern 2), so the scan runs to 480 by 10: a
+ * scratch exploration found 450 passing and 460, 480 and 500 failing.
+ */
+const CEILING_SCAN: readonly number[] = [330, 340, 350, 360, 370, 380, 390, 400, 410, 420, 430, 440, 450, 460, 470, 480];
 
 interface Candidate {
   id: string;
@@ -2209,7 +2223,8 @@ function runCandidates(opts: Options): void {
     printHonestyBound();
     console.log(`W3-14 curve candidates (exploration grid, ruling W3-7; not shipped values). Shared: row 0 = W3-13's owner pick `
       + `(target ${LEVEL1_TARGET_CELLS} cells, clearableBias ${LEVEL1_CLEARABLE_BIAS}), the ceiling base cells ${CEILING_BASE_CELLS} `
-      + `(measured by --ceiling against ARROW_CEILING = ${ARROW_CEILING} arrows), v1's tier texture `
+      + `(the shipped CEILING_BASE_CELLS: W3-14 measured 339 by --ceiling against ARROW_CEILING = ${ARROW_CEILING} arrows on the legacy stream; `
+      + `the owner's RE-CEILING pick since, below --ceiling's maximum), v1's tier texture `
       + `${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : ${V1_TIER_TEXTURE.SuperHard}.`);
     console.log(`The shipped V2_CURVE (src/core/curve.ts) equals candidate: ${shipped?.id ?? 'NONE'}.`);
     console.log(`Written: ${files.join(', ')}`);
@@ -2690,67 +2705,126 @@ function runFlatReference(opts: Options): void {
 
 // -- The ceiling --------------------------------------------------------------
 
+interface CeilingMax {
+  max: number;
+  at: number;
+  shape: string;
+  boards: number;
+}
+
 interface CeilingRow {
   baseCells: number;
   hardTarget: number;
   superHardTarget: number;
   admitted: number;
-  neutral: { max: number; at: number; shape: string };
-  tail: { max: number; at: number; shape: string };
+  /** Neutral bias, Hard and Super Hard indices of the (e) sample (0-99,999 every 7). */
+  neutral: CeilingMax;
+  /** RE-CEILING: neutral bias, EVERY index 0-9999 (all tiers): the owner's "nothing gets slower" range. */
+  full: CeilingMax;
+  /** The bias-tail floor 0.3 on the (e) sample: information only (the tail candidates were not picked; S400 never deals b < 1). */
+  tail: CeilingMax;
+  /** The arrow rule: neutral sample and full range both at or under ARROW_CEILING (so also under v1's worst). */
+  passArrows: boolean;
+  /** The full range at or under v1's heaviest board over 0-9999 (262 arrows): implied by `passArrows`, printed as its own clause. */
+  passV1Worst: boolean;
+  /**
+   * RE-CEILING: the saturated bag window holds at least one full tier cycle (6 shapes admitted), so the bag's O(1)
+   * steady state (`shapeBag.ts`, V2-FINISH part 3) can engage. Below that, a deep cold pick builds every window again.
+   */
+  passWindow: boolean;
+  /** The shipped rule: `passArrows` and `passWindow`. */
   pass: boolean;
+  /** W3-14's old rule (neutral sample and the 0.3 tail at or under ARROW_CEILING), for continuity only. */
+  passOldRule: boolean;
 }
 
 function ceilingRow(baseCells: number): CeilingRow {
-  const measure = (bias: number | undefined) => {
+  const measure = (bias: number | undefined, end: number, step: number, skipNormal: boolean): CeilingMax => {
     const curve: CurveTable = [{ levelIndex: 0, baseCells, tierTexture: V1_TIER_TEXTURE, clearableBias: bias }];
-    let best = { max: -1, at: -1, shape: '' };
-    for (let i = 0; i < HEAVY_SAMPLE_END; i += HEAVY_SAMPLE_STEP) {
-      if (Difficulties.forLevel(i) === Difficulty.Normal) continue; // Normal targets are the smallest: never the heaviest
+    let best: CeilingMax = { max: -1, at: -1, shape: '', boards: 0 };
+    let boards = 0;
+    for (let i = 0; i < end; i += step) {
+      if (skipNormal && Difficulties.forLevel(i) === Difficulty.Normal) continue; // Normal targets are the smallest: never the heaviest
       const level = LevelGenerator.generate(i, 2, { curve });
-      if (level.arrowCount > best.max) best = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}` };
+      boards++;
+      if (level.arrowCount > best.max) best = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}`, boards: 0 };
     }
-    return best;
+    return { ...best, boards };
   };
   const one: CurveTable = [{ levelIndex: 0, baseCells, tierTexture: V1_TIER_TEXTURE }];
   const sh = Difficulties.configV2(Difficulty.SuperHard, 0, one).maxCells;
-  const neutral = measure(undefined);
-  const tail = measure(BIAS_TAIL_FLOOR);
+  const neutral = measure(undefined, HEAVY_SAMPLE_END, HEAVY_SAMPLE_STEP, true);
+  const full = measure(undefined, HEAVIEST_FULL_END, 1, false);
+  const tail = measure(BIAS_TAIL_FLOOR, HEAVY_SAMPLE_END, HEAVY_SAMPLE_STEP, true);
+  const admitted = bagCandidates().filter((s) => shapeCapacity(s) >= sh).length;
+  const passArrows = neutral.max <= ARROW_CEILING && full.max <= ARROW_CEILING;
+  const passWindow = admitted >= Difficulties.cycleLength;
   return {
-    baseCells, hardTarget: Difficulties.configV2(Difficulty.Hard, 0, one).maxCells, superHardTarget: sh,
-    admitted: bagCandidates().filter((s) => shapeCapacity(s) >= sh).length,
-    neutral, tail, pass: neutral.max <= ARROW_CEILING && tail.max <= ARROW_CEILING,
+    baseCells, hardTarget: Difficulties.configV2(Difficulty.Hard, 0, one).maxCells, superHardTarget: sh, admitted,
+    neutral, full, tail,
+    passArrows, passV1Worst: full.max <= V1_HEAVIEST_ARROWS, passWindow, pass: passArrows && passWindow,
+    passOldRule: neutral.max <= ARROW_CEILING && tail.max <= ARROW_CEILING,
   };
 }
 
+/** The largest scanned base with every smaller scanned base passing `ok` (rows sorted by base). */
+function largestPrefixPass(rows: readonly CeilingRow[], ok: (r: CeilingRow) => boolean): number | null {
+  let best: number | null = null;
+  for (const r of rows) { if (!ok(r)) break; best = r.baseCells; }
+  return best;
+}
+
 function runCeiling(opts: Options): void {
-  const rows = CEILING_SCAN.map(ceilingRow);
-  // Refine by 1 between the last value whose scan prefix all passed and the next value.
-  let lastPass = -1;
-  for (let k = 0; k < rows.length && rows[k].pass; k++) lastPass = k;
-  if (lastPass >= 0 && lastPass < rows.length - 1) {
-    for (let b = rows[lastPass].baseCells + 1; b < rows[lastPass + 1].baseCells; b++) rows.push(ceilingRow(b));
+  // RE-CEILING fix round 1: the shipped value is an owner pick (option B), so its own row is always measured too.
+  const rows = [...new Set([...CEILING_SCAN, CEILING_BASE_CELLS])].sort((a, b) => a - b).map(ceilingRow);
+  // Refine by 1 between the last value whose scan prefix all passed and the next value: for the shipped rule and for
+  // the arrow rule alone (printed beside it), so both answers are exact to one cell.
+  const refine = new Set<number>();
+  for (const ok of [(r: CeilingRow) => r.pass, (r: CeilingRow) => r.passArrows]) {
+    let lastPass = -1;
+    for (let k = 0; k < rows.length && ok(rows[k]); k++) lastPass = k;
+    if (lastPass >= 0 && lastPass < rows.length - 1) {
+      for (let b = rows[lastPass].baseCells + 1; b < rows[lastPass + 1].baseCells; b++) refine.add(b);
+    }
   }
+  for (const b of [...refine].sort((x, y) => x - y)) if (!rows.some((r) => r.baseCells === b)) rows.push(ceilingRow(b));
   rows.sort((a, b) => a.baseCells - b.baseCells);
-  let ceiling: number | null = null;
-  for (const r of rows) { if (!r.pass) break; ceiling = r.baseCells; }
+  const ceiling = largestPrefixPass(rows, (r) => r.pass);
+  const arrowRuleCeiling = largestPrefixPass(rows, (r) => r.passArrows);
+  const oldRuleCeiling = largestPrefixPass(rows, (r) => r.passOldRule);
+  const boards = rows.reduce((t, r) => t + r.neutral.boards + r.full.boards + r.tail.boards, 0);
 
   if (opts.json) {
-    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'ceiling', arrowCeiling: ARROW_CEILING, tailFloor: BIAS_TAIL_FLOOR, rows, ceiling,
-      sample: { end: HEAVY_SAMPLE_END, step: HEAVY_SAMPLE_STEP, tiers: 'Hard and Super Hard' } }, null, 2));
+    console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'ceiling', arrowCeiling: ARROW_CEILING, v1Worst: V1_HEAVIEST_ARROWS, tailFloor: BIAS_TAIL_FLOOR,
+      rows, ceiling, arrowRuleCeiling, oldRuleCeiling, boards, shipped: CEILING_BASE_CELLS,
+      shippedWithinRule: ceiling !== null && CEILING_BASE_CELLS <= ceiling,
+      sample: { end: HEAVY_SAMPLE_END, step: HEAVY_SAMPLE_STEP, tiers: 'Hard and Super Hard' }, full: { end: HEAVIEST_FULL_END, tiers: 'all' } }, null, 2));
     return;
   }
   printHonestyBound();
-  console.log(`W3-14 ceiling: the largest saturated base cells (Normal target; Hard and Super Hard by v1's texture `
-    + `${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : ${V1_TIER_TEXTURE.SuperHard}) whose Hard and Super Hard boards over indices `
-    + `0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} stay at or under ARROW_CEILING = ${ARROW_CEILING} arrows, neutral AND at the `
-    + `bias-tail floor ${BIAS_TAIL_FLOOR}. Each row deals a flat curve (that base cells from level 1) through generate(i, 2, { curve }).`);
+  console.log(`Ceiling (W3-14; rule re-stated by RE-CEILING, 2026-09-26): the largest saturated base cells (Normal target; Hard and Super Hard by `
+    + `v1's texture ${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : ${V1_TIER_TEXTURE.SuperHard}) whose neutral boards stay at or under `
+    + `ARROW_CEILING = ${ARROW_CEILING} arrows over (1) the Hard and Super Hard indices of 0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} and `
+    + `(2) every index 0-${HEAVIEST_FULL_END - 1}, so no board there exceeds v1's heaviest (${V1_HEAVIEST_ARROWS}, index ${V1_HEAVIEST_INDEX}) either; `
+    + `and whose Super Hard target still admits a full tier cycle of shapes (>= ${Difficulties.cycleLength}), or the bag's O(1) steady state cannot engage. `
+    + `Neutral is the only bias the shipped S400 deals at or after its ceiling (existing players are clamped to at most 1); the b = ${BIAS_TAIL_FLOOR} `
+    + `column is W3-14's unpicked bias-tail candidates, information only. Each row deals a flat curve (that base cells from level 1) through `
+    + `generate(i, 2, { curve }), so from ExactDotNetRandom since V2-FINISH part 2.`);
   console.log('');
-  console.log(table(['base cells', 'Hard target', 'Super Hard target', 'shapes admitted', 'max arrows, neutral (index, shape)', `max arrows, b = ${BIAS_TAIL_FLOOR} (index, shape)`, 'pass'],
+  console.log(table(['base cells', 'Hard target', 'Super Hard target', 'shapes admitted', 'max arrows, neutral, (e) sample (index, shape)',
+    `max arrows, neutral, every index 0-${HEAVIEST_FULL_END - 1} (index, shape)`, `<= ${V1_HEAVIEST_ARROWS}`, `arrows <= ${ARROW_CEILING}`,
+    `window >= ${Difficulties.cycleLength} shapes`, 'pass', `info: max arrows, b = ${BIAS_TAIL_FLOOR}, (e) sample (index, shape)`],
     rows.map((r) => [r.baseCells, r.hardTarget, r.superHardTarget, r.admitted, `${r.neutral.max} (${r.neutral.at}, ${r.neutral.shape})`,
-      `${r.tail.max} (${r.tail.at}, ${r.tail.shape})`, r.pass ? 'yes' : 'no'])));
+      `${r.full.max} (${r.full.at}, ${r.full.shape})`, r.passV1Worst ? 'yes' : 'no', r.passArrows ? 'yes' : 'no', r.passWindow ? 'yes' : 'no',
+      r.pass ? 'yes' : 'no', `${r.tail.max} (${r.tail.at}, ${r.tail.shape})${r.tail.max <= ARROW_CEILING ? '' : ' over'}`])));
   console.log('');
-  console.log(`CEILING_BASE_CELLS = ${ceiling ?? 'none (the smallest scanned value fails)'}: the largest scanned value with every smaller scanned value passing too. `
-    + `src/core/curve.ts holds ${CEILING_BASE_CELLS}${ceiling === CEILING_BASE_CELLS ? ' (matches)' : ' (DIFFERS: update it)'}.`);
+  console.log(`Boards generated: ${boards} (${rows.length} rows x (${rows[0].neutral.boards} sampled neutral + ${rows[0].full.boards} full-range neutral + `
+    + `${rows[0].tail.boards} sampled at b = ${BIAS_TAIL_FLOOR})).`);
+  console.log(`The arrow rule alone gives ${arrowRuleCeiling ?? 'none'}; W3-14's old rule (the (e) sample, neutral and b = ${BIAS_TAIL_FLOOR}, at or under `
+    + `${ARROW_CEILING}; no full range) gives ${oldRuleCeiling ?? 'none'} at this scan's resolution.`);
+  console.log(`The rule's largest base: ${ceiling ?? 'none (the smallest scanned value fails)'} (the largest scanned value with every smaller scanned value `
+    + `passing too). src/core/curve.ts holds CEILING_BASE_CELLS = ${CEILING_BASE_CELLS}, the owner's pick (RE-CEILING option B, the scan-matched base; `
+    + `see --v1-floor): ${ceiling !== null && CEILING_BASE_CELLS <= ceiling ? 'within the rule (PASS)' : 'ABOVE the rule (FAIL: the arrow cap or the window rule breaks)'}.`);
 }
 
 // ---- V2-FINISH: the v1 floor and the switch report ---------------------------
@@ -2765,7 +2839,12 @@ const V1_FLOOR_SCAN_START = 320;
 const SWITCH_REPORT_LEVELS = SWITCH_LEVELS;
 /** The report's windows, in 6-level cycles: (g)'s 10 (60 levels) and 50 (300 levels, the flat reference's resolved block). Method. */
 const SWITCH_REPORT_WINDOWS = [SWITCH_WINDOW_CYCLES, MONOTONE_BLOCK_CYCLES] as const;
-/** The flat reference's measured block-to-block noise (docs/curve-candidates-2026-09-26.md, "The flat reference (a)"). */
+/**
+ * The flat reference's measured block-to-block noise (docs/curve-candidates-2026-09-26.md, "The flat reference (a)":
+ * base 339, legacy stream). RE-CEILING re-ran `--flat-reference` on the exact stream at the ceilings it tried (see
+ * docs/next-level/reports/RE-CEILING.md): each measured less. These W3-14 figures are kept as the printed resolution
+ * because they are the larger (conservative) ones.
+ */
 const FLAT_NOISE_60 = 0.343;
 const FLAT_NOISE_300 = 0.063;
 /** S400's ceiling (displayed level 400): the last row of V2_CURVE. */
@@ -2800,13 +2879,68 @@ interface FloorScanRow {
   targets: TierTriple;
   medians: TierTriple;
   n: TierTriple;
+  /** V2-FINISH's unit: every tier's median arrows at or above v1's. */
   pass: boolean;
+  /** RE-CEILING: the median of the 6-level cycle-median scan proxy, and its ratio to v1's over the same levels. */
+  scan: number;
+  scanRatio: number;
+  /** The same ratio per 300-level block (50 cycles against v1's same block): its spread is the instrument's noise. */
+  blockRatioMin: number;
+  blockRatioMax: number;
+  /** RE-CEILING's unit (the owner's option B): the scan ratio at or above 1. */
+  passScan: boolean;
+  /** A row above CEILING_BASE_CELLS: printed for context only; the floor can never exceed the ceiling. */
+  aboveCeiling: boolean;
+}
+
+/** RE-CEILING: rows scanned past the ceiling, for context only (is the scan-proxy match a knife edge?). Method. */
+const V1_FLOOR_INFO_ABOVE = 10;
+/** The scan ratio's block size: 50 cycles = 300 levels (the flat reference's resolved block). Method. */
+const V1_FLOOR_SCAN_BLOCK_CYCLES = MONOTONE_BLOCK_CYCLES;
+
+interface FloorDeal {
+  arrows: number[][];
+  /** Cycle-median scan per full 6-level cycle, in order. */
+  cycles: number[];
+}
+
+/** Arrows per tier and the walked scan proxy per cycle of `deal(i)` for displayed levels lo..hi (lo starts a cycle). */
+function floorDeal(deal: (i: number) => GeneratedLevel, lo: number, hi: number, label: string): FloorDeal {
+  if ((lo - 1) % Difficulties.cycleLength !== 0) throw new Error(`--v1-floor: level ${lo} does not start a tier cycle`);
+  const arrows: number[][] = [[], [], []];
+  const cycles: number[] = [];
+  let cur: number[] = [];
+  for (let i = lo - 1; i <= hi - 1; i++) {
+    const level = deal(i);
+    arrows[tierIndex(level.difficulty)].push(level.arrowCount);
+    cur.push(walkBoard(level.board, level.arrowCount, `${label} level index ${i}`).scanTaps);
+    if (cur.length === Difficulties.cycleLength) { cycles.push(med(cur)); cur = []; }
+  }
+  return { arrows, cycles };
+}
+
+function blockMedians(cycles: readonly number[]): number[] {
+  const out: number[] = [];
+  for (let k = 0; k + V1_FLOOR_SCAN_BLOCK_CYCLES <= cycles.length; k += V1_FLOOR_SCAN_BLOCK_CYCLES) {
+    out.push(med(cycles.slice(k, k + V1_FLOOR_SCAN_BLOCK_CYCLES)));
+  }
+  return out;
+}
+
+/** The smallest base with every larger base (up to the last row given) passing `ok`; rows ascending. */
+function smallestSuffixPass(rows: readonly FloorScanRow[], ok: (r: FloorScanRow) => boolean): number | null {
+  let floor: number | null = null;
+  for (let k = rows.length - 1; k >= 0 && ok(rows[k]); k--) floor = rows[k].baseCells;
+  return floor;
 }
 
 function runV1Floor(opts: Options): void {
   const [lo, hi] = V1_FLOOR_LEVELS;
-  const v1 = tierArrows((i) => LevelGenerator.generate(i, 1), lo, hi);
+  const v1Deal = floorDeal((i) => LevelGenerator.generate(i, 1), lo, hi, 'v1');
+  const v1 = v1Deal.arrows;
   const v1Med = tierMedians(v1);
+  const v1Scan = med(v1Deal.cycles);
+  const v1Blocks = blockMedians(v1Deal.cycles);
   const bands: { levels: string; medians: TierTriple }[] = [];
   for (let b = lo; b <= hi; b += V1_FLOOR_BAND) {
     const e = Math.min(hi, b + V1_FLOOR_BAND - 1);
@@ -2814,45 +2948,61 @@ function runV1Floor(opts: Options): void {
   }
 
   const rows: FloorScanRow[] = [];
-  for (let base = V1_FLOOR_SCAN_START; base <= CEILING_BASE_CELLS; base++) {
+  for (let base = V1_FLOOR_SCAN_START; base <= CEILING_BASE_CELLS + V1_FLOOR_INFO_ABOVE; base++) {
     const curve: CurveTable = [{ levelIndex: 0, baseCells: base, tierTexture: V1_TIER_TEXTURE }];
-    const arrows = tierArrows((i) => LevelGenerator.generate(i, 2, { curve }), lo, hi);
-    const medians = tierMedians(arrows);
+    const d = floorDeal((i) => LevelGenerator.generate(i, 2, { curve }), lo, hi, `v2 flat ${base}`);
+    const medians = tierMedians(d.arrows);
     const targets: TierTriple = [Difficulty.Normal, Difficulty.Hard, Difficulty.SuperHard]
-      .map((d) => Difficulties.configV2(d, 0, curve).maxCells) as TierTriple;
-    rows.push({ baseCells: base, targets, medians, n: [arrows[0].length, arrows[1].length, arrows[2].length],
-      pass: medians.every((m, t) => m >= v1Med[t]) });
+      .map((t) => Difficulties.configV2(t, 0, curve).maxCells) as TierTriple;
+    const scan = med(d.cycles);
+    const ratios = blockMedians(d.cycles).map((x, k) => x / v1Blocks[k]);
+    rows.push({ baseCells: base, targets, medians, n: [d.arrows[0].length, d.arrows[1].length, d.arrows[2].length],
+      pass: medians.every((m, t) => m >= v1Med[t]), scan, scanRatio: scan / v1Scan,
+      blockRatioMin: Math.min(...ratios), blockRatioMax: Math.max(...ratios), passScan: scan >= v1Scan,
+      aboveCeiling: base > CEILING_BASE_CELLS });
   }
-  let floor: number | null = null;
-  for (let k = rows.length - 1; k >= 0 && rows[k].pass; k--) floor = rows[k].baseCells;
-  const bracketed = !rows[0].pass;
-  const crossing = (() => {
-    for (let i = 0; i <= SHIPPED_CEILING_INDEX; i++) if (curvePointAt(V2_CURVE, i).baseCells >= (floor ?? Infinity)) return i + 1;
+  const eligible = rows.filter((r) => !r.aboveCeiling);
+  const floor = smallestSuffixPass(eligible, (r) => r.pass);
+  const scanFloor = smallestSuffixPass(eligible, (r) => r.passScan);
+  const bracketed = !eligible[0].pass && !eligible[0].passScan;
+  const crossingOf = (base: number | null) => {
+    for (let i = 0; i <= SHIPPED_CEILING_INDEX; i++) if (curvePointAt(V2_CURVE, i).baseCells >= (base ?? Infinity)) return i + 1;
     return null;
-  })();
+  };
 
   if (opts.json) {
     console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'v1-floor', levels: V1_FLOOR_LEVELS, v1: { medians: v1Med,
-      n: [v1[0].length, v1[1].length, v1[2].length], bands }, rows, floor, bracketed, shipped: V1_FLOOR_BASE_CELLS }, null, 2));
+      n: [v1[0].length, v1[1].length, v1[2].length], bands, scan: v1Scan, cycles: v1Deal.cycles.length, blocks: v1Blocks },
+      rows, arrowMedianFloor: floor, scanProxyFloor: scanFloor, bracketed, ceiling: CEILING_BASE_CELLS, shipped: V1_FLOOR_BASE_CELLS }, null, 2));
     return;
   }
   printHonestyBound();
-  console.log(`V2-FINISH v1 floor. v1's size per tier = its median arrows over displayed levels ${lo}-${hi} `
-    + `(n = ${v1[0].length} / ${v1[1].length} / ${v1[2].length}; the probe's p50): Normal / Hard / Super Hard = ${fmtTriple(v1Med)}.`);
+  console.log(`v1 floor (V2-FINISH; scan-proxy unit added by RE-CEILING). v1 over displayed levels ${lo}-${hi} `
+    + `(n = ${v1[0].length} / ${v1[1].length} / ${v1[2].length}; the probe's p50): median arrows Normal / Hard / Super Hard = ${fmtTriple(v1Med)}; `
+    + `median of the ${v1Deal.cycles.length} cycle-median scans = ${v1Scan.toFixed(1)}.`);
   console.log('');
   console.log(`v1 per ${V1_FLOOR_BAND}-level band (Difficulties.config never reads the level, so these move only by noise):`);
-  console.log(table(['levels', 'median arrows N / H / SH'], bands.map((b) => [b.levels, fmtTriple(b.medians)])));
+  console.log(table(['levels', 'median arrows N / H / SH', 'median cycle scan'],
+    bands.map((b, k) => [b.levels, fmtTriple(b.medians), v1Blocks[k] === undefined ? '' : v1Blocks[k].toFixed(1)])));
   console.log('');
   console.log(`v2 dealt from a flat curve at each base (targets base x ${V1_TIER_TEXTURE.Normal} : ${V1_TIER_TEXTURE.Hard} : `
-    + `${V1_TIER_TEXTURE.SuperHard}, neutral bias, v2's own bag and sizing, generate(i, 2, { curve })), same levels. Pass: every tier's `
-    + 'median arrows at or above v1\'s.');
-  console.log(table(['base cells', 'targets N / H / SH', 'median arrows N / H / SH', 'n', 'pass'],
-    rows.map((r) => [r.baseCells, fmtTriple(r.targets), fmtTriple(r.medians), fmtTriple(r.n), r.pass ? 'yes' : 'no'])));
+    + `${V1_TIER_TEXTURE.SuperHard}, neutral bias, v2's own bag and sizing, generate(i, 2, { curve })), same levels, every board walked. `
+    + 'Arrow unit (V2-FINISH): every tier\'s median arrows at or above v1\'s. Scan unit (RE-CEILING option B): the median cycle scan '
+    + `at or above v1's. Rows above CEILING_BASE_CELLS = ${CEILING_BASE_CELLS} are context only.`);
+  console.log(table(['base cells', 'targets N / H / SH', 'median arrows N / H / SH', 'n', 'arrows pass', 'median cycle scan',
+    'v2 / v1 scan', '300-level blocks min-max', 'scan pass'],
+    rows.map((r) => [`${r.baseCells}${r.aboveCeiling ? ' (above the ceiling)' : ''}`, fmtTriple(r.targets), fmtTriple(r.medians), fmtTriple(r.n),
+      r.pass ? 'yes' : 'no', r.scan.toFixed(1), r.scanRatio.toFixed(3), `${r.blockRatioMin.toFixed(2)}-${r.blockRatioMax.toFixed(2)}`,
+      r.passScan ? 'yes' : 'no'])));
   console.log('');
-  if (!bracketed) console.log(`WARNING: the first scanned base (${V1_FLOOR_SCAN_START}) already passes; the scan does not bracket the floor.`);
-  console.log(`V1_FLOOR_BASE_CELLS = ${floor ?? `none (the ceiling ${CEILING_BASE_CELLS} itself fails)`}: the smallest scanned base with every larger `
-    + `scanned base up to CEILING_BASE_CELLS = ${CEILING_BASE_CELLS} passing too. S400 reaches it at displayed level ${crossing ?? 'never'}. `
-    + `src/core/curve.ts holds ${V1_FLOOR_BASE_CELLS}${floor === V1_FLOOR_BASE_CELLS ? ' (matches)' : ' (DIFFERS: update it)'}.`);
+  if (!bracketed) console.log(`WARNING: the first scanned base (${V1_FLOOR_SCAN_START}) already passes a unit; the scan does not bracket that floor.`);
+  const walked = (1 + rows.length) * (hi - lo + 1);
+  console.log(`Boards dealt and walked: ${walked} (v1 plus ${rows.length} bases x ${hi - lo + 1} levels).`);
+  console.log(`Arrow-median base (V2-FINISH's unit): ${floor ?? 'none'}; scan-proxy base (RE-CEILING option B's unit): ${scanFloor ?? 'none'}. `
+    + `Each is the smallest scanned base with every larger scanned base up to CEILING_BASE_CELLS = ${CEILING_BASE_CELLS} passing too. `
+    + `S400 reaches them at displayed levels ${crossingOf(floor) ?? 'never'} and ${crossingOf(scanFloor) ?? 'never'}.`);
+  console.log(`V1_FLOOR_BASE_CELLS: src/core/curve.ts holds ${V1_FLOOR_BASE_CELLS}${scanFloor === V1_FLOOR_BASE_CELLS
+    ? ' (matches the scan-proxy base)' : ' (DIFFERS from the scan-proxy base: update it)'}.`);
 }
 
 interface SwitchWindow {
@@ -2919,12 +3069,23 @@ function runSwitchReport(opts: Options): void {
     if (level.arrowCount > heavy.max) heavy = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}` };
     if (level.arrowCount > ARROW_CEILING) overCeiling++;
   }
+  // RE-CEILING: the heaviest floored board over EVERY index 0-9999 (the owner's "nothing gets slower" range), against v1's worst.
+  let full = { max: -1, at: -1, shape: '' };
+  let fullOverCeiling = 0;
+  let fullOverV1 = 0;
+  for (let i = 0; i < HEAVIEST_FULL_END; i++) {
+    const level = LevelGenerator.generate(i, 2, { switchLevel: 1 });
+    if (level.arrowCount > full.max) full = { max: level.arrowCount, at: i, shape: `${level.shapeName} ${level.board.rows}×${level.board.cols}` };
+    if (level.arrowCount > ARROW_CEILING) fullOverCeiling++;
+    if (level.arrowCount > V1_HEAVIEST_ARROWS) fullOverV1++;
+  }
 
   if (opts.json) {
     console.log(JSON.stringify({ note: HONESTY_BOUND, mode: 'switch-report', floorBaseCells: V1_FLOOR_BASE_CELLS, report,
       belowCeiling: { levels: [2, SHIPPED_CEILING_INDEX], medians: belowMed, n: below.map((b) => b.length), v1Medians: v1Med,
         shareBelowV1Median: below.map((b, t) => share(b, v1Med[t])), v1ShareBelowOwnMedian: v1Arrows.map((a, t) => share(a, v1Med[t])) },
-      heavy: { ...heavy, overCeiling, sampled } }, null, 2));
+      heavy: { ...heavy, overCeiling, sampled },
+      heavyFull: { ...full, levels: [1, HEAVIEST_FULL_END], overCeiling: fullOverCeiling, overV1Worst: fullOverV1, v1Worst: V1_HEAVIEST_ARROWS } }, null, 2));
     return;
   }
   printHonestyBound();
@@ -2949,6 +3110,8 @@ function runSwitchReport(opts: Options): void {
     + `(v1's own boards: ${v1Arrows.map((a, t) => fmtRel(share(a, v1Med[t]))).join(' / ')}).`);
   console.log(`Heaviest existing-player board over indices 0-${HEAVY_SAMPLE_END - 1} every ${HEAVY_SAMPLE_STEP} (${sampled} boards): `
     + `${heavy.max} arrows (index ${heavy.at}, ${heavy.shape}); over ARROW_CEILING = ${ARROW_CEILING}: ${overCeiling}.`);
+  console.log(`Heaviest existing-player board over every index 0-${HEAVIEST_FULL_END - 1} (${HEAVIEST_FULL_END} boards): ${full.max} arrows `
+    + `(index ${full.at}, ${full.shape}); over ARROW_CEILING = ${ARROW_CEILING}: ${fullOverCeiling}; over v1's worst (${V1_HEAVIEST_ARROWS}): ${fullOverV1}.`);
 }
 
 // ---- Entry point --------------------------------------------------------

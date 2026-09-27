@@ -175,28 +175,34 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   as a seeded Fisher–Yates shuffle, swapping its first two shapes once if the first would repeat
   the previous level. So no shape repeats back to back, each dealt shape appears once per window,
   and no board is capped below its target by the clamp. Since W3-14 the targets come from the
-  difficulty curve (below), so windows shrink while it rises. Under the shipped curve (S400)
-  every bag candidate is dealt at first, and from level 361 on 15 of 26: Triangle, Star, Trophy,
-  Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat and Fish cannot hold the saturated Super Hard
-  target of 609 cells. Measured by `npm run analysis:probe -- --version 2 --curve
-  artifacts/W3-14/curves/S400.json --curve-report` (`docs/curve-candidates-2026-09-26.md`).
+  difficulty curve (below), so windows shrink while it rises. Under the shipped curve (S400,
+  ceiling 354 since RE-CEILING) every bag candidate is dealt at first, and from level 384 on 13 of
+  26: Diamond, Triangle, Star, Trophy, Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat, Mushroom
+  and Fish cannot hold the saturated Super Hard target of 635 cells. Measured by `npm run
+  analysis:probe -- --version 2 --curve-report` (`docs/next-level/reports/RE-CEILING.md`).
 - **Tier schedule** (`src/core/difficulty.ts:34-49`): a repeating 6-level cycle Normal, Normal,
   Hard, Normal, Normal, Super Hard. The tier configs do not depend on the level index
   (`difficulty.ts:51-67`).
   **Generator v2** (W3-14, dark) keeps the cycle but reads each tier's cell target, and its
   clearable bias, from a breakpoint table indexed by level (`src/core/curve.ts`,
   `Difficulties.configV2`): level 1 is the owner's pick (88 cells, bias 3), and the targets climb
-  linearly to a measured ceiling (base 339 cells: Normal 339, Hard 515, Super Hard 609, the
-  largest whose boards stay at or under 250 arrows), after which difficulty is flat. `V2_CURVE` is
-  the owner's W3-16 pick among `docs/curve-candidates-2026-09-26.md`'s candidates: S400, the
-  ceiling at level 400 (the bias falls 3 → 1 over the same ramp).
+  linearly to a ceiling (base 354 cells: Normal 354, Hard 537, Super Hard 635), after which
+  difficulty is flat. `V2_CURVE` is the owner's W3-16 pick among
+  `docs/curve-candidates-2026-09-26.md`'s candidates: S400, the ceiling at level 400 (the bias
+  falls 3 → 1 over the same ramp). The ceiling's value is the owner's RE-CEILING pick (option B):
+  the base whose v2 boards match v1 on the search-cost proxy over levels 1–3000 (`npm run
+  analysis:probe -- --version 2 --v1-floor`). The arrow cap (no board over 250 arrows, none
+  heavier than v1's worst, 262, and a saturated bag window of at least six shapes) would allow up
+  to 450 (`--ceiling`); at 354 the heaviest board over levels 1–10,000 is 190 arrows (195 for an
+  existing player; `docs/next-level/reports/RE-CEILING.md`).
   **Existing players** (V2-FINISH): an install whose switch level is above 0 played v1 first, so its
-  v2 boards carry a **v1 floor**: base cells at least 335 (Normal 335, Hard 509, Super Hard 601)
-  and no bias above neutral. 335 is the smallest base whose own v2 boards reach v1's per-tier
-  median arrows over levels 1–3000 (83 / 125 / 150; `npm run analysis:probe -- --version 2
-  --v1-floor`). S400 passes it at level 394, so from its ceiling on the floor changes nothing
-  but the deal: an existing player's bag is built from the floored targets, so their board is a
-  pure function of (level index, switch level).
+  v2 boards carry a **v1 floor**: base cells at least 354 (Normal 354, Hard 537, Super Hard 635)
+  and no bias above neutral. 354 is the smallest base whose own v2 boards reach v1's search-cost
+  proxy over levels 1–3000 (`npm run analysis:probe -- --version 2 --v1-floor`, which also prints
+  335, the base that only matches v1's arrow medians 83 / 125 / 150 but scans 0.91 of v1). It
+  equals the ceiling, so an existing player's boards are the ceiling's from their first v2 level;
+  their bag is built from the floored targets, so their board is a pure function of (level index,
+  switch level).
 - **Full fill, guaranteed solvable** (`LevelGenerator`, `src/core/levelGenerator.ts:22-41`): the
   silhouette is packed so **every shape cell holds an arrow**, and the board is solvable *by
   construction*. Both come from one "peel" rule — only ever carve an arrow whose head has a
