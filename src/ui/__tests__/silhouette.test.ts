@@ -112,7 +112,7 @@ test('W4-09 gallery: every catalogue shape at the gallery raster round-trips thr
   // The owner's picks (14 rows, cols = round(14 x aspect); 40 dp tiles) and the
   // exact string GalleryScreen renders with fillRule="evenodd": every cell
   // centre is inside the even-odd path exactly when rasterize() filled it.
-  expect(SHAPE_CATALOGUE).toHaveLength(28);
+  expect(SHAPE_CATALOGUE).toHaveLength(29);
   for (const id of SHAPE_CATALOGUE) {
     const def = shapeDefFor(id);
     expect(def).not.toBeNull();

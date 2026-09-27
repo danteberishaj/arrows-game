@@ -291,6 +291,24 @@ export const ShapeLibrary = (() => {
     return sx * sx + sy * sy <= 1; // saucer
   });
 
+  // Bell: a domed crown with a knob, sides that flare out to a wide lip, and a
+  // clapper hanging below. Slightly tall.
+  const Bell = new ShapeDef('Bell', 0.95, (x, y) => {
+    const ax = Math.abs(x);
+    if (y >= 0.26) {
+      return ax * ax + (y - 0.26) * (y - 0.26) <= 0.56 * 0.56 // dome
+        || (ax <= 0.16 && y <= 0.92); // knob
+    }
+    if (y >= -0.5) {
+      // Waist: from the dome's 0.56 out to the lip's 0.94, most of the flare near the lip.
+      const t = (0.26 - y) / 0.76;
+      if (ax <= 0.56 + 0.38 * t * t * t) return true;
+    } else if (y >= -0.72 && ax <= 0.94) {
+      return true; // lip
+    }
+    return x * x + (y + 0.76) * (y + 0.76) <= 0.22 * 0.22; // clapper
+  });
+
   // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
   // SuperHard draws the picture-book silhouettes.
   const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
@@ -309,7 +327,7 @@ export const ShapeLibrary = (() => {
     Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
     Pentagon, Octagon, Ring, XMark,
     Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
-    House, Teacup,
+    House, Teacup, Bell,
     SimplePool, MediumPool, ComplexPool,
 
     /** Picks a shape for the tier: each difficulty draws from its own pool. */
