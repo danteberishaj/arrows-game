@@ -230,16 +230,16 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'header-button-hairline-on-bg', fgRole: 'border', bgRole: 'bg', kind: 'boundary', site: `${HB}:69` },
 
   // Menu
-  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:175`, sizeSite: `${HS}:454` },
-  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:139`, sizeSite: `${HS}:460` },
-  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:138`, sizeSite: `${HS}:460` },
-  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:137`, sizeSite: `${HS}:460` },
-  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:196`, sizeSite: `${HS}:473` },
-  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:196`, sizeSite: `${HS}:473` },
-  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:269`, sizeSite: `${HS}:479`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:263)" },
-  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:308`, sizeSite: `${HS}:498`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
-  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:348`, sizeSite: `${HS}:498`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
-  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:218`, sizeSite: `${HS}:498`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
+  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:176`, sizeSite: `${HS}:471` },
+  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:140`, sizeSite: `${HS}:477` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:139`, sizeSite: `${HS}:477` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:138`, sizeSite: `${HS}:477` },
+  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:197`, sizeSite: `${HS}:490` },
+  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:197`, sizeSite: `${HS}:490` },
+  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:282`, sizeSite: `${HS}:496`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:263)" },
+  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:321`, sizeSite: `${HS}:515`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:361`, sizeSite: `${HS}:515`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
+  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:219`, sizeSite: `${HS}:515`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35' },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)

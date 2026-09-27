@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
@@ -13,6 +13,7 @@ import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
 import { META_BANNER, META_DAILY, META_GALLERY, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
+import { ART_PAPER_TEXTURE_ENABLED, ART_PAPER_TEXTURE_OPACITY } from './artConfig';
 import { startMenuCollectionSync } from './collectionSync';
 import {
   DAILY_ENTRY_DONE_LABEL,
@@ -230,6 +231,18 @@ export function HomeScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: p.bg }]}>
+      {ART_PAPER_TEXTURE_ENABLED && (
+        // W5-14 (flag only): paper grain under everything on the menu, tinted with the palette's ink. The tile is
+        // seamless by construction and repeats at its own size; it is the bottom layer and has no animation.
+        // width/height 100%: an Image takes its static source's size as a default width/height, which wins over
+        // left/right/top/bottom (the emulator showed ONE 256 dp tile in the top-left corner without them).
+        <Image
+          testID="paper-texture"
+          source={PAPER_TEXTURE}
+          resizeMode="repeat"
+          style={[StyleSheet.absoluteFill, PAPER_TEXTURE_FILL, { tintColor: p.ink, opacity: ART_PAPER_TEXTURE_OPACITY }]}
+        />
+      )}
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + HEADER_TOP }]}>
         <HeaderButton label={dark ? '☀' : '☾'} palette={p} onPress={onToggleTheme} size={HEADER_BUTTON} />
@@ -429,6 +442,10 @@ function buildStatsLine(streakSaved: boolean, wrapAtSeparators = false): string 
     ? parts.map((part) => part.replace(/ /g, NBSP)).join(STATS_SEPARATOR_WRAPPING)
     : parts.join(STATS_SEPARATOR);
 }
+
+/** W5-14: the paper grain tile (a 256 px grey+alpha PNG; `tintColor` keeps only its alpha). */
+const PAPER_TEXTURE = require('../../assets/images/grain.png');
+const PAPER_TEXTURE_FILL = { width: '100%', height: '100%' } as const;
 
 const styles = StyleSheet.create({
   root: {

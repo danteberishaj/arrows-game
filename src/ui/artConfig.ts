@@ -37,3 +37,14 @@ export const ART_HEADER_SILHOUETTE_ENABLED = process.env.EXPO_PUBLIC_ART_HEADER_
  * OFF: the panels render exactly as before.
  */
 export const ART_PANEL_DEPTH_ENABLED = process.env.EXPO_PUBLIC_ART_PANEL_DEPTH === '1';
+
+/**
+ * W5-14 spike (menu only): a seamless paper grain tile (assets/images/grain.png, scripts/art/generate-grain.mjs)
+ * repeated over the HomeScreen background, tinted `ink` and drawn at ART_PAPER_TEXTURE_OPACITY. Never on the game
+ * screen: the native board view is transparent, so a texture there would sit behind the arrows. OFF: the menu renders
+ * exactly as before.
+ */
+export const ART_PAPER_TEXTURE_ENABLED = process.env.EXPO_PUBLIC_ART_PAPER_TEXTURE === '1';
+
+/** The grain layer's opacity. The owner picks from the 0.02 / 0.04 / 0.06 / 0.08 captures (a sampling grid) in W5-20. */
+export const ART_PAPER_TEXTURE_OPACITY = 0.04; // OWNER-PICKED STARTING VALUE
