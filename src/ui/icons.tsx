@@ -3,7 +3,7 @@ import Svg, { Path } from 'react-native-svg';
 
 /**
  * W5-02 (ART_ICONS_ENABLED, artConfig.ts): one SVG icon set for the control marks that were text glyphs drawn by
- * whatever font the OS picked (‹ 💡 ☀ ☾ ♪ ★ ✦ ♥). An SVG path honours its colour on every platform; the colour emoji
+ * whatever font the OS picked (‹ 💡 ☀ ☾ ♪ ★ ✦ ♥; W7-04 adds the Settings gear ⚙). An SVG path honours its colour on every platform; the colour emoji
  * 💡 ☀ ♥ ignored the `color` the app set (Android paints them yellow and red). Every path is drawn in a 24 x 24
  * viewBox. The sound-off icon differs from sound-on by SHAPE (no waves, a slash), not by colour alone.
  */
@@ -21,6 +21,7 @@ export const ICON_NAMES = [
   'star',
   'sparkle',
   'heart',
+  'settings',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -82,6 +83,20 @@ export const ICONS: Readonly<Record<IconName, readonly IconPart[]>> = Object.fre
     fill('M12 2C12.8 8.5 15.5 11.2 22 12C15.5 12.8 12.8 15.5 12 22C11.2 15.5 8.5 12.8 2 12C8.5 11.2 11.2 8.5 12 2Z'),
   ]),
   heart: Object.freeze([fill(HEART_PATH)]),
+  /**
+   * W7-04 (the menu's Settings button): a gear, 8 teeth (outer radius 10, body radius 7.2, valley arcs between the
+   * teeth), around a round hole of radius 3. Stroked like the sun and the speaker beside it.
+   */
+  settings: Object.freeze([
+    stroke(
+      'M10.38 4.98L10.61 2.1L13.39 2.1L13.62 4.98A7.2 7.2 0 0 1 15.82 5.89L18.02 4.01L19.99 5.98L18.11 8.18' +
+      'A7.2 7.2 0 0 1 19.02 10.38L21.9 10.61L21.9 13.39L19.02 13.62A7.2 7.2 0 0 1 18.11 15.82L19.99 18.02' +
+      'L18.02 19.99L15.82 18.11A7.2 7.2 0 0 1 13.62 19.02L13.39 21.9L10.61 21.9L10.38 19.02A7.2 7.2 0 0 1 8.18 18.11' +
+      'L5.98 19.99L4.01 18.02L5.89 15.82A7.2 7.2 0 0 1 4.98 13.62L2.1 13.39L2.1 10.61L4.98 10.38' +
+      'A7.2 7.2 0 0 1 5.89 8.18L4.01 5.98L5.98 4.01L8.18 5.89A7.2 7.2 0 0 1 10.38 4.98Z',
+    ),
+    stroke('M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0z'),
+  ]),
 });
 
 /** One icon, `size` dp square, in `color`. */

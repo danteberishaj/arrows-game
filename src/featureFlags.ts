@@ -164,3 +164,11 @@ export const META_THEME_TRANSITION = process.env.EXPO_PUBLIC_META_THEME_TRANSITI
  * unchanged final exit, exactly as before (src/ui/gameSessionLifecycle.ts, src/ui/exitToScreenEdge.ts).
  */
 export const META_POST_CLEAR_TIMELINE = process.env.EXPO_PUBLIC_META_POST_CLEAR_TIMELINE === '1';
+
+/**
+ * W7-04: a Settings button (a gear) in the menu's top-right cluster opens a sheet with the privacy policy (only once
+ * PRIVACY_POLICY_URL is set by W7-07), the ad privacy choices (only when CONSENT_GATE is on and Google's UMP says a
+ * privacy-options entry point is required), the support address and the app version (src/ui/SettingsSheet.tsx,
+ * src/ui/settingsRows.ts). Nothing is persisted. OFF: the menu renders exactly as before.
+ */
+export const META_SETTINGS_SHEET = process.env.EXPO_PUBLIC_META_SETTINGS_SHEET === '1';

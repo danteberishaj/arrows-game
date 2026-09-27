@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
@@ -11,7 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
-import { META_BANNER, META_DAILY, META_GALLERY, META_STREAK_FREEZE } from '../featureFlags';
+import { META_BANNER, META_DAILY, META_GALLERY, META_SETTINGS_SHEET, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import { ART_PAPER_TEXTURE_ENABLED, ART_PAPER_TEXTURE_OPACITY } from './artConfig';
 import { startMenuCollectionSync } from './collectionSync';
@@ -27,6 +27,7 @@ import { HeaderButton } from './HeaderButton';
 import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
 import { useStopWhenScreenLeaves } from './screenHandoff';
+import { SettingsSheet } from './SettingsSheet';
 import { Palette, Type } from './theme';
 import { Wordmark } from './Wordmark';
 
@@ -108,6 +109,10 @@ export function HomeScreen({
   // W4-09: the gallery control, from the first solve (ruling W4-7), read once
   // per mount like the daily entry. The menu does no other gallery work.
   const [showGallery] = useState(() => META_GALLERY && SaveSystem.totalSolved >= 1);
+  // W7-04 (META_SETTINGS_SHEET): the Settings sheet, mounted only while open.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const showDaily = dailyState !== 'hidden';
   const bothEntries = showDaily && showGallery;
   // POLISH-T9 (audit #10): when the loaded banner's height arrives or leaves, the
@@ -254,6 +259,18 @@ export function HomeScreen({
           onPress={onToggleSound}
           size={HEADER_BUTTON}
         />
+        {META_SETTINGS_SHEET && (
+          // W7-04: the cluster's far (left) side, so the theme and sound buttons keep their places.
+          <HeaderButton
+            label={SETTINGS_GLYPH}
+            icon="settings"
+            accessibilityRole="button"
+            accessibilityLabel={SETTINGS_LABEL}
+            palette={p}
+            onPress={openSettings}
+            size={HEADER_BUTTON}
+          />
+        )}
       </View>
 
       {composed ? (
@@ -293,6 +310,8 @@ export function HomeScreen({
       )}
 
       {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
+
+      {META_SETTINGS_SHEET && settingsOpen && <SettingsSheet palette={p} dark={dark} onClose={closeSettings} />}
     </View>
   );
 }
@@ -369,6 +388,14 @@ function GalleryEntry({
     </PressScale>
   );
 }
+
+/**
+ * W7-04: the Settings button's glyph without W5-02's icons: the gear U+2699 with the text presentation selector
+ * U+FE0E, so Android draws the monochrome text glyph (in the button's colour), not a colour emoji.
+ */
+const SETTINGS_GLYPH = '\u2699\uFE0E'; // OWNER-PICKED STARTING VALUE
+/** W7-04: the Settings button's accessible name. OWNER-PICKED STARTING VALUE (copy). */
+const SETTINGS_LABEL = 'Settings'; // OWNER-PICKED STARTING VALUE
 
 /** POLISH-T9: the stats line's glide when the banner's height arrives or leaves. */
 const BANNER_GLIDE_MS = 220; // OWNER-PICKED STARTING VALUE

@@ -28,9 +28,9 @@ function render(name: (typeof ICON_NAMES)[number], size = 24, color = '#123456')
 const numbers = (d: string) => (d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi) ?? []).map(Number);
 
 describe('the icon record', () => {
-  it('has exactly the brief\'s nine names', () => {
+  it('has exactly the brief\'s nine names, plus W7-04\'s settings gear', () => {
     expect([...ICON_NAMES].sort()).toEqual(
-      ['back', 'heart', 'hint', 'moon', 'soundOff', 'soundOn', 'sparkle', 'star', 'sun'],
+      ['back', 'heart', 'hint', 'moon', 'settings', 'soundOff', 'soundOn', 'sparkle', 'star', 'sun'],
     );
     expect(Object.keys(ICONS).sort()).toEqual([...ICON_NAMES].sort());
   });
@@ -68,9 +68,9 @@ describe('the icon record', () => {
     expect(ICONS.heart).toEqual([{ d: HEART_PATH, paint: 'fill' }]);
   });
 
-  it('star, sparkle and heart are filled; back, hint, sun, moon and the two sound icons are stroked', () => {
+  it('star, sparkle and heart are filled; back, hint, sun, moon, the two sound icons and settings are stroked', () => {
     for (const n of ['star', 'sparkle', 'heart'] as const) expect(ICONS[n].every((p) => p.paint === 'fill')).toBe(true);
-    for (const n of ['back', 'hint', 'sun', 'moon', 'soundOn', 'soundOff'] as const) {
+    for (const n of ['back', 'hint', 'sun', 'moon', 'soundOn', 'soundOff', 'settings'] as const) {
       expect(ICONS[n].every((p) => p.paint === 'stroke')).toBe(true);
     }
   });
@@ -84,6 +84,23 @@ describe('the icon record', () => {
     expect(onlyOff.length).toBeGreaterThan(0); // the slash
     // The speaker itself is shared, so the two read as one control in two states.
     expect([...on].filter((d) => off.has(d)).length).toBeGreaterThan(0);
+  });
+
+  it('W7-04: settings is a gear (an outline with 8 teeth) around a round hole, centred in the 24-unit box', () => {
+    expect(ICONS.settings).toHaveLength(2);
+    const [outline, hole] = ICONS.settings.map((p) => p.d);
+    // 8 teeth: 8 valley arcs between them, each tooth 3 straight edges.
+    expect(outline.match(/A/g)).toHaveLength(8);
+    expect(outline.match(/L/g)).toHaveLength(24);
+    const xy = numbers(outline.replace(/A[^L]*?0 0 1 /g, 'L'));
+    const xs = xy.filter((_, i) => i % 2 === 0);
+    const ys = xy.filter((_, i) => i % 2 === 1);
+    // Inside the box with room for the stroke (half of ICON_STROKE), and centred on (12, 12).
+    expect(Math.min(...xs, ...ys)).toBeGreaterThanOrEqual(ICON_STROKE / 2);
+    expect(Math.max(...xs, ...ys)).toBeLessThanOrEqual(24 - ICON_STROKE / 2);
+    expect((Math.min(...xs) + Math.max(...xs)) / 2).toBeCloseTo(12, 1);
+    expect((Math.min(...ys) + Math.max(...ys)) / 2).toBeCloseTo(12, 1);
+    expect(hole).toBe('M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0z');
   });
 });
 

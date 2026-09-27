@@ -3,7 +3,7 @@
  * "≥4.5:1 (body) / ≥3:1 (large) against their surface", plus WCAG 2.x SC 1.4.11's
  * 3:1 for meaningful non-text graphics and boundaries.
  *
- * Pure: imports only the palettes. `scripts/contrast-audit.ts` prints it and
+ * Pure: imports only the palettes (and W7-04's pure settingsRows.ts for its scrim opacity). `scripts/contrast-audit.ts` prints it and
  * `src/ui/__tests__/contrast.test.ts` asserts it.
  *
  * Size class is a JUDGEMENT this table records as input, not a measurement:
@@ -30,6 +30,7 @@
  *     1.31, Ink Night 1.52 / 1.27. Its "#" toggle is a HeaderButton, already covered by the
  *     `header-glyph*` and `header-button-hairline*` rows.
  */
+import { SETTINGS_SCRIM_OPACITY } from './settingsRows';
 import { Daylight, InkNight, Palette } from './theme';
 
 export type Role = keyof Palette;
@@ -224,9 +225,10 @@ const HB = 'src/ui/HeaderButton.tsx';
 const HS = 'src/ui/HomeScreen.tsx';
 const GS = 'src/ui/GameScreen.tsx';
 const GAL = 'src/ui/GalleryScreen.tsx';
+const SS = 'src/ui/SettingsSheet.tsx';
 
 export const USAGES: ReadonlyArray<Usage> = [
-  // Header buttons (menu theme + sound toggles HomeScreen.tsx:235-236, game back GameScreen.tsx:536).
+  // Header buttons (menu theme + sound toggles and W7-04's Settings button HomeScreen.tsx:253-272, game back GameScreen.tsx:536).
   // The Ink Night theme toggle ☀ and the 💡 hint are emoji: no token reaches them.
   { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:62` },
   { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:62`, note: 'pressed fill is `heartLost` (HeaderButton.tsx:67)' },
@@ -235,22 +237,22 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'header-button-hairline-on-bg', fgRole: 'border', bgRole: 'bg', kind: 'boundary', site: `${HB}:84` },
   // W5-02 (ART_ICONS_ENABLED): the header icons (icons.tsx) are drawn in the glyph's colour, so the emoji the rows
   // above could not reach (the 💡 hint and the Ink Night ☀) become gated graphics.
-  { id: 'header-icon', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:62`, note: 'W5-02 back / hint / theme / sound-on icons' },
+  { id: 'header-icon', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:62`, note: 'W5-02 back / hint / theme / sound-on icons, and W7-04\'s settings gear' },
   { id: 'header-icon-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:62`, note: 'W5-02 icon on the pressed fill' },
   { id: 'header-icon-off', fgRole: 'glyphOff', bgRole: 'surface', kind: 'graphic', site: `${HB}:62`, note: 'W5-02 sound-off icon (speaker + slash; no strike over it) and the disabled hint icon (the icon takes the token, so it is not dimmed)' },
 
   // Menu
-  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:176`, sizeSite: `${HS}:478` },
-  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:140`, sizeSite: `${HS}:482` },
-  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:139`, sizeSite: `${HS}:482` },
-  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:138`, sizeSite: `${HS}:482` },
-  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:197`, sizeSite: `${HS}:493` },
-  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:197`, sizeSite: `${HS}:493` },
-  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:289`, sizeSite: `${HS}:497`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:263)" },
-  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:328`, sizeSite: `${HS}:515`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
-  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:368`, sizeSite: `${HS}:515`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
-  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:219`, sizeSite: `${HS}:515`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
-  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:174` },
+  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:181`, sizeSite: `${HS}:505` },
+  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:145`, sizeSite: `${HS}:509` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:144`, sizeSite: `${HS}:509` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:143`, sizeSite: `${HS}:509` },
+  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:202`, sizeSite: `${HS}:520` },
+  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:202`, sizeSite: `${HS}:520` },
+  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:306`, sizeSite: `${HS}:524`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:300)" },
+  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:347`, sizeSite: `${HS}:542`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:387`, sizeSite: `${HS}:542`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
+  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:224`, sizeSite: `${HS}:542`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
+  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:179` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
   { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1019`, sizeSite: `${GS}:1481` },
@@ -301,6 +303,19 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'gallery-name', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GAL}:239`, sizeSite: `${GAL}:276`, note: "a collected shape's display name" },
   { id: 'gallery-tile-collected', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: `${GAL}:193`, note: 'collected silhouette, filled (even-odd)' },
   { id: 'gallery-tile-outline', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GAL}:202`, note: 'not-collected silhouette, outline only (no fill)' },
+
+  // Settings sheet (W7-04, META_SETTINGS_SHEET): a `surface` panel with a `border` hairline over a `bg` scrim at
+  // SETTINGS_SCRIM_OPACITY over the menu, rows split by `border` dividers. The menu's Settings button is a HeaderButton
+  // (the `header-glyph*` / `header-icon*` rows above: its ⚙︎ text glyph, or W5-02's gear icon).
+  { id: 'settings-title', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${SS}:120`, sizeSite: `${SS}:166`, note: '"Settings"' },
+  { id: 'settings-row-label', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: `${SS}:136`, sizeSite: `${SS}:181`, note: '"Privacy policy", "Ad privacy choices", "Support"' },
+  { id: 'settings-support-address', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:138`, sizeSite: `${SS}:185`, note: "the support row's address line" },
+  { id: 'settings-version', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:143`, sizeSite: `${SS}:196`, note: '"Version 1.0.0" (information, not a button)' },
+  { id: 'settings-panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:118` },
+  { id: 'settings-row-divider', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:133`, note: "the rows' top dividers (also the version row's, SettingsSheet.tsx:142)" },
+  { id: 'settings-panel-hairline-on-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.bg), kind: 'boundary', site: `${SS}:118`, note: 'the panel edge against the scrim over the menu background (= bg)' },
+  { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:118`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
+  { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:118`, note: "the scrim over the Play pill's `accent` fill" },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
   { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1052' },
