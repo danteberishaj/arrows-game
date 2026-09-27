@@ -41,4 +41,5 @@ export const SHAPE_CAPACITY_AT_CLAMP: Readonly<Record<string, number>> = Object.
   Cat: 574,
   Mushroom: 609,
   Fish: 507,
+  House: 758,
 });

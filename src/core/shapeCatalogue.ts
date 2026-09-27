@@ -48,6 +48,9 @@ export const SHAPE_CATALOGUE: readonly string[] = Object.freeze([
   'Cat',
   'Mushroom',
   'Fish',
+  // W3-18: authored after v1; awaiting the owner's recognition test (W3-19), so not in
+  // V2_ADMITTED_SHAPE_IDS and dealt by nothing yet.
+  'House',
 ]);
 
 export const RETIRED_SHAPE_IDS: ReadonlySet<string> = new Set<string>();
@@ -122,9 +125,13 @@ const V1_SHAPE_DEFINITIONS: ReadonlyMap<string, ShapeDef> = new Map([
   ['Fish', ShapeLibrary.Fish],
 ]);
 
-// v1 is currently the newest generator. A later version replaces this map while
-// V1_SHAPE_DEFINITIONS remains the fallback for catalogue ids it no longer defines.
-const NEWEST_SHAPE_DEFINITIONS = V1_SHAPE_DEFINITIONS;
+// W3-18: v2's definitions are v1's plus the shapes authored after v1. A later version replaces
+// this map while V1_SHAPE_DEFINITIONS remains the fallback for catalogue ids it no longer defines.
+const V2_SHAPE_DEFINITIONS: ReadonlyMap<string, ShapeDef> = new Map([
+  ...V1_SHAPE_DEFINITIONS,
+  ['House', ShapeLibrary.House],
+]);
+const NEWEST_SHAPE_DEFINITIONS = V2_SHAPE_DEFINITIONS;
 
 export function catalogueIndexOf(id: string): number {
   return SHAPE_CATALOGUE.indexOf(id);

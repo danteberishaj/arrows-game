@@ -6,6 +6,7 @@ type Pt = readonly [number, number];
 
 const PINE_TOP: readonly Pt[] = [[0, 0.95], [0.55, 0.25], [-0.55, 0.25]];
 const PINE_LOWER: readonly Pt[] = [[0, 0.5], [0.8, -0.45], [-0.8, -0.45]];
+const HOUSE_ROOF: readonly Pt[] = [[-0.96, 0.1], [0, 0.95], [0.96, 0.1]];
 
 /**
  * A scalable shape silhouette. {@link ShapeDef.inside} answers "is this
@@ -259,6 +260,22 @@ export const ShapeLibrary = (() => {
     return pointInPolygon(x, y, [[0.3, 0], [0.94, 0.66], [0.94, -0.66]]);
   });
 
+  // ---- W3-18: shapes authored after v1 ------------------------------------
+  // In no tier pool: v1 never deals them. Generator v2 deals one only once the
+  // owner's recognition test (W3-19) passes and its id joins
+  // V2_ADMITTED_SHAPE_IDS (shapeCatalogue.ts). High fill first, so each stays
+  // admissible at the curve's saturated end (capacity >= 635 cells at the v2
+  // clamp, `npm run analysis:shape -- --all`).
+
+  // House: a gabled roof whose eaves overhang the walls, a chimney on the
+  // right slope, and a door cut into the base.
+  const House = new ShapeDef('House', 1, (x, y) => {
+    if (pointInPolygon(x, y, HOUSE_ROOF)) return true;
+    if (x >= 0.36 && x <= 0.66 && y >= 0.2 && y <= 0.76) return true; // chimney
+    if (Math.abs(x) > 0.72 || y < -0.93 || y > 0.12) return false; // walls
+    return !(Math.abs(x) <= 0.18 && y <= -0.36); // door
+  });
+
   // Tier pools: Normal learns on plain fills, Hard adds geometric figures,
   // SuperHard draws the picture-book silhouettes.
   const SimplePool: readonly ShapeDef[] = [Square, Rectangle, Circle, Diamond];
@@ -277,6 +294,7 @@ export const ShapeLibrary = (() => {
     Crescent, Flower, Bolt, ArrowMark, Crown, Hourglass,
     Pentagon, Octagon, Ring, XMark,
     Butterfly, Rocket, Pine, Cat, Mushroom, Fish,
+    House,
     SimplePool, MediumPool, ComplexPool,
 
     /** Picks a shape for the tier: each difficulty draws from its own pool. */

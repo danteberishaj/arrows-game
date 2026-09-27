@@ -37,12 +37,13 @@ const LOCKED_SHAPE_IDS = [
   'Cat',
   'Mushroom',
   'Fish',
+  'House', // W3-18
 ] as const;
 
 test('catalogue indices preserve the append-only collection save format', () => {
   // Collection save bits use these array indices: never reorder or replace an existing id.
   expect(SHAPE_CATALOGUE.slice(0, LOCKED_SHAPE_IDS.length)).toEqual(LOCKED_SHAPE_IDS);
-  expect(SHAPE_CATALOGUE).toHaveLength(26);
+  expect(SHAPE_CATALOGUE).toHaveLength(27);
 });
 
 /** The 26 shapes v1 shipped: v1's tier pools, the daily pool and generator v2's bag all deal them. */
@@ -53,7 +54,7 @@ const V1_SHAPE_IDS: readonly string[] = LOCKED_SHAPE_IDS.slice(0, 26);
  * the owner's recognition test (W3-19); a pass appends the id to V2_ADMITTED_SHAPE_IDS and removes
  * it here (and re-pins both v2 fingerprints).
  */
-const PENDING_RECOGNITION: readonly string[] = [];
+const PENDING_RECOGNITION: readonly string[] = ['House'];
 
 test('W3-18: generator v2 admits exactly the 26 v1 shapes; every later catalogue id awaits W3-19', () => {
   expect([...V2_ADMITTED_SHAPE_IDS]).toEqual(V1_SHAPE_IDS);
