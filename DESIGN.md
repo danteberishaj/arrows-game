@@ -273,13 +273,39 @@ velocity-driven pan decay have no fixed duration and do not set bounds.
   that climbs one step per exit within 1200 ms (`src/ui/exitCombo.ts:8-9,20-30`; clips in
   `src/ui/audio.ts:13-20`, played by the native `ArrowsFeedback` module in installed builds,
   `audio.ts:5-11`).
+- **Arrow exit, launch curve** (`META_EXIT_TO_SCREEN_EDGE`, default OFF — owner acceptance
+  pending): behind the flag the same expression is re-parametrised as an ease-out instead of the
+  shipped ease-in — `launch·k + (1−launch)·k²` with `launch = 1.15` (`EXIT_EDGE_LAUNCH`,
+  `exitToScreenEdge.ts:40`), fastest on its first frame and keeping at least 85% of that speed
+  until the whole arrow is off screen. The ray is lengthened so the slow tail runs past the
+  visible extent (`EXIT_EDGE_ONSCREEN_MAX = 0.6`, `exitToScreenEdge.ts:47`); the visible run
+  itself is 88–185 ms depending on distance (`exitOnScreenMs`, `exitAnimationConfig.ts:82`). A
+  later fix stops the native draw once the arrow has passed the extent, unless the camera panned
+  during the exit (`endAtExtent`, `exitToScreenEdge.ts:201-206`).
 - **Blocked bump**: the tapped arrow lunges along its own exit axis (peak about 0.22 cell) and
   springs back while its colour eases from `heart` to `ink`, over 300 ms
   (`feedbackCurves.ts:8,14-22`; `BoardView.tsx:887`, `StaticBoardSurface.native.tsx:308`).
+  - **Magenta hold** (`META_BLOCKED_INK_HOLD`, default OFF — owner acceptance pending): behind
+    the flag the colour stays pure `heart` through the lunge's peak (k ≈ 0.32,
+    `BLOCKED_BUMP_PEAK_K`, `feedbackCurves.ts:28`) instead of easing from the first frame, then
+    releases to `ink` (or the missed mark) with a smoothstep over the rest of the same 300 ms
+    driver (`feedbackCurves.ts:70-81`); the lunge's own timing, amplitude and spring-back are
+    unchanged.
 - **Heart pop**: the spent pip jumps to scale 1.35 and springs back (damping 9, stiffness 240)
   as it dims to `heartLost` (`GameScreen.tsx:382-386`).
+  - **Refill pop** (`META_HEART_REFILL_POP`, default OFF — owner acceptance pending): behind the
+    flag, once an earned rewarded-ad continue's lose panel is gone (at once without
+    `META_PANEL_MOTION`), the refilled pip starts at scale 1/1.35 ≈ 0.74
+    (`HEART_PIP_REFILL_START_SCALE`, `heartPip.ts:23`) and springs to 1 with the loss pop's own
+    spring (damping 9, stiffness 240, `HEART_PIP_SPRING`, `GameScreen.tsx:1304,1336`).
 - **Pan momentum**: a released drag carries on and settles with rubber-band edges
   (`withDecay`, `BoardView.tsx:495-496`).
+- **Button press spring** (`META_PRESS_SPRING`, default OFF — owner acceptance pending): behind
+  the flag a button eases in to scale 0.94 over 90 ms (ease-out quad, `PRESS_IN_MS`,
+  `PressScale.tsx:24,84-88`) instead of snapping, and springs back on release (damping 15,
+  stiffness 400, mass 1, `PressScale.tsx:26-27,34,94-99`), settling at relative energy 1e-4 in
+  about 0.61 s instead of Reanimated's default ~1.26 s (`RELEASE_ENERGY_THRESHOLD`,
+  `PressScale.tsx:36-43`).
 
 ### Explanatory feedback — 280–1600 ms
 
@@ -295,16 +321,42 @@ velocity-driven pan decay have no fixed duration and do not set bounds.
 ### State / screen transitions — 180–380 ms
 
 - **Menu ↔ game**: each screen fades in over 180 ms as it mounts (`FadeIn.duration(180)`,
-  `App.tsx:63,75`). It is entering-only: the old screen is removed at once, not cross-faded.
+  `screenHandoff.tsx:160`, wired for every screen slot at `App.tsx:346,349,353,358`). It is
+  entering-only: the leaving screen is held invisible for a couple of frames (PERF-DEADTAG,
+  `screenHandoff.tsx:129-165`) and then removed, not cross-faded.
 - **Splash → menu**: the splash fades out over 380 ms, starting 2250 ms after mount
   (`SplashScreen.tsx:47`), or over 180 ms when tapped to skip (`SplashScreen.tsx:53`).
+- **Level → level** (`META_LEVEL_TRANSITION`, default OFF — owner acceptance pending): Next and
+  Retry currently swap the board in a hard cut; behind the flag they instead swap under a flat,
+  opaque scrim in the current background colour — 180 ms cover, the next level loads while fully
+  covered, 180 ms uncover (`SCRIM_COVER_MS` / `SCRIM_UNCOVER_MS`, `ScreenScrim.tsx:20-21`; wired
+  at `GameScreen.tsx:291`). Reduced motion skips the scrim (owner ruling 2026-09-25) — see Reduce
+  motion below.
+- **Theme toggle** (`META_THEME_TRANSITION`, default OFF — owner acceptance pending): Daylight ↔
+  Ink Night is currently a one-frame flip; behind the flag it dips through the same kind of flat
+  scrim instead, in the destination background colour — 180 ms cover / 180 ms uncover, reusing
+  W2-04's scrim primitives (`themeTransition.ts`; wired at `App.tsx:256-261`), with the theme
+  swapped and persisted under full cover. Reduced motion skips the scrim the same way (owner
+  ruling 2026-09-25) — see Reduce motion below.
 
 Not animated today (listed so nobody assumes otherwise):
-**level → level** is a hard cut today; a transition is specified by the W2 level-transition task,
-flag OFF until accepted. The **win / lose panel** appears without animation, 450 ms after the last
-arrow leaves or 350 ms after the last heart is lost (`GameScreen.tsx:119,147`). A **button press**
-is a pressed style, scale 0.94 while held, with no tween either way (`HeaderButton.tsx:32`,
-`HomeScreen.tsx:86`, `GameScreen.tsx:281,297`).
+The **win / lose panel** appears without animation, 450 ms after the last arrow leaves
+(`WON_PANEL_DELAY_MS`, `gameSessionLifecycle.ts:19`) or 350 ms after the last heart is lost
+(`LOSE_PANEL_DELAY_MS`, `gameSessionLifecycle.ts:18`; both wired at `GameScreen.tsx:531,641`).
+Behind `META_POST_CLEAR_TIMELINE` (default OFF — the owner has not yet picked from the candidate
+table) the win delay instead follows the last exit's own visible time plus a fixed 350 ms
+empty-board hold (`EMPTY_BOARD_HOLD_MS`, provisional, `gameSessionLifecycle.ts:27`) plus 0 ms
+reveal, so the empty board reads the same length regardless of which arrow exits last (today's
+flat delay leaves 263–360 ms of empty board depending on that; W2-06). Behind `META_PANEL_MOTION`
+(default OFF — owner acceptance pending, except the loss duration below) the panel itself also
+animates: the win panel scales from 0.94 and fades in over 180 ms (ease-out cubic,
+`PANEL_WIN_ENTER_MS`, `overlayPresence.ts:29`, `PanelPresence.tsx:21`), the loss panel over
+260 ms (`PANEL_LOSS_ENTER_MS`, **owner pick 2026-09-25**, `overlayPresence.ts:34`), and an earned
+continue's dismissal fades the panel out over the same 180 ms (ease-in quad, `PANEL_EXIT_MS`,
+`overlayPresence.ts:36`, `PanelPresence.tsx:22`). A **button press** is a pressed style, scale
+0.94 while held, with no tween either way (`HeaderButton.tsx:32`, `HomeScreen.tsx:86`,
+`GameScreen.tsx:281,297`) — behind `META_PRESS_SPRING` it eases and springs instead; see
+Tap-local feedback.
 
 ### Ceremony — 850 ms
 
