@@ -7,11 +7,16 @@ module.exports = {
       preset: 'ts-jest',
       testEnvironment: 'node',
       testMatch: ['**/src/**/__tests__/**/*.test.ts'],
+      // artifacts/ holds agents' patch snapshots (copies of src/): never tests.
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/artifacts/'],
+      modulePathIgnorePatterns: ['<rootDir>/artifacts/'],
     },
     {
       displayName: 'ui',
       preset: 'jest-expo',
       testMatch: ['**/src/**/__tests__/**/*.test.tsx'],
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/artifacts/'],
+      modulePathIgnorePatterns: ['<rootDir>/artifacts/'],
       setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
     },
   ],
