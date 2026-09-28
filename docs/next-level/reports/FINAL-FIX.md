@@ -220,3 +220,66 @@ this report.
 - `docs/next-level/reports/W4-07.md:285` ("`lo = -5` reads as 0 and is rewritten with the truth") is now true for a
   valid pointer too; the report was not edited.
 - Release blockers / accepted items outside this pass: finding 1 (privacy link, owner) and finding 11 (accepted).
+
+## Device checks (patch 04, emulator-5556, 2026-09-28)
+
+Closes patch 04's UNVERIFIED-DEVICE items. Evidence root `artifacts/FINAL-FIX-DEVICE/` (gitignored). Two JS-repack
+builds (host `artifacts/W2-06/apk/w206-on.apk`, `artifacts/PANEL-STUCK/scripts/repackps.sh` with `REV`), identical
+flags (`scripts/flags-ff.txt` = PERF-DEADTAG's test flag set + META_THEME_TRANSITION + META_SETTINGS_SHEET +
+CAPTURE_DIAG + FTUE_LOG) and the same logging overlay (`overlay-0{3,4}/`: `[ffdiag]` lines for fold start / slice /
+stop, theme press, Settings press):
+**ff-04** = `c670f1b` (`55f414f9…`), **ff-03** = `89863b1`, the pre-04 tree, whose screen-switch files equal
+`a19c33f`'s (`8464f459…`). Bundle proofs: TestIds present, owner units absent (ASCII + UTF-16LE). Both deleted after use
+(≤ 2 APKs); `.env` / `.proof` / build logs kept. Scales 1/1/1 read back; wm size / density reset after every 360 dp run.
+
+- **(a) PERF-DEADTAG warnings with the new wrapper — 0 (EXECUTED).** `scripts/transitions-ff.sh` (= PERF-DEADTAG's
+  `transitions.sh` with this flag set's menu tap points, from `switch/cal-360.xml`: Play 540,1065, Gallery 757,1245;
+  PERF-DEADTAG's 540,1172 / 809,1352 miss this menu) on ff-04, 5 cold starts per route, sound on and sound off, counted
+  per transition window by PERF-DEADTAG's `count-warnings.py` (`deadtag/`): launch→menu 0/20 runs with warnings,
+  menu→game 0/10, game→menu 0/10, menu→gallery 0/10, gallery→menu 0/10; every one of the 20 runs logged every intended
+  `screen=` switch (so no window is empty). No same-build positive control was run (INFERRED that the grep catches
+  them: the same script counted them on PERF-DEADTAG's hand-off-alone build).
+- **(b) Quick in-and-out switch — no leftover screen (EXECUTED).** `scripts/quickswitch.sh` (360 dp, screenrecord,
+  frames at their own pts) + `scripts/quickswitch-frames.py` (reference = the final menu frame; mean |diff| over
+  y 250-950; a run passes when every frame after the menu is back is within the menu's own noise + 2). In-out times from
+  the app's `screen=` logs:
+
+  | build | menu→gallery→menu | menu→game→menu |
+  |---|---|---|
+  | ff-04 | **4 / 4 pass**, in-out 21-73 ms | **5 / 5 pass**, in-out 103-290 ms |
+  | ff-03 (pre-04) | 5 / 5 pass (+1 run where the gallery was never drawn), 29-189 ms | 2 / 2 pass, 111-262 ms (4 runs stayed on the game) |
+
+  The game cannot be left sooner: a back tap that lands before the game screen has mounted hits the leaving menu and is
+  lost (taps at 0 / 100 ms after Play stayed on the game; the achieved minimum was ~100 ms after the mount, inside its
+  180 ms fade-in). **The pre-04 build did not show the defect either** (finding 8's ghost was not reproduced on the
+  device in 7 counted runs), so this check shows the wrapper leaves no screen behind; it cannot show that it fixed a
+  device-visible ghost. Frames were deleted after analysis; the mp4s and per-run frame reports are kept (`switch/`).
+- **(c) Game-mount frame cost vs the pre-04 tree — no detectable change (EXECUTED).** PERF-DEADTAG's protocol
+  (`scripts/perf-ab-ff.sh` / `perf-run-ff.sh` = PERF-DEADTAG's with Play at 540,1065; `open-frames.py` unchanged:
+  mount frame = first frame ≥ 1 ms of display-list record in [tap, +400 ms); medians, two-sided permutation p on the
+  difference of medians, 20000 shuffles), blocks alternating, 1 warm-up per block:
+
+  | comparison | n / arm | mount frame (median, ms) | UI thread | tap → mount frame done | p (mount frame) |
+  |---|---|---|---|---|---|
+  | **same-APK null** ff-04 vs ff-04 (`perf/null`) | 8 / 8 | 113.4 vs 89.7 (Δ −23.7) | 90.7 vs 69.7 | 315.2 vs 258.1 | 0.36 |
+  | ff-03 (pre-04) vs ff-04 (`perf/ab`) | 12 / 12 | 100.9 vs 85.6 (Δ −15.3) | 75.9 vs 73.4 | 307.2 vs 248.2 | 0.28 |
+
+  Reconciliation: every run has a mount frame (8/8, 8/8, 12/12, 12/12); 9-23 frames recorded in the 400 ms window, drawn
+  span 233-383 ms (15-24 vsyncs incl. skipped). The A/B difference (−15 ms) is smaller than the same-APK null's own
+  difference (−24 ms): at this sample size and host load (2.9-6.6) the instrument resolves nothing below ~±25 ms, and no
+  regression from the extra non-collapsable `View` is visible at that resolution. 0 Reanimated warnings in [tap, +1 s)
+  in all 40 measured runs.
+- **(d) Settings gear during the theme dip — does nothing (EXECUTED).** `scripts/ffcheck.mjs --check gear` (native
+  1440x3120, tap points from `scripts/cal-native.json`): one device shell taps the theme toggle and then the
+  gear. ff-04, 3/3: `settings-press changing=true` logged 52-64 ms after `theme-press`, no sheet (`gear/ff04-gear-*-after.png`:
+  the menu in the new theme). Positive control ff-03, 3/3: the sheet opened over the dipped menu
+  (`gear/ff03-gear-1-after.png`). Sanity on ff-04: a gear tap 2 s later (`changing=false`) opens the sheet
+  (`gear/ff04-sanity-after-dip.png`).
+- **(e) The collection fold stops when leaving the menu (EXECUTED).** `ffcheck.mjs --check fold`: a collection seeded
+  20000 levels behind (fold budget 5000 / mount), Play tapped after ≥ 5 logged slices. ff-04, 5/5: `fold-stop …
+  pendingSlice=true` logged 22-27 ms **before** the `screen=game` line (the leave commit's layout effect), no
+  `fold-slice` after it (`fold/ff04-fold-*-fold-log.txt`). ff-03, 5/5: the stop came 132-226 ms **after** `screen=game`
+  (at the unmount). On the device ff-03 also ran no slice in that window (the fold's late-frame backoff held it during
+  the switch), so the device-visible gain is the earlier stop, not fewer slices; the 20-frame case of the jest RED did
+  not occur here. (A first round seeded only 3000 levels behind, and the fold finished before Play in 2 of 3 runs:
+  `fold/round1/`, not counted.)
