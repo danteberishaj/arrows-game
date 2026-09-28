@@ -353,10 +353,10 @@ flat delay leaves 130–270 ms of empty board with the shipped board-edge exits,
 and about 265–362 ms with `META_EXIT_TO_SCREEN_EDGE` on; `gameSessionLifecycle.ts:22-24`, W2-06). Behind `META_PANEL_MOTION`
 (default OFF — owner acceptance pending, except the loss duration below) the panel itself also
 animates: the win panel scales from 0.94 and fades in over 180 ms (ease-out cubic,
-`PANEL_WIN_ENTER_MS`, `overlayPresence.ts:29`, `PanelPresence.tsx:21`), the loss panel over
-260 ms (`PANEL_LOSS_ENTER_MS`, **owner pick 2026-09-25**, `overlayPresence.ts:34`), and an earned
+`PANEL_WIN_ENTER_MS`, `overlayPresence.ts:31`, `PanelPresence.tsx:21`), the loss panel over
+260 ms (`PANEL_LOSS_ENTER_MS`, **owner pick 2026-09-25**, `overlayPresence.ts:36`), and an earned
 continue's dismissal fades the panel out over the same 180 ms (ease-in quad, `PANEL_EXIT_MS`,
-`overlayPresence.ts:36`, `PanelPresence.tsx:22`). A **button press** is a pressed style, scale
+`overlayPresence.ts:38`, `PanelPresence.tsx:22`). A **button press** is a pressed style, scale
 0.94 while held, with no tween either way (`HeaderButton.tsx:85`, `HomeScreen.tsx:211`,
 `GameScreen.tsx:932,961`) — behind `META_PRESS_SPRING` it eases and springs instead; see
 Tap-local feedback.

@@ -17,8 +17,10 @@
  *   AppState 'active' after the app was backgrounded during the leg (JS timers
  *   and animation frames do not run while Android has the app paused). Every
  *   settle snaps the value to its rest (1 shown, 0 hidden) and publishes the
- *   new state, so GameScreen re-renders the overlay with a static rest style:
- *   visibility never depends on an animation finishing.
+ *   new state: visibility never depends on an animation finishing. The snap
+ *   is a plain value write; PanelOverlayFrame keeps the animated style
+ *   attached so that write always reaches the views (PANEL-STUCK: a static
+ *   rest style loses to Reanimated's synced-back `settledProps`).
  * - `ms <= 0` (reduce motion) is at rest at once: no animation, no timer.
  */
 
