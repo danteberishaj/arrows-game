@@ -263,10 +263,23 @@ export function HomeScreen({
       )}
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + HEADER_TOP }]}>
-        <HeaderButton label={dark ? '☀' : '☾'} icon={dark ? 'sun' : 'moon'} palette={p} onPress={onToggleTheme} size={HEADER_BUTTON} />
+        {/* A11Y-LABELS: both toggles are switches named in words, with their state. */}
+        <HeaderButton
+          label={dark ? '☀' : '☾'}
+          icon={dark ? 'sun' : 'moon'}
+          accessibilityRole="switch"
+          accessibilityLabel={THEME_SWITCH_LABEL}
+          checked={dark}
+          palette={p}
+          onPress={onToggleTheme}
+          size={HEADER_BUTTON}
+        />
         <HeaderButton
           label="♪"
           icon={soundOn ? 'soundOn' : 'soundOff'}
+          accessibilityRole="switch"
+          accessibilityLabel={SOUND_SWITCH_LABEL}
+          checked={soundOn}
           off={!soundOn}
           palette={p}
           onPress={onToggleSound}
@@ -409,6 +422,9 @@ function GalleryEntry({
 const SETTINGS_GLYPH = '\u2699\uFE0E'; // OWNER-PICKED STARTING VALUE
 /** W7-04: the Settings button's accessible name. OWNER-PICKED STARTING VALUE (copy). */
 const SETTINGS_LABEL = 'Settings'; // OWNER-PICKED STARTING VALUE
+/** A11Y-LABELS: the theme toggle is the switch "Dark mode" (checked = Ink Night); the sound toggle is "Sound". */
+const THEME_SWITCH_LABEL = 'Dark mode'; // OWNER-PICKED STARTING VALUE
+const SOUND_SWITCH_LABEL = 'Sound'; // OWNER-PICKED STARTING VALUE
 
 /** POLISH-T9: the stats line's glide when the banner's height arrives or leaves. */
 const BANNER_GLIDE_MS = 220; // OWNER-PICKED STARTING VALUE

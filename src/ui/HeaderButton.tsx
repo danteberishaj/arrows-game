@@ -28,15 +28,15 @@ export const HeaderButton = React.memo(function HeaderButton({
   palette,
   onPress,
   size = 36,
-  accessibilityRole,
+  accessibilityRole = 'button',
   accessibilityLabel,
   accessibilityHint,
   checked,
 }: {
   label: string;
   /**
-   * W5-02 (ART_ICONS_ENABLED only): an SVG icon drawn in the glyph's colour instead of the `label` glyph, which then
-   * stays the button's accessibility label (what a screen reader read from the glyph before). An icon carries its
+   * W5-02 (ART_ICONS_ENABLED only): an SVG icon drawn in the glyph's colour instead of the `label` glyph (the
+   * screen-reader name is always `accessibilityLabel`). An icon carries its
    * own off shape (sound off: speaker + slash), so `off` then sets the colour and draws no strike. Ignored while
    * the flag is off.
    */
@@ -52,9 +52,13 @@ export const HeaderButton = React.memo(function HeaderButton({
   palette: Palette;
   onPress: () => void;
   size?: number;
-  /** Optional pass-through for toggles such as the "#" grid-lines switch. */
+  /** 'button' unless given (toggles such as the "#" grid-lines switch pass 'switch' and `checked`). */
   accessibilityRole?: AccessibilityRole;
-  accessibilityLabel?: string;
+  /**
+   * A11Y-LABELS: the screen-reader name, in plain words, for every button in both ART_ICONS arms. Required: the
+   * glyph (`label`) is never a name (TalkBack read "‹" as "single left-pointing angle quotation mark").
+   */
+  accessibilityLabel: string;
   accessibilityHint?: string;
   /** A switch's state for TalkBack/VoiceOver; omitted = not a switch. */
   checked?: boolean;
@@ -70,7 +74,7 @@ export const HeaderButton = React.memo(function HeaderButton({
       accessibilityState={checked === undefined ? { disabled } : { checked, disabled }}
       aria-checked={checked} // react-native-web reads the ARIA prop, not accessibilityState
       accessibilityRole={accessibilityRole}
-      accessibilityLabel={iconName === undefined ? accessibilityLabel : accessibilityLabel ?? label}
+      accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       hitSlop={8}
       style={({ pressed }) => ({

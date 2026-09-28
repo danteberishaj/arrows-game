@@ -144,10 +144,10 @@ afterEach(() => {
 
 describe('META_PRESS_SPRING off: style functions are byte-identical to today', () => {
   test('HeaderButton (36 and 44 dp)', () => {
-    const small = render(<HeaderButton label="‹" palette={p} onPress={jest.fn()} />);
+    const small = render(<HeaderButton label="‹" accessibilityLabel="Back" palette={p} onPress={jest.fn()} />);
     expect(styleOutput(small.getByText('‹'), false)).toBe(headerButtonToday(false));
     expect(styleOutput(small.getByText('‹'), true)).toBe(headerButtonToday(true));
-    const big = render(<HeaderButton label="#" palette={p} onPress={jest.fn()} size={44} />);
+    const big = render(<HeaderButton label="#" accessibilityLabel="Grid lines" palette={p} onPress={jest.fn()} size={44} />);
     expect(styleOutput(big.getByText('#'), false)).toBe(headerButtonToday(false, 44));
     expect(styleOutput(big.getByText('#'), true)).toBe(headerButtonToday(true, 44));
   });
@@ -242,7 +242,7 @@ describe('META_PRESS_SPRING on', () => {
   });
 
   test('the style function no longer snaps a scale; colour stays a pressed style', () => {
-    const screen = render(<HeaderButton label="‹" palette={p} onPress={jest.fn()} />);
+    const screen = render(<HeaderButton label="‹" accessibilityLabel="Back" palette={p} onPress={jest.fn()} />);
     const pressed = JSON.parse(styleOutput(screen.getByText('‹'), true));
     expect(pressed.transform).toBeUndefined();
     expect(pressed.backgroundColor).toBe(p.heartLost);
@@ -251,7 +251,7 @@ describe('META_PRESS_SPRING on', () => {
   test('press-in eases to 0.94 over 90 ms, release springs back to 1 (reduce motion: system)', () => {
     const timing = jest.spyOn(Reanimated, 'withTiming');
     const spring = jest.spyOn(Reanimated, 'withSpring');
-    const screen = render(<HeaderButton label="‹" palette={p} onPress={jest.fn()} />);
+    const screen = render(<HeaderButton label="‹" accessibilityLabel="Back" palette={p} onPress={jest.fn()} />);
     const pressable = pressableOf(screen.getByText('‹'));
     act(() => pressable.props.onPressIn({}));
     expect(timing).toHaveBeenCalledWith(0.94, expect.objectContaining({

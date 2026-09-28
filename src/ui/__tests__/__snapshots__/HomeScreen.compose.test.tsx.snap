@@ -31,10 +31,12 @@ exports[`all menu flags OFF: the BASE menu composite (dark false): tree identica
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -92,10 +94,12 @@ exports[`all menu flags OFF: the BASE menu composite (dark false): tree identica
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -376,10 +380,12 @@ exports[`all menu flags OFF: the BASE menu composite (dark true): tree identical
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -437,10 +443,12 @@ exports[`all menu flags OFF: the BASE menu composite (dark true): tree identical
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -721,10 +729,12 @@ exports[`all menu flags OFF: the BASE menu compositeDone (dark false): tree iden
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -782,10 +792,12 @@ exports[`all menu flags OFF: the BASE menu compositeDone (dark false): tree iden
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1066,10 +1078,12 @@ exports[`all menu flags OFF: the BASE menu fresh (dark false): tree identical to
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1127,10 +1141,12 @@ exports[`all menu flags OFF: the BASE menu fresh (dark false): tree identical to
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1409,10 +1425,12 @@ exports[`all menu flags OFF: the BASE menu fresh (dark true): tree identical to 
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1470,10 +1488,12 @@ exports[`all menu flags OFF: the BASE menu fresh (dark true): tree identical to 
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1752,10 +1772,12 @@ exports[`all menu flags OFF: the BASE menu oneSolve (dark false): tree identical
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1813,10 +1835,12 @@ exports[`all menu flags OFF: the BASE menu oneSolve (dark false): tree identical
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,

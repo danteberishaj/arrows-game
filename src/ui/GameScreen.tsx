@@ -142,7 +142,10 @@ export const TUTORIAL_LINE_HEIGHT = 23; // OWNER-PICKED STARTING VALUE
 const CONTINUE_HEART_DP = 16; // OWNER-PICKED STARTING VALUE (the label's font size)
 const STREAK_SPARKLE_DP = 13; // OWNER-PICKED STARTING VALUE (the streak line's font size)
 /** W5-02: the Continue button's screen-reader label once its heart is an icon (the text it read before). */
-const CONTINUE_A11Y_LABEL = 'Continue +♥ (ad)';
+// A11Y-LABELS: screen-reader names in words (the glyphs were read out as "black heart suit", "electric light bulb").
+const CONTINUE_A11Y_LABEL = 'Continue with one more heart (ad)'; // OWNER-PICKED STARTING VALUE
+const BACK_A11Y_LABEL = 'Back'; // OWNER-PICKED STARTING VALUE (the gallery's back button's name)
+const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
 
 /** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
@@ -921,7 +924,8 @@ export function GameScreen({
         <PressScale
           disabled={!panelRewardedReady || adBusy}
           accessibilityState={{ disabled: !panelRewardedReady || adBusy }}
-          {...(ART_ICONS_ENABLED ? { accessibilityLabel: CONTINUE_A11Y_LABEL } : null)}
+          accessibilityRole="button"
+          accessibilityLabel={CONTINUE_A11Y_LABEL}
           style={({ pressed }) => [
             styles.button,
             {
@@ -996,7 +1000,7 @@ export function GameScreen({
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <View style={[styles.headerLeft, activeTutorialId && styles.tutorialHeaderLeft]}>
-          <HeaderButton label="‹" icon="back" palette={p} onPress={onHomePress} />
+          <HeaderButton label="‹" icon="back" accessibilityLabel={BACK_A11Y_LABEL} palette={p} onPress={onHomePress} />
           {activeTutorialId ? (
             // A box two lines tall at the player's font scale (lineHeight scales
             // with it); one line sits centred in it, level with the buttons.
@@ -1070,6 +1074,7 @@ export function GameScreen({
             <HeaderButton
               label="💡"
               icon="hint"
+              accessibilityLabel={HINT_A11Y_LABEL}
               palette={p}
               onPress={onHint}
               active={!terminalPending && !adBusy && !panelExiting}

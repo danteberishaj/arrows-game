@@ -4,8 +4,9 @@
  * data is icons.test.ts's; whether they replace the OS emoji on a device, sit centred, and make the buttons circles
  * closes only on the emulator captures in artifacts/W5-02/. Here:
  * - flag OFF: every site renders its text glyph exactly as before (no Svg icon, `size / 3` corners, the W0-06 strike);
- * - flag ON: the named icon in the glyph's colour, `size / 2` corners on every HeaderButton, the glyph kept as the
- *   accessibility label, no strike over an icon (sound off is its own icon), the strike kept on the text-only "#".
+ * - flag ON: the named icon in the glyph's colour, `size / 2` corners on every HeaderButton, no strike over an icon
+ *   (sound off is its own icon), the strike kept on the text-only "#".
+ * - A11Y-LABELS: in both arms every button is named in words (a11yLabels.test.tsx), never by its glyph.
  */
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
@@ -130,24 +131,24 @@ describe('HeaderButton', () => {
 
   it('flag OFF: the icon prop changes nothing (text glyph, size / 3 corners, the strike when off)', () => {
     for (const off of [false, true]) {
-      const plain = render(<HeaderButton label="♪" off={off} palette={Daylight} onPress={noop} size={44} />).toJSON();
-      const withIcon = render(<HeaderButton label="♪" icon={off ? 'soundOff' : 'soundOn'} off={off} palette={Daylight} onPress={noop} size={44} />).toJSON();
+      const plain = render(<HeaderButton label="♪" accessibilityLabel="Sound" off={off} palette={Daylight} onPress={noop} size={44} />).toJSON();
+      const withIcon = render(<HeaderButton label="♪" accessibilityLabel="Sound" icon={off ? 'soundOff' : 'soundOn'} off={off} palette={Daylight} onPress={noop} size={44} />).toJSON();
       expect(JSON.stringify(withIcon)).toBe(JSON.stringify(plain));
       const [b] = buttons(withIcon as Json);
       expect(flat(b.props.style).borderRadius).toBe(44 / 3);
       expect(strings(b)).toEqual(['♪']);
       expect(find(b, (n) => n.type === 'RNSVGLine')).toHaveLength(off ? 1 : 0);
-      expect(b.props.accessibilityLabel).toBeUndefined();
+      expect(b.props.accessibilityLabel).toBe('Sound'); // A11Y-LABELS: the words, never the glyph
     }
   });
 
-  it('flag ON: the icon in the glyph colour replaces the text, the button is a circle, the glyph stays its label', () => {
+  it('flag ON: the icon in the glyph colour replaces the text, the button is a circle, named in words', () => {
     mockArt.ART_ICONS_ENABLED = true;
-    const tree = render(<HeaderButton label="‹" icon="back" palette={Daylight} onPress={noop} />).toJSON() as Json;
+    const tree = render(<HeaderButton label="‹" icon="back" accessibilityLabel="Back" palette={Daylight} onPress={noop} />).toJSON() as Json;
     const [b] = buttons(tree);
     expect(flat(b.props.style)).toMatchObject({ width: 36, height: 36, borderRadius: 18 });
     expect(strings(b)).toEqual([]);
-    expect(b.props.accessibilityLabel).toBe('‹');
+    expect(b.props.accessibilityLabel).toBe('Back'); // A11Y-LABELS (was the glyph '‹')
     const [svg] = iconsNamed(b, 'back');
     expect(svg.props).toMatchObject({ bbWidth: 18, bbHeight: 18 });
     expect(paint(svg)).toEqual(processed(Daylight.accentCore));
@@ -162,11 +163,11 @@ describe('HeaderButton', () => {
 
   it('flag ON: sound off is the slashed icon in glyphOff with NO strike over it; the text-only "#" keeps its strike', () => {
     mockArt.ART_ICONS_ENABLED = true;
-    const sound = render(<HeaderButton label="♪" icon="soundOff" off palette={InkNight} onPress={noop} size={44} />).toJSON() as Json;
+    const sound = render(<HeaderButton label="♪" accessibilityLabel="Sound" icon="soundOff" off palette={InkNight} onPress={noop} size={44} />).toJSON() as Json;
     expect(iconsNamed(sound, 'soundOff')).toHaveLength(1);
     expect(paint(iconsNamed(sound, 'soundOff')[0])).toEqual(processed(InkNight.glyphOff));
     expect(find(sound, (n) => n.type === 'RNSVGLine')).toHaveLength(0);
-    const grid = render(<HeaderButton label="#" off palette={InkNight} onPress={noop} size={44} />).toJSON() as Json;
+    const grid = render(<HeaderButton label="#" accessibilityLabel="Grid lines" off palette={InkNight} onPress={noop} size={44} />).toJSON() as Json;
     const [g] = buttons(grid);
     expect(flat(g.props.style).borderRadius).toBe(22);
     expect(strings(g)).toEqual(['#']);
@@ -175,7 +176,7 @@ describe('HeaderButton', () => {
 
   it('flag ON: a disabled icon is glyphOff at full opacity (the icon takes the token; the emoji needed dimming)', () => {
     mockArt.ART_ICONS_ENABLED = true;
-    const tree = render(<HeaderButton label="💡" icon="hint" disabled palette={Daylight} onPress={noop} />).toJSON() as Json;
+    const tree = render(<HeaderButton label="💡" icon="hint" accessibilityLabel="Hint" disabled palette={Daylight} onPress={noop} />).toJSON() as Json;
     const [svg] = iconsNamed(tree, 'hint');
     expect(paint(svg)).toEqual(processed(Daylight.glyphOff));
     expect(find(tree, (n) => flat(n.props.style).opacity !== undefined && flat(n.props.style).opacity !== 1)).toHaveLength(0);
@@ -218,7 +219,9 @@ describe('menu toggles', () => {
     expect(iconsNamed(t1, themeIcon)).toHaveLength(1);
     expect(iconsNamed(s1, soundIcon)).toHaveLength(1);
     expect(find(s1, (n) => n.type === 'RNSVGLine')).toHaveLength(0);
-    expect([t1.props.accessibilityLabel, s1.props.accessibilityLabel]).toEqual([themeGlyph, '♪']);
+    // A11Y-LABELS: named in words in both arms (the glyph was the name ON, the text child OFF).
+    expect([t0.props.accessibilityLabel, s0.props.accessibilityLabel]).toEqual(['Dark mode', 'Sound']);
+    expect([t1.props.accessibilityLabel, s1.props.accessibilityLabel]).toEqual(['Dark mode', 'Sound']);
   });
 });
 
@@ -265,7 +268,7 @@ describe('game screen', () => {
     expect(onButtons.map((b) => flat(b.props.style).borderRadius)).toEqual([18, 18]);
     expect(iconsNamed(onButtons[0], 'back')).toHaveLength(1);
     expect(iconsNamed(onButtons[1], 'hint')).toHaveLength(1);
-    expect(onButtons.map((b) => b.props.accessibilityLabel)).toEqual(['‹', '💡']);
+    expect(onButtons.map((b) => b.props.accessibilityLabel)).toEqual(['Back', 'Hint']); // A11Y-LABELS (were the glyphs)
   });
 
   it.each([['Daylight', Daylight], ['Ink Night', InkNight]] as const)('%s win panel: stars and the streak line', (_n, palette) => {
@@ -320,7 +323,7 @@ describe('game screen', () => {
     const hearts = continueHearts(onScreen.toJSON() as Json);
     expect(hearts).toHaveLength(1);
     expect(paint(hearts[0])).toEqual(processed(ink));
-    expect(onScreen.getByLabelText('Continue +♥ (ad)')).toBeTruthy();
+    expect(onScreen.getByLabelText('Continue with one more heart (ad)')).toBeTruthy(); // A11Y-LABELS (was 'Continue +♥ (ad)')
   });
 });
 

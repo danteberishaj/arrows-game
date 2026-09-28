@@ -31,10 +31,12 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -92,10 +94,12 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -374,10 +378,12 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -435,10 +441,12 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -820,10 +828,12 @@ exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree id
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -881,10 +891,12 @@ exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree id
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1228,10 +1240,12 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
     }
   >
     <View
+      accessibilityLabel="Dark mode"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": false,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
@@ -1289,10 +1303,12 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
       </Text>
     </View>
     <View
+      accessibilityLabel="Sound"
+      accessibilityRole="switch"
       accessibilityState={
         {
           "busy": undefined,
-          "checked": undefined,
+          "checked": true,
           "disabled": false,
           "expanded": undefined,
           "selected": undefined,
