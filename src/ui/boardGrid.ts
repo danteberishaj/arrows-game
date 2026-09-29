@@ -5,7 +5,7 @@ import type { Palette } from './theme';
 /**
  * POLISH-T4 (rulings R2, R4/R4a, R5, R7; design-spec-grid-exit-mark.md section A):
  * META_BOARD_GRID draws faint dots at every cell centre, and optional row/column
- * lines through the cell centres (the "#" toggle), under the arrows, across
+ * lines through the cell centres (the "#" toggle, removed by the owner 2026-09-30: dots only), under the arrows, across
  * everything the camera can show. Pure maths and payloads only, so the core
  * (node) jest project tests it: src/ui/__tests__/boardGrid.test.ts.
  *

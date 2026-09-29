@@ -3,7 +3,7 @@
  * Before: the names were the raw glyphs (‹ 💡 ♪ ☾ ☀, "Continue +♥ (ad)"); TalkBack read "single left-pointing angle
  * quotation mark", "electric light bulb", "eighth note", ... (emulator evidence: artifacts/A11Y-LABELS/).
  * - menu: theme = switch "Dark mode" (checked = Ink Night), sound = switch "Sound" (checked = on), Settings = button;
- * - game: back = button "Back", hint = button "Hint" (disabled while no hint ad is ready), "#" = switch "Grid lines";
+ * - game: back = button "Back", hint = button "Hint" (disabled while no hint ad is ready), no "#" grid-lines switch (removed 2026-09-30);
  * - lose panel: Continue = button "Continue with one more heart (ad)" (disabled while no rewarded ad is ready);
  * - gallery: back = button "Back";
  * - and no accessible element on those screens is named by a glyph.
@@ -61,7 +61,6 @@ const { GameScreen } = require('../GameScreen') as typeof import('../GameScreen'
 const { HomeScreen } = require('../HomeScreen') as typeof import('../HomeScreen');
 const { GalleryScreen } = require('../GalleryScreen') as typeof import('../GalleryScreen');
 const { LOSE_PANEL_DELAY_MS } = require('../gameSessionLifecycle') as typeof import('../gameSessionLifecycle');
-const session = require('../gridLinesSession') as typeof import('../gridLinesSession');
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 class MapStore implements IntStore {
@@ -81,7 +80,6 @@ let previous: IntStore;
 beforeEach(() => {
   mockReady.rewarded = true;
   mockReady.hint = true;
-  session.setGridLines(false);
   const store = new MapStore();
   store.setInt('arrows_current_level', 7);
   store.setInt('arrows_total_solved', 20);
@@ -151,17 +149,14 @@ describe.each([['ART_ICONS off', false], ['ART_ICONS on', true]] as const)('%s',
     expectNoGlyphNames(menu.root);
   });
 
-  it.each([[true], [false]])('game header (hint ad ready %s): Back, Hint (disabled when not ready), Grid lines', (ready) => {
+  it.each([[true], [false]])('game header (hint ad ready %s): Back, Hint (disabled when not ready), no grid-lines switch', (ready) => {
     jest.useFakeTimers();
     mockReady.hint = ready;
     const game = renderGame();
     expect(game.getByRole('button', { name: 'Back' })).toBeTruthy();
     const hint = game.getByRole('button', { name: 'Hint' });
     expect(hint.props.accessibilityState).toEqual({ disabled: !ready });
-    const grid = game.getByRole('switch', { name: 'Grid lines' });
-    expect(grid.props.accessibilityState).toEqual({ checked: false, disabled: false });
-    fireEvent.press(grid);
-    expect(game.getByRole('switch', { name: 'Grid lines' }).props.accessibilityState).toEqual({ checked: true, disabled: false });
+    expect(game.queryByRole('switch', { name: 'Grid lines' })).toBeNull();
     expectNoGlyphNames(game.root);
   });
 

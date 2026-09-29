@@ -232,7 +232,8 @@ export interface BoardViewProps {
   clearHint: () => void;
   /** Stable native identifier used only by the release benchmark driver. */
   testID?: string;
-  /** POLISH-T4: the "#" toggle's row/column lines (only with META_BOARD_GRID). */
+  /** POLISH-T4 row/column lines (only with META_BOARD_GRID). No caller turns them on since the
+   *  owner removed the "#" toggle (2026-09-30); the board shows dots only. */
   gridLines?: boolean;
 }
 
