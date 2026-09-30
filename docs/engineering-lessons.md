@@ -47,6 +47,54 @@ host was loaded (second emulator), frame-time ranges overlap completely.
 brown mass; any textured skin needs a cell-size threshold with a simplified fallback. Tail faces also
 rotate with the arrow; orient decorative faces to the screen, not the path.
 
+## Procedural skins: compound contours solve joins; detail and preparation still cost
+
+**Observed, 2026-09-30 — ART-SKINS-02.** Procedural filled silhouettes replace tile connectors,
+so native 38/24 dp captures show connected shafts and rounded turns without baked dark seams.
+Faces use screen axes. The 12 dp fixture and actual 250-arrow level use the existing flat geometry
+in brown; the dense board remains directionally readable. This is visual evidence, not owner taste
+approval. No image assets or Gradle asset directories were added; ON/OFF APKs have identical 15-name
+asset lists. Full-detail compounds draw seven layers per strip, eight with missed marks, at
+10/100/250 arrows. See [ART-SKINS-02 report](next-level/reports/ART-SKINS-02.md).
+
+**Corrected implementation trap.** Preparing full decorative paths before the displayed cell size
+was known cost 387.4375 ms in a dense preflight. Prepare only the current detail tier. Reading a
+native child's scale did not reflect the animated parent transform reliably; the retained display
+list also needs invalidation when the tier changes. A selected-build reaction now sends only
+14/24/28 dp boundary crossings, rather than every pan frame. Verify LOD in the real game as well
+as an isolated native fixture; the latter bypasses the parent-transform problem.
+
+**Measured limits.** Same-APK 12 OFF/12 ON shuffled dense-board runs show strip recording
+0.2191665 → 0.5288125 ms, +0.309646 ms (passes the 1 ms recording threshold). **Separate cold
+preparation** is ON median 4.9429585 ms, range 1.259709–60.004584 ms. Keep it beside the recording
+cost; moving work before a timer does not remove its cost. This dense flat-fallback result does
+not certify full-detail performance. Host load 13.82–22.54 and another emulator invalidate the
+exit-frame gate; report UNVERIFIED. Default OFF remains appropriate while these limits persist.
+
+**Motion evidence rule.** `screenrecord --time-limit 10` does not guarantee a 10-second file or
+60 Hz samples. Native fixture captures had 83/50 frames and median gaps 66.62/74.88 ms, too sparse
+for 90 ±17 ms press timing or two-frame touch latency. Retain actual PTS/frame counts, distinguish
+native replay from real gestures, and leave timing UNVERIFIED. A fixed 620 ms analytic spring
+cutoff approximates the specified energy termination; do not describe it as exact Reanimated
+equivalence. Reanimated Android reads global `transition_animation_scale == 0` at process start
+for reduced motion; changing only animator duration is insufficient. Restart after preference
+changes, capture the actual game, and restore the original value in a finally block.
+
+**Reusable tooling correction.** Native fixture activities hosted inside an Expo/RN app need
+AppCompatActivity; plain Activity caused a theme/lifecycle failure. Direct module calls survive
+release R8, while reflective internal-name calls failed. Keep temporary fixture registration out
+of the ordinary release. Build only the device ABI when disk is constrained; clear regenerable
+build caches rather than source/evidence. New experiments should target full-detail preparation,
+quiet-host exits and real-input latency, not repeat the already measured dense recording question.
+
+**Review addendum, 2026-09-30.** Benchmark the configuration players get: the ART-SKINS-02 PERF build lacked
+META_ZOOMED_CAMERA, so its "dense" level drew the flat 10 dp tier while the shipped camera shows ~29 dp (full
+detail). A skin benchmark must state its camera/zoom flags and the on-screen cell size it measured. Also:
+per-frame `pathsDirty = true` in `onDraw` re-runs the per-arrow pass on every animated frame, and a shuffled
+order that front-loads one arm (7 OFF first) confounds time with treatment — randomise within pairs.
+Status: the ART-SKINS-02 code was moved out of the tree into
+`artifacts/ART-SKINS-02/patches/skin-code-removed-from-tree.patch` pending owner approval of the look.
+
 ## Spike assets must never be packaged unconditionally
 
 **Observed, 2026-09-30 — ART-SKINS-01 review.** The spike added `artifacts/ART-SKINS-01/runtime` as an

@@ -6,7 +6,7 @@ from pathlib import Path
 import random
 import statistics
 
-root = Path('artifacts/ART-SKINS-01/perf')
+root = Path('artifacts/ART-SKINS-02/perf')
 raw = json.loads((root / 'raw.json').read_text())
 runs = raw['runs']
 seed = 20260930
@@ -19,12 +19,13 @@ def percentile(values, fraction):
 
 summary = {'samples': {arm: sum(r['arm'] == arm for r in runs) for arm in ['A', 'B', 'A2']},
            'medians': {}, 'tests': {}, 'frameReconciliation': [], 'apkSha256': raw['apkSha256']}
-for metric in ['buildMs', 'uiFrameP95Ms', 'deadlineMisses', 'frameCount', 'jankyFramePercent']:
+for metric in ['buildMs', 'uiFrameP50Ms', 'uiFrameP95Ms', 'deadlineMisses', 'frameCount', 'jankyFramePercent']:
     arms = {arm: [r[metric] for r in runs if r['arm'] == arm] for arm in ['A', 'B', 'A2']}
     off = arms['A'] + arms['A2']
     on = arms['B']
     summary['medians'][metric] = {arm: median(values) for arm, values in arms.items()}
     summary['medians'][metric]['OFFpooled'] = median(off)
+    summary.setdefault('ranges', {})[metric] = {'OFF': [min(off), max(off)], 'ON': [min(on), max(on)]}
     delta = median(on) - median(off)
     null = []
     for _ in range(iterations):
@@ -82,10 +83,13 @@ for run in runs:
         'allCompleteFrames': len(complete), 'completeFramesInTapAndSlitherWindow': len(active),
         'excludedRowsInThatWindow': sum(start <= r['IntendedVsync'] <= end for r in excluded.values()),
         'vsyncSlotsBetweenCompleteFramesWithoutACompleteRow': gaps})
+summary['hostBefore'] = raw['hostBefore']
+summary['hostAfter'] = raw['hostAfter']
+summary['emulatorsBefore'] = raw['emulatorsBefore']
 summary['gate'] = {
-    'staticBuildPass': summary['tests']['buildMs']['medianRegression'] <= summary['tests']['buildMs']['offVsOffPermutationNullSpread']['p95AbsoluteDifference'],
-    'exitFramePass': False,
-    'reason': 'Static recording cost exceeds OFF null spread. Low cadence and host contention do not support a passing exit-frame/drop verdict.'}
+    'staticBuildPass': summary['tests']['buildMs']['medianRegression'] <= 1.0,
+    'exitFramePass': 'UNVERIFIED',
+    'reason': 'B4 compares the build median difference to 1 ms. B5 is unverified unless quiet-host prerequisites are met.'}
 (root / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
 print(json.dumps({'samples': summary['samples'], 'completeFrames': sum(r['allCompleteFrames'] for r in summary['frameReconciliation']),
                   'activeFrames': sum(r['completeFramesInTapAndSlitherWindow'] for r in summary['frameReconciliation']),
