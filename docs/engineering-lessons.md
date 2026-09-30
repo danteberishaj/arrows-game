@@ -161,3 +161,16 @@ windows. Record completed rows, excluded rows, nominal slots, and gaps separatel
 legacy deadline misses and missing rows do not establish presentation drops; preserve raw CSV
 and label a poor or contended cadence inconclusive. The reproducible analysis is
 `scripts/art/analyze-skin-perf.py`; the report links the experiment evidence.
+
+## Skin decorations must stay inside the arrow's own cells
+
+**Observed, 2026-10-01 — owner review of ART-SKINS-03 `dense-on.png`.** Rolls doubled up, heads ran into
+neighbouring rolls and icing touched the rim. **Cause (confirmed from geometry + capture):** the shaft path
+starts `TAIL_EXT = 0.42` cell behind the tail cell centre and the head tip ends at `TIP_EXT = 0.5`
+(`src/ui/arrowGeometry.ts`). ART-SKINS-03 moved the roll (radius 0.31 cell) from the tail cell centre to
+path distance 0 to hide the stub behind it, which put it 0.08 cell from the neighbouring cell. Two tails
+facing across a cell edge then draw rolls 0.16 cell apart — 25 px at the capture's 155 px cell, the offset
+seen in the screenshot. **Correction (not yet implemented):** centre the roll on the tail cell and start the
+skin's shaft there; every layer, head outline and shadow must fit within the arrow's cells minus a small
+gap; clamp icing amplitude + offset inside the dough width. **Verification rule:** check adjacent
+tail-to-tail, head-to-tail and parallel neighbours on a dense level, not only an isolated fixture.
