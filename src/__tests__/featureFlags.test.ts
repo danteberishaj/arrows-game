@@ -92,3 +92,15 @@ test.each(NAMED_META_FLAGS)('%s is enabled by its own variable alone', (name) =>
     expect([other, flags[other]]).toEqual([other, other === name]);
   }
 });
+
+test('ART_SKIN_TEXTURED is off when its variable is absent', () => {
+  delete process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED;
+  expect(loadFlags().ART_SKIN_TEXTURED).toBe(false);
+});
+
+test('ART_SKIN_TEXTURED requires the exact opt-in value 1', () => {
+  for (const value of ['0', 'true', 'yes', ' 1', '', '1']) {
+    process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED = value;
+    expect([value, loadFlags().ART_SKIN_TEXTURED]).toEqual([value, value === '1']);
+  }
+});

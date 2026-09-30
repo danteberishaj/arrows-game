@@ -175,3 +175,10 @@ export const META_POST_CLEAR_TIMELINE = process.env.EXPO_PUBLIC_META_POST_CLEAR_
  * src/ui/settingsRows.ts). Nothing is persisted. OFF: the menu renders exactly as before.
  */
 export const META_SETTINGS_SHEET = process.env.EXPO_PUBLIC_META_SETTINGS_SHEET === '1';
+
+/**
+ * ART-SKINS-01: reserved for the Android textured-skin experiment. The render spike failed its
+ * asset and performance gates and is NOT in the tree (patch series: artifacts/ART-SKINS-01/patches,
+ * report: docs/next-level/reports/ART-SKINS-01.md). Nothing reads this flag yet. Never on by default.
+ */
+export const ART_SKIN_TEXTURED = process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED === '1';
