@@ -92,6 +92,30 @@ META_ZOOMED_CAMERA, so its "dense" level drew the flat 10 dp tier while the ship
 detail). A skin benchmark must state its camera/zoom flags and the on-screen cell size it measured. Also:
 per-frame `pathsDirty = true` in `onDraw` re-runs the per-arrow pass on every animated frame, and a shuffled
 order that front-loads one arm (7 OFF first) confounds time with treatment — randomise within pairs.
+
+**ART-SKINS-03 correction and full-detail evidence, completed 2026-10-01.** All META_* flags were enabled,
+as the owner confirmed. At the physical 1440×3120/560 display (411.43 dp wide), level index 3827 opens
+at **29.387754 dp**, not the flat tier. Twelve ON process starts each show exactly one full-detail
+preparation and a first seven-layer draw at that actual size. Waiting for measured layout and passing
+the opening camera scale removes the guessed 12 dp mount; a regression test covers the opening and
+a replacement level. Native onDraw now dirties membership only during active feedback. A 38 dp
+correctness trace shows five exit mask commits → five rebuilds, then zero rebuilds before blocked
+feedback; no exit-frame cost is inferred from that trace.
+
+**The correct configuration changes the performance conclusion.** Twelve OFF/ON pairs, shuffled only
+within each pair: full-detail cold preparation median **45.9131875 ms**, max **83.62875 ms** (budget
+16 ms); strip recording OFF **0.1903335 ms**, ON **2.9699995 ms** medians. These are contended-emulator
+measurements, with the two costs kept separate. The earlier flat-tier +0.31 ms result does not certify
+this camera. Host loads 15.06→17.11 and another emulator fail the quiet-host prerequisite; ART-SKINS-03
+**skipped exit capture**, preserving host evidence and reporting UNVERIFIED rather than collecting
+contended frame percentiles. Run only when load <4 and the permitted AVD is the sole emulator.
+
+**Look and next work.** The tail now sits at the shaft endpoint, icing is a continuous tapered ribbon,
+and the head highlight is a contained oval; fresh 38 dp before/after captures are retained. Owner taste
+review is pending. Default OFF remains appropriate. Future work should reduce full-detail preparation
+and moving-arrow work, then verify quiet-host exits. Every skin result must state the real on-screen
+cell size and build flags; assert them from camera and draw logs before accepting samples. See
+[ART-SKINS-03 report](next-level/reports/ART-SKINS-03.md) and its paired measurement script.
 Status: the ART-SKINS-02 code was moved out of the tree into
 `artifacts/ART-SKINS-02/patches/skin-code-removed-from-tree.patch` pending owner approval of the look.
 
