@@ -12,3 +12,7 @@ Update an existing entry when evidence changes; do not accumulate contradictory 
 Keep the index concise and put raw measurements and captures in the task report/artifacts.
 Do not mark a proposed fix verified until its relevant checks have run. Consult existing
 lessons before repeating an experiment, and explain what new question a repeat will resolve.
+
+For arrow-skin work, also read [docs/skins/README.md](docs/skins/README.md) and its latest linked review/report.
+Use its fit, centreline alignment, one-cell and measurement checks for every registered spec; update the guide
+and lessons together when owner feedback changes a rule.

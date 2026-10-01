@@ -24,14 +24,23 @@ class SkinContractInstrumentation : Instrumentation() {
         val spec=SkinSpec(specs.getJSONObject(id).toString()); val renderer=SkinPaths(40f,spec)
         val old=if(legacy) Art03Paths(40f) else null
         renderer.setPalette(cells)
-        var headFailures=0; var fitFailures=0
+        var headFailures=0; var fitFailures=0; var oneCellChecks=0; var oldOneCellFailures=0; var headBoundaryPixels=0L; var alignedShaftChecks=0
         val prepared=ArrayList<SkinPaths.Layers>()
         for(i in cells.indices) {
           val minR=(0 until cells[i].length).minOf { cells[i].cells[it*2] }
           val minC=(0 until cells[i].length).minOf { cells[i].cells[it*2+1] }
           val originX=minC*40f; val originY=minR*40f
           val allowed=allowedRegion(cells[i]); val art=if(legacy) null else renderer.build(cells[i],i,2)
-          if(art != null) prepared.add(art)
+          if(art != null) {
+            prepared.add(art)
+            val direct = SkinPaths.Layers(renderer.layerCount)
+            renderer.appendTo(direct,cells[i],2)
+            for(layer in direct.paths.indices) {
+              val difference = region(direct.paths[layer],originX,originY)
+              difference.op(region(art.paths[layer],originX,originY),Region.Op.XOR)
+              check(difference.isEmpty) { "$id translated compound differs arrow=$i layer=$layer" }
+            }
+          }
           val paths=if(old!=null) old.build(flat[i].first,flat[i].second,2).let { it.paths.toList()+it.closedEyes+it.simple.toList() }
             else art!!.paths.toList()+art.closedEyes+art.simple.toList()
           for((layer,path) in paths.withIndex()) {
@@ -43,7 +52,48 @@ class SkinContractInstrumentation : Instrumentation() {
               if(samples.length()<10) samples.put(JSONObject().put("spec",id).put("arrow",i).put("layer",layer).put("outsideArea",area(remainder)))
             }
           }
+          if(art != null) {
+            val missingHead = region(art.headDecoration,originX,originY)
+            missingHead.op(region(art.paths[renderer.bodyIndex],originX,originY),Region.Op.DIFFERENCE)
+            headBoundaryPixels += area(missingHead)
+            val body = region(art.paths[renderer.bodyIndex],originX,originY)
+            val insetBody = Region(body)
+            for(x in listOf(-12,0,12)) for(y in listOf(-12,0,12)) { val shifted = Region(body); shifted.translate(x,y); insetBody.op(shifted,Region.Op.INTERSECT) }
+            for(layer in renderer.accentIndices) {
+              val outsideBody = region(art.paths[layer],originX,originY)
+              outsideBody.op(insetBody,Region.Op.DIFFERENCE)
+              if(!art.accentRuns[layer].isEmpty) check(components(region(art.accentRuns[layer],originX,originY)) == 1) { "$id interrupted shaft accent arrow=$i layer=$layer" }
+              if(!art.accentRuns[layer].isEmpty) {
+                val geometry=cells[i]
+                val horizontal=geometry.dx != 0f && (0 until geometry.length).all { geometry.cells[it*2] == geometry.cells[0] }
+                val vertical=geometry.dy != 0f && (0 until geometry.length).all { geometry.cells[it*2+1] == geometry.cells[1] }
+                if(horizontal || vertical) {
+                  val bounds=RectF(); art.accentRuns[layer].computeBounds(bounds,true)
+                  val error=if(horizontal) bounds.centerY()-geometry.y(0,40f) else bounds.centerX()-geometry.x(0,40f)
+                  check(kotlin.math.abs(error) < .005f) { "$id shaft accent off-axis arrow=$i layer=$layer centreError=$error" }
+                  alignedShaftChecks++
+                }
+              }
+              check(outsideBody.isEmpty) { "$id accent touches body edge arrow=$i layer=$layer area=${area(outsideBody)}" }
+            }
+            check(missingHead.isEmpty) { "$id head cap cancelled at shaft join arrow=$i missingArea=${area(missingHead)}" }
+          }
           if(art != null && cells[i].length == 1) {
+            oneCellChecks++
+            if(id == "cinnamon") {
+              val oldArt = Art04Paths(40f,spec).build(cells[i],i,2)
+              val oldTail = region(oldArt.tailDecoration,originX,originY)
+              val dot = Path().apply { addCircle(cells[i].x(0,40f),cells[i].y(0,40f),40f*(.13f+spec.tailRim),Path.Direction.CW) }
+              oldTail.op(region(dot,originX,originY),Region.Op.DIFFERENCE)
+              check(!oldTail.isEmpty) { "ART04 negative control failed to expose large one-cell roll" }
+              oldOneCellFailures++
+            }
+            check(renderer.facePathsEmpty(art)) { "$id K8 one-cell face arrow=$i" }
+            val dotLimit = Path().apply { addCircle(cells[i].x(0,40f),cells[i].y(0,40f),40f*(.13f+spec.tailRim),Path.Direction.CW) }
+            val tailRemainder = region(art.tailDecoration,originX,originY)
+            tailRemainder.op(region(dotLimit,originX,originY),Region.Op.DIFFERENCE)
+            check(tailRemainder.isEmpty) { "$id K8 oversized one-cell tail arrow=$i" }
+            if(spec.oneCellTail == "none") check(art.tailDecoration.isEmpty)
             val count = components(region(art.paths[renderer.rimIndex],originX,originY))
             check(count == 1) { "$id disconnected single-cell rim arrow=$i components=$count" }
           }
@@ -94,11 +144,27 @@ class SkinContractInstrumentation : Instrumentation() {
           check(!motion.draw(cb,renderer,arts,{prepared[0]},shafts,heads,29.387754f,5.76f,900L))
           val pixels=IntArray(128*128); a.getPixels(pixels,0,128,0,0,128,128); check(pixels.any { it != 0 })
           check(a.sameAs(b)); a.recycle(); b.recycle(); bitmap.recycle()
+          val broken = ConcatenatedHeadPaths(40f,spec).build(SkinGeometry(3,intArrayOf(0,0,0,1,0,2)),0,2)
+          val missing = region(broken.headDecoration,0f,0f)
+          missing.op(region(broken.paths[renderer.bodyIndex],0f,0f),Region.Op.DIFFERENCE)
+          check(area(missing) > 100L) { "$id concatenated-cap negative control did not expose the join hole" }
+          android.util.Log.i("ArtSkinHeadNegative", "spec=$id missingArea=${area(missing)} samplesPerCell=400")
+          for(direction in 0..3) for(choice in listOf("dot", "none")) {
+            val variant = JSONObject(spec.source.toString())
+            variant.getJSONObject("tail").put("oneCell",choice)
+            val oneRenderer = SkinPaths(40f,SkinSpec(variant.toString()))
+            val one = oneRenderer.build(SkinGeometry(direction,intArrayOf(0,0)),0,2)
+            check(oneRenderer.facePathsEmpty(one))
+            check(area(region(one.tailDecoration,0f,0f)) <= 12200L) // dot outer radius <= .155 cell, 400 samples/cell
+            check(area(region(one.headDecoration,0f,0f)) > area(region(one.tailDecoration,0f,0f)))
+            if(choice == "none") check(one.tailDecoration.isEmpty)
+            oneRenderer.clear()
+          }
           check(fitFailures==0) { "$id K1 failures=$fitFailures samples=$samples" }; check(headFailures==0) { "$id K3 head failures=$headFailures samples=$samples" }
         }
         renderer.clear()
         details.put(JSONObject().put("spec",id).put("arrows",cells.size).put("fitFailures",fitFailures).put("headFailures",headFailures)
-          .put("draws",drawResults).put("singleCellChecks",cells.count { it.length == 1 }).put("zeroLengthNegativeComponents",negativeComponents).put("flatLod",!legacy).put("reducedMotion",!legacy))
+          .put("draws",drawResults).put("singleCellChecks",cells.count { it.length == 1 }).put("zeroLengthNegativeComponents",negativeComponents).put("oneCellChecks",oneCellChecks).put("art04OneCellFailures",oldOneCellFailures).put("headBoundaryPixels",headBoundaryPixels).put("alignedShaftChecks",alignedShaftChecks).put("flatLod",!legacy).put("reducedMotion",!legacy))
       }
       if(legacy) check(failures>0) { "Frozen ART03 unexpectedly fits" }
       result.putString("result",JSONObject().put("mode",if(legacy) "before" else "after").put("level",level.getInt("index"))
@@ -158,12 +224,16 @@ class SkinContractInstrumentation : Instrumentation() {
     val rectangles = ArrayList<Rect>(); val iterator = RegionIterator(region); val rect = Rect()
     while(iterator.next(rect)) rectangles.add(Rect(rect))
     val parent = IntArray(rectangles.size) { it }
-    fun root(index: Int): Int { var i=index; while(parent[i] != i) i=parent[i]; return i }
-    for(i in rectangles.indices) for(j in 0 until i) {
-      val a=rectangles[i]; val b=rectangles[j]
-      if(a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top) {
-        val x=root(i); val y=root(j); if(x != y) parent[x]=y
+    fun root(index: Int): Int { var i=index; while(parent[i] != i) { parent[i]=parent[parent[i]]; i=parent[i] }; return i }
+    var previous = emptyList<Int>(); var current = ArrayList<Int>(); var top = Int.MIN_VALUE
+    for(i in rectangles.indices) {
+      val a=rectangles[i]
+      if(a.top != top) { previous=current; current=ArrayList(); top=a.top }
+      for(j in previous) {
+        val b=rectangles[j]
+        if(b.bottom == a.top && a.left <= b.right && a.right >= b.left) { val x=root(i); val y=root(j); if(x != y) parent[x]=y }
       }
+      current.add(i)
     }
     return parent.indices.map { root(it) }.distinct().size
   }

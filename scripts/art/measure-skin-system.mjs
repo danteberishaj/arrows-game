@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { findBoardBounds, invokeGestureDriver } from '../perf/android/benchmark.mjs';
 import { buildInputDriver, resolveAndroidSdkRoot } from '../perf/android/build-uiautomator.mjs';
 import { parseGfxInfoFrames, summarizeFrames } from '../perf/android/parse-gfxinfo.mjs';
-const root='artifacts/ART-SKINS-04'; const spec=process.argv[2]??'cinnamon';
+const root=process.env.ART_SKINS_DIR??'artifacts/ART-SKINS-04'; const spec=process.argv[2]??'cinnamon';
 const serial='emulator-5556', executable='/Users/gentlegen/Library/Android/sdk/platform-tools/adb', app='com.danteb.arrows';
 const adb=(...args)=>execFileSync(executable,['-s',serial,...args],{encoding:'utf8',timeout:30000,maxBuffer:32*1024*1024});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -25,9 +25,9 @@ for(let pair=0;pair<12;pair++) for(const enabled of pairs[pair]) {
   adb('shell','am','start','-W','-n',`${app}/.MainActivity`,'--ez','artSkinProcedural',String(enabled)); await wait(3500);
   let logs='';
   for(let attempt=0;attempt<17;attempt++) {
-    logs=adb('logcat','-d','-s','ArtSkinSelection:I','ArtSkinCells:I','ArtSkinBaseGeometry:I','ArtSkinPrep:I','ArtSkinLazy:I','ArtSkinDraws:I','ArtSkinPerf:I','ReactNativeJS:I','AndroidRuntime:E');
+    logs=adb('logcat','-d','-s','ArtSkinPropPrep:I','ArtSkinSelection:I','ArtSkinCells:I','ArtSkinBaseGeometry:I','ArtSkinPrep:I','ArtSkinLazy:I','ArtSkinDraws:I','ArtSkinPerf:I','ArtSkinFirstDraw:I','ReactNativeJS:I','AndroidRuntime:E');
     if(logs.includes('unitSet=real')) { writeFileSync(`${root}/perf/${spec}-${i}-open.log`,logs); throw new Error('Rejected non-test/PERF configuration'); }
-    if(logs.includes('[board-camera]') && (!enabled || logs.includes('ArtSkinDraws'))) break;
+    if(logs.includes('[board-camera]') && logs.includes('ArtSkinFirstDraw') && (!enabled || logs.includes('ArtSkinDraws'))) break;
     await wait(1000);
   }
   writeFileSync(`${root}/perf/${spec}-${i}-open.log`,logs);
@@ -37,11 +37,15 @@ for(let pair=0;pair<12;pair++) for(const enabled of pairs[pair]) {
   const screenCell=Number(camera[1])*40;
   const baseGeometry=events('ArtSkinBaseGeometry','parseNs');
   const preparation=events('ArtSkinPrep','prepareNs'),selection=events('ArtSkinSelection','parseNs'),cells=events('ArtSkinCells','parseNs'),recording=events('ArtSkinPerf','buildNs'),lazy=events('ArtSkinLazy','buildNs'),lazyRecording=events('ArtSkinLazy','recordNs');
+  const firstDraw=events('ArtSkinFirstDraw','drawNs');
+  const propSetup=events('ArtSkinPropPrep','setupNs'),construction=events('ArtSkinPropPrep','constructionNs');
+  if(!propSetup.length || construction.filter(value=>value>0).length!==1) throw new Error(`Incomplete native setup: ${spec}/${i}`);
   const draws=[...logs.matchAll(/arrows=250 screenCell=([\d.]+) maxStaticDrawsPerStrip=(\d+)/g)].map(m=>({screenCell:Number(m[1]),draws:Number(m[2])}));
   if(screenCell<28 || enabled && (preparation.length!==1 || selection.length!==1 || cells.length!==1 || baseGeometry.length!==1 || !logs.includes(`spec=${spec}`) || !draws.some(d=>d.screenCell>=28&&d.draws<=8&&d.draws>2))) throw new Error(`Invalid full-detail opening: ${JSON.stringify({spec,i,preparation,screenCell,draws})}`);
   const sum=a=>a.reduce((x,y)=>x+y,0);
-  const run={i,pair,enabled,screenCell,before,selection,cells,baseGeometry,preparation,recording,lazy,lazyRecording,draws,preparationMs:sum(selection)+sum(cells)+sum(baseGeometry)+sum(preparation),
-    recordingMs:sum(recording)-sum(preparation)+sum(lazyRecording),firstDrawMs:sum(lazy),exitStatus:'UNVERIFIED',frames:null};
+  if(firstDraw.length!==1) throw new Error(`Expected one full first draw: ${spec}/${i}: ${firstDraw}`);
+  const run={i,pair,enabled,screenCell,before,selection,cells,baseGeometry,preparation,recording,lazy,lazyRecording,draws,firstDraw,propSetup,construction,preparationMs:sum(construction)+sum(propSetup)+sum(preparation),
+    recordingMs:sum(recording)-sum(preparation),firstDrawMs:sum(firstDraw),totalOpenMs:sum(construction)+sum(propSetup)+sum(recording)+sum(firstDraw),exitStatus:'UNVERIFIED',frames:null};
   if(pair===0) shot(`${spec}-${enabled?'on':'off'}-viewport`);
   const gate=host(); run.exitHost=gate;
   if(before.quiet&&gate.quiet&&!driverReady) {

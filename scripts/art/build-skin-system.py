@@ -2,7 +2,7 @@
 """Local arm64 test-ads/PERF build. Never invokes EAS or git writes."""
 import json, os, pathlib, subprocess, sys, shutil
 root=pathlib.Path(__file__).resolve().parents[2]
-out=root/'artifacts/ART-SKINS-04'
+out=root/os.environ.get('ART_SKINS_DIR','artifacts/ART-SKINS-04')
 for folder in ['patches','screens','perf','checks']: (out/folder).mkdir(parents=True,exist_ok=True)
 selection=sys.argv[1] if len(sys.argv)>1 else 'cinnamon'
 flags=json.loads(pathlib.Path(__file__).with_name('skin-build-flags.json').read_text())

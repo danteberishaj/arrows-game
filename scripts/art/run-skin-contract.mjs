@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-const root='artifacts/ART-SKINS-04/checks';
+const root=`${process.env.ART_SKINS_DIR??'artifacts/ART-SKINS-04'}/checks`;
 const data=JSON.parse(readFileSync(`${root}/contract-data.json`));
 const adb='/Users/gentlegen/Library/Android/sdk/platform-tools/adb';
-for(const mode of ['before','after']) {
+const modes=process.argv[2] ? [process.argv[2]] : ['before','after'];
+if(modes.some(mode=>!['before','after'].includes(mode))) throw new Error('mode must be before or after');
+for(const mode of modes) {
   const results=[];
   for(const level of data.levels) {
     const payload=Buffer.from(JSON.stringify({specs:data.specs,level})).toString('base64');

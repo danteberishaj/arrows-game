@@ -175,7 +175,7 @@ seen in the screenshot. **Correction verified geometrically in ART-SKINS-04:** c
 on the tail cell, start the shaft there, and intersect every filled layer (including the offset shadow)
 with the owned-cell union inset 0.04 cell on its exterior. Union first, then inset: internal shared edges
 must stay connected. Spec validation also bounds the tip, tail radius/rim and icing amplitude/width;
-icing has no offset and is intersected with the body contour inset by 0.03 cell. These rules apply to
+icing has no offset and must fit the body contour inset by 0.03 cell (intersection fallback or a verified narrow rounded-centreline construction). These rules apply to
 both Cinnamon and Sherbet through data, without native skin-id branches.
 
 **Verification:** an independent native Android Region oracle checks v1 campaign indices 0–19 and dense
@@ -183,7 +183,7 @@ index 3827 (2,118 arrows per spec). Frozen ART03 Cinnamon has 17,191 failing lay
 have zero failures in 36,006 checked paths, including flat silhouettes and closed eyes. Keep the frozen
 negative control: a positive-only test can accept a broken oracle. Tail-to-tail, head-to-tail and long-run
 2× captures at **29.387754 dp** are retained. Geometry is verified; **owner taste approval is pending**.
-The full results and scope limits are in [ART-SKINS-04](next-level/reports/ART-SKINS-04.md).
+The original results and scope limits are in [ART-SKINS-04](next-level/reports/ART-SKINS-04.md); ART05 re-ran the independent red → green oracle and retained the fit correction.
 
 **Oracle correction:** world-coordinate Region rasterisation silently lost layers beyond its scan range.
 Normalise each arrow locally, bound the raster extent, and assert that every non-empty source path produces
@@ -193,8 +193,8 @@ corrected oracle. This checks filled Android geometry, not an exact proof of the
 
 **Opening correction:** lazy strips alone did not prevent all 250 decorations being built on first draw:
 the native child records the whole board display list despite the parent's camera transform. Reuse relative
-shape/direction/detail templates (57 unique templates on this dense board), then translate per-arrow paths.
-Preparation creates zero decorated arrows, but first draw still copies/merges all 250. Measure both costs.
+shape/direction/detail templates (57 unique templates on this dense board). ART04 translated per-arrow paths; ART05 merges templates directly into strip layers and creates individual art only for feedback.
+Preparation creates zero decorated arrows, but first draw still builds templates and merges strip layers. Measure both costs.
 Include JSON selection, owned-cell parsing and the existing flat-geometry parsing in cold preparation;
 exclude none of these merely because they precede a commit timer. ART04's final paired measurements at **29.387754 dp** still
 miss the 16 ms maximum: Cinnamon median/max **12.280/76.254 ms**, Sherbet **18.120/41.242 ms** (12 ON
@@ -226,3 +226,24 @@ to the outline; the fill is free (docs/skins/README.md). Also: one-cell arrows h
 and face — they read as a blob with eyes — so they get a dot tail or none. **Practice:** when writing a
 contract rule, name the element that actually delivers the property, and look at the dense real-config
 capture before calling a contract-compliant skin good.
+
+**ART-SKINS-05 verification, 2026-10-01:** Cinnamon's light `#E6AE71` dough and Sherbet's light pastels are restored. Their rims pass both backgrounds: Cinnamon 5.210:1 / 3.584:1; Sherbet 5.099:1 / 3.662:1. The shared red family still carries blocked feedback. Both specs select `tail.oneCell: none`; native K8 passes 898 actual one-cell checks across the real fixtures, and frozen ART04 Cinnamon fails 449 of them. Dot/none are additionally exercised in all four directions. One-cell identity travels with exit art. Geometry checks are verified; owner appearance approval remains pending. See [ART-SKINS-05](next-level/reports/ART-SKINS-05.md).
+
+## Cell fit does not prove a filled join or a continuous accent
+
+**Observed, 2026-10-01 — ART-SKINS-05 owner captures.** A large white wedge at the shaft/head overlap made Sherbet look disconnected. Every layer still fit its owned cells, so K1 passed. **Cause confirmed:** clipping the head cap produced a contour with opposite winding to the shaft's filled stroke. Concatenating the paths cancelled their overlap. Normalize cached head contours to the stroke's positive winding; keep native curves on shafts/bends. The small head cap uses at most 0.005 logical-pixel approximation error. Explicit per-template Boolean union also fixed the hole, but cost more; retained pilot evidence records that tradeoff.
+
+**Verified regression:** for every tested arrow/spec, the filled head Region minus body Region is empty, with no tolerance erosion. A frozen broken-winding control leaves missing head area, so the test rejects the old construction. This tests coverage, separately from ownership. Do not solve a fill hole by connecting the small head highlight to the shaft highlight.
+
+**Further owner correction:** the head oval was already good; the white shaft lines looked crooked and interrupted by the brown stripe. The owner clarified that straight, continuous shaft lines are wanted. This supersedes the earlier wavy-icing brief for Cinnamon. Its spec now has zero wave amplitude, a stripe displaced to one side, and a fade limited to 35% of the available shaft on short arrows (long runs retain a one-cell fade). The oval stays separate. Use the same rounded centreline as the dough so accents follow bends smoothly; retain inset-body clipping for variants that cannot fit by construction. Native verification subtracts the inset body from every accent and requires each shaft accent alone to have one connected component. The separate oval is excluded from that connectivity assertion. A dense before/after crop is necessary: cell fit and colour contrast alone would miss the visual problem. These geometry checks pass; **owner look review is pending**.
+
+**Measurement correction:** headline level-open cost is the per-run sum of JSON selection + owned-cell parsing + base geometry + retained preparation + strip recording + the full first draw, including Canvas commands. Lazy work must appear exactly once, inside first draw. Compare median and maximum of sums against the same selected build's flat override plus 16 ms; do not add phase maxima, substitute preparation alone, discard slow opens, or claim exit percentiles from a busy host. ART05 retains twelve shuffled OFF/ON pairs per spec, raw host evidence and build flags. See its report for the measured gate; a failed budget stays failed and the experiment stays default OFF.
+
+
+**ART05 measurement-boundary correction:** final review found the earlier “complete” sum still omitted strip partitioning, grid/config setup and native field construction around the separately timed parsers. Those runs are retained as `perf/pilot-incomplete-timer/` and cannot certify the full budget. Explicit test intents now time native renderer field construction and every initial prop setter. Parsing timers are nested diagnostic breakdowns; adding them again would double-count. The headline includes construction + prop setup + retained preparation + recording + full first draw. Ordinary flag-unset app renders without these timing logs. See the final ART05 report for corrected measurements and the honest failed/verified gates.
+
+
+**Sherbet owner correction, 2026-10-01:** the same “not straight” feedback also pointed to the pink/green arrows, not only Cinnamon. Their bars were mathematically straight but globally shifted up .065 cell, while the head ovals stayed on the shaft centre. Horizontal bars therefore appeared misaligned with the ovals; vertical bars did not show the same perpendicular shift. Both current skins now put white shaft accents on the shaft/head axis, with zero offset. Keep the good head oval separate. A native straight-run axis check plus an intentionally shifted shine negative control tests this property, beyond fit and connectivity. Do not assume that “straight” only refers to local line slope, or narrow an owner correction to one skin without inspecting the indicated colours. See ART05 for the verified runs and captures.
+
+
+**Final ART05 verification at 29.387754 dp:** 946 native straight-run axis checks pass across the two specs; the shifted Sherbet negative control fails (−2.600 logical-pixel centre error). K1 remains 0/36,006 failures, with the ART03 red control retained; K8 passes 898 one-cell checks, while frozen ART04 fails 449. Jest passes 115 suites / 1,933 tests / 12 snapshots and TypeScript passes. Cinnamon complete opening median/max 45.885/75.844 ms versus flat 5.963/20.846 ms (12 opens each state): **FAIL**. Sherbet complete opening median/max 33.762/54.381 ms versus flat 11.039/25.795 ms (12 opens each state): **FAIL**. Both final opening gates fail; do not use the incomplete-timer Sherbet pass as acceptance. Host contention and another emulator leave exits UNVERIFIED with zero frames. Default OFF and owner look review pending; raw evidence and current captures are in ART05.
