@@ -4,6 +4,13 @@ This is the shared, evolving record for future sessions. Read entries relevant t
 follow the linked reports for details. Preserve a distinction between observations, hypotheses,
 and verified corrections. Update entries when new evidence supersedes them.
 
+
+**Performance background (read before any rendering/perf change):**
+[docs/performance/field-guide.md](performance/field-guide.md) — the Arrows Performance Field Guide (2026-09-01):
+why the bottleneck was ownership, not React Native; the retained native board; the experiment ledger (what
+was retained, superseded, rejected and why); benchmark method; limits and triggers for revisiting the
+architecture. The original page is `docs/performance/field-guide.html`.
+
 ## Android arrow textures: measure connectors, not just tile dimensions
 
 **Observed, 2026-09-30 — ART-SKINS-01.** All nine image-generated sprite sheets drifted from

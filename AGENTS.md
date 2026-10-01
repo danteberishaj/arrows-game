@@ -16,3 +16,6 @@ lessons before repeating an experiment, and explain what new question a repeat w
 For arrow-skin work, also read [docs/skins/README.md](docs/skins/README.md) and its latest linked review/report.
 Use its fit, centreline alignment, one-cell and measurement checks for every registered spec; update the guide
 and lessons together when owner feedback changes a rule.
+
+For performance or rendering work, read [docs/performance/field-guide.md](docs/performance/field-guide.md) first:
+it records which approaches were measured, kept or rejected, and the benchmark method the gates rely on.
