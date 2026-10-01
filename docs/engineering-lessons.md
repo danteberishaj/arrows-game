@@ -254,3 +254,49 @@ capture before calling a contract-compliant skin good.
 
 
 **Final ART05 verification at 29.387754 dp:** 946 native straight-run axis checks pass across the two specs; the shifted Sherbet negative control fails (−2.600 logical-pixel centre error). K1 remains 0/36,006 failures, with the ART03 red control retained; K8 passes 898 one-cell checks, while frozen ART04 fails 449. Jest passes 115 suites / 1,933 tests / 12 snapshots and TypeScript passes. Cinnamon complete opening median/max 45.885/75.844 ms versus flat 5.963/20.846 ms (12 opens each state): **FAIL**. Sherbet complete opening median/max 33.762/54.381 ms versus flat 11.039/25.795 ms (12 opens each state): **FAIL**. Both final opening gates fail; do not use the incomplete-timer Sherbet pass as acceptance. Host contention and another emulator leave exits UNVERIFIED with zero frames. Default OFF and owner look review pending; raw evidence and current captures are in ART05.
+
+
+## Runtime skins: preserve gate, save ownership and configuration across selection
+
+**ART-SKINS-06, 2026-10-01.** Runtime identity is an append-only numeric registry: Classic 0, Cinnamon 1,
+Sherbet 2, one additive `arrows_skin` key. The preference is conditionally appended to hydration on Android
+with `META_SKIN_PICKER`; it is intentionally absent from the unconditional existing registry, so a disabled
+or downgraded build neither reads nor writes it. Unknown/missing/removed/corrupt IDs resolve to Classic without
+repair writes. Changing only a display name/order never changes persisted identity. Never reuse an ID.
+
+**Verified by Jest:** every existing key round-trips unchanged ON/OFF; one choice persists across a new
+store; repeated choice writes nothing; failed hydration cannot write the skin or progress; downgrade ignores
+and retains the saved ID. The old 29-key SaveSystem registry/schema/migration and old parsing remain intact.
+The new key uses the existing guarded/coalesced writer. PERF capture startup reads only that key in a
+separate guarded store, never installs/hydrates/migrates progress; an all-key disk test pins that isolation.
+An earlier pilot used ordinary hydration under PERF and was rejected during final save-ownership inspection;
+its captures/measurements are retained as superseded APK evidence. User ART06 explicitly authorizes this additive key
+without commits; no separate schema/amendment commit is made.
+
+**Selection trap corrected:** an unchanged native config prop is not resent when only selection JSON changes.
+A new motion renderer would otherwise lose the reduced-motion/blocked-colour configuration. Replay the retained
+config after creating the new renderer, then prepare once at props commit. React switches retain one native
+view (Classic uses the existing flat paths), immutable board geometry and actual displayed cell size. The
+picker/platform gate must be static for conditional hooks; the choice itself must not control hook order or
+view identity. Native previews in a modal would add renderer/lifecycle work: static SVG/spec colours suffice.
+
+**Evidence rule:** Settings is on the menu. Returning to Play after choosing is navigation and opening work,
+not just selection preparation. `onDraw` is command recording, not a GPU presentation timestamp. Keep these
+intervals named separately, retain video frame counts/PTS and raw tap/draw logs, and report the real camera
+size and graphics backend. Black screenshots accompanied by emulator GL errors are rejected capture evidence;
+recover only the task-owned AVD without touching the other emulator or wiping saved data.
+
+Current evidence and owner-review status: [ART-SKINS-06](next-level/reports/ART-SKINS-06.md). Earlier K7 opening
+FAIL and quiet-host exit UNVERIFIED results remain unchanged; a picker does not clear those gates.
+
+
+**ART06 final evidence:** 117 suites / 1,963 Jest tests / 12 snapshots and TypeScript pass. Actual checked
+Android radios have 60 dp targets in both themes. Cinnamon/Sherbet/Classic selection and default/non-default
+restart captures pass at 29.387754 dp. OFF board pixels match literal HEAD 1d61234; all APKs retain the same
+15 asset names. Sherbet survives both uninstall-free downgrades and remains checked after re-enabling.
+Six timing samples per choice retain actual frame timestamps and boundary pixels. A permissive non-white
+classifier initially counted the neutral grid before the skin appeared; inspecting the first/previous
+frames caught it. Require recognizable arrow pixels, validate recorded frame counts/PTS, and report
+frame-gap uncertainty. Validate actual radio UI before coordinate input: a missed list-open tap reached
+Support in a rejected batch. Capture cleanup must stop only its owned screenrecord PID, never a broad
+process-name kill. These lessons are verified by final captures/raw checks; owner look review remains pending.
