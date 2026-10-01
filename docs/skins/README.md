@@ -1,7 +1,7 @@
 # How to add a skin
 
 
-> Status 2026-10-01: the catalogue and Arrow style picker are experimental, uncommitted and **default OFF**. The latest forward patch is `artifacts/ART-SKINS-07/patches/skin-catalogue-code-on-bad7903.patch` on clean HEAD `bad7903`. It includes ART06 restoration; do not also apply the older restoration. For an already-restored ART06 tree, use the incremental patch described in ART07's patch README. See [ART-SKINS-07](../next-level/reports/ART-SKINS-07.md) for measured results and pending owner review, and [ART06's Controller review](../next-level/reports/ART-SKINS-06.md#controller-review-2026-10-01) for the reviewed picker/save rules.
+> Status 2026-10-01: the catalogue and Arrow style picker are experimental, uncommitted and **default OFF**. The latest forward patch is `artifacts/ART-SKINS-07b/patches/skin-catalogue-code-on-a024ba6.patch` (ART07 catalogue plus the 07b colour fixes); apply it alone on a clean tree. See [ART-SKINS-07](../next-level/reports/ART-SKINS-07.md) for measured results and pending owner review, and [ART06's Controller review](../next-level/reports/ART-SKINS-06.md#controller-review-2026-10-01) for the reviewed picker/save rules.
 
 
 Skins are experimental and default OFF. ART-SKINS-06 uses `EXPO_PUBLIC_META_SKIN_PICKER=1` on Android

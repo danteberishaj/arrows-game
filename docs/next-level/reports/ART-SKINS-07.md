@@ -65,6 +65,18 @@ reproduced on a quiet host. That is why this verdict excludes shipping any skin.
 logs fire in normal picker builds, not only under the test intent. Gate them on `openingTraceEnabled`
 before any picker build ships.
 
+**Fix round 07b (2026-10-02, data only, no device run).** The latest forward patch is
+`artifacts/ART-SKINS-07b/patches/skin-catalogue-code-on-a024ba6.patch`. Controller re-ran it: the patch differs
+from the ART07 patch only in `skinSpecs.ts`, `ArrowStyleOptions.tsx`, `contrastAudit.ts` and two test files;
+tsc exit 0; 118 suites / 2,039 tests pass. Changes: Archery head `#E4572E`, fletching `#E6E1D8`, fold `#F28C64`;
+Ink Pro `preferredTheme: 'light'` with a "Best in light mode" picker note; Clear Glass body `#CFE6F7`
+(1.287:1 on white); Paper Craft bend crease width .025 → .012. **UNVERIFIED:** none of the four looks has been
+captured on a device, and the native K1–K8 contract was not re-run. Known leftovers: the Paper Craft crease is
+drawn in one fixed diagonal direction at every bend (a renderer fix); `contact-skin-catalogue.py` and
+`summarize-skin-catalogue-contract.py` still treat every `preferredTheme` as dark; `contrastAudit.ts` points at
+exact source lines in `ArrowStyleOptions.tsx`, so editing that file breaks `contrast.test.ts` until the
+pointers move.
+
 Code was moved out of the tree with `patches/skin-code-removed-from-tree.patch`. The runtime is back at HEAD,
 and the docs and tooling are committed. A backup tarball of the tree is in `artifacts/ART-SKINS-07/controller/`.
 
