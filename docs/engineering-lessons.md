@@ -116,8 +116,9 @@ review is pending. Default OFF remains appropriate. Future work should reduce fu
 and moving-arrow work, then verify quiet-host exits. Every skin result must state the real on-screen
 cell size and build flags; assert them from camera and draw logs before accepting samples. See
 [ART-SKINS-03 report](next-level/reports/ART-SKINS-03.md) and its paired measurement script.
-Status: the ART-SKINS-02 code was moved out of the tree into
-`artifacts/ART-SKINS-02/patches/skin-code-removed-from-tree.patch` pending owner approval of the look.
+Historical status: ART-SKINS-02/03 were preserved as removal patches pending owner review. ART-SKINS-04
+restores that base as an uncommitted, default-OFF general renderer; its portable patch series and gate ledger
+are in [ART-SKINS-04](next-level/reports/ART-SKINS-04.md). Owner review remains pending.
 
 ## Spike assets must never be packaged unconditionally
 
@@ -170,7 +171,58 @@ starts `TAIL_EXT = 0.42` cell behind the tail cell centre and the head tip ends 
 (`src/ui/arrowGeometry.ts`). ART-SKINS-03 moved the roll (radius 0.31 cell) from the tail cell centre to
 path distance 0 to hide the stub behind it, which put it 0.08 cell from the neighbouring cell. Two tails
 facing across a cell edge then draw rolls 0.16 cell apart — 25 px at the capture's 155 px cell, the offset
-seen in the screenshot. **Correction (not yet implemented):** centre the roll on the tail cell and start the
-skin's shaft there; every layer, head outline and shadow must fit within the arrow's cells minus a small
-gap; clamp icing amplitude + offset inside the dough width. **Verification rule:** check adjacent
-tail-to-tail, head-to-tail and parallel neighbours on a dense level, not only an isolated fixture.
+seen in the screenshot. **Correction verified geometrically in ART-SKINS-04:** centre the tail decoration
+on the tail cell, start the shaft there, and intersect every filled layer (including the offset shadow)
+with the owned-cell union inset 0.04 cell on its exterior. Union first, then inset: internal shared edges
+must stay connected. Spec validation also bounds the tip, tail radius/rim and icing amplitude/width;
+icing has no offset and is intersected with the body contour inset by 0.03 cell. These rules apply to
+both Cinnamon and Sherbet through data, without native skin-id branches.
+
+**Verification:** an independent native Android Region oracle checks v1 campaign indices 0–19 and dense
+index 3827 (2,118 arrows per spec). Frozen ART03 Cinnamon has 17,191 failing layer paths; the two new specs
+have zero failures in 36,006 checked paths, including flat silhouettes and closed eyes. Keep the frozen
+negative control: a positive-only test can accept a broken oracle. Tail-to-tail, head-to-tail and long-run
+2× captures at **29.387754 dp** are retained. Geometry is verified; **owner taste approval is pending**.
+The full results and scope limits are in [ART-SKINS-04](next-level/reports/ART-SKINS-04.md).
+
+**Oracle correction:** world-coordinate Region rasterisation silently lost layers beyond its scan range.
+Normalise each arrow locally, bound the raster extent, and assert that every non-empty source path produces
+a non-empty Region before DIFFERENCE. Use 400 samples/cell and an independent union/erosion oracle. The
+rejected oracle runs remain in the report; the final old-renderer red → new-renderer green runs use the
+corrected oracle. This checks filled Android geometry, not an exact proof of the antialias fringe.
+
+**Opening correction:** lazy strips alone did not prevent all 250 decorations being built on first draw:
+the native child records the whole board display list despite the parent's camera transform. Reuse relative
+shape/direction/detail templates (57 unique templates on this dense board), then translate per-arrow paths.
+Preparation creates zero decorated arrows, but first draw still copies/merges all 250. Measure both costs.
+Include JSON selection, owned-cell parsing and the existing flat-geometry parsing in cold preparation;
+exclude none of these merely because they precede a commit timer. ART04's final paired measurements at **29.387754 dp** still
+miss the 16 ms maximum: Cinnamon median/max **12.280/76.254 ms**, Sherbet **18.120/41.242 ms** (12 ON
+opens each). Deferred first draw adds median/max **116.032/197.550 ms** and **60.164/135.542 ms**, respectively,
+including merges. These are contended-host elapsed CPU costs; default OFF remains appropriate. See the report for each spec's cost breakdown.
+**Single-cell correction:** the first template captures exposed a disconnected corner fragment inside the
+owned cell. K1 alone did not catch it because it still fit. Native stroking of a move-only contour with the corner effect generated a cap at the template
+origin, not the move point (confirmed by the native diagnostic). Skip shaft strokes when length is zero.
+The final regression checks connected components of each single-cell rim, with the old stroke added back
+as a negative control. A reconstructed-outline oracle first failed on contour winding cancellation and
+then a raster-rounding difference; preserve those rejected runs and use actual filled Regions instead. Palette lookup paints explicitly
+use nearest sampling so neighbouring cell colours do not blend. Final captures are the verification evidence.
+Adding a skin requires data plus the contract in [docs/skins/README.md](skins/README.md), and a fresh budget
+measurement; passing the fit/draw tests does not certify opening or exit performance.
+
+**Build correction:** pass the saved test-ads/PERF/all-META flags to every Gradle phase, including a native-only
+assemble. An intermediate assemble without them re-bundled a normal app; preflight rejected it before
+benchmark acceptance. Force the JS bundle when a selection changes, save the flags/APK hash, and reject
+missing camera/detail logs or real ad-unit configuration. Never salvage measurements from that wrong build.
+Exit percentiles remain UNVERIFIED unless both members of all twelve pairs satisfy load<4, sole permitted
+emulator and accepted-input checks; record actual frame counts beside every percentile.
+
+## A contract rule can be wrong: test what carries the property
+
+**Observed, 2026-10-01 — ART-SKINS-04 review.** The skin contract required every arrow *body fill* to be
+≥3:1 against the background. Codex met it by darkening Cinnamon's dough to chocolate brown, and the board
+lost its warmth. Legibility is carried by the outline (dark rim), not the fill. **Correction:** K4 now applies
+to the outline; the fill is free (docs/skins/README.md). Also: one-cell arrows have no room for a tail roll
+and face — they read as a blob with eyes — so they get a dot tail or none. **Practice:** when writing a
+contract rule, name the element that actually delivers the property, and look at the dense real-config
+capture before calling a contract-compliant skin good.
