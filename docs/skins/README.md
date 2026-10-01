@@ -1,7 +1,7 @@
 # How to add a skin
 
 
-> Status 2026-10-01: the general renderer is an accepted experimental base; ART-SKINS-05 is uncommitted and default OFF pending owner look approval and the full opening budget. See [ART-SKINS-05](../next-level/reports/ART-SKINS-05.md). The ART04 restoration patch has already been applied in this working tree; do not apply it twice.
+> Status 2026-10-01: the general renderer is an accepted experimental base, **not merged** and default OFF pending owner look approval and the full opening budget. To work on it, `git apply artifacts/ART-SKINS-05/patches/skin-code-removed-from-tree.patch` (17 files) on a clean tree. See [ART-SKINS-05](../next-level/reports/ART-SKINS-05.md), including its controller review.
 
 Skins are experimental and default OFF. Set `EXPO_PUBLIC_ART_SKIN=<spec id>` in an Android build to select one.
 An unknown or absent id selects today's app. iOS/web keep their existing renderer. There is no shop or saved
