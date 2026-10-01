@@ -11,6 +11,10 @@ why the bottleneck was ownership, not React Native; the retained native board; t
 was retained, superseded, rejected and why); benchmark method; limits and triggers for revisiting the
 architecture. The original page is `docs/performance/field-guide.html`.
 
+**Skin evidence for future art:** [contract and latest report](skins/README.md),
+[per-style performance recipes](skins/performance-recipes.md),
+[reusable generation prompt](skins/GENERATION-PROMPT.md). Consult them before generating a new spec.
+
 ## Android arrow textures: measure connectors, not just tile dimensions
 
 **Observed, 2026-09-30 — ART-SKINS-01.** All nine image-generated sprite sheets drifted from
@@ -300,3 +304,104 @@ frames caught it. Require recognizable arrow pixels, validate recorded frame cou
 frame-gap uncertainty. Validate actual radio UI before coordinate input: a missed list-open tap reached
 Support in a rejected batch. Capture cleanup must stop only its owned screenrecord PID, never a broad
 process-name kill. These lessons are verified by final captures/raw checks; owner look review remains pending.
+
+
+## A larger skin catalogue needs transport and feature controls, not copied renderers
+
+**Observed, 2026-10-01 — ART-SKINS-07.** The canvas's SkinBoard table reuses a small vocabulary across 15
+additional styles: nested colour heads, beaded bodies, stitches, folded caps, fletching, marble shine and
+translucent glow. Copying a renderer per style would repeat the earlier fit/join/alignment bugs.
+**Correction:** keep appearance in the one TS registry and add general capabilities with explicit bounds,
+using the existing compound-strip/template architecture. Every registered one-cell arrow is head only;
+primary shaft gloss stays centred and continuous, while an explicitly dashed seam is a distinct decorative
+layer. Preferred dark mode preserves genuine light-theme contrast failures instead of claiming they pass.
+Verification is recorded per feature/spec in [ART-SKINS-07](next-level/reports/ART-SKINS-07.md); do not infer
+geometry or owner approval from TypeScript/data tests alone.
+
+**Harness evidence:** the expanded dense fixture's inline Base64 argument exceeded the emulator shell
+transport limit and returned `error: closed`, after the same frozen oracle correctly rejected the first
+20 campaign levels. This is a test-transport failure, not a skin result. Transfer fixture JSON to a diagnostic
+file and pass a short switch to instrumentation; retain rejected transport logs and rerun the dense test.
+The initial local build also exhausted R8 metaspace. A bounded, process-only build memory setting fixed the
+build; avoid changing shared Gradle settings or stopping another session's daemons/emulator. An Android
+system-service watchdog stalled initial installation; its raw logs are retained, and failed attempts are
+excluded from acceptance. A boot-completed property alone does not prove the package/activity services are
+ready: check the service, actual install result and real capture pixels.
+
+The guide's [catalogue feature table](skins/README.md#canvas-catalogue-and-shared-features-art-skins-07)
+records the rule and example for each new capability. Continue to distinguish fit verification, contrast
+exceptions, contended-host opening costs, quiet-host exit evidence and owner taste review.
+
+
+**ART07 narrow-accent evidence:** the native body-inset check rejected six raster samples of Neon's .04-cell
+shine at a rounded bend in campaign index 0, arrow 1. Its .13-cell tube left little room for corner sampling
+and the independent L-infinity .03-cell erosion. Narrowing only that data width to .03 kept the highlight
+centred and fixed the tested failure; the same oracle was retained. The full campaign/dense verification
+status is in ART07's ledger. Do not weaken the body-inset oracle to accept a small visual overrun.
+
+
+**ART07 palette/paint correction:** the initial Rainbow candidate repeated a full-width red band over a violet body. With rim/body + five band paints, violet was missing from the visible stack. Use the body as the outer red band and five narrower bands through violet: six visible canvas colours, the same seven paints, plus one missed-mark draw. This is data reuse, not a renderer branch. The revised widths passed native fit/join/head/one-cell/LOD/reduced-motion checks on all 21 required levels; the final matrix preserves raw earlier results for the other 16 unchanged specs and the fresh Rainbow results. The prototype is retained in ART07. Actual final captures and opening costs are in its ledger; owner review remains pending.
+
+**K4 alpha precondition:** a hex contrast ratio assumes an opaque outline. The catalogue contract now rejects transparent rims, with 17 deliberately weakened-alpha controls. Body/glow opacity remains allowed. Before permitting a translucent outline, extend K4 to audit its composite over each actual background; do not reuse the opaque hex ratio.
+
+
+**ART07 performance follow-up:** full-width strip traces constructed all 250
+arrows even under the zoomed camera. The native child's clip covers the board; a parent owns the camera
+transform and can move without redrawing the child. A proposed partial-strip cull was rejected before
+integration: it needs camera invalidation and could reintroduce the field guide's pan/cache problems.
+Geometry-only audit paths were also allocated/reset in normal static and interaction buffers despite
+never being drawn. The retained correction makes those diagnostic paths lazy. After emulator recovery, production/audit/frozen native samples and exact software pixels pass for all 17 specs; 285–513 unused template paths/spec are avoided, including 513 for Cinnamon. Opening measurements must pass before attributing a timing improvement. Keep the same look,
+all layers and motion; a lower path count does not prove smooth frames. See ART07's performance ledger.
+
+**Capture input must have fresh, settled evidence:** failed `uiautomator dump` can leave a previous XML
+file, and a successful coordinate tap does not prove that Settings opened. Delete the old dump first,
+require successful fresh output, observe the actual panel, and wait for stable live bounds before input.
+A launcher screenshot in the rejected OFF batch exposed a missed Settings tap followed by Back leaving
+the app; it was not accepted as an OFF-board result. Verification status is recorded in ART07.
+
+**Verification failures need platform evidence:** the later bounded check returned `INSTRUMENTATION_ABORTED: System has crashed`, with system_server recovery/high guest load. It passed after a same-config cold boot of only the owned AVD. The earlier stall cannot honestly be blamed on compound boolean work; its cause is unproven. Keep failed raw attempts separate from successful geometry/timing checks.
+
+
+**ART07 duplicate-decoration correction, verified:** caching is cheapest where geometry is genuinely
+identical. Cache tail faces/roll spirals at the relative template origin (static templates only), nested
+band heads per direction, and one compatible rounded centreline per template. Keep moving exit art's
+original construction and clear caches with the selected renderer. Dense Cinnamon face/spiral builds
+53→1, Rainbow nested heads 285→20; no look or motion was removed. Across 21 required levels and all 17
+specs, 220,278 filled-path sample comparisons and 4,284 exact software-pixel comparisons pass in both themes
+at 29.387754/38/5 dp, with 357 deliberately displaced-path controls rejected. This verifies output
+preservation, not a frame-performance claim. Full opening sums and the old +16 ms budget remain in ART07.
+Repeated framework recovery invalidated a partial timing batch; retain it and use fresh same-config boots
+of only the owned AVD per spec, verifying system_server stability. Do not treat a boot/recovery or host/GPU
+change as evidence of a cache speedup; compare final skin/Classic pairs and keep raw host state.
+
+**ART07 supplemental LOD-proof correction, 2026-10-02 — verified:** the first supplemental optimization
+pixel helper merged full-detail layers, then drew at 5 dp without merging the flat simple paths. The
+result was blank, so its flat equivalence claim was vacuous. The independent K5 contract was valid;
+the incomplete supplemental proof is retained separately. The corrected helper builds the actual tier,
+checks simple paths and blocked-eye layers, renders on the actual `#FFFFFF`/`#13111C` backgrounds,
+and requires non-background pixels in every comparison. Final evidence: 220,278 native path-array
+comparisons (including expected-empty layer slots), 4,284 nonempty exact software-pixel comparisons,
+269,201,210 non-background pixel samples and 357 rejected displacement controls across 21 levels ×17
+specs at 29.387754/38/5 dp. A positive pixel comparison must prove that the intended thing was drawn.
+See [ART07](next-level/reports/ART-SKINS-07.md); preserve the independent fit/feature oracle.
+
+**ART07 learn by style, not draw count — measured, neutrality unverified:** 408 complete native opens /
+204 shuffled pairs at 29.387754 dp cover every procedural spec on one final PERF APK. Ink Pro, Pixel
+and Rainbow meet the historical aggregate Classic +16 ms median/max budget; 14 fail. Pixel/Rainbow
+individual paired maxima still exceed +16 ms. Eight-draw Rainbow passing while simpler specs fail
+shows that draw count alone is not a useful cost prediction. The measured larger first-draw phase is
+lazy geometry/template merging; that does not isolate a particular feature’s marginal cost. Cache
+construction counts are verified, but candidate timing came from different host/recovery conditions,
+so no cache speed percentage is claimed. Host load 5.73–27.63 and another emulator invalidate exit
+signoff (0 accepted frames; no percentiles). Keep outliers and every style’s phase/work/source data in
+[performance recipes](skins/performance-recipes.md) and ART07’s raw artifacts. A failed budget means
+not cleared in this experiment, not inherently impossible to optimize. The
+[generation prompt](skins/GENERATION-PROMPT.md) requires the same contracts and evidence for future art.
+
+**ART07 exact OFF correction — failure retained, cause unproven:** internally stable final OFF/base
+board captures differ at 316 antialiased edge pixels (max channel delta 5) at 29.387754 dp. Board bounds,
+logged camera targets, display/animation settings match, and the native board source matches the
+restored ART06 patch; this does not establish why pixels differ. The separate 15-asset/no-picker/save
+downgrade checks pass. Final exact pixel gate fails; preserve raw stable pairs and do not introduce a
+tolerance or substitute the earlier build’s pass. Further work must isolate actual native geometry,
+transform and rasterization before claiming a cause or verified correction. See ART07’s ledger.

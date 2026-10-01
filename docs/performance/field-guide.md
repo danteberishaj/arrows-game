@@ -777,3 +777,44 @@ Historical phase results must stay labeled by runtime, GPU, harness, and workloa
  **Durability improvement for the next campaign:** commit a small machine-readable performance report with each accepted milestone. Include artifact hash, source commit, runtime versions, device/GPU, workload checksum, status, gate result, and any reason a row is diagnostic-only.
 
 No section or experiment matches that search. Try a subsystem such as “memory,” “native,” “trail,” “storage,” or “Godot.”
+
+
+## Procedural skin follow-up — ART-SKINS-07
+
+The earlier accepted flat-renderer frame floor does not certify procedural skins. Keep the complete
+owned level-open sum: native construction + all initial prop setup + strip recording + full first draw.
+Parser timers and lazy template work are nested breakdowns; include each once. Pair Classic and the skin
+in shuffled OFF/ON pairs on the same build, report real camera cell size, and retain the historical +16 ms
+median/max budget even when a catalogue task makes timing report-only. A quiet host, sole owned emulator,
+accepted exits and actual frame counts are separate prerequisites for smoothness signoff.
+
+A zoomed-camera partial-strip experiment was rejected before integration: the native child still has a
+board-sized clip and the parent camera can move without redrawing it. Culling there needs additional
+camera invalidation, and risks the earlier pan/tile/cache failures. The renderer retains complete strips.
+
+Retained optimizations remove non-visible audit metadata from production buffers and reuse genuinely
+identical static roll faces/spirals, direction-specific band heads and rounded centrelines. No layer,
+palette or interaction was removed. Native frozen/current/audited comparisons on 21 levels × 17 specs
+pass 220,278 path-sample and 4,284 exact software-pixel comparisons, including deliberately displaced-path
+negative controls. These prove output preservation; work counts alone are not timing improvement.
+
+Framework recovery/high guest load invalidated partial opening batches. Final measurement uses a fresh
+same-configuration boot of only the owned AVD per spec, 20-second settle, stable system_server PID and
+12 shuffled pairs; raw rejected attempts remain separate. Do not attribute a before/after speed
+percentage across different host/GPU/recovery states. See [ART-SKINS-07](../next-level/reports/ART-SKINS-07.md)
+for final complete opening costs, budget status, raw context and the still-separate exit/owner review.
+
+Final ART07: 408 opens / 204 pairs, 12 ON and 12 OFF per spec, 29.387754 dp. Historical aggregate
+Classic +16 ms median/max: Ink Pro, Pixel and Rainbow PASS; 14 styles FAIL. Pixel/Rainbow still have
+paired maxima above 16 ms. Host load 5.73–27.63 and another emulator leave exits UNVERIFIED, zero
+accepted frames, no percentiles. No style has verified neutrality or established irreducible cost.
+
+[Per-style recipes](../skins/performance-recipes.md) join spec features, draw bounds, avoided-work
+counters, complete/paired opening costs and nested lazy-build/remainder timers with raw source hashes.
+Use [the generation prompt](../skins/GENERATION-PROMPT.md) to carry this evidence into future art work.
+Lazy geometry/merging is the larger measured first-draw phase, but the comparison does not isolate
+individual layer costs or GPU completion. Avoid causal conclusions from cross-style timing alone.
+The corrected supplemental equivalence helper builds the real tier and asserts nonempty pixels
+(including flat LOD and blocked eyes); its earlier blank flat comparison was discarded. The final
+exact native OFF/base pixel gate also fails (316 edge pixels, max channel delta 5); its cause remains
+unproven. Neither successful compilation nor geometry/cache equivalence clears these separate gates.

@@ -13,7 +13,11 @@ class SkinContractInstrumentation : Instrumentation() {
   override fun onStart() {
     val result=Bundle()
     try {
-      val data=JSONObject(String(Base64.decode(arguments.getString("data"),Base64.DEFAULT)))
+      val data=JSONObject(if(arguments.getString("dataFile")=="true") java.io.File(targetContext.getExternalFilesDir(null),"art07-contract.json").readText() else String(Base64.decode(arguments.getString("data"),Base64.DEFAULT)))
+      if(arguments.getString("mode")=="optimization") {
+        result.putString("result",SkinOptimizationContract.check(data).toString())
+        finish(0,result);return
+      }
       val legacy=arguments.getString("mode")=="before"
       val level=data.getJSONObject("level"); val cells=SkinGeometry.parse(level.getString("cells"))
       val flat=level.getString("geometry").split(';').map { parseFlat(it) }
@@ -21,7 +25,7 @@ class SkinContractInstrumentation : Instrumentation() {
       val specs=data.getJSONObject("specs")
       val ids=if(legacy) listOf("cinnamon") else specs.keys().asSequence().toList()
       for(id in ids) {
-        val spec=SkinSpec(specs.getJSONObject(id).toString()); val renderer=SkinPaths(40f,spec)
+        val spec=SkinSpec(specs.getJSONObject(id).toString()); val renderer=SkinPaths(40f,spec,true)
         val old=if(legacy) Art03Paths(40f) else null
         renderer.setPalette(cells)
         var headFailures=0; var fitFailures=0; var oneCellChecks=0; var oldOneCellFailures=0; var headBoundaryPixels=0L; var alignedShaftChecks=0
@@ -57,6 +61,7 @@ class SkinContractInstrumentation : Instrumentation() {
             missingHead.op(region(art.paths[renderer.bodyIndex],originX,originY),Region.Op.DIFFERENCE)
             headBoundaryPixels += area(missingHead)
             val body = region(art.paths[renderer.bodyIndex],originX,originY)
+            check(components(body)==1) { "$id disconnected body arrow=$i" }
             val insetBody = Region(body)
             for(x in listOf(-12,0,12)) for(y in listOf(-12,0,12)) { val shifted = Region(body); shifted.translate(x,y); insetBody.op(shifted,Region.Op.INTERSECT) }
             for(layer in renderer.accentIndices) {
@@ -106,7 +111,7 @@ class SkinContractInstrumentation : Instrumentation() {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
           style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
           strokeWidth = 40f * spec.layers.single { it.kind == "rim" }.width
-          pathEffect = if(spec.roundedBends) CornerPathEffect(40f*.16f) else null
+          pathEffect = CornerPathEffect(40f*.16f)
         }.getFillPath(moveOnly,moveStroke)
         var negativeComponents = 0
         if(!legacy) {
@@ -122,6 +127,7 @@ class SkinContractInstrumentation : Instrumentation() {
         android.util.Log.i("ArtSkinZeroLength", "spec=$id screenCell=29.387754 bounds=${region(moveStroke,0f,0f).bounds} area=${area(region(moveStroke,0f,0f))} negativeComponents=$negativeComponents")
         val drawResults=org.json.JSONArray()
         if(!legacy) {
+          featureControls(spec,renderer)
           val bitmap=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888); val canvas=Canvas(bitmap)
           for(n in listOf(10,100,250)) {
             val compound=SkinPaths.Layers(renderer.layerCount)
@@ -144,15 +150,17 @@ class SkinContractInstrumentation : Instrumentation() {
           check(!motion.draw(cb,renderer,arts,{prepared[0]},shafts,heads,29.387754f,5.76f,900L))
           val pixels=IntArray(128*128); a.getPixels(pixels,0,128,0,0,128,128); check(pixels.any { it != 0 })
           check(a.sameAs(b)); a.recycle(); b.recycle(); bitmap.recycle()
+          if(id in listOf("cinnamon", "sherbet")) {
           val broken = ConcatenatedHeadPaths(40f,spec).build(SkinGeometry(3,intArrayOf(0,0,0,1,0,2)),0,2)
           val missing = region(broken.headDecoration,0f,0f)
           missing.op(region(broken.paths[renderer.bodyIndex],0f,0f),Region.Op.DIFFERENCE)
           check(area(missing) > 100L) { "$id concatenated-cap negative control did not expose the join hole" }
           android.util.Log.i("ArtSkinHeadNegative", "spec=$id missingArea=${area(missing)} samplesPerCell=400")
+          }
           for(direction in 0..3) for(choice in listOf("dot", "none")) {
             val variant = JSONObject(spec.source.toString())
             variant.getJSONObject("tail").put("oneCell",choice)
-            val oneRenderer = SkinPaths(40f,SkinSpec(variant.toString()))
+            val oneRenderer = SkinPaths(40f,SkinSpec(variant.toString()),true)
             val one = oneRenderer.build(SkinGeometry(direction,intArrayOf(0,0)),0,2)
             check(oneRenderer.facePathsEmpty(one))
             check(area(region(one.tailDecoration,0f,0f)) <= 12200L) // dot outer radius <= .155 cell, 400 samples/cell
@@ -164,38 +172,92 @@ class SkinContractInstrumentation : Instrumentation() {
         }
         renderer.clear()
         details.put(JSONObject().put("spec",id).put("arrows",cells.size).put("fitFailures",fitFailures).put("headFailures",headFailures)
-          .put("draws",drawResults).put("singleCellChecks",cells.count { it.length == 1 }).put("zeroLengthNegativeComponents",negativeComponents).put("oneCellChecks",oneCellChecks).put("art04OneCellFailures",oldOneCellFailures).put("headBoundaryPixels",headBoundaryPixels).put("alignedShaftChecks",alignedShaftChecks).put("flatLod",!legacy).put("reducedMotion",!legacy))
+          .put("draws",drawResults).put("singleCellChecks",cells.count { it.length == 1 }).put("zeroLengthNegativeComponents",negativeComponents).put("oneCellChecks",oneCellChecks).put("art04OneCellFailures",oldOneCellFailures).put("headBoundaryPixels",headBoundaryPixels).put("alignedShaftChecks",alignedShaftChecks).put("featureNegativeControls",if(legacy) 0 else featureKinds(spec).size).put("flatLod",!legacy).put("reducedMotion",!legacy))
       }
       if(legacy) check(failures>0) { "Frozen ART03 unexpectedly fits" }
       result.putString("result",JSONObject().put("mode",if(legacy) "before" else "after").put("level",level.getInt("index"))
         .put("screenCellDp",29.387754).put("checkedPaths",checked).put("fitFailures",failures).put("specs",details).put("samples",samples)
         .put("status",if(legacy) "EXPECTED_K1_FAIL" else "PASS").toString())
       if(arguments.getString("render")=="true") {
-        val scale=29.387754f*3.5f/40f
-        val bitmap=Bitmap.createBitmap(kotlin.math.ceil(level.getInt("cols")*40*scale).toInt(),kotlin.math.ceil(level.getInt("rows")*40*scale).toInt(),Bitmap.Config.ARGB_8888)
-        val canvas=Canvas(bitmap); canvas.drawColor(Color.WHITE); canvas.scale(scale,scale)
-        val grid=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=0x1A493A55; strokeWidth=.5f }
-        for(r in 0 until level.getInt("rows")) for(c in 0 until level.getInt("cols")) canvas.drawCircle((c+.5f)*40,(r+.5f)*40,.8f,grid)
-        for(id in ids) {
-          canvas.drawColor(Color.WHITE)
-          val spec=SkinSpec(specs.getJSONObject(id).toString())
-          if(legacy) {
-            val old=Art03Paths(40f); val compound=Art03Paths.Layers()
-            for(i in cells.indices) compound.add(old.build(flat[i].first,flat[i].second,2),2)
-            old.draw(canvas,compound,29.387754f)
-          } else {
-            val renderer=SkinPaths(40f,spec); renderer.setPalette(cells); val compound=SkinPaths.Layers(renderer.layerCount)
-            for(i in cells.indices) compound.add(renderer.build(cells[i],i,2),2)
-            renderer.draw(canvas,compound,29.387754f); renderer.clear()
-          }
-          val file=java.io.File(targetContext.getExternalFilesDir(null),"art04-${if(legacy) "before" else "after"}-$id.png")
-          file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
-          android.util.Log.i("ArtSkinCapture","path=${file.absolutePath} screenCell=29.387754 density=3.5 nativeCanvas=true")
-        }
-        bitmap.recycle()
+        renderBoard(level,specs,ids,legacy,29.387754f,"board")
+        if(!legacy && data.has("fixture")) renderBoard(data.getJSONObject("fixture"),specs,ids,false,38f,"fixture")
       }
       finish(if(legacy) 1 else 0,result)
     } catch(e: Throwable) { result.putString("failure",e.stackTraceToString()); finish(1,result) }
+  }
+  private fun renderBoard(level: JSONObject,specs: JSONObject,ids: List<String>,legacy: Boolean,dp: Float,label: String) {
+    val cells=SkinGeometry.parse(level.getString("cells")); val flat=level.getString("geometry").split(';').map { parseFlat(it) }
+    val scale=dp*3.5f/40f
+    val bitmap=Bitmap.createBitmap(kotlin.math.ceil(level.getInt("cols")*40*scale).toInt(),kotlin.math.ceil(level.getInt("rows")*40*scale).toInt(),Bitmap.Config.ARGB_8888)
+    for(theme in listOf("light","dark")) for(id in ids+listOf("classic")) {
+      val canvas=Canvas(bitmap); canvas.drawColor(Color.parseColor(if(theme=="light") "#FFFFFF" else "#13111C")); canvas.scale(scale,scale)
+      if(id=="classic") {
+        val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.parseColor(if(theme=="light") "#191724" else "#EFEDF9"); strokeWidth=5.76f; strokeCap=Paint.Cap.ROUND; strokeJoin=Paint.Join.ROUND }
+        for((shaft,head) in flat) { paint.style=Paint.Style.STROKE; canvas.drawPath(shaft,paint); paint.style=Paint.Style.FILL; canvas.drawPath(head,paint) }
+      } else if(legacy) {
+        val old=Art03Paths(40f); val compound=Art03Paths.Layers()
+        for(i in cells.indices) compound.add(old.build(flat[i].first,flat[i].second,2),2)
+        old.draw(canvas,compound,dp)
+      } else {
+        val renderer=SkinPaths(40f,SkinSpec(specs.getJSONObject(id).toString()),true); renderer.setPalette(cells)
+        val compound=SkinPaths.Layers(renderer.layerCount)
+        for(i in cells.indices) renderer.appendTo(compound,cells[i],2)
+        renderer.draw(canvas,compound,dp); renderer.clear()
+      }
+      val file=java.io.File(targetContext.getExternalFilesDir(null),"art07-${if(legacy) "before" else "after"}-$id-$theme-$label.png")
+      file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+      android.util.Log.i("ArtSkinCapture","path=${file.absolutePath} screenCell=$dp density=3.5 nativeCanvas=true")
+    }
+    bitmap.recycle()
+  }
+  private fun featureKinds(spec: SkinSpec): List<String> =
+    (spec.layers.filter { it.kind in listOf("glow","spots","fold","headFill","tailFill","bands","seam") }.map { it.kind } +
+      listOf(spec.tailKind).filter { it in listOf("fletch","marble") } +
+      listOf(spec.bodyPattern).filter { it == "beads" } + listOf(spec.headShape).filter { it == "step" } +
+      listOf(spec.faceAnchor).filter { it == "head" }).distinct()
+  private fun featureControls(spec: SkinSpec,renderer: SkinPaths) {
+    val g=SkinGeometry(3,intArrayOf(1,0,1,1,0,1,0,2,0,3))
+    val art=renderer.build(g,0,2); val allowed=allowedRegion(g)
+    var slot=0
+    val slots=HashMap<String,Int>()
+    for(layer in spec.layers) { slots[layer.kind]=slot; slot += if(layer.kind == "bands") layer.bands.size else 1 }
+    for(kind in featureKinds(spec)) {
+      val path=when(kind) {
+        "fletch","marble" -> art.tailDecoration
+        "beads" -> art.paths[renderer.bodyIndex]
+        "step","head" -> art.headDecoration
+        else -> art.paths[slots.getValue(kind)]
+      }
+      check(!path.isEmpty) { "${spec.id} feature $kind not actually drawn" }
+      val clean=region(path,0f,0f); val remainder=Region(clean); remainder.op(allowed,Region.Op.DIFFERENCE)
+      check(remainder.isEmpty) { "${spec.id} feature $kind positive fit" }
+      val shifted=Path(path); shifted.offset(200f,200f)
+      val damaged=region(shifted,0f,0f); damaged.op(allowed,Region.Op.DIFFERENCE)
+      check(!damaged.isEmpty) { "${spec.id} feature $kind negative fit was accepted" }
+      android.util.Log.i("ArtSkinFeatureNegative","spec=${spec.id} kind=$kind rejectedArea=${area(damaged)}")
+    }
+    // Every nested band must contain a head cap as well as a shaft.
+    for(layer in spec.layers.filter { it.kind == "bands" }) {
+      for(i in layer.bands.indices) {
+        val width=if(layer.bandWidths.isEmpty()) layer.width*(1f-i.toFloat()/layer.bands.size) else layer.bandWidths[i]
+        val cap=Path(art.headDecoration)
+        val x=g.x(g.length-1,40f); val y=g.y(g.length-1,40f)
+        cap.transform(Matrix().apply { setScale(width/layer.width,width/layer.width,x,y) })
+        val expected=region(cap,0f,0f); val actual=region(art.paths[slots.getValue("bands")+i],0f,0f)
+        val missing=Region(expected); missing.op(actual,Region.Op.DIFFERENCE); check(missing.isEmpty)
+        val noHead=Region(actual); noHead.op(expected,Region.Op.DIFFERENCE)
+        val negative=Region(expected); negative.op(noHead,Region.Op.DIFFERENCE); check(!negative.isEmpty)
+      }
+    }
+    // Dashed seams deliberately have gaps; primary gloss accents must remain continuous.
+    for(i in renderer.stitchIndices) check(components(region(art.accentRuns[i],0f,0f)) > 1) { "${spec.id} stitch not dashed" }
+    if(spec.headShape == "step") {
+      val points=art.headDecoration.approximate(.005f)
+      for(i in 3 until points.size step 3) check(kotlin.math.abs(points[i+1]-points[i-2]) < .005f || kotlin.math.abs(points[i+2]-points[i-1]) < .005f)
+      val tri=Path().apply { moveTo(0f,0f); lineTo(10f,10f); lineTo(0f,10f); close() }
+      val t=tri.approximate(.005f)
+      check((3 until t.size step 3).any { kotlin.math.abs(t[it+1]-t[it-2]) > .005f && kotlin.math.abs(t[it+2]-t[it-1]) > .005f })
+    }
   }
   private fun parseFlat(record: String): Pair<Path,Path> {
     val v=record.split(',').map { it.toFloat() }; val count=v[0].toInt(); val shaft=Path()
