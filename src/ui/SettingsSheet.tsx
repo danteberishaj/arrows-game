@@ -1,3 +1,4 @@
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import React, { useCallback, useState } from 'react';
 import { Linking, Modal, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -26,10 +27,15 @@ const PANEL_SIDE_MARGIN = 24; // OWNER-PICKED STARTING VALUE
 const ROW_MIN_HEIGHT = 52; // OWNER-PICKED STARTING VALUE
 const INFO_ROW_MIN_HEIGHT = 44; // OWNER-PICKED STARTING VALUE (the tap-target floor, though it is not a button)
 
-/** The app's version name (app.json `expo.version`, embedded by expo-constants). The native build number would need
- * expo-application, which the brief rules out, so only the name shows. */
+/** The app's version name (app.json `expo.version`, embedded by expo-constants). */
 function appVersion(): string | undefined {
   return Constants.expoConfig?.version;
+}
+
+/** The installed build number: the Android versionCode the build actually carries (builds set it after prebuild, so
+ * app.json's value would be stale). Owner request 2026-10-01: show it as "Version 1.0.0 (9)". */
+function appBuild(): string | null {
+  return Application.nativeBuildVersion;
 }
 
 /** Opens a URL in the OS (browser, mail app); a device with nothing to handle it does nothing. */
@@ -65,6 +71,7 @@ export function SettingsSheet({
       policyUrl: PRIVACY_POLICY_URL,
       supportEmail: SUPPORT_EMAIL,
       version: appVersion(),
+      build: appBuild(),
     }),
   );
 

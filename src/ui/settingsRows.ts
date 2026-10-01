@@ -44,6 +44,9 @@ export interface SettingsRowsInput {
   supportEmail: string;
   /** The app's version name (expo-constants `expoConfig.version`); may be missing. */
   version: string | undefined;
+  /** The installed build number (Android versionCode, expo-application `nativeBuildVersion`); shown in brackets
+   * after the version name when present, so a tester can tell builds of the same version apart. */
+  build?: string | null;
 }
 
 export type SettingsRowId = 'privacyPolicy' | 'adPrivacy' | 'support' | 'version';
@@ -71,7 +74,8 @@ export function settingsRows(input: SettingsRowsInput): SettingsRow[] {
   }
   rows.push({
     id: 'version',
-    label: `${LABEL_VERSION} ${set(input.version) ? input.version.trim() : VERSION_UNKNOWN}`,
+    label: `${LABEL_VERSION} ${set(input.version) ? input.version.trim() : VERSION_UNKNOWN}${
+      set(input.build ?? undefined) ? ` (${(input.build as string).trim()})` : ''}`,
     pressable: false,
   });
   return rows;

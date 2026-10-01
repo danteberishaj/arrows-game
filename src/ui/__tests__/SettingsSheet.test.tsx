@@ -13,6 +13,7 @@ const mockState = {
   required: false,
   policyUrl: '',
   version: '0.0.0' as string | null,
+  build: null as string | null,
   openPrivacy: jest.fn(async () => true),
 };
 
@@ -32,6 +33,12 @@ jest.mock('expo-constants', () => ({
     get expoConfig() {
       return mockState.version === null ? null : { version: mockState.version };
     },
+  },
+}));
+// expo-application reads the installed package's versionCode on a device; jest has none.
+jest.mock('expo-application', () => ({
+  get nativeBuildVersion() {
+    return mockState.build;
   },
 }));
 jest.mock('../settingsRows', () =>
@@ -60,6 +67,7 @@ beforeEach(() => {
   mockState.policyUrl = '';
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   mockState.version = (require('../../../app.json') as { expo: { version: string } }).expo.version;
+  mockState.build = null;
   mockState.openPrivacy = jest.fn(async () => true);
   onClose = jest.fn();
   openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
@@ -89,6 +97,14 @@ describe('rows', () => {
     // Last row: it follows the support address in the panel's text order.
     const texts = within(sheet.getByTestId('settings-panel')).getAllByText(/./).map((t) => t.props.children);
     expect(texts[texts.length - 1]).toBe(version.props.children);
+  });
+
+  it('the installed build number (expo-application) follows the version name: "Version 1.0.0 (9)"', () => {
+    mockState.version = '1.0.0';
+    mockState.build = '9';
+    const sheet = renderSheet();
+    expect(sheet.getByText('Version 1.0.0 (9)')).toBeTruthy();
+    expect(sheet.queryByRole('button', { name: /^Version/ })).toBeNull();
   });
 
   it('no embedded config: the version row still shows, as "Version unknown"', () => {

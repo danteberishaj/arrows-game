@@ -307,15 +307,15 @@ export const USAGES: ReadonlyArray<Usage> = [
   // Settings sheet (W7-04, META_SETTINGS_SHEET): a `surface` panel with a `border` hairline over a `bg` scrim at
   // SETTINGS_SCRIM_OPACITY over the menu, rows split by `border` dividers. The menu's Settings button is a HeaderButton
   // (the `header-glyph*` / `header-icon*` rows above: its ⚙︎ text glyph, or W5-02's gear icon).
-  { id: 'settings-title', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${SS}:120`, sizeSite: `${SS}:166`, note: '"Settings"' },
-  { id: 'settings-row-label', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: `${SS}:136`, sizeSite: `${SS}:181`, note: '"Privacy policy", "Ad privacy choices", "Support"' },
-  { id: 'settings-support-address', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:138`, sizeSite: `${SS}:185`, note: "the support row's address line" },
-  { id: 'settings-version', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:143`, sizeSite: `${SS}:196`, note: '"Version 1.0.0" (information, not a button)' },
-  { id: 'settings-panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:118` },
-  { id: 'settings-row-divider', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:133`, note: "the rows' top dividers (also the version row's, SettingsSheet.tsx:142)" },
-  { id: 'settings-panel-hairline-on-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.bg), kind: 'boundary', site: `${SS}:118`, note: 'the panel edge against the scrim over the menu background (= bg)' },
-  { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:118`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
-  { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:118`, note: "the scrim over the Play pill's `accent` fill" },
+  { id: 'settings-title', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${SS}:127`, sizeSite: `${SS}:173`, note: '"Settings"' },
+  { id: 'settings-row-label', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: `${SS}:143`, sizeSite: `${SS}:188`, note: '"Privacy policy", "Ad privacy choices", "Support"' },
+  { id: 'settings-support-address', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:145`, sizeSite: `${SS}:192`, note: "the support row's address line" },
+  { id: 'settings-version', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:150`, sizeSite: `${SS}:203`, note: '"Version 1.0.0" (information, not a button)' },
+  { id: 'settings-panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:125` },
+  { id: 'settings-row-divider', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:140`, note: "the rows' top dividers (also the version row's, SettingsSheet.tsx:149)" },
+  { id: 'settings-panel-hairline-on-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.bg), kind: 'boundary', site: `${SS}:125`, note: 'the panel edge against the scrim over the menu background (= bg)' },
+  { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:125`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
+  { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:125`, note: "the scrim over the Play pill's `accent` fill" },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
   { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1096' },

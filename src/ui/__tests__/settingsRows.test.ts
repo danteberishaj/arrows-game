@@ -83,6 +83,14 @@ describe('settingsRows', () => {
     expect(settingsRows({ ...ALL, version: undefined }).at(-1)?.label).toBe('Version unknown');
   });
 
+  it('the build number (Android versionCode) follows the version name in brackets', () => {
+    expect(settingsRows({ ...ALL, version: '1.0.0', build: '9' }).at(-1)?.label).toBe('Version 1.0.0 (9)');
+    expect(settingsRows({ ...ALL, version: '1.0.0', build: ' 12 ' }).at(-1)?.label).toBe('Version 1.0.0 (12)');
+    expect(settingsRows({ ...ALL, version: '1.0.0', build: '' }).at(-1)?.label).toBe('Version 1.0.0');
+    expect(settingsRows({ ...ALL, version: '1.0.0', build: undefined }).at(-1)?.label).toBe('Version 1.0.0');
+    expect(settingsRows({ ...ALL, version: undefined, build: '9' }).at(-1)?.label).toBe('Version unknown (9)');
+  });
+
   it('only the three action rows are actions; the version row is information', () => {
     const rows = settingsRows(ALL);
     expect(rows.map((r) => r.pressable)).toEqual([true, true, true, false]);
