@@ -8,6 +8,8 @@ APP = 'com.danteb.arrows'
 def adb(*args, binary=False):
     return subprocess.check_output([ADB,'-s','emulator-5556',*args],timeout=30,text=not binary)
 def tap(x,y): adb('shell','input','tap',str(x),str(y))
+# Skin logs are silent in ordinary picker builds unless this property is set (ArrowsBoardView.skinLogsEnabled).
+adb('shell','setprop','log.tag.ArtSkin','DEBUG')
 def anchor():
     return json.loads(adb('shell','env','CLASSPATH=/data/local/tmp/art06-clock.jar','app_process','/system/bin','com.arrows.art.SkinPickerClock'))
 def host():

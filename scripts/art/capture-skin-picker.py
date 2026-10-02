@@ -2,6 +2,8 @@
 import subprocess,pathlib,time,json,xml.etree.ElementTree as ET,re,sys,hashlib,shlex
 root=pathlib.Path(__file__).resolve().parents[2];out=root/'artifacts/ART-SKINS-06';adb='/Users/gentlegen/Library/Android/sdk/platform-tools/adb';app='com.danteb.arrows'
 def run(*args,binary=False): return subprocess.check_output([adb,'-s','emulator-5556',*args],timeout=30,text=not binary)
+# Skin logs are silent in ordinary picker builds unless this property is set (ArrowsBoardView.skinLogsEnabled).
+run('shell','setprop','log.tag.ArtSkin','DEBUG')
 def tap(x,y): run('shell','input','tap',str(x),str(y))
 def shot(name): (out/'screens'/f'{name}.png').write_bytes(run('exec-out','screencap','-p',binary=True))
 def dump(name):

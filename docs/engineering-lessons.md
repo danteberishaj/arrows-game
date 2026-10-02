@@ -517,3 +517,20 @@ face reuse, ribbon construction and merging as **unisolated next questions**, no
 or impossible styles. Use [the recipes](skins/performance-recipes.md) and
 [generation prompt](skins/GENERATION-PROMPT.md) before a new design. Full raw/configuration/source
 evidence and failed/unverified gates are in [ART08](next-level/reports/ART-SKINS-08.md).
+
+## Diagnostic logs must be opt-in, not "on whenever the feature is on"
+
+**Observed:** from ART-SKINS-06 to -08, every picker build wrote eight `ArtSkin*` log lines on each level open. It
+also built an audit string on every frame while a skin was selected, because `skinDiagnostic` was set to `true`
+whenever a skin was chosen. Measurement tools depended on those logs without asking for them.
+**Correction (2026-10-02):** `ArrowsBoardView.skinLogsEnabled` is true only when the test intent extra
+`artSkinProcedural` is passed or `log.tag.ArtSkin` is DEBUG (read once per view). The per-frame audit string is
+only built when logging is on. The capture tools that launch without the extra now run
+`setprop log.tag.ArtSkin DEBUG` themselves.
+**Verified** on emulator-5556 with a test-ads picker APK, with Critter selected:
+- property empty: 0 `ArtSkin` lines across a level open and 4 exits;
+- property DEBUG: all 8 tags (10 lines) appeared;
+- the skin drew normally in both runs.
+Evidence is in `artifacts/LOG-GATE/`. The intent-extra path was read from the compiled code, not run.
+**Rule:** a new diagnostic must have an explicit switch, and any tool that needs it must turn it on. Never gate
+diagnostics on the product feature flag.

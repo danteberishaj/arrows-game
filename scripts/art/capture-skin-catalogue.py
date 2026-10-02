@@ -71,7 +71,9 @@ def tap(name):
         if node is None: raise RuntimeError('Control disappeared before input: '+name)
     raise RuntimeError('Control did not settle: '+name)
 def back(): run('shell','input','keyevent','4');time.sleep(.5)
+# Skin logs are silent in ordinary picker builds unless this property is set (ArrowsBoardView.skinLogsEnabled).
 def start():
+    run('shell','setprop','log.tag.ArtSkin','DEBUG')
     run('shell','am','force-stop',app);run('logcat','-c');run('shell','input','keyevent','224')
     run('shell','am','start','-W','-n',app+'/.MainActivity');time.sleep(5)
     # The menu is verified by real captures; querying idle here never completes

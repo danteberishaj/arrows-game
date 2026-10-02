@@ -36,6 +36,9 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   // Only the explicit test intent enables opening instrumentation. Ordinary/unset
   // builds execute the same setters without timing or logging overhead.
   private val openingTraceEnabled = appContext.currentActivity?.intent?.hasExtra("artSkinProcedural") == true
+  // Skin diagnostic logs (ArtSkin* tags) stay silent in ordinary picker builds. The test intent above
+  // or `adb shell setprop log.tag.ArtSkin DEBUG` (read once per view) turns them on for capture tools.
+  private val skinLogsEnabled = openingTraceEnabled || android.util.Log.isLoggable("ArtSkin", android.util.Log.DEBUG)
   private val constructionStarted = if(openingTraceEnabled) System.nanoTime() else 0L
   private var constructionNs = 0L
   private var openingPropNs = 0L
@@ -247,7 +250,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     synchronized(stateLock) {
       if(value == skinSpecJson) return
       val started = System.nanoTime()
-      skinSpecJson = value; skinDiagnostic = true
+      skinSpecJson = value; skinDiagnostic = skinLogsEnabled
       skin?.clear()
       val enabled = appContext.currentActivity?.intent?.getBooleanExtra("artSkinProcedural",true) ?: true
       val payload = appContext.currentActivity?.intent?.getStringExtra("artSkinSpec") ?: value
@@ -803,8 +806,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
             val draws = strip.skin?.let { renderer.draw(canvas,it,screenCell) } ?: 0
             maximumDraws = maxOf(maximumDraws, draws + if (strip.hasMark) 1 else 0)
           }
-          val audit = "arrows=${arrowPaths.size} screenCell=$screenCell maxStaticDrawsPerStrip=$maximumDraws strips=${strips.size}"
-          if (audit != lastSkinAudit) { lastSkinAudit = audit; android.util.Log.i("ArtSkinDraws", audit) }
+          if (skinDiagnostic) {
+            val audit = "arrows=${arrowPaths.size} screenCell=$screenCell maxStaticDrawsPerStrip=$maximumDraws strips=${strips.size}"
+            if (audit != lastSkinAudit) { lastSkinAudit = audit; android.util.Log.i("ArtSkinDraws", audit) }
+          }
         } else {
           for (strip in all) if (strip.hasInk) canvas.drawPath(strip.shaft, shaftPaint)
           for (strip in all) if (strip.hasInk) canvas.drawPath(strip.head, headPaint)
