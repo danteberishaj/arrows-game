@@ -818,3 +818,47 @@ The corrected supplemental equivalence helper builds the real tier and asserts n
 (including flat LOD and blocked eyes); its earlier blank flat comparison was discarded. The final
 exact native OFF/base pixel gate also fails (316 edge pixels, max channel delta 5); its cause remains
 unproven. Neither successful compilation nor geometry/cache equivalence clears these separate gates.
+
+## Launch skin polish — ART-SKINS-08
+
+The eight changed launch recipes retain lazy strip construction and bounded relative/directional
+caches. Full-detail counters remain 57 templates and zero production audit paths. Larger upright
+head faces need their own fill-clearance proof: 7,574 face-arrow cases checking open/blocked eyes and mouth pass after a data-driven offset
+towards the broad base. Critter/Campfire now build 57 head faces including one-cell heads; a directional
+cache is a hypothesis, not a retained speedup. Critter's .5 pitch reduces circle additions 2,298→1,202
+while changing the art to larger connected beads. Counts do not certify elapsed time or smoothness.
+
+Before exact OFF comparison, reinstall the **same** base APK and require identical internally stable
+captures. ART08 has 0 different pixels/max delta 0 for both base/base and base/OFF at 29.387754 dp.
+This verifies the current OFF gate; ART07's previous 316-pixel failure still has no confirmed cause.
+The ordinary phone test records blocked eyes, five accepted clears and Cinnamon dark tint/style kept
+on restart. PERF isolates theme/progress, so its preference-only capture path cannot prove ordinary
+theme persistence. A variable-rate screen recording is not a frame benchmark.
+
+See [ART08](../next-level/reports/ART-SKINS-08.md), the synchronized
+[recipes](../skins/performance-recipes.md) and [generation prompt](../skins/GENERATION-PROMPT.md).
+Current art and future experiments must retain full opening sums, actual tint/configuration, shuffled
+pairs, rejected platform attempts and quiet-host requirements; never substitute a work-count claim
+for a measured performance gate.
+
+ART08 opening setup separates real picker persistence from timing: seed through the menu-start capture
+APK, replace with the same PERF APK, then shuffle native OFF/ON. Both arms retain the selected board tint.
+A camera event alone is not a completed native opening; require setup and full first draw. Quarantine
+partial attempts and preserve long accepted costs. Global-idle hierarchy dumps can fail with existing
+motion; the optional shell-only fresh-root reader changes test readiness, not app motion or save data.
+One interrupted adb read is explicitly labelled an agent mistake. ANR snapshots do not establish a
+skin/GPU cause. Complete eight-style phase data is in the linked ART08 report
+and recipes; the older ART07 budget results cannot clear the changed artwork.
+
+
+Final ART08 opening matrix: 192 opens / 96 shuffled pairs, 12 ON/12 OFF per polished style at
+29.387754 dp. All eight miss the historical Classic +16 ms median/max budget under accepted load
+8.60–25.38; none is performance-neutrality certified. Keep elapsed sums and
+outliers. Exits remain UNVERIFIED with zero accepted frames. Per-style next experiments and native
+work counters are linked from the recipes; no marginal feature cost or unoptimizable-style claim
+has been isolated. A future thread-CPU counter may explain scheduling without replacing elapsed gates.
+
+During final ordinary-build restoration, a complete native first-draw log preceded an immediate
+blank tinted capture; a later capture contains the expected art. Require opaque spec-rim pixels
+in timing ON screenshots as well as tint/configuration. All eight ART08 captures pass and the blank
+control fails. This proves visible art presence, not presentation latency or GPU-completion timing.

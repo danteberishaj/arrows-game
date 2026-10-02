@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lossless crop/contact composition of native captures; never retouches art pixels."""
+import os
 import json,pathlib,hashlib,re,xml.etree.ElementTree as ET
 from PIL import Image,ImageDraw,ImageFont
-root=pathlib.Path(__file__).resolve().parents[2]/'artifacts/ART-SKINS-07'
+root=pathlib.Path(__file__).resolve().parents[2]/os.environ.get('ART_SKINS_DIR','artifacts/ART-SKINS-07')
 data=json.loads((root/'checks/contract-data.json').read_text());specs=[{'id':'classic','numericId':0,'name':'Classic'},*data['specs'].values()]
 font=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',25)
 small=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',20)
@@ -16,7 +17,7 @@ for theme in ['light','dark']:
     draw.text((20,15),'Arrow styles · 29.39 dp level 3828 / 38 dp native fixture · owner review pending',font=font,fill=ink)
     for i,spec in enumerate(specs):
         x=20+(i%3)*1110;y=65+(i//3)*510
-        name=f"{spec['numericId']}  {spec['name']}"+(' · best in dark' if spec.get('preferredTheme') else '')
+        name=f"{spec['numericId']}  {spec['name']}"+(' · best in '+spec['preferredTheme'] if spec.get('preferredTheme') else '')
         draw.text((x,y),name,font=font,fill=ink)
         for label,bounds,dx,dp in [('board',real,0,29.387754),('fixture',fixture,550,38)]:
             source=root/'screens/native'/f"art07-after-{spec['id']}-{theme}-{label}.png"

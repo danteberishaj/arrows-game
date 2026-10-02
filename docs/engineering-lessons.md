@@ -15,6 +15,28 @@ architecture. The original page is `docs/performance/field-guide.html`.
 [per-style performance recipes](skins/performance-recipes.md),
 [reusable generation prompt](skins/GENERATION-PROMPT.md). Consult them before generating a new spec.
 
+## Larger upright faces need clearance in every head direction
+
+**Observed, 2026-10-02 — ART-SKINS-08.** Enlarging eyes from .018 to .045 cell at the original head
+centre failed the independent .03-cell clearance check for a downward Critter head on dense arrow 1.
+The face is upright while the directional cap rotates; fitting one orientation does not prove another.
+**Cause confirmed:** the tip-side diagonal leaves insufficient room for the wider eye pair.
+**Correction:** general `face.headOffset: -.12` moves the upright face towards the cap's broad base;
+new sized faces are drawn completely, without clipping. Tail faces retain their centred roll and cache.
+Optional fields default to legacy geometry. Head and body sizing belong in spec data, never skin-ID
+branches. The updated K8 permits contained head faces on one-cell arrows, while still banning all tails.
+**Verified:** 7,574 native face-arrow cases, each checking open/blocked eye and mouth clearance, including 898 one-cell head faces, across dense
+3827 and campaign 1–20; 133,434 unchanged path arrays outside the eight polish specs and allowed fold
+slots; 3,588 changed crease paths. K1 checks 285,930 layer-path slots (including expected-empty paths) with zero remainder. The frozen ART04 roll
+control still fails. Native/TS controls reject out-of-fill eyes, displaced head faces, oversized heads
+and outline-coloured tints. Visual taste and measured phone performance are separate gates; see
+[ART08](next-level/reports/ART-SKINS-08.md).
+
+**Board tint ownership:** changing the whole game palette would also affect header and panel contrast.
+Limit tint to the play-area palette, and audit the real tinted feedback/overlay roles. Existing grid
+texture is decorative under ruling R4; save its raw composited contrast rather than weakening a required
+threshold or silently claiming 3:1. Runtime OFF/Classic must retain the original palette object.
+
 ## Android arrow textures: measure connectors, not just tile dimensions
 
 **Observed, 2026-09-30 — ART-SKINS-01.** All nine image-generated sprite sheets drifted from
@@ -234,7 +256,9 @@ emulator and accepted-input checks; record actual frame counts beside every perc
 ≥3:1 against the background. Codex met it by darkening Cinnamon's dough to chocolate brown, and the board
 lost its warmth. Legibility is carried by the outline (dark rim), not the fill. **Correction:** K4 now applies
 to the outline; the fill is free (docs/skins/README.md). Also: one-cell arrows have no room for a tail roll
-and face — they read as a blob with eyes — so they get a dot tail or none. **Practice:** when writing a
+and face together — they read as a blob with eyes. Registered one-cell arrows now have no tail;
+the 2026-10-02 owner ruling permits a contained head-anchored face (K8 in the skin guide).
+**Practice:** when writing a
 contract rule, name the element that actually delivers the property, and look at the dense real-config
 capture before calling a contract-compliant skin good.
 
@@ -312,9 +336,10 @@ process-name kill. These lessons are verified by final captures/raw checks; owne
 additional styles: nested colour heads, beaded bodies, stitches, folded caps, fletching, marble shine and
 translucent glow. Copying a renderer per style would repeat the earlier fit/join/alignment bugs.
 **Correction:** keep appearance in the one TS registry and add general capabilities with explicit bounds,
-using the existing compound-strip/template architecture. Every registered one-cell arrow is head only;
+using the existing compound-strip/template architecture. Registered one-cell arrows have no tail;
+the current K8 also permits contained head-anchored faces, superseding ART07's blanket head-only rule.
 primary shaft gloss stays centred and continuous, while an explicitly dashed seam is a distinct decorative
-layer. Preferred dark mode preserves genuine light-theme contrast failures instead of claiming they pass.
+layer. A declared light/dark preference preserves the other theme's genuine contrast failures instead of claiming they pass.
 Verification is recorded per feature/spec in [ART-SKINS-07](next-level/reports/ART-SKINS-07.md); do not infer
 geometry or owner approval from TypeScript/data tests alone.
 
@@ -405,3 +430,90 @@ restored ART06 patch; this does not establish why pixels differ. The separate 15
 downgrade checks pass. Final exact pixel gate fails; preserve raw stable pairs and do not introduce a
 tolerance or substitute the earlier build’s pass. Further work must isolate actual native geometry,
 transform and rasterization before claiming a cause or verified correction. See ART07’s ledger.
+
+**ART08 follow-up, 2026-10-02 — exact OFF verified for this build:** run a same-APK reinstall null
+control before judging cross-build pixels. At 29.387754 dp the internally stable base/base pair has
+zero different pixels and max delta 0; the base/ART08-OFF pair also has zero different pixels and max
+delta 0. No tolerance was introduced. This establishes the current OFF result, not the cause of
+ART07's 316-pixel failure or a retrospective pass. Raw pairs, APK hashes and full play-area bounds are
+in ART08 `checks/off-verification.json` and `screens/board-*`. Preserve the failed historical result.
+
+**Ordinary phone tests and PERF persistence differ — verified in ART08:** PERF deliberately isolates
+progress and theme; its picker capture path persists only the additive `arrows_skin` key. A theme
+restart test therefore needs the ordinary test-ads build. That build's real picker/gestures cleared
+five Critter arrows (including a one-cell arrow); the video shows blocked eyes closing and reopening.
+Cinnamon and its dark tint survive force-stop/relaunch. Do not edit save keys to manufacture evidence.
+The 54.497-second variable-frame-rate recording is look/interaction evidence, not a frame benchmark.
+
+**Build runners must preserve the requested variant — corrected in ART08:** the inherited catalogue
+runner initially used `assembleRelease` for test-ads diagnostics despite this task forbidding release
+builds. Retain the early logs as a process failure. The final runner uses a temporary optimized
+`skinTest` variant, restores Gradle/manifest, and the normal-APK check rejects diagnostic classes.
+Rerun only the JS bundle task with its task-specific `--rerun`; global `--rerun-tasks` needlessly
+recompiled build plugins. Verify changed bundle hashes/configuration; equal APK byte counts alone do
+not establish staleness. ART08 `checks/apk-provenance.json` records final hashes and explicit
+PERF/diagnostic bundle reuse. No production ad build, AAB, commit or EAS operation was performed.
+
+**ART08 benchmark readiness — observed, correction partially verified:** a camera log alone does not
+prove the native board has finished opening. One rejected Sherbet attempt reached the camera but had
+no native setup/first-draw logs when the old 17-second poll ended. The bounded harness now waits for
+camera + native setup + complete first draw (240 polls with .5-second pauses, plus command time); it retains
+all measured timer values and rejects incomplete runs. This changes readiness, not the cost boundary.
+Final per-style results and remaining failures belong in ART08's ledger.
+
+**Native completion is not visible presentation — verified capture distinction:** during final
+ordinary-build restoration, the camera/setup/250-arrow draw logs were complete but the immediate
+screen capture contained zero Cinnamon rim/dough pixels. A later capture contains 150,579 exact
+rim pixels and 1,078,529 dough pixels. This does not measure presentation latency or diagnose its
+cause. Require the expected opaque spec rim in an ON screenshot, separately from tint/readiness;
+all eight accepted timing screenshots pass (>150,000 rim pixels each), and the retained blank
+capture fails. Native elapsed first-draw sums still describe submission, not GPU completion.
+See ART08 `checks/timing-config-verification.json` and `screens/restoration-before-visible-art.png`.
+
+Jelly also exposed an empty RN container after the fixed 12-second menu delay. Do not equate a
+non-null hierarchy with a ready menu. A bounded fresh-root loop now requires the actual Settings
+control before input; Jelly's `benchmark-seed-menu-jelly-0.xml` is empty of controls and `-1.xml`
+contains the menu. **Menu readiness correction verified** by that sequence; it does not identify why
+startup was delayed or prove performance. Later picker selection still requires fresh checked radios.
+
+Settings' existing motion can prevent the standard UiAutomator global-idle dump. A shell-only
+hierarchy reader waits one second for its accessibility connection, then reads fresh roots without
+global idle. A cold dialog can initially have no root; bounded retries must delete the previous XML
+and use newly observed, settled radio bounds. Actual Cinnamon selection passed; later Sherbet setup
+also passed before a separate reader timeout. These successes do not make the loaded host reliable.
+The actual API31 framework dump→root call chain was disassembled: no explicit global-idle call
+(`checks/hierarchy-driver/no-idle-verification.json`), but binder/tree reads can still stall.
+The helper is never included in the phone APK and does not change animation settings. ANR snapshots
+showed main-thread native-render submission and substantial scheduling waits, but do **not** establish
+a GPU deadlock or a skin-specific cause. Never restart/root the owned adb daemon while a UI read is
+in flight: doing so invalidated one ART08 attempt, which is labelled separately from app failures.
+
+**Owned VM shutdown is a different persistence test — unverified observation:** the first Rainbow
+picker after a VM restart showed Jelly selected, although the preceding Critter batch had confirmed
+Critter and both timed screenshots retained its tint. This does not establish a save-code defect.
+Guest/host buffered writes and setup input/reader state are hypotheses: the snapshot followed
+navigation taps, and later scrolling also showed an intermediate Paper Craft check before Rainbow.
+This is not an isolated OS-persistence experiment. Later timing helpers call guest
+`sync` only after the full batch and record the next observed radio choice. Strawberry's later
+fresh radio scans show Campfire checked before the intended Strawberry selection, then Strawberry
+checked afterwards. This is one successful owned-VM transition, not proof that buffered writes
+caused the earlier observation or that `sync` fixed a save defect. The cause remains **INCONCLUSIVE**.
+Do not edit save files, hide the observation or treat ordinary app restart proof as hard-VM
+shutdown proof. Campfire’s first visible-radio list has no check because high-index choices are
+offscreen; an empty visible list cannot establish a default or missing save. Retain fresh radio-scan
+snapshots around scrolling, and isolate input/visibility before assigning a cause. See ART08 for
+completed controls and remaining uncertainty.
+
+
+**ART08 complete opening measurement — measured, performance neutrality UNVERIFIED:** all eight
+polished recipes have 12 shuffled OFF/ON pairs at 29.387754 dp (192 opens / 96 pairs), the same PERF
+APK, selected tint and all 17 META flags plus picker. Every historical Classic +16 ms median/max
+budget fails under load 8.60–25.38; another emulator means zero accepted exit frames.
+Keep each native-owned construction/prop/prep/record/full-first-draw sum and every outlier. Lazy
+geometry belongs inside first draw; nested parsers and phase medians cannot be added again.
+Existing template/cap/tail reuse is verified separately from timing. Critter's 2,298→1,202 circle
+count changes the art, so it is not a measured speedup. The joined per-style tables identify bounded
+face reuse, ribbon construction and merging as **unisolated next questions**, not confirmed causes
+or impossible styles. Use [the recipes](skins/performance-recipes.md) and
+[generation prompt](skins/GENERATION-PROMPT.md) before a new design. Full raw/configuration/source
+evidence and failed/unverified gates are in [ART08](next-level/reports/ART-SKINS-08.md).

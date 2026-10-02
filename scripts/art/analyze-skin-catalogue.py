@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """ART07 report-only opening table. Preserve counts, raw contrast exceptions, and native controls."""
+import os
 import json,pathlib,statistics,hashlib
-root=pathlib.Path(__file__).resolve().parents[2]/'artifacts/ART-SKINS-07'
+root=pathlib.Path(__file__).resolve().parents[2]/os.environ.get('ART_SKINS_DIR','artifacts/ART-SKINS-07')
 data=json.loads((root/'checks/contract-data.json').read_text())
+if os.environ.get('ART_SKINS_SPEC_IDS'):
+    data['specs']={id:data['specs'][id] for id in os.environ['ART_SKINS_SPEC_IDS'].split(',')}
 def stats(a): return {'n':len(a),'medianMs':statistics.median(a),'maxMs':max(a),'minMs':min(a)}
 apkSha=hashlib.sha256((root/'perf/catalogue-perf.apk').read_bytes()).hexdigest()
 summary={'screenCellDp':29.38775416782924,'gate':'REPORT_ONLY','apkSha256':apkSha,'specs':{}}

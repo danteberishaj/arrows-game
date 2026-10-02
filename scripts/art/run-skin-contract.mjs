@@ -4,7 +4,7 @@ const root=`${process.env.ART_SKINS_DIR??'artifacts/ART-SKINS-04'}/checks`;
 const data=JSON.parse(readFileSync(`${root}/contract-data.json`));
 const adb='/Users/gentlegen/Library/Android/sdk/platform-tools/adb';
 const modes=process.argv[2] ? [process.argv[2]] : ['before','after'];
-if(modes.some(mode=>!['before','after','optimization'].includes(mode))) throw new Error('mode must be before, after or optimization');
+if(modes.some(mode=>!['before','after','optimization','polish'].includes(mode))) throw new Error('mode must be before, after, optimization or polish');
 for(const mode of modes) {
   const results=[];
   const requested=process.argv[3];

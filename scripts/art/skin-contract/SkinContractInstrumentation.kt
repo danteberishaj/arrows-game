@@ -18,6 +18,9 @@ class SkinContractInstrumentation : Instrumentation() {
         result.putString("result",SkinOptimizationContract.check(data).toString())
         finish(0,result);return
       }
+      if(arguments.getString("mode")=="polish") {
+        result.putString("result",SkinPolishContract.check(data).toString()); finish(0,result); return
+      }
       val legacy=arguments.getString("mode")=="before"
       val level=data.getJSONObject("level"); val cells=SkinGeometry.parse(level.getString("cells"))
       val flat=level.getString("geometry").split(';').map { parseFlat(it) }
@@ -93,7 +96,8 @@ class SkinContractInstrumentation : Instrumentation() {
               check(!oldTail.isEmpty) { "ART04 negative control failed to expose large one-cell roll" }
               oldOneCellFailures++
             }
-            check(renderer.facePathsEmpty(art)) { "$id K8 one-cell face arrow=$i" }
+            if(spec.faceAnchor == "head" && spec.eyes) check(!renderer.facePathsEmpty(art)) { "$id missing allowed one-cell head face arrow=$i" }
+            else check(renderer.facePathsEmpty(art)) { "$id K8 tail-anchored one-cell face arrow=$i" }
             val dotLimit = Path().apply { addCircle(cells[i].x(0,40f),cells[i].y(0,40f),40f*(.13f+spec.tailRim),Path.Direction.CW) }
             val tailRemainder = region(art.tailDecoration,originX,originY)
             tailRemainder.op(region(dotLimit,originX,originY),Region.Op.DIFFERENCE)
@@ -162,7 +166,8 @@ class SkinContractInstrumentation : Instrumentation() {
             variant.getJSONObject("tail").put("oneCell",choice)
             val oneRenderer = SkinPaths(40f,SkinSpec(variant.toString()),true)
             val one = oneRenderer.build(SkinGeometry(direction,intArrayOf(0,0)),0,2)
-            check(oneRenderer.facePathsEmpty(one))
+            if(spec.faceAnchor == "head" && spec.eyes) check(!oneRenderer.facePathsEmpty(one))
+            else check(oneRenderer.facePathsEmpty(one))
             check(area(region(one.tailDecoration,0f,0f)) <= 12200L) // dot outer radius <= .155 cell, 400 samples/cell
             check(area(region(one.headDecoration,0f,0f)) > area(region(one.tailDecoration,0f,0f)))
             if(choice == "none") check(one.tailDecoration.isEmpty)
@@ -190,7 +195,8 @@ class SkinContractInstrumentation : Instrumentation() {
     val scale=dp*3.5f/40f
     val bitmap=Bitmap.createBitmap(kotlin.math.ceil(level.getInt("cols")*40*scale).toInt(),kotlin.math.ceil(level.getInt("rows")*40*scale).toInt(),Bitmap.Config.ARGB_8888)
     for(theme in listOf("light","dark")) for(id in ids+listOf("classic")) {
-      val canvas=Canvas(bitmap); canvas.drawColor(Color.parseColor(if(theme=="light") "#FFFFFF" else "#13111C")); canvas.scale(scale,scale)
+      val board=if(id=="classic") null else specs.getJSONObject(id).optJSONObject("board")
+      val canvas=Canvas(bitmap); canvas.drawColor(Color.parseColor(board?.getString(theme) ?: if(theme=="light") "#FFFFFF" else "#13111C")); canvas.scale(scale,scale)
       if(id=="classic") {
         val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.parseColor(if(theme=="light") "#191724" else "#EFEDF9"); strokeWidth=5.76f; strokeCap=Paint.Cap.ROUND; strokeJoin=Paint.Join.ROUND }
         for((shaft,head) in flat) { paint.style=Paint.Style.STROKE; canvas.drawPath(shaft,paint); paint.style=Paint.Style.FILL; canvas.drawPath(head,paint) }

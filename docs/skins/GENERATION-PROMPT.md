@@ -25,14 +25,20 @@ Keep these visual rules:
 - Every filled layer, including offset shadow/glow, fits the union of the arrow's own cells eroded .04 cell
   at the exterior. Tail caps are centred on the tail cell and the shaft starts there, with no rear stub.
 - Head tip ≤.46 cell past its centre; head decoration area exceeds tail decoration area. One-cell arrows
-  are head only: no tail, face or shaft decoration. Preserve Classic's original renderer.
+  have no tail or shaft decoration. A head-anchored face is allowed with .03-cell eye/mouth clearance;
+  a tail-anchored face is absent. Size faces with the optional eye/mouth/blush fields and move an upright
+  head face towards the broad base with `headOffset` when required. Prove all four directions and blocked
+  eyes without clipping. Optional `head.cornerRadius` must preserve clear direction and ownership.
+  Preserve Classic's original renderer.
 - Use filled joins with consistent path winding. Primary shaft accents are straight on straight runs,
   centred on the shaft/head axis, continuous through rounded bends and inset .03 cell inside the body.
   Keep the small contained head oval separate. An explicitly declared stitched seam may have real gaps;
   it is not a broken primary gloss line. No global up-left offset or wave displacement for gloss.
 - Opaque outline contrast ≥3:1 on both actual backgrounds; light body fills are allowed. Keep shared red
-  blocked feedback. An approved dark-preference exception must retain its honest failing light rows and
-  picker note. Do not fake contrast or weaken geometry checks.
+  blocked feedback. A declared light/dark preference must retain the other theme's honest failing rows
+  and picker note. Optional `board.light/dark` tints affect the Android play area only; audit required
+  outline, feedback and overlay text against the tint and retain decorative grid ratios under ruling R4.
+  Do not fake contrast or weaken geometry checks.
 - At most seven paint layers plus one missed-mark draw per strip; use the body as a band's outer colour
   rather than redrawing the same full-width band. Full detail at 29.39 dp must remain full detail.
 - Reuse current bounded interaction motion. No idle animation, new particle system, blur/displacement/
@@ -47,7 +53,7 @@ invalidation and pan/lifecycle behavior. Distinguish avoided work counts from me
 
 Verify every registered procedural spec, not just the new one: native fit against an independent Region
 oracle, draw bound at 10/100/250 arrows, head > tail, outline contrast, actual flat LOD, reduced motion,
-head-only one-cell, filled joins, accent connectivity/inset/axis. Use dense level index 3827 and campaign
+one-cell head with only a contained head-anchored face, filled joins, accent connectivity/inset/axis. Use dense level index 3827 and campaign
 levels 1–20. Compare any renderer optimization against frozen/audited geometry and exact software pixels
 in actual light/dark backgrounds at 29.39/38/below-flat dp, open/blocked eyes; assert non-background output
 for every pixel case. Positive pictures and empty paths must never silently pass. Run Jest and tsc.
@@ -66,8 +72,15 @@ a time for a causal optimization claim. Draw count or a low preparation timer ca
 Measure exit frames only with host load <4 and no other emulator; otherwise report UNVERIFIED with raw
 context, zero accepted frames and no percentiles. Quiet-host frames, physical-device behavior and owner
 review are separate gates. Do not claim “no performance drop” without their supporting evidence.
-Keep flag OFF behavior/save ownership unchanged, identical asset names, and exact native OFF pixels;
-small antialiasing differences are still a failed exact gate.
+Keep flag OFF behavior/save ownership unchanged, identical asset names, and exact native OFF pixels.
+Calibrate first by installing the base APK, capturing, reinstalling that same APK and capturing again.
+Only an identical base/base null control permits exact base/OFF judgment; otherwise retain both
+difference counts and report UNVERIFIED. Never introduce an antialiasing tolerance to manufacture a pass.
+Seed the real selected style/tint through the picker before timing. A menu-start capture APK may do
+that untimed setup, but every timed ON/OFF arm must use one identical PERF APK and selected board tint.
+Require visible expected spec-rim pixels in ON screenshots, not only a native first-draw log and
+tinted background; reject a blank capture. Native submission can precede visible presentation.
+This visual-presence check does not turn the native timer into a GPU-completion measurement.
 
 Use the repository's required Node version (currently v20.19.4), emulator-5556/fleet_floor_api31 only,
 test-ads/PERF builds, no commits/push/EAS, and restore any display/animation settings changed. Never touch

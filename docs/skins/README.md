@@ -1,7 +1,7 @@
 # How to add a skin
 
 
-> Status 2026-10-01: the catalogue and Arrow style picker are experimental, uncommitted and **default OFF**. The latest forward patch is `artifacts/ART-SKINS-07b/patches/skin-catalogue-code-on-a024ba6.patch` (ART07 catalogue plus the 07b colour fixes); apply it alone on a clean tree. See [ART-SKINS-07](../next-level/reports/ART-SKINS-07.md) for measured results and pending owner review, and [ART06's Controller review](../next-level/reports/ART-SKINS-06.md#controller-review-2026-10-01) for the reviewed picker/save rules.
+> Status 2026-10-02: the catalogue and Arrow style picker are experimental, uncommitted and **default OFF**. Latest runtime forward patch: `artifacts/ART-SKINS-08/patches/skin-code-on-a4fa166.patch`, on clean a4fa166. Its companion `learning-and-checks-on-a4fa166.patch` carries the durable docs and verification tools; do not stack ART07/07b first. See [ART-SKINS-08](../next-level/reports/ART-SKINS-08.md) for passing geometry/tests/OFF checks, all eight measured opening-budget failures and pending owner review, [ART07's Controller review](../next-level/reports/ART-SKINS-07.md#controller-review) for the inherited catalogue decisions, and [ART06's Controller review](../next-level/reports/ART-SKINS-06.md#controller-review-2026-10-01) for picker/save rules.
 
 
 Skins are experimental and default OFF. ART-SKINS-06 uses `EXPO_PUBLIC_META_SKIN_PICKER=1` on Android
@@ -22,10 +22,12 @@ Fractions are **cell units**, independent of camera scale:
 | --- | --- |
 | `palette` | `one`, `length`, `direction` (Up/Down/Left/Right), or `cycle` in immutable arrow order; colours are opaque hex |
 | `layers` | Ordered `shadow`, `rim`, `body`, `stripe`, `ribbon`, `bands`, `seam`, `shine`, `glow`, `spots`, `fold`, `headFill`, `tailFill`; see the catalogue feature table for options |
-| `head` | `tri`, `rounded`, `swept`, or `step`; halfWidth, tipPastCentre, back, and interior shine |
+| `head` | `tri`, `rounded`, `swept`, or `step`; halfWidth, tipPastCentre, back, interior shine; positive `cornerRadius` selects a triangular cap with true circular fillets. Use it with rounded/tri heads; retain 0 for swept/step contours. Default 0 preserves legacy paths. |
 | `tail` | `none`, `dot`, `roll+face`, `fletch`, `marble`; radius, rim thickness, and mandatory `oneCell: dot | none` |
 | `bends` | Rounded contour or crease |
-| `face` | Upright eyes, blush, closed-on-blocked; shared geometry with ink/blush colours |
+| `face` | Upright eyes, blush, closed-on-blocked; optional eyeRadius/eyeHalfGap/mouthWidth/blushSize/blushOffset; `headOffset` translates the upright face along the arrow direction (negative moves towards the broad base). Omitted fields preserve legacy geometry. |
+| `beads` | Optional diameter (including rim), pitch and body tubeWidth; cell-centre/boundary beads retain a connected spine |
+| `board` | Optional light/dark play-area colours; Android picker gate only; header/menu/panels retain their theme backgrounds |
 | `lod` | Actual displayed-cell boundaries: flatMinDp, detailMinDp, faceMinDp, in ascending order |
 | `motion` | pressScale, anticipationMs; particles count/size/colours/lifeMs; no idle clock |
 
@@ -50,16 +52,32 @@ decorative paths or templates. First draw still has a cost: report construction 
 
 ## Contract: adding a spec means passing K1–K8 and the join/alignment regressions
 
+ART08 adds optional sized faces, circular head fillets, bead dimensions and play-area tints. Run the
+ordinary contract **and** `run-skin-contract.mjs polish` with `ART_SKINS_DIR=artifacts/ART-SKINS-08` on the
+diagnostic test APK. The latter independently erodes the filled head/roll by .03 cell, checks open and
+blocked eyes plus mouth, and compares the nine unchanged specs with frozen starting paths. Default
+fields must retain existing output; a new field needs a deliberately broken fixture. Never clip an
+enlarged face to conceal a clearance failure. The eight launch specs use .48 rim / .425 fill, .10
+head fillets and .44 head half-width; head faces use `headOffset: -.12` to remain upright inside all
+four directional caps. Owner look review is separate from these geometric checks.
+
+`board` changes only the Android play area after the picker gate resolves a selection. Theme, style
+changes and restart use the same registry data; Classic, OFF, iOS, header and panels retain their theme
+colours. K4 and feedback/overlay text rows audit the actual tint. Grid dots keep the existing R4
+decorative-texture exemption: retain their composited raw ratios, but do not invent a new contrast gate
+or describe a below-3:1 decorative dot as passing 3:1. An intentionally outline-coloured tint must fail
+K4. See [ART08](../next-level/reports/ART-SKINS-08.md) for status, captures and measurement limits.
+
 | Gate | Required evidence | Lesson |
 | --- | --- | --- |
 | K1 | Native `Region DIFFERENCE` empty for every filled layer of every arrow on v1 indices 0–19 and 3827; independent ownership oracle. Frozen ART03 Cinnamon must fail. | Tail endpoints are not tail cells; an isolated fixture missed collisions. |
 | K2 | Actual Canvas draws ≤8 per strip, including a mark, at 10/100/250 arrows. | Per-cell art multiplies draw work and creates seams. |
 | K3 | Head cap area > tail cap area at full detail (owner/controller ruling 2026-10-01: this is the whole rule; long accents such as icing are not compared). | A large roll can steal the directional hierarchy. |
-| K4 | The arrow **outline** (rim, or body where there is no rim) ≥3:1 on both backgrounds (ART07 look-check exception: an explicit dark preference may retain genuine non-gating light failures with a picker note); blocked colour from the shared `heart` token. Body fill is free (ruling 2026-10-01). | Requiring the fill to contrast darkened Cinnamon to chocolate brown in ART-SKINS-04; the outline carries legibility. |
+| K4 | The arrow **outline** (rim, or body where there is no rim) ≥3:1 on both actual, possibly tinted backgrounds. An explicit light/dark preference may retain genuine non-gating failures in the other theme with an honest picker note; the preferred theme and thumbnail remain gated. Blocked colour is the shared `heart` token. Body fill is free (ruling 2026-10-01). | Requiring the fill to contrast darkened Cinnamon to chocolate brown in ART-SKINS-04; the outline carries legibility. |
 | K5 | Flat tier exists and is selected below the spec's actual-display flatMinDp. | A dense flat capture does not certify full-detail cost. |
 | K6 | Reduced-motion press scale=1, emit produces zero particles, hint pixels do not breathe; exit anticipation guard uses the event's reduced-motion flag. | Motion policy applies to every interaction, with no idle invalidations. |
-| K7 | ART07 measures this rule **report-only**, without clearing the earlier ship budget. ≥12 shuffled OFF/ON pairs per spec at 29.387754 dp, dense index 3827, all META flags: preparation + strip recording + full first draw ≤ flat +16 ms for both median and max. Include native renderer construction, every initial native prop setter (including grid/config/strip partitioning), and Canvas command recording. Selection/cell/base parse timers are nested breakdowns of prop setup, not additional costs. Sum each run first, then compute median/max; phase maxima do not add. | Moving work outside a timer does not make opening fast. |
-| K8 | Every registered one-cell arrow is head only, with no face or tail (`tail.oneCell: none`). The generic diagnostic dot is capped at .13 cell and tested separately. Check all four directions and both choices. Frozen ART04 Cinnamon must fail the size rule. | A roll and head in the same cell hid direction. |
+| K7 | ART07/08 measure this rule **report-only**, without clearing the earlier ship budget. ≥12 shuffled OFF/ON pairs per spec at 29.387754 dp, dense index 3827, all META flags: preparation + strip recording + full first draw ≤ flat +16 ms for both median and max. Include native renderer construction, every initial native prop setter (including grid/config/strip partitioning), and Canvas command recording. Selection/cell/base parse timers are nested breakdowns of prop setup, not additional costs. Sum each run first, then compute median/max; phase maxima do not add. | Moving work outside a timer does not make opening fast. |
+| K8 | OWNER RULING 2026-10-02: registered one-cell arrows draw no tail/roll/dot. A `face.anchor: head` spec may draw its contained head face; tail-anchored faces remain absent. Check all four directions, open/blocked eyes and ≥.03-cell eye/mouth clearance. The generic diagnostic dot stays capped at .13 cell. Frozen ART04 Cinnamon's oversized roll must still fail. | Tail rolls hid direction; a contained head face can now give the head character. |
 
 Use Node **v20.19.4**, only **emulator-5556 / fleet_floor_api31**, and test-ads/PERF builds with all `META_*`
 flags enabled. `scripts/art/skin-build-flags.json` pins the owner-confirmed test configuration; the helpers
@@ -67,6 +85,18 @@ create the output directories, without relying on ignored ART03 files. No EAS/co
 for exit-frame measurements; otherwise record raw host evidence and report UNVERIFIED.
 
 **Historical ART04/05 procedure (requires that restored build-selection source):** set `ART_SKINS_DIR=artifacts/ART-SKINS-05` for all helpers in that iteration (directory defaults still name ART04; use this environment setting for new runs).
+
+For the **current runtime picker**, use the catalogue helpers instead: set the latest task's
+`ART_SKINS_DIR`, run `skin-contract-data.cjs`, then `build-skin-catalogue.py contract`. This runner
+temporarily injects the diagnostic classes/manifest and a local optimized `skinTest` variant and restores
+them afterwards. Install only on 5556, run `run-skin-contract.mjs after`, `before` and `polish`, then
+`summarize-skin-catalogue-contract.py`. Build `perf`, `on`, `off` and `phone` separately; `phone` enables
+ordinary test-ads/save/theme behavior, while PERF isolates progress/network and persists only the skin.
+`measure-skin-catalogue-batches.py` selects through the actual picker before twelve shuffled pairs per
+style, and `analyze-skin-catalogue.py` preserves counts and nested timer boundaries. Optional
+`ART_SKINS_SPEC_IDS` limits a task's measurement set, never its all-spec geometry matrix. For ART08,
+`check-skin-polish-off.py` calibrates the same-APK null control before judging OFF exactly, and
+`contact-skin-polish.py` pairs previous/current captures. The older six steps below are historical only.
 
 1. Generate real core fixtures and contrast rows: `node scripts/art/skin-contract-data.cjs`.
 2. For a diagnostic APK only, copy `scripts/art/skin-contract/{Art03Paths,Art04Paths,ConcatenatedHeadPaths,SkinContractInstrumentation}.kt` to
@@ -110,11 +140,14 @@ A safe main highlight layer to adapt is:
 
 Place an optional decorative stripe beside the main highlight with `sideOffset`, bounded by the body's inset width. Keep the tail on its cell centre and select `tail.oneCell: 'none'` as the default. Every new registry entry automatically runs the TS highlight defaults, native filled-join/connected-accent/straight-run-axis checks, and K1–K8. The shifted-shine negative control must fail the axis check; fitting inside a cell and being individually straight are insufficient. Review the real viewport too.
 
-## One-cell arrows (rule added 2026-10-01)
+## One-cell arrows (owner ruling updated 2026-10-02)
 
-A one-cell arrow has room for its head only. Skins must not draw a tail roll/face in the same cell as the
-head; set the mandatory `tail.oneCell` to `dot` or `none`. The native dot radius is capped at 0.13 cell; both delivered specs select `none`. This rule also applies to exit art, through its original one-cell identity. In ART-SKINS-04 a head + roll + face squeezed into one cell read
-as a brown blob with eyes and hid the direction.
+A registered one-cell arrow has its directional head and may have a contained head-anchored face
+(Critter/Campfire). It never has a tail cap, roll or dot; use `tail.oneCell: none`. Tail-anchored Cinnamon
+and Strawberry faces stay absent on one-cell arrows. This supersedes the previous blanket no-face rule,
+not the tail prohibition. Test eyes/mouth with .03-cell clearance and retain blocked closed eyes. The
+generic dot is diagnostic-only, capped at .13 cell. The rule follows one-cell identity through exits.
+Frozen ART04's roll/head blob must continue failing the contract.
 
 
 ## Runtime selection and save safety (ART-SKINS-06)
@@ -178,7 +211,7 @@ The catalogue now appends Ink Pro **3**, Candy Gloss **4**, Jelly **5**, Critter
 Paper Craft **8**, Archery **9**, Pixel **10**, Neon Glass **11**, Rainbow Ribbon **12**, Clear Glass **13**,
 Stained Glass **14**, Campfire **15**, Lava Rock **16**, Strawberry Glazed **17**. Classic/Cinnamon/Sherbet
 remain 0/1/2. These are permanent save identities, not array indices. Every registered spec sets
-`tail.oneCell: 'none'`: a one-cell arrow is **head only**, with no face. The generic dot capability remains
+`tail.oneCell: 'none'`: a one-cell arrow has **no tail**, with head faces permitted by the current K8. The generic dot capability remains
 available to diagnostics; it is not a registered one-cell look.
 
 All widths/offsets/dashes below are cell fractions. Optional fields retain the ART06 defaults, so adding
@@ -200,8 +233,9 @@ idle clock, blur, displacement, turbulence, bitmap texture or new particle syste
 | `fold` | Fill one half of the head (`fillHalf: false` draws a lead seam instead) and mark actual cell-centre bends with a short crease. Keep primary gloss above the fold and continuous. | Paper Craft, Stained Glass |
 | `tail.kind: fletch` | A two-sided feather polygon oriented by the first shaft tangent, centred on the tail cell; rim radius remains bounded. | Archery |
 | `tail.kind: marble` | A centred coloured circle and small contained shine, sharing the existing shine paint. | Clear Glass |
-| `face.anchor: head` | Upright face inside the filled cap, clipped to it; no face on a one-cell arrow, regardless of anchor. | Critter, Campfire |
+| `face.anchor: head` | Upright face inside the filled cap, including one-cell heads. New sized faces must fit without clipping and leave .03 cell eye/mouth clearance in all four directions, open and blocked. Legacy un-sized faces retain their original clipping. | Critter, Campfire |
 | `preferredTheme: dark` | Honest K4 exception: preserve raw failing light rows, require dark outline ≥3:1, and show “Best in dark mode” in Settings. Blocked red still passes both themes. | Neon Glass, Lava Rock |
+| `preferredTheme: light` | Only dark outline rows are non-gating; retain their actual ratios and show “Best in light mode”. The picker thumbnail keeps its own contrast requirement. | Ink Pro |
 
 The picker scrolls without reducing its 60 dp radio targets. Back stays outside the scrolling list.
 Dark-preference preview boundaries use the current palette's ink on the sheet; this is a readable selection
@@ -262,6 +296,18 @@ saved choice, runs twelve shuffled OFF/ON pairs, checks the display/system_serve
 incomplete attempts. Never start it while a build/test workload is running. Other sessions' emulators
 remain untouched; their presence means exits are UNVERIFIED even if a load sample is below four.
 
+For ART08, seed the selected preference through the real picker in the menu-start capture APK,
+then install the PERF APK without uninstalling. Both timed arms use that same PERF APK and the
+selected skin's board tint; the OFF arm overrides only the native renderer. The separate flag-unset
+control verifies the original untinted app. When global-idle dumps fail, set
+`ART_SKINS_LIVE_HIERARCHY=1`: a shell-only reader observes fresh roots after connection readiness,
+and rejects stale/missing XML. It does not disable motion or enter the APK. Incomplete native openings
+are quarantined; camera readiness alone is insufficient. Extended waits never discard slow timer
+samples. Setup/readiness failures are evidence, not accepted opening pairs.
+Require the actual Settings control before menu input: a non-null root may still be an empty RN
+loading container. Save those fresh snapshots and retry within a bound; do not recycle old XML or
+keep rebooting solely because a fixed startup delay expired.
+
 ## Generate from measured recipes
 
 Use [performance recipes](performance-recipes.md) for the per-style evidence and
@@ -282,3 +328,15 @@ fixture was blank and its equivalence claim was discarded; see the corrected evi
 Final exact native OFF/base comparison **fails** (316 antialiased pixels, max channel delta 5), despite
 identical 15 assets/no picker/retained saved choice. The cause is unproven. Do not weaken exact equality,
 reuse the earlier ART06 pass as this build’s result, or turn contract success into a ship decision.
+
+
+Latest ART08 timing: all eight polished specs have 12 shuffled pairs at 29.387754 dp (192 opens /
+96 pairs). The historical +16 ms budget fails for each; exits and phone neutrality are UNVERIFIED.
+Run `summarize-skin-polish-performance.py` after the eight-style analyzer, then
+`check-skin-polish-timing-config.py` to verify the actual selected tint in both native ON/OFF
+screenshots. The JSON/CSV/readable tables keep work counts, nested phases, every outlier and source
+hashes. Consult the recipes' per-style hypothesis before another optimization or generated spec;
+there is no evidence-backed category of styles that can never be optimized.
+The ON capture must also contain its expected opaque rim, not just its tint: a native draw log can
+precede visible presentation. The checker rejects the retained blank capture; all eight real ON
+screenshots pass. This is visual presence evidence, not a GPU-completion timer.

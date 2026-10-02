@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Join the independent native results and honest outline contrast rows per registry entry."""
+import os
 import json,pathlib,copy
-root=pathlib.Path(__file__).resolve().parents[2]/'artifacts/ART-SKINS-07'
+root=pathlib.Path(__file__).resolve().parents[2]/os.environ.get('ART_SKINS_DIR','artifacts/ART-SKINS-07')
 checks=root/'checks';data=json.loads((checks/'contract-data.json').read_text())
 after=json.loads((checks/'native-after.json').read_text());before=json.loads((checks/'native-before.json').read_text())
 contrast=json.loads((checks/'contrast.json').read_text());assert len(after)==len(before)==21
@@ -33,10 +34,10 @@ for id,spec in data['specs'].items():
       'oneCellChecks':sum(r['oneCellChecks'] for r in rows),'alignedShaftChecks':sum(r['alignedShaftChecks'] for r in rows),
       'featureNegativeControls':sum(r['featureNegativeControls'] for r in rows),
       'maxDrawsIncludingMark':max(d['drawsWithMark'] for r in rows for d in r['draws']),
-      'K1':'PASS','K2':'PASS','K3':'PASS','K4':'PASS (declared dark preference)' if spec.get('preferredTheme') else 'PASS',
+      'K1':'PASS','K2':'PASS','K3':'PASS','K4':f"PASS (declared {spec['preferredTheme']} preference)" if spec.get('preferredTheme') else 'PASS',
       'K5':'PASS','K6':'PASS','K7':'REPORT_ONLY','K8':'PASS','joinsAndAccents':'PASS',
       'outlineRatios':{theme:min(r['ratio'] for r in outlines if r['palette']==theme) for theme in ['Daylight','Ink Night']},
-      'nonGatingLightFailures':[{'colour':r['fg'],'ratio':r['ratio'],'pass':r['pass'],'required':r['required']} for r in outlines if not r['pass']]}
+      'nonGatingOutlineFailures':[{'palette':r['palette'],'preferredTheme':spec.get('preferredTheme'),'colour':r['fg'],'ratio':r['ratio'],'pass':r['pass'],'required':r['required']} for r in outlines if not r['pass']]}
     result['specs'][id]=value
 result['oneCellChecks']=sum(r['oneCellChecks'] for r in result['specs'].values())
 result['featureNegativeControls']=sum(r['featureNegativeControls'] for r in result['specs'].values())

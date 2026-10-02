@@ -1,11 +1,72 @@
 # Skin performance evidence and reusable recipes
 
 Read this with [the skin contract](README.md), [engineering lessons](../engineering-lessons.md), and
-[ART-SKINS-07](../next-level/reports/ART-SKINS-07.md). Use [the generation prompt](GENERATION-PROMPT.md)
+[ART-SKINS-08](../next-level/reports/ART-SKINS-08.md) (latest launch polish) and
+[ART-SKINS-07](../next-level/reports/ART-SKINS-07.md) (historical catalogue timing). Use [the generation prompt](GENERATION-PROMPT.md)
 for the next art task. This record distinguishes proven output-preserving work removal, measured costs,
 and questions that still need an experiment.
 
 ## What is established
+
+The ART07 measurements below describe the older art. ART08 enlarges eight launch specs, adds circular
+head fillets, .03-clearance upright faces, connected bead dimensions and board tints. Do not transfer an
+ART07 timing PASS to that changed output. ART08's independent matrix passes 285,930 layer-path slots (including expected-empty paths) and 7,574
+face-arrow cases, each checking open/blocked eye and mouth clearance, including 898 one-cell head faces. Nine outside-polish specs retain 133,434
+path arrays, except the three permitted fold slots. This verifies geometry, not performance neutrality.
+The real phone recording confirms blocked eyes and style/theme restart; it is not a frame sample.
+
+Actual ART08 dense runtime counters are saved in
+[polish-summary.json](../../artifacts/ART-SKINS-08/checks/polish-summary.json): 57 relative templates,
+zero diagnostic-only paths, Cinnamon/Strawberry one static face + one spiral each; Critter/Campfire
+**57** head-face builds (including the newly allowed one-cell heads); Rainbow 20 nested heads and
+Campfire 16. Directional head-face reuse remains an unverified candidate. It must preserve upright
+faces, open/blocked states and clearance in all four directions, rather than just preserving clipping.
+
+Critter's new .5-cell bead pitch produces 1,202 rim/body circle additions across the dense templates,
+versus 2,298 with the old .25 pitch. A .30 body tube retains a ≥.28 connected spine; a disconnected
+fixture is rejected independently. This is changed art with fewer construction operations, **not** a
+look-preserving cache optimization or a measured speed percentage. Counts and method are in
+[bead-work-counts.json](../../artifacts/ART-SKINS-08/checks/bead-work-counts.json).
+
+### Current ART08 opening evidence
+
+Use [the current joined data](../../artifacts/ART-SKINS-08/perf/style-evidence.json),
+[CSV](../../artifacts/ART-SKINS-08/perf/style-evidence.csv),
+[readable work/remainder/experiment tables](../../artifacts/ART-SKINS-08/perf/style-evidence.md),
+[complete opening table](../../artifacts/ART-SKINS-08/perf/opening-table.md) and
+[nested setup table](../../artifacts/ART-SKINS-08/perf/setup-table.md). Only complete 12-pair batches belong in these files;
+ART08 now has all eight styles complete: 192 opens / 96 shuffled pairs. Every accepted
+row requires 12 native ON / 12 Classic OFF opens, same PERF APK, selected board tint and 29.387754 dp.
+Regenerate with `ART_SKINS_DIR=artifacts/ART-SKINS-08` and the eight-id `ART_SKINS_SPEC_IDS` filter for
+`analyze-skin-catalogue.py`, then `summarize-skin-polish-performance.py`. Missing styles must remain
+pending, never inherit ART07 numbers.
+
+All eight ART08 styles miss the earlier +16 ms aggregate budget at 29.387754 dp (12 ON/12 OFF each), with accepted host loads 8.60–25.38 and another emulator. Cinnamon’s largest
+measured phase is lazy geometry/merge. Zero-amplitude ribbon sampling/fade construction versus
+translated merging is a specific next experiment, **not an isolated cause**. Keep exact pixels,
+centreline and fit while changing one mechanism. Critter/Campfire's new head faces are built 57 times;
+directional head-face reuse is a separate candidate requiring open/blocked and upright clearance
+proof. No ART08 style is established as intrinsically unoptimizable, and no exit/phone neutrality
+claim is cleared by these loaded-host opening timers.
+
+Use elapsed time for the acceptance headline. A future narrow native experiment may additionally
+record thread CPU time beside elapsed time to distinguish active construction from scheduling/GC
+waits; it must not replace elapsed costs or turn a loaded-host failure into a pass. ART08 currently
+has no such CPU-time counter, so long intervals are not proof of expensive geometry alone.
+
+All eight timing ON screenshots also pass the expected opaque-rim pixel check, independently of
+the tint check. The final ordinary-build restoration briefly captured only tint after native draw
+completion; that retained blank is rejected. Native submission and visible presentation are separate
+observations, so these timers are not GPU completion or phone smoothness metrics.
+
+For future art, classify evidence precisely: **supported reusable recipe** (geometry and avoided work
+verified), **budget not met in this run** (retain totals/context), **unsupported capability** (a general
+renderer extension and controls are needed), or **unverified hypothesis** (one isolated experiment).
+There is currently no evidence-backed “cannot ever be optimized” style category. A blur/displacement
+request violates this renderer's current vocabulary; an eight-draw style missing a noisy opening
+budget is a different result. The generation prompt carries this distinction forward.
+
+### Historical ART07 timing
 
 All 17 procedural styles have raw opening data: **12 ON / 12 Classic OFF opens each**, shuffled in pairs,
 at **29.387754 dp**, dense level index 3827, all 17 original META flags plus the picker, one final test-ads
@@ -62,7 +123,7 @@ experiment for every style and explicitly labels each as unverified.
 | Simple tube/cap — Ink Pro, Sherbet, Candy Gloss | Existing tube, head and optional tail templates; no new renderer branch. Ink Pro has the strongest opening evidence here. | Measure translated strip merging versus base/prop setup under quiet conditions. Sherbet's five draws do not guarantee its budget. |
 | Straight stitched/accented — Yarn, Jelly, Strawberry | One centreline, clipped periodic decoration; Cinnamon/Strawberry static roll caches. | Isolate stitches/spots/ribbon construction before assigning a cost to those features. Yarn's median is cheap, but its maximum missed the aggregate budget. |
 | Nested colours — Rainbow, Campfire | Cached directional nested heads, body used as outer band colour. Rainbow has eight draws and met the aggregate budget. | Separate remaining band merging/submission; Campfire also has head faces, so its extra cost cannot be assigned to bands alone. |
-| Head faces / beads — Critter, Campfire | Body templates, existing bounded face and clipping rules. | Head faces still build 53 times in the dense fixture: test directional reuse including clipped eyes/blush/blocked state. This is a candidate, not a verified optimization. |
+| Head faces / beads — Critter, Campfire | Body templates and bounded upright faces. | ART07 builds 53 head faces; ART08 builds 57 including one-cell heads. Test directional reuse with exact open/blocked output and .03 clearance, without clipping new sized faces. This is a candidate, not a verified optimization. |
 | Folds / hard shapes — Paper Craft, Stained Glass, Pixel, Archery | Shared filled caps and bounded crease/fletching vocabulary. | Separate direction-only fold caps from path-specific bends. Pixel's aggregate PASS includes a high Classic maximum; paired overhead exposes that limitation. |
 | Glow / translucent glass — Neon, Lava, Clear Glass | Filled translucent under-stroke, contained marble/shine, no blur filter. | Quiet-device GPU overdraw is unmeasured. Keep honest preferred-dark contrast exceptions for Neon/Lava. |
 
@@ -81,8 +142,9 @@ experiment for every style and explicitly labels each as unverified.
 ## How to decide the next experiment
 
 Start from the desired look and a known spec, then state one measurable mechanism and an invariant.
-For example: “cache head faces per direction; reduce dense face construction from 53 to at most four;
-preserve clipped open/closed-eye output exactly.” Run the negative control, fit/joins/one-cell/alignment
+For example: “cache head faces per direction; reduce ART08 dense face construction from 57 to at most four;
+preserve upright open/closed-eye output and .03-cell clearance exactly, without clipping.” Preserve
+legacy un-sized clipped output separately if changing shared machinery. Run the negative control, fit/joins/one-cell/alignment
 matrix, nonempty LOD equivalence and reduced-motion checks before timing. Compare old/new mechanisms
 under the same quiet conditions, and Classic/skin under the same APK with shuffled pairs. Preserve
 outliers, source/APK hashes, full timer boundaries, actual cells and host/device state.

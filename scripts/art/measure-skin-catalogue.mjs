@@ -30,10 +30,12 @@ for(let pair=0;pair<count;pair++) for(const enabled of pairs[pair]) {
   const i=data.runs.length,before=host(); adb('shell','input','keyevent','224'); adb('shell','am','force-stop',app); adb('logcat','-c');
   adb('shell','am','start','-W','-n',`${app}/.MainActivity`,'--ez','artSkinProcedural',String(enabled),'-e','artSkinSpec', "'" + JSON.stringify(catalogue[spec]).replaceAll("'", "'\\''") + "'"); await wait(1000);
   let logs='';
-  for(let attempt=0;attempt<34;attempt++) {
+  // Wait for the complete native opening, rather than accepting a camera-only mount.
+  // Contended cold starts can exceed the old 17 s poll window; no timer is shortened.
+  for(let attempt=0;attempt<240;attempt++) {
     logs=adb('logcat','-d','-s','ArtSkinPropPrep:I','ArtSkinSelection:I','ArtSkinCells:I','ArtSkinBaseGeometry:I','ArtSkinPrep:I','ArtSkinLazy:I','ArtSkinDraws:I','ArtSkinPerf:I','ArtSkinFirstDraw:I','ReactNativeJS:I','AndroidRuntime:E');
     if(logs.includes('unitSet=real')) { writeFileSync(`${root}/perf/${spec}-${i}-open.log`,logs); throw new Error('Rejected non-test/PERF configuration'); }
-    if(logs.includes('[board-camera]') && logs.includes('ArtSkinFirstDraw') && (!enabled || logs.includes('ArtSkinDraws'))) break;
+    if(logs.includes('[board-camera]') && logs.includes('ArtSkinPropPrep') && logs.includes('ArtSkinFirstDraw') && (!enabled || logs.includes('ArtSkinDraws'))) break;
     await wait(500);
   }
   await wait(500);
@@ -73,5 +75,10 @@ for(let pair=0;pair<count;pair++) for(const enabled of pairs[pair]) {
   run.after=host(); data.runs.push(run);writeFileSync(`${root}/perf/${spec}-raw.json`,JSON.stringify(data,null,2)+'\n');
   console.log(JSON.stringify({spec,i,pair,enabled,screenCell,preparationMs:run.preparationMs,firstDrawMs:run.firstDrawMs,load:run.after.load,exitStatus:run.exitStatus}));
 }
+// Drain guest filesystem buffers only after the complete timed batch, before
+// the wrapper stops this owned emulator. This never changes a save value.
+adb('shell','sync');
+data.guestSyncAfterBatch=true;
+writeFileSync(`${root}/perf/${spec}-raw.json`,JSON.stringify(data,null,2)+'\n');
 
 }
