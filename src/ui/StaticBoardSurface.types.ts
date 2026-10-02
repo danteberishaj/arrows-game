@@ -5,6 +5,8 @@ import type { NativeExitAnimation } from './nativeExitAnimation';
 
 export interface AnimatedArrowArt {
   id: number;
+  /** Present only for the Android procedural interaction renderer. */
+  nativeIndex?: number;
   shaftD: string;
   headD: string;
 }
@@ -45,6 +47,7 @@ export interface StaticBoardSurfaceProps {
   headD: string;
   /** Immutable per-level geometry consumed only by the native board view. */
   nativeGeometry: string;
+  skinGeometry?: string;
   /** One character per initial arrow: `1` draws it and `0` hides it. */
   nativeVisibilityMask: string;
   background: string;
@@ -52,6 +55,8 @@ export interface StaticBoardSurfaceProps {
   accent: string;
   heart: string;
   cellSize: number;
+  /** Opening camera scale, known before the procedural native view is mounted. */
+  initialCameraScale?: number;
   strokeWidth: number;
   shaking: BumpingArrowArt | null;
   /** The arrow in a blocked arrow's lane, flashing in the fail colour. */

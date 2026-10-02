@@ -30,6 +30,8 @@
  *     1.31, Ink Night 1.52 / 1.27. Its "#" toggle is a HeaderButton, already covered by the
  *     `header-glyph*` and `header-button-hairline*` rows.
  */
+import { SKIN_SPECS, type SkinSpec } from './skinSpecs';
+import { skinBoardPalette } from './skinBoardPalette';
 import { SETTINGS_SCRIM_OPACITY } from './settingsRows';
 import { Daylight, InkNight, Palette } from './theme';
 
@@ -40,6 +42,7 @@ export type Weight = 'regular' | 'semibold' | 'bold';
 export interface Usage {
   id: string;
   fgRole: Role;
+  fgColour?: string;
   /** Foreground opacity, composited over the background before measuring. Default 1. */
   fgAlpha?: number;
   /** The colour `fgAlpha` composites over, when it is not the background (default `bgRole`). */
@@ -255,47 +258,47 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:192` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
-  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1014`, sizeSite: `${GS}:1455` },
-  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1007`, sizeSite: `${GS}:1463` },
-  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:869`, sizeSite: `${GS}:1467` },
-  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:868`, sizeSite: `${GS}:1467` },
-  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:867`, sizeSite: `${GS}:1467` },
-  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1318` },
-  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1323`, note: 'outline stroke, no fill' },
+  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1020`, sizeSite: `${GS}:1461` },
+  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1013`, sizeSite: `${GS}:1469` },
+  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:875`, sizeSite: `${GS}:1473` },
+  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:874`, sizeSite: `${GS}:1473` },
+  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:873`, sizeSite: `${GS}:1473` },
+  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1324` },
+  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1329`, note: 'outline stroke, no fill' },
 
   // Win / lose panel (on `surface`)
-  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:882`, sizeSite: `${GS}:1513` },
-  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:882`, sizeSite: `${GS}:1513` },
-  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1400` },
-  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1400` },
-  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1400`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1400`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:894`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
-  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:905`, sizeSite: `${GS}:1532` },
-  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:944`, sizeSite: `${GS}:1546` },
-  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:944`, sizeSite: `${GS}:1546` },
-  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:944`, sizeSite: `${GS}:1546`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:665)' },
-  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:938`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
-  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:938`, note: 'W5-02 heart icon on the pressed fill' },
-  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:938`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
-  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:964`, sizeSite: `${GS}:1546`, note: 'also the daily "Done" label (W4-06)' },
-  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:964`, sizeSite: `${GS}:1546` },
-  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:964`, sizeSite: `${GS}:1546` },
-  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:957` },
-  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1110` },
-  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:972`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
-  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:979`, sizeSite: `${GS}:1549` },
+  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:888`, sizeSite: `${GS}:1519` },
+  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:888`, sizeSite: `${GS}:1519` },
+  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1406` },
+  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1406` },
+  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1406`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1406`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:900`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
+  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:911`, sizeSite: `${GS}:1538` },
+  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:950`, sizeSite: `${GS}:1552` },
+  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:950`, sizeSite: `${GS}:1552` },
+  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:950`, sizeSite: `${GS}:1552`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:665)' },
+  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:944`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
+  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:944`, note: 'W5-02 heart icon on the pressed fill' },
+  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:944`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
+  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:970`, sizeSite: `${GS}:1552`, note: 'also the daily "Done" label (W4-06)' },
+  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:970`, sizeSite: `${GS}:1552` },
+  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:970`, sizeSite: `${GS}:1552` },
+  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:963` },
+  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1116` },
+  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:978`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
+  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:985`, sizeSite: `${GS}:1555` },
 
   // W5-05 (ART_PANEL_DEPTH_ENABLED): the panel's EDGE against its composited scrim, gated at 3:1 (WCAG 2.1
   // SC 1.4.11's non-text threshold, applied by analogy to a panel edge). Fill = `surfaceRaised`, scrim =
   // `scrimWon` / `scrimLost` composited over `bg` exactly as rendered (the board under the scrim is not modelled).
   // Per edge: via 'fill' (the fill against the scrim) OR via 'hairline' (`border` against the scrim AND the fill).
-  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:860`, edge: { id: 'panel-edge-won', via: 'fill' } },
-  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1110`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1110`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:860`, edge: { id: 'panel-edge-lost', via: 'fill' } },
-  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1110`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
-  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1110`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:866`, edge: { id: 'panel-edge-won', via: 'fill' } },
+  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1116`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1116`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:866`, edge: { id: 'panel-edge-lost', via: 'fill' } },
+  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1116`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1116`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
 
   // Shape gallery (W4-09, META_GALLERY), on `bg`. Filled versus outlined carries
   // collected versus not, so the colours only have to be legible (PRODUCT.md:63).
@@ -307,20 +310,24 @@ export const USAGES: ReadonlyArray<Usage> = [
   // Settings sheet (W7-04, META_SETTINGS_SHEET): a `surface` panel with a `border` hairline over a `bg` scrim at
   // SETTINGS_SCRIM_OPACITY over the menu, rows split by `border` dividers. The menu's Settings button is a HeaderButton
   // (the `header-glyph*` / `header-icon*` rows above: its ⚙︎ text glyph, or W5-02's gear icon).
-  { id: 'settings-title', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${SS}:127`, sizeSite: `${SS}:173`, note: '"Settings"' },
-  { id: 'settings-row-label', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: `${SS}:143`, sizeSite: `${SS}:188`, note: '"Privacy policy", "Ad privacy choices", "Support"' },
-  { id: 'settings-support-address', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:145`, sizeSite: `${SS}:192`, note: "the support row's address line" },
-  { id: 'settings-version', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:150`, sizeSite: `${SS}:203`, note: '"Version 1.0.0" (information, not a button)' },
-  { id: 'settings-panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:125` },
-  { id: 'settings-row-divider', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:140`, note: "the rows' top dividers (also the version row's, SettingsSheet.tsx:149)" },
-  { id: 'settings-panel-hairline-on-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.bg), kind: 'boundary', site: `${SS}:125`, note: 'the panel edge against the scrim over the menu background (= bg)' },
-  { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:125`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
-  { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:125`, note: "the scrim over the Play pill's `accent` fill" },
+  { id: 'settings-title', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${SS}:134`, sizeSite: `${SS}:192`, note: '"Settings"' },
+  { id: 'settings-row-label', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: `${SS}:161`, sizeSite: `${SS}:207`, note: '"Privacy policy", "Ad privacy choices", "Support"' },
+  { id: 'settings-support-address', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:163`, sizeSite: `${SS}:222`, note: "the support row's address line" },
+  { id: 'settings-version', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${SS}:168`, sizeSite: `${SS}:222`, note: '"Version 1.0.0" (information, not a button)' },
+  { id: 'settings-panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:132` },
+  { id: 'settings-row-divider', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${SS}:158`, note: "the rows' top dividers (also the version row's, SettingsSheet.tsx:149)" },
+  { id: 'settings-panel-hairline-on-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.bg), kind: 'boundary', site: `${SS}:132`, note: 'the panel edge against the scrim over the menu background (= bg)' },
+  { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:132`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
+  { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:132`, note: "the scrim over the Play pill's `accent` fill" },
+
+  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:79', sizeSite: 'src/ui/ArrowStyleOptions.tsx:95' },
+  { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:80', sizeSite: 'src/ui/ArrowStyleOptions.tsx:94' },
+  { id: 'skin-picker-check', fgRole: 'ink', bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx:82' },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
-  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1096' },
-  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1097' },
-  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1098' },
+  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1115' },
+  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1116' },
+  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1117' },
   { id: 'arrow-missed-mark', fgRole: 'heart', fgAlpha: 0.75, fgOver: darkerOfInkBg, bgRole: 'bg', kind: 'graphic', site: 'src/ui/missedMarks.ts:22', note: 'META_MISSED_MARK (R6): an arrow whose blocked tap cost a heart, for the rest of the level' },
   { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:161' },
   { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:171' },
@@ -339,7 +346,7 @@ export interface AuditRow {
 export function auditUsage(paletteName: string, p: Palette, u: Usage): AuditRow {
   const bg = u.bgComposite ? u.bgComposite(p) : p[u.bgRole];
   const over = u.fgOver ? u.fgOver(p) : bg;
-  const fg = u.fgAlpha === undefined ? p[u.fgRole] : composite(p[u.fgRole], u.fgAlpha, over);
+  const fg = u.fgAlpha === undefined ? (u.fgColour ?? p[u.fgRole]) : composite(u.fgColour ?? p[u.fgRole], u.fgAlpha, over);
   const ratio = contrastRatio(fg, bg);
   const gate = gateFor(u);
   return { palette: paletteName, usage: u, fg, bg, ratio, gate, pass: ratio >= gate };
@@ -386,4 +393,47 @@ export function scrimInfo(): Array<{ palette: string; state: string; scrim: stri
     { palette: name, state: 'won', scrim: composite('#000000', 0.45, p.bg) },
     { palette: name, state: 'lost', scrim: composite(p.bg, 0.86, p.bg) },
   ].map((r) => ({ ...r, ratio: contrastRatio(p.surface, r.scrim) })));
+}
+
+/** K4: the outline carries contrast; decorative body fills are unrestricted. A declared preferredTheme makes only the
+ *  OTHER theme's outline rows non-gating; `pass` is always the real ratio, never overridden. */
+export function skinContrastRows(specs: readonly SkinSpec[] = Object.values(SKIN_SPECS)): Array<AuditRow & { required: boolean }> {
+  return specs.flatMap(spec => {
+    const outline = spec.layers.find(layer => layer.kind === 'rim') ?? spec.layers.find(layer => layer.kind === 'body');
+    if(!outline) throw new Error(`${spec.id} has no outline layer`);
+    const colours = outline.colour === 'palette' ? spec.palette.colours : [outline.colour];
+    return PALETTES.flatMap(({name,palette: themePalette}) => {
+    const palette = skinBoardPalette(themePalette, spec, name === 'Ink Night');
+    return [
+    ...colours.map((colour,i) => ({ ...auditUsage(name,palette, {
+      id: `skin-${spec.id}-outline-${i}`, fgRole: 'ink', fgColour: colour, bgRole: 'bg', kind: 'graphic', site: 'src/ui/skinSpecs.ts',
+    }), required: !((spec.preferredTheme === 'dark' && name === 'Daylight') || (spec.preferredTheme === 'light' && name === 'Ink Night')) })),
+    { ...auditUsage(name,palette,{id: `skin-${spec.id}-blocked`,fgRole: 'heart',bgRole: 'bg',kind: 'graphic',site:'src/ui/StaticBoardSurface.native.tsx'}), required: true },
+    // The tint is confined to BoardView. Header/panels keep the theme palette.
+    ...(spec.board ? USAGES.filter(usage => usage.id.startsWith('arrow-')).map(usage => ({
+      ...auditUsage(name,palette,{ ...usage, id: `skin-${spec.id}-tint-${usage.id}` }), required: true,
+    })) : []),
+    ...(spec.board ? ['ink', 'inkDim'].map(role => ({ ...auditUsage(name,palette,{
+      id:`skin-${spec.id}-tint-overlay-${role}`,fgRole:role as Role,bgRole:'bg',kind:'text',sizePx:12,weight:'semibold',site:'src/ui/BoardView.tsx',
+      note:'Conservative text-on-play-area audit; header text stays on the unchanged theme background.',
+    }),required:true })) : []),
+    ...(spec.board ? [{ ...auditUsage(name,palette,{
+      id:`skin-${spec.id}-tint-grid-dots`,fgRole:'border',fgAlpha:.4,bgRole:'bg',kind:'graphic',site:'src/ui/boardGrid.ts',
+      note:'Decorative texture: existing WCAG exemption; raw ratio retained, no meaningful-graphic gate.',
+    }),required:false }] : []),
+  ];
+  });
+  });
+}
+
+
+/** Picker thumbnails are decorative spec colours; their outline still clears the panel background. */
+export function skinPickerContrastRows(): AuditRow[] {
+  return Object.values(SKIN_SPECS).flatMap(spec => {
+    const rim = spec.layers.find(layer => layer.kind === 'rim')!;
+    const colours = rim.colour === 'palette' ? spec.palette.colours : [rim.colour];
+    return PALETTES.flatMap(({ name, palette }) => colours.map((colour, i) => auditUsage(name, palette, {
+      id: `skin-picker-${spec.id}-outline-${i}`, fgRole: 'ink', fgColour: spec.preferredTheme === 'dark' ? palette.ink : colour, bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx',
+    })));
+  });
 }

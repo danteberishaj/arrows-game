@@ -5,10 +5,12 @@
  */
 import { fireEvent, render, within } from '@testing-library/react-native';
 import React from 'react';
-import { Linking, StatusBar, StyleSheet, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { Linking, Platform, StatusBar, StyleSheet, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { initializeArrowStyle } from '../arrowStyleSelection';
 import { Daylight, Fonts, InkNight } from '../theme';
 
 const mockState = {
+  skinPicker: false,
   consentGate: false,
   required: false,
   policyUrl: '',
@@ -20,7 +22,7 @@ const mockState = {
 jest.mock('../../featureFlags', () =>
   Object.defineProperties(
     { ...jest.requireActual('../../featureFlags') },
-    { CONSENT_GATE: { get: () => mockState.consentGate, enumerable: true } },
+    { CONSENT_GATE: { get: () => mockState.consentGate, enumerable: true }, META_SKIN_PICKER: { get: () => mockState.skinPicker, enumerable: true } },
   ));
 jest.mock('../ads', () => ({
   adPrivacyOptionsRequired: () => mockState.required,
@@ -62,6 +64,7 @@ const flat = (el: { props: { style?: unknown } }) =>
   (StyleSheet.flatten(el.props.style as StyleProp<ViewStyle & TextStyle>) ?? {}) as ViewStyle & TextStyle;
 
 beforeEach(() => {
+  mockState.skinPicker = false;
   mockState.consentGate = false;
   mockState.required = false;
   mockState.policyUrl = '';
@@ -228,5 +231,46 @@ describe('tokens', () => {
       expect(Object.values(Fonts)).toContain(s.fontFamily);
       expect(s.fontWeight).toBeUndefined();
     }
+  });
+});
+
+
+describe('ART-SKINS-06 runtime picker', () => {
+  const originalOS = Platform.OS;
+  afterEach(() => { Object.defineProperty(Platform, 'OS', { value: originalOS, configurable: true }); });
+  it.each([['android', false], ['ios', true], ['web', true]] as const)('hidden on %s with flag %s', (os, flag) => {
+    Object.defineProperty(Platform, 'OS', { value: os, configurable: true });
+    mockState.skinPicker = flag;
+    expect(renderSheet().queryByRole('button', { name: 'Arrow style' })).toBeNull();
+  });
+  it('Android list has checked real radio controls in registry order and 44dp targets', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockState.skinPicker = true;
+    initializeArrowStyle({ getInt: (_, fallback) => fallback, setInt: jest.fn(), deleteKey: jest.fn() }, true);
+    const sheet = renderSheet();
+    fireEvent.press(sheet.getByRole('button', { name: 'Arrow style' }));
+    const radios = sheet.getAllByRole('radio');
+    expect(radios.map(r => r.props.accessibilityLabel)).toEqual(require('../skinSpecs').ARROW_STYLES.map((s: {name: string}) => s.name));
+    expect(radios.map(r => r.props.accessibilityState.checked)).toEqual(radios.map((_, i) => i === 0));
+    radios.forEach(r => expect(flat(r).minHeight).toBeGreaterThanOrEqual(44));
+    fireEvent.press(radios[1]);
+    expect(sheet.getByRole('radio', { name: 'Cinnamon Roll' }).props.accessibilityState.checked).toBe(true);
+    fireEvent.press(sheet.getByRole('button', { name: 'Back to settings' }));
+    expect(sheet.getByRole('button', { name: 'Arrow style' }).props.accessibilityHint).toBe('Cinnamon Roll');
+  });
+  it('preferred-theme notes: Ink Pro is best in light mode, Neon Glass and Lava Rock in dark mode', () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockState.skinPicker = true;
+    initializeArrowStyle({ getInt: (_, fallback) => fallback, setInt: jest.fn(), deleteKey: jest.fn() }, true);
+    const sheet = renderSheet();
+    fireEvent.press(sheet.getByRole('button', { name: 'Arrow style' }));
+    const hint = (name: string) => sheet.getByRole('radio', { name }).props.accessibilityHint;
+    expect(hint('Ink Pro')).toBe('Best in light mode');
+    expect(hint('Neon Glass')).toBe('Best in dark mode');
+    expect(hint('Lava Rock')).toBe('Best in dark mode');
+    expect(hint('Archery')).toBeUndefined();
+    expect(within(sheet.getByRole('radio', { name: 'Ink Pro' })).getByText('Best in light mode')).toBeTruthy();
+    expect(sheet.getAllByText('Best in light mode')).toHaveLength(1);
+    expect(sheet.getAllByText('Best in dark mode')).toHaveLength(2);
   });
 });

@@ -76,6 +76,14 @@ logging still fires in every picker build.
 level open stalls visibly. I could not disprove that on this host; the renderer diff and the six-fold slowdown
 of Classic in the same batches argue against it. The phone build settles it.
 
+## Owner ruling
+
+2026-10-02: **the owner approved the skins** after Play test builds 1.0.0 (11) and (12), both built from `4cdfe49`
+plus `skin-code-on-a4fa166.patch` with the picker flag on. The same patch is merged unchanged behind
+`EXPO_PUBLIC_META_SKIN_PICKER` (still default OFF in code). Still open: phone measurements of level-open time and
+exit smoothness, the `skinDiagnostic` logs that fire in every picker build, and the emulator-only report of a
+style choice reverting after a hard shutdown.
+
 ## Corrections and evidence boundaries
 
 The first enlarged face at the original head centre failed .03-cell clearance for downward Critter arrow 1.

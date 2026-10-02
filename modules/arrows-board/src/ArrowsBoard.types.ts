@@ -3,6 +3,13 @@ import type { ViewProps } from 'react-native';
 export type ArrowsBoardViewProps = {
   /** Immutable semicolon/comma geometry payload parsed once per mission. */
   geometry: string;
+  /** Android-only SkinSpec JSON. Sent once per selection, parsed once. */
+  artSkin?: string;
+  skinGeometry?: string;
+  /** cell,reducedMotion,blockedInkHold,actualScreenCell; changes never re-parse the spec. */
+  skinConfig?: string;
+  /** Android-only feedback indices/ids, omitted unless the skin is selected. */
+  skinFeedback?: string;
   /** One character per arrow: `1` is visible and every other value is hidden. */
   visibleMask: string;
   /** Native stroke/fill color in #RRGGBB form. */

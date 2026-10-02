@@ -40,7 +40,8 @@ import {
   type HttpSink,
 } from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
-import { initSaveSystem } from './src/ui/storage';
+import { skinPickerEnabled } from './src/ui/useArrowStyle';
+import { initSaveSystem, initSkinPickerCapture } from './src/ui/storage';
 import { createThemeScrimTransition, useThemeToggle } from './src/ui/themeTransition';
 import { paletteFor } from './src/ui/theme';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
@@ -104,7 +105,7 @@ const perfTelemetryUnmountProbe = perfTelemetrySink
   : undefined;
 
 export default function App() {
-  const [ready, setReady] = useState(PERF_MODE);
+  const [ready, setReady] = useState(PERF_MODE && !skinPickerEnabled());
   const [fontsLoaded, fontError] = useFonts({ Fredoka_600SemiBold, Fredoka_700Bold });
   // A font-load error must not leave a blank screen: fall back to the platform font.
   const fontsReady = fontsLoaded || fontError != null;
@@ -128,7 +129,11 @@ export default function App() {
   }, [diagLabel, screen]);
 
   useEffect(() => {
-    if (PERF_MODE) return;
+    if (PERF_MODE) {
+      // The picker capture build persists only the additive skin preference; progress/ads/telemetry stay isolated.
+      if (skinPickerEnabled()) initSkinPickerCapture().then(() => setReady(true));
+      return;
+    }
     let httpSink: HttpSink | null = null;
     // Ads start only after hydration settles, so a remote kill persisted by an
     // earlier session is already seeded when initAds() decides whether to start
@@ -144,7 +149,7 @@ export default function App() {
     // SaveSystem.useStore swap could write an in-memory level-1 session over real
     // progress. On a rejection SaveSystem keeps its in-memory store, which never
     // writes to AsyncStorage, so saved progress cannot be overwritten.
-    initSaveSystem()
+    initSaveSystem(skinPickerEnabled())
       .then(() => {
         // W3-05: stamp the generator switch level once, from the HYDRATED save
         // and before any screen can deal or fold a campaign board. A no-op
@@ -299,6 +304,7 @@ export default function App() {
     () => (
       <GameScreen
         palette={p}
+        darkMode={dark}
         tutorialId={tutorialId}
         initialLevelIndex={DEV_LEVEL_INDEX ?? PERF_LEVEL_INDEX ?? undefined}
         benchmarkMode={PERF_MODE}
@@ -307,20 +313,21 @@ export default function App() {
         onHome={onGameHome}
       />
     ),
-    [p, tutorialId, onGameHome],
+    [p, dark, tutorialId, onGameHome],
   );
   const dailyScreen = useMemo(
     () =>
       dailyDay === null ? null : (
         <GameScreen
           palette={p}
+          darkMode={dark}
           daily={{ day: dailyDay }}
           benchmarkMode={PERF_MODE}
           feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
           onHome={onGameHome}
         />
       ),
-    [p, dailyDay, onGameHome],
+    [p, dark, dailyDay, onGameHome],
   );
   const galleryScreen = useMemo(
     () => <GalleryScreen palette={p} onBack={onGalleryBack} />,

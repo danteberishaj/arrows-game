@@ -1,5 +1,8 @@
+import { SKIN_SPEC_JSON, type SkinSpec } from './skinSpecs';
+import { scheduleOnRN } from 'react-native-worklets';
+import { META_BLOCKED_INK_HOLD } from '../featureFlags';
 import React, { useMemo } from 'react';
-import { PixelRatio, StyleSheet, View } from 'react-native';
+import { PixelRatio, Platform, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Group,
@@ -10,6 +13,7 @@ import {
 } from '@shopify/react-native-skia';
 import Animated, {
   Easing,
+  useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -40,6 +44,8 @@ import type {
   StaticBoardSurfaceProps,
 } from './StaticBoardSurface.types';
 
+import { skinPickerEnabled, useArrowStyle } from './useArrowStyle';
+
 const PERF_EMPTY_BOARD =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1';
 const PERF_OPAQUE_SURFACE =
@@ -51,6 +57,26 @@ const PERF_OPAQUE_SURFACE =
  */
 const COVER_OUTSET_PX = 1.5; // OWNER-PICKED STARTING VALUE
 const PIXEL_RATIO = PixelRatio.get();
+
+/** Only selected builds install this mapper. Cross to React at detail boundaries, never each pan frame. */
+function useSkinScreenCell(cell: number, initialScale: number, scale: StaticBoardSurfaceProps['scale'], spec: SkinSpec | null): number {
+  const [screenCell, setScreenCell] = React.useState(() => cell * initialScale);
+  const flat = spec?.lod.flatMinDp ?? 14;
+  const detail = spec?.lod.detailMinDp ?? 24;
+  const face = spec?.lod.faceMinDp ?? 28;
+  React.useEffect(() => { setScreenCell(cell * scale.value); }, [cell, spec]);
+  useAnimatedReaction(
+    () => {
+      const size = cell * scale.value;
+      return { size, tier: size < flat ? 0 : size < detail ? 1 : size < face ? 2 : 3 };
+    },
+    (next, previous) => {
+      if (next.size > 0 && (previous === null || next.tier !== previous.tier)) scheduleOnRN(setScreenCell, next.size);
+    },
+    [cell, flat, detail, face],
+  );
+  return screenCell;
+}
 
 /**
  * Native retained board (static arrows + slither exits) with a small Skia
@@ -64,12 +90,14 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   boardW,
   boardH,
   nativeGeometry,
+  skinGeometry,
   nativeVisibilityMask,
   background,
   ink,
   accent,
   heart,
   cellSize,
+  initialCameraScale,
   strokeWidth,
   shaking,
   blocker,
@@ -81,6 +109,11 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   nativeMarkMask,
   markColor,
 }: StaticBoardSurfaceProps) {
+  const style = useArrowStyle();
+  const selectedSkin = style.spec !== null;
+  // Gate is fixed for this bundle/platform; runtime Classic↔skin changes never alter hook order.
+  const pickerEnabled = skinPickerEnabled();
+  const skinScreenCell = pickerEnabled ? useSkinScreenCell(cellSize, initialCameraScale ?? 1, scale, style.spec) : cellSize;
   const boardStyle = useMemo(() => ({
     position: 'absolute' as const,
     left: 0,
@@ -136,13 +169,20 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
             ink={ink}
             strokeWidth={strokeWidth}
             exitAnimation={exitAnimation}
+            {...(pickerEnabled ? {
+              artSkin: style.spec ? SKIN_SPEC_JSON[style.id] : '',
+              skinGeometry,
+              skinConfig: `${cellSize},${reducedMotion ? 1 : 0},${META_BLOCKED_INK_HOLD ? 1 : 0},${skinScreenCell},${heart}`,
+              skinFeedback: [pressed?.nativeIndex ?? -1, shaking?.id ?? -1, shaking?.nativeIndex ?? -1,
+                blocker?.id ?? -1, blocker?.nativeIndex ?? -1, hint?.id ?? -1, hint?.nativeIndex ?? -1].join(','),
+            } : {})}
             {...gridProps}
             {...markProps}
             style={StyleSheet.absoluteFill}
           />
         )}
       </Animated.View>
-      <DynamicFeedbackSurface
+      {!selectedSkin && <DynamicFeedbackSurface
         scale={scale}
         tx={tx}
         ty={ty}
@@ -158,7 +198,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
         pressed={pressed}
         hint={hint}
         reducedMotion={reducedMotion}
-      />
+      />}
     </>
   );
 });

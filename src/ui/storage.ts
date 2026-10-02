@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SaveSystem, type IntStore } from '../core/saveSystem';
+import { ARROW_SKIN_KEY, initializeArrowStyle } from './arrowStyleSelection';
+export { getArrowStyle, chooseArrowStyle } from './arrowStyleSelection';
 
 /**
  * AsyncStorage-backed implementation of the core's synchronous IntStore
@@ -24,12 +26,14 @@ class HydratedIntStore implements IntStore {
   private writeThrough = true;
 
   /** Reads every registered key. Returns false when the native read threw. */
-  async hydrate(): Promise<boolean> {
+  async hydrate(keys: readonly string[]): Promise<boolean> {
     try {
-      const pairs = await AsyncStorage.multiGet(SaveSystem.persistenceKeys);
+      const pairs = await AsyncStorage.multiGet(keys);
       for (const [key, value] of pairs) {
         if (value !== null) {
-          const n = parseInt(value, 10);
+          const n = key === ARROW_SKIN_KEY
+            ? (/^\d+$/.test(value) ? Number(value) : Number.NaN)
+            : parseInt(value, 10);
           if (!Number.isNaN(n)) this.cache.set(key, n);
         }
       }
@@ -89,11 +93,22 @@ class HydratedIntStore implements IntStore {
  * succeeded: stamping a version over a save that was never read would mark it
  * migrated.
  */
-export async function initSaveSystem(): Promise<void> {
+export async function initSaveSystem(skinPicker = false): Promise<void> {
   const store = new HydratedIntStore();
   SaveSystem.setPersistenceHealthy(false);
-  const healthy = await store.hydrate();
+  initializeArrowStyle(null, false);
+  const healthy = await store.hydrate(skinPicker ? [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY] : SaveSystem.persistenceKeys);
   SaveSystem.useStore(store);
   SaveSystem.setPersistenceHealthy(healthy);
   if (healthy) SaveSystem.migrate();
+  initializeArrowStyle(store, skinPicker);
+}
+
+
+/** PERF capture only: read/write the additive preference, never hydrate/migrate or install a progress store. */
+export async function initSkinPickerCapture(): Promise<void> {
+  initializeArrowStyle(null, false);
+  const store = new HydratedIntStore();
+  await store.hydrate([ARROW_SKIN_KEY]);
+  initializeArrowStyle(store, true);
 }

@@ -8,43 +8,49 @@ class ArrowsBoardModule : Module() {
     Name("ArrowsBoard")
 
     View(ArrowsBoardView::class) {
+      Prop("artSkin") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setArtSkin(value) } }
+
       Prop("geometry") { view: ArrowsBoardView, geometry: String ->
-        view.setGeometry(geometry)
+        view.measureOpeningProp { view.setGeometry(geometry) }
       }
 
       Prop("visibleMask") { view: ArrowsBoardView, visibleMask: String ->
-        view.setVisibleMask(visibleMask)
+        view.measureOpeningProp { view.setVisibleMask(visibleMask) }
       }
 
       Prop("ink") { view: ArrowsBoardView, ink: String ->
-        view.setInk(ink)
+        view.measureOpeningProp { view.setInk(ink) }
       }
 
       Prop("strokeWidth") { view: ArrowsBoardView, strokeWidth: Float ->
-        view.setStrokeWidth(strokeWidth)
+        view.measureOpeningProp { view.setStrokeWidth(strokeWidth) }
       }
 
       Prop("exitAnimation") { view: ArrowsBoardView, exitAnimation: String ->
-        view.setExitAnimation(exitAnimation)
+        view.measureOpeningProp { view.setExitAnimation(exitAnimation) }
       }
 
       // POLISH-T4 (META_BOARD_GRID): never set by JS while the flag is off.
       Prop("grid") { view: ArrowsBoardView, grid: String ->
-        view.setGrid(grid)
+        view.measureOpeningProp { view.setGrid(grid) }
       }
 
       Prop("gridStyle") { view: ArrowsBoardView, gridStyle: String ->
-        view.setGridStyle(gridStyle)
+        view.measureOpeningProp { view.setGridStyle(gridStyle) }
       }
 
       // POLISH-T5 (META_MISSED_MARK): never set by JS while the flag is off.
       Prop("markMask") { view: ArrowsBoardView, markMask: String ->
-        view.setMarkMask(markMask)
+        view.measureOpeningProp { view.setMarkMask(markMask) }
       }
 
       Prop("markColor") { view: ArrowsBoardView, markColor: String ->
-        view.setMarkColor(markColor)
+        view.measureOpeningProp { view.setMarkColor(markColor) }
       }
+
+      Prop("skinConfig") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinConfig(value) } }
+      Prop("skinGeometry") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinGeometry(value) } }
+      Prop("skinFeedback") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinFeedback(value) } }
 
       // POLISH-T8 (#9): once per props commit, after every setter of that commit ran.
       OnViewDidUpdateProps { view: ArrowsBoardView ->

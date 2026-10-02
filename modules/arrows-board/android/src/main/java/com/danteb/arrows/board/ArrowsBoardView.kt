@@ -17,6 +17,7 @@ import android.view.animation.AnimationUtils
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import kotlin.math.abs
+import kotlin.math.sin
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -32,6 +33,21 @@ import kotlin.math.roundToInt
  * slither (SlitherExit.cs) regardless of the system animator scale.
  */
 class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
+  // Only the explicit test intent enables opening instrumentation. Ordinary/unset
+  // builds execute the same setters without timing or logging overhead.
+  private val openingTraceEnabled = appContext.currentActivity?.intent?.hasExtra("artSkinProcedural") == true
+  private val constructionStarted = if(openingTraceEnabled) System.nanoTime() else 0L
+  private var constructionNs = 0L
+  private var openingPropNs = 0L
+
+  internal fun measureOpeningProp(update: () -> Unit) {
+    if(!openingTraceEnabled) { update(); return }
+    val started = System.nanoTime()
+    try { update() } finally {
+      synchronized(stateLock) { openingPropNs += System.nanoTime()-started }
+    }
+  }
+
   private data class ArrowPaths(
     val shaft: Path,
     val head: Path,
@@ -60,10 +76,17 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var hasInk = false
     var hasMark = false
     var dirty = true
+    var skin: SkinPaths.Layers? = null
+    var skinBounds: android.graphics.RectF? = null
+    var skinDirty = true
+    var skinMark: Path? = null
   }
 
   private class ExitSlot {
     var id = -1L
+    var skin: SkinPaths.Layers? = null
+    var skinHead: Path? = null
+    var skinOneCell = false
     var head: Path? = null
     var trail: Path? = null
     // POLISH-T8 (#8): the visible body is trail[travelled, travelled + bodyLength], cut with a
@@ -93,6 +116,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
     fun clear() {
       id = -1L
+      skin = null
+      skinHead = null
       head = null
       trail = null
       measure = null
@@ -177,6 +202,18 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private var gridTile: Bitmap? = null
   private val gridTilePaint = Paint(Paint.FILTER_BITMAP_FLAG)
   private val gridTileMatrix = Matrix()
+  private var skin: SkinPaths? = null
+  private var skinMotion: SkinMotion? = null
+  private var skinArts: MutableList<SkinPaths.Layers?> = mutableListOf()
+  private var skinShafts: List<Path> = emptyList()
+  private var skinHeads: List<Path> = emptyList()
+  private var skinCell = 40f
+  private var skinDetail = 2
+  private var skinScreenCell = 40f
+  private var skinDiagnostic = false
+  private var skinFeedback = ""
+  private var lastSkinAudit = ""
+  private var skinReduced = false
   private var pathsDirty = false
   // dashSpan() output (UI thread, onDraw only).
   private var dashFrom = 0f
@@ -196,14 +233,143 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     setBackgroundColor(Color.TRANSPARENT)
   }
 
+  private var skinConfigPayload = ""
+  private var skinSpecJson = ""
+  private var skinCells: List<SkinGeometry> = emptyList()
+  private var skinPreparePending = false
+  private var skinFirstDrawPending = false
+  private var skinCellPayload = ""
+  private var selectionNs = 0L
+  private var cellParseNs = 0L
+  private var geometryParseNs = 0L
+  /** Selection JSON is compared before parsing, so config/feedback never parse it again. */
+  internal fun setArtSkin(value: String) {
+    synchronized(stateLock) {
+      if(value == skinSpecJson) return
+      val started = System.nanoTime()
+      skinSpecJson = value; skinDiagnostic = true
+      skin?.clear()
+      val enabled = appContext.currentActivity?.intent?.getBooleanExtra("artSkinProcedural",true) ?: true
+      val payload = appContext.currentActivity?.intent?.getStringExtra("artSkinSpec") ?: value
+      val spec = if(enabled && payload.isNotEmpty()) try { SkinSpec.selection(payload) } catch(e: Exception) { android.util.Log.e("ArtSkinSpec","Invalid spec",e); null } else null
+      skin = if(enabled && spec != null) SkinPaths(skinCell,spec) else null
+      skinMotion = if(enabled && spec != null) SkinMotion(skinCell,spec) else null
+      if(skinConfigPayload.isNotEmpty()) setSkinConfig(skinConfigPayload)
+      skinMotion?.update(skinFeedback, AnimationUtils.currentAnimationTimeMillis())
+      skinPreparePending = true
+      selectionNs = System.nanoTime()-started
+    }
+    postInvalidateOnAnimation()
+  }
+  internal fun setSkinConfig(value: String) {
+    skinConfigPayload = value
+    val tokens = value.split(',')
+    val cell = tokens.getOrNull(0)?.toFloatOrNull() ?: return
+    val size = tokens.getOrNull(3)?.toFloatOrNull() ?: return
+    if(!cell.isFinite() || cell !in 8f..256f || !size.isFinite() || size <= 0f) return
+    synchronized(stateLock) {
+      val renderer = skin
+      skinReduced = tokens.getOrNull(1) == "1"
+      skinScreenCell = size
+      if(renderer != null && (cell != skinCell || renderer.spec.detail(size) != skinDetail)) {
+        skinDetail = renderer.spec.detail(size)
+        if(cell != skinCell) {
+          renderer.clear(); skin = SkinPaths(cell,renderer.spec); skinMotion = SkinMotion(cell,renderer.spec)
+        }
+        skinPreparePending = true
+      }
+      skinCell = cell
+      skinMotion?.reduced = skinReduced; skinMotion?.holdBlockedInk = tokens.getOrNull(2) == "1"
+      tokens.getOrNull(4)?.let { try { skinMotion?.blockedColour = Color.parseColor(it) } catch(_: IllegalArgumentException) {} }
+    }
+    postInvalidateOnAnimation()
+  }
+  internal fun setSkinGeometry(value: String) {
+    synchronized(stateLock) {
+      if(value == skinCellPayload) return
+      val started = System.nanoTime()
+      skinCellPayload = value
+      val diagnosticOff = appContext.currentActivity?.intent?.getBooleanExtra("artSkinProcedural",true) == false
+      skinCells = if(diagnosticOff) emptyList() else try { SkinGeometry.parse(value) } catch(e: Exception) { emptyList() }
+      cellParseNs = System.nanoTime()-started
+      skinPreparePending = true
+    }
+    postInvalidateOnAnimation()
+  }
+
+  internal fun setSkinFeedback(value: String) {
+    synchronized(stateLock) {
+      if (value == skinFeedback) return
+      skinFeedback = value
+      if (skinMotion?.update(value, AnimationUtils.currentAnimationTimeMillis()) == true) pathsDirty = true
+    }
+    postInvalidateOnAnimation()
+  }
+
+  private fun prepareSkinLocked() {
+    val started = System.nanoTime()
+    val renderer = skin
+    // No decorative path is constructed on open. First draw owns each strip's one-time cost.
+    skinArts = MutableList(arrowPaths.size) { null }
+    skinShafts = if(renderer == null) emptyList() else arrowPaths.map { it.shaft }
+    skinHeads = if(renderer == null) emptyList() else arrowPaths.map { it.head }
+    renderer?.setPalette(skinCells)
+    for(strip in strips) {
+      strip.skin = null; strip.skinMark = null; strip.skinDirty = true; strip.dirty = true
+      strip.skinBounds = if(renderer == null || skinCells.size != arrowPaths.size) null else android.graphics.RectF().also { bounds ->
+        for(index in strip.members) {
+          val geometry = skinCells[index]
+          for(i in 0 until geometry.length) {
+            val x = geometry.x(i,skinCell); val y = geometry.y(i,skinCell)
+            bounds.union(x-skinCell*.5f,y-skinCell*.5f,x+skinCell*.5f,y+skinCell*.5f)
+          }
+        }
+      }
+    }
+    pathsDirty = true; skinPreparePending = false; skinFirstDrawPending = skinDiagnostic
+    if(skinDiagnostic) {
+      if(selectionNs > 0L) android.util.Log.i("ArtSkinSelection", "parseNs=$selectionNs screenCell=${skinScreenCell()} spec=${renderer?.spec?.id}")
+      if(cellParseNs > 0L) android.util.Log.i("ArtSkinCells", "parseNs=$cellParseNs screenCell=${skinScreenCell()} arrows=${skinCells.size}")
+      if(geometryParseNs > 0L) android.util.Log.i("ArtSkinBaseGeometry", "parseNs=$geometryParseNs screenCell=${skinScreenCell()} arrows=${arrowPaths.size}")
+      selectionNs = 0L; cellParseNs = 0L; geometryParseNs = 0L
+    }
+    if(skinDiagnostic) android.util.Log.i("ArtSkinPrep", "prepareNs=${System.nanoTime()-started} procedural=${renderer != null} arrows=${arrowPaths.size} screenCell=${skinScreenCell()} detail=$skinDetail spec=${renderer?.spec?.id} decorated=0")
+  }
+  private fun artAt(index: Int): SkinPaths.Layers {
+    return skinArts[index] ?: skin!!.build(skinCells[index],index,skinDetail).also { skinArts[index] = it }
+  }
+  private fun ensureSkinStrip(strip: Strip) {
+    if(!strip.skinDirty || skin == null || skinCells.size != arrowPaths.size) return
+    val started = System.nanoTime()
+    val compound = strip.skin ?: SkinPaths.Layers(skin!!.layerCount).also { strip.skin = it }
+    val mark = strip.skinMark ?: Path().also { strip.skinMark = it }
+    compound.rewind(); mark.rewind()
+    for(index in strip.members) when(arrowLayer[index]) {
+      LAYER_INK -> skin!!.appendTo(compound,skinCells[index],skinDetail)
+      LAYER_MARK -> skin!!.appendTo(compound,skinCells[index],skinDetail,mark)
+    }
+    strip.skinDirty = false
+    if(skinDiagnostic) android.util.Log.i("ArtSkinLazy", "buildNs=${System.nanoTime()-started} recordNs=0 arrows=${strip.members.size} screenCell=${skinScreenCell()} spec=${skin?.spec?.id} templates=${skin?.templateCount} individualArt=${skinArts.count { it != null }}")
+  }
+
+  private fun updateSkinDetailLocked() {
+    val detail = skin?.spec?.detail(skinScreenCell()) ?: return
+    if(detail != skinDetail) { skinDetail = detail; skinPreparePending = true }
+  }
+
+  private fun skinScreenCell(): Float = skinScreenCell
+
   internal fun setGeometry(value: String) {
     clearExitAnimations()
     // Parse before taking the lock so a large, valid board never blocks a draw
     // while its immutable per-arrow paths are being constructed.
+    val parseStarted = System.nanoTime()
     val parsed = parseGeometry(value)
+    val parsedNs = System.nanoTime()-parseStarted
 
     synchronized(stateLock) {
       arrowPaths.clear()
+      geometryParseNs = parsedNs
 
       if (parsed == null) {
         // Decorative rendering must fail closed for malformed input. Do not
@@ -214,6 +380,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         geometryIsValid = true
       }
       partitionStripsLocked()
+      if (skin != null) skinPreparePending = true
       pathsDirty = true
     }
     postInvalidateOnAnimation()
@@ -257,7 +424,17 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
    */
   internal fun commitProps() {
     synchronized(stateLock) {
-      if (pathsDirty) rebuildCompoundPathsLocked()
+      if(openingTraceEnabled && skinDiagnostic && openingPropNs > 0L) {
+        android.util.Log.i("ArtSkinPropPrep", "setupNs=$openingPropNs constructionNs=$constructionNs screenCell=${skinScreenCell()} procedural=${skin != null}")
+        openingPropNs = 0L; constructionNs = 0L
+      }
+      if (skin != null) updateSkinDetailLocked()
+      if (pathsDirty || skinPreparePending) {
+        val start = if (skinDiagnostic) System.nanoTime() else 0L
+        if(skinPreparePending) prepareSkinLocked()
+        rebuildCompoundPathsLocked()
+        if (skinDiagnostic) android.util.Log.i("ArtSkinPerf", "buildNs=${System.nanoTime() - start} procedural=${skin != null} strips=${strips.size}")
+      }
     }
   }
 
@@ -301,6 +478,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     synchronized(stateLock) {
       shaftPaint.strokeWidth = strokeWidth
       markShaftPaint.strokeWidth = strokeWidth
+      if (skin != null) { strips.forEach { it.dirty = true }; pathsDirty = true }
     }
     postInvalidateOnAnimation()
   }
@@ -386,6 +564,12 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.clear()
       slot.id = id
       slot.head = arrowPaths[arrowIndex].head
+      if (skin != null) {
+        slot.skin = SkinPaths.Layers(skin!!.layerCount).also { it.paletteColour = skin!!.spec.colour(arrowIndex,skinCells[arrowIndex].length,skinCells[arrowIndex].direction) }
+        slot.skinHead = Path(); slot.skinOneCell = skinCells[arrowIndex].length == 1
+        skinMotion?.cancel(arrowIndex)
+        if(!reducedMotion) skinMotion?.emit(arrowPaths[arrowIndex].shaft, AnimationUtils.currentAnimationTimeMillis())
+      }
       slot.trail = trail
       // The body is one segment of the trail (the Skia/SVG side draws the same span as one
       // dash of intervals [body, total + body]); see ExitSlot.measure.
@@ -542,6 +726,12 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     clearExitAnimations()
     synchronized(stateLock) {
       arrowPaths.clear()
+      skin?.clear()
+      skin = null
+      skinMotion = null
+      skinArts = mutableListOf()
+      skinShafts = emptyList()
+      skinHeads = emptyList()
       strips = emptyArray()
       stripOf = IntArray(0)
       arrowLayer = ByteArray(0)
@@ -566,7 +756,10 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   override fun onDraw(canvas: Canvas) {
     var keepAnimating = false
     synchronized(stateLock) {
+      if (skin != null) updateSkinDetailLocked()
+      if(skinPreparePending) prepareSkinLocked()
       if (pathsDirty) rebuildCompoundPathsLocked()
+      val drawStarted = if(skinFirstDrawPending) System.nanoTime() else 0L
       val hasActiveExit = exitSlots.any { it.active }
       val drawArrows = geometryIsValid && (hasVisibleArrows || hasActiveExit)
       // POLISH-T4: the grid stays on a cleared board until the level ends.
@@ -601,11 +794,28 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         // POLISH-T12: BASE's layer order (every shaft, every head, every marked shaft, every marked head), each layer
         // now one path per strip, top to bottom.
         val all = strips
-        for (strip in all) if (strip.hasInk) canvas.drawPath(strip.shaft, shaftPaint)
-        for (strip in all) if (strip.hasInk) canvas.drawPath(strip.head, headPaint)
+        val renderer = skin
+        if (renderer != null) {
+          val screenCell = skinScreenCell()
+          var maximumDraws = 0
+          for (strip in all) if (strip.hasInk) {
+            if(strip.skinBounds?.let { !canvas.quickReject(it,Canvas.EdgeType.AA) } == true) ensureSkinStrip(strip)
+            val draws = strip.skin?.let { renderer.draw(canvas,it,screenCell) } ?: 0
+            maximumDraws = maxOf(maximumDraws, draws + if (strip.hasMark) 1 else 0)
+          }
+          val audit = "arrows=${arrowPaths.size} screenCell=$screenCell maxStaticDrawsPerStrip=$maximumDraws strips=${strips.size}"
+          if (audit != lastSkinAudit) { lastSkinAudit = audit; android.util.Log.i("ArtSkinDraws", audit) }
+        } else {
+          for (strip in all) if (strip.hasInk) canvas.drawPath(strip.shaft, shaftPaint)
+          for (strip in all) if (strip.hasInk) canvas.drawPath(strip.head, headPaint)
+        }
         if (hasMarkedArrows) {
-          for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markShaft, markShaftPaint)
-          for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markHead, markHeadPaint)
+          if (skin != null) {
+            for (strip in all) if (strip.hasMark) { if(strip.skinBounds?.let { !canvas.quickReject(it,Canvas.EdgeType.AA) } == true) ensureSkinStrip(strip); strip.skinMark?.let { canvas.drawPath(it,markHeadPaint) } }
+          } else {
+            for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markShaft, markShaftPaint)
+            for (strip in all) if (strip.hasMark) canvas.drawPath(strip.markHead, markHeadPaint)
+          }
         }
       }
       if (drawArrows && hasActiveExit) {
@@ -614,7 +824,19 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
           if (drawExitSlot(canvas, slot, now)) keepAnimating = true
         }
       }
+      val motion = skinMotion
+      val renderer = skin
+      if (motion != null && renderer != null && skinCells.size == arrowPaths.size) {
+        if (motion.draw(canvas, renderer, skinArts, ::artAt, skinShafts, skinHeads, skinScreenCell(),
+            shaftPaint.strokeWidth, AnimationUtils.currentAnimationTimeMillis())) keepAnimating = true
+        // Re-evaluate membership until an interaction settles, then restore its static strip once.
+        if (motion.hasActiveInteraction(AnimationUtils.currentAnimationTimeMillis())) pathsDirty = true
+      }
       canvas.restoreToCount(saveCount)
+      if(skinFirstDrawPending && drawArrows) {
+        skinFirstDrawPending = false
+        android.util.Log.i("ArtSkinFirstDraw", "drawNs=${System.nanoTime()-drawStarted} procedural=${skin != null} screenCell=${skinScreenCell()} spec=${skin?.spec?.id}")
+      }
     }
     if (keepAnimating) postInvalidateOnAnimation()
   }
@@ -626,6 +848,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
 
   /** Draws one slither frame; returns true while the slot still needs frames. */
   private fun drawExitSlot(canvas: Canvas, slot: ExitSlot, nowMs: Long): Boolean {
+    if (skin != null) return drawSkinExitSlot(canvas, slot, nowMs)
     if (slot.trail == null) return false
     val head = slot.head ?: return false
     val progress = ((nowMs - slot.startTimeMs).toFloat() / slot.durationMs.toFloat())
@@ -683,6 +906,78 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     canvas.drawPath(head, exitHeadPaint)
     canvas.restoreToCount(saveCount)
     return true
+  }
+
+  private fun drawSkinExitSlot(canvas: Canvas, slot: ExitSlot, nowMs: Long): Boolean {
+    if (slot.trail == null) return false
+    val head = slot.head ?: return false
+    val anticipation = if (skin != null && !slot.reducedMotion) skin?.spec?.anticipation ?: 0L else 0L
+    val elapsed = maxOf(0L, nowMs - slot.startTimeMs - anticipation)
+    val progress = (elapsed.toFloat() / slot.durationMs.toFloat())
+      .coerceIn(0f, 1f)
+    if (progress >= 1f) {
+      slot.clear()
+      return false
+    }
+    // POLISH-T10 fix round 1: a flag-ON exit stops (and stops invalidating) at endMs, once the whole arrow is past
+    // the pan-margin extent of the camera it started under; every frame before that is unchanged. Checked once, at
+    // endMs: if the board was panned or zoomed meanwhile, the margin may be on screen, so the exit runs its whole ray
+    // as before. Without the token endMs is Long.MAX_VALUE and this never runs.
+    if ((if (skin != null) elapsed else nowMs - slot.startTimeMs) >= slot.endMs) {
+      if (cameraMoved(slot)) {
+        slot.endMs = Long.MAX_VALUE
+      } else {
+        slot.clear()
+        return false
+      }
+    }
+
+    // Same curve as ExitTrail (exitTravelFraction): launch*k + (1-launch)*k^2, which is
+    // exactly k^2 at the default launch 0 and an ease-out for launch > 1 (POLISH-T10);
+    // fades past fadeStart (default 55%).
+    val launch = slot.launch
+    val travelled = if (slot.reducedMotion) {
+      0f
+    } else {
+      (launch * progress + (1f - launch) * progress * progress) * slot.totalLength
+    }
+    val fadeStart = slot.fadeStart
+    val opacity = when {
+      slot.reducedMotion -> 1f - progress
+      progress < fadeStart -> 1f
+      else -> {
+        val fade = ((progress - fadeStart) / (1f - fadeStart)).coerceIn(0f, 1f)
+        1f - fade * fade * (3f - 2f * fade)
+      }
+    }
+    val alpha = (opacity * 255f).roundToInt().coerceIn(0, 255)
+
+    val renderer = skin
+    if (renderer != null && slot.skin != null) {
+      val measure = slot.measure ?: return false
+      slot.segment.rewind()
+      dashSpan(travelled, slot.bodyLength, slot.totalLength)
+      if (dashFrom < measure.length) measure.getSegment(dashFrom, dashTo, slot.segment, true)
+      val movingHead = slot.skinHead ?: return false
+      movingHead.set(head); movingHead.offset(slot.directionX * travelled, slot.directionY * travelled)
+      val art = slot.skin!!
+      val screenCell = skinScreenCell()
+      val save = canvas.save()
+      if (anticipation > 0L && nowMs - slot.startTimeMs < anticipation) {
+        val k = ((nowMs - slot.startTimeMs).toFloat() / anticipation.toFloat()).coerceIn(0f, 1f)
+        val squash = sin(Math.PI.toFloat() * k)
+        head.computeBounds(art.bounds, true)
+        val along = 1f - .05f * squash; val across = 1f + .06f * squash
+        val horizontal = abs(slot.directionX) > abs(slot.directionY)
+        canvas.scale(if (horizontal) along else across, if (horizontal) across else along,
+          art.bounds.centerX(), art.bounds.centerY())
+      }
+      renderer.buildInto(art,slot.segment,movingHead,skinDetail,slot.skinOneCell); renderer.draw(canvas,art,screenCell,alpha)
+      canvas.restoreToCount(save)
+      return true
+    }
+
+    return false
   }
 
   /**
@@ -752,6 +1047,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     // POLISH-T12: find the strips whose members changed layer (hidden / ink / mark) since the last rebuild ...
     for (index in arrowPaths.indices) {
       val layer = when {
+        skinMotion?.excludes(index, AnimationUtils.currentAnimationTimeMillis()) == true -> LAYER_HIDDEN
         index >= visibleMask.length || visibleMask[index] != '1' -> LAYER_HIDDEN
         index < markMask.length && markMask[index] == '1' -> LAYER_MARK
         else -> LAYER_INK
@@ -780,21 +1076,22 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       strip.markHead.reset()
       strip.hasInk = false
       strip.hasMark = false
+      strip.skinDirty = true
       for (index in strip.members) {
         val paths = arrowPaths[index]
         when (arrowLayer[index]) {
           LAYER_INK -> {
-            strip.shaft.addPath(paths.shaft)
-            strip.head.addPath(paths.head)
+            if(skin == null) { strip.shaft.addPath(paths.shaft); strip.head.addPath(paths.head) }
             strip.hasInk = true
+
           }
           LAYER_MARK -> {
-            strip.markShaft.addPath(paths.shaft)
-            strip.markHead.addPath(paths.head)
+            if(skin == null) { strip.markShaft.addPath(paths.shaft); strip.markHead.addPath(paths.head) }
             strip.hasMark = true
           }
         }
       }
+
     } finally {
       Trace.endSection()
     }
@@ -1003,4 +1300,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     const val MAX_GRID_POINTS = 100_000L
     const val GRID_BLOCK_CELLS = 8 // OWNER-PICKED STARTING VALUE (POLISH-T4 frame-cost fix)
   }
+  init {
+    if(openingTraceEnabled) constructionNs = System.nanoTime()-constructionStarted
+  }
+
 }

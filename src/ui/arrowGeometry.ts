@@ -180,6 +180,11 @@ export class BoardArrowArtCache {
     return this.nativeGeometry;
   }
 
+  /** Only requested by selected Android skin builds; flat builds retain no additional data. */
+  cellsForSkin(): string {
+    return this.orderedArrows.map(arrow => [arrow.headDir, ...arrow.cells.flatMap(({r,c}) => [r,c])].join(',')).join(';');
+  }
+
   visibilityMask(
     visibleArrows: readonly ArrowPath[],
     excluded?: ReadonlySet<ArrowPath>,

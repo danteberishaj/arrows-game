@@ -1,3 +1,4 @@
+import { skinPickerEnabled, useArrowStyle } from './useArrowStyle';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -103,6 +104,7 @@ const TAP_MAX_DURATION_MS = 900;
  * no extra render; a hesitant press sees which arrow will fire.
  */
 const PRESS_PREVIEW_DELAY_MS = 64;
+
 /** iOS scroll-view rubber band (x*d*c)/(d+c*x), c = 0.55, d = viewport size. */
 const RUBBER_BAND_C = 0.55;
 const PERF_NO_EXIT_TRAILS =
@@ -306,6 +308,7 @@ export function BoardView({
   testID,
   gridLines = false,
 }: BoardViewProps) {
+  const selectedSkin = useArrowStyle().spec !== null;
   const boardW = board.cols * CELL;
   const boardH = board.rows * CELL;
 
@@ -581,6 +584,10 @@ export function BoardView({
     pressedRef.current = arrow;
     if (pressPreviewTimer.current !== null) clearTimeout(pressPreviewTimer.current);
     if (!arrow) return;
+    if (selectedSkin) {
+      setPressed({ arrow, id: nextId.current++ });
+      return;
+    }
     const timer = setTimeout(() => {
       if (pressPreviewTimer.current !== timer) return;
       pressPreviewTimer.current = null;
@@ -588,7 +595,7 @@ export function BoardView({
       setPressed({ arrow, id: nextId.current++ });
     }, PRESS_PREVIEW_DELAY_MS);
     pressPreviewTimer.current = timer;
-  }, [board, resolveTap]);
+  }, [board, resolveTap, selectedSkin]);
 
   const handlePressEnd = useCallback(() => {
     if (pressPreviewTimer.current !== null) {
@@ -909,11 +916,15 @@ export function BoardView({
         accessible={testID ? true : undefined}
         accessibilityLabel={testID}
         collapsable={testID ? false : undefined}
-        style={styles.viewport}
+        style={skinPickerEnabled() ? [styles.viewport, { backgroundColor: palette.bg }] : styles.viewport}
         onLayout={onLayout}
         {...(Platform.OS === 'web' ? ({ onWheel } as any) : null)}
       >
         <BoardContent
+          initialCameraScale={skinPickerEnabled() ? initialCamera(
+            viewportSize.w, cameraViewport(viewportSize.w, viewportSize.h, cameraBottomInset).h,
+            boardW, boardH, CELL, META_ZOOMED_CAMERA,
+          )?.scale : undefined}
           scale={scale}
           tx={tx}
           ty={ty}
@@ -941,6 +952,7 @@ export function BoardView({
 
 /** GPU-backed board plus a web-only SVG layer for active feedback. */
 function BoardContent(props: {
+  initialCameraScale?: number;
   scale: SharedValue<number>;
   tx: SharedValue<number>;
   ty: SharedValue<number>;
@@ -962,6 +974,7 @@ function BoardContent(props: {
   marked: ReadonlySet<ArrowPath>;
 }) {
   const {
+    initialCameraScale,
     scale,
     tx,
     ty,
@@ -983,6 +996,7 @@ function BoardContent(props: {
     marked,
   } = props;
 
+  const selectedSkin = useArrowStyle().spec !== null;
   const arrowCount = board.count();
   // Web (one SVG pipeline): only arrows that MOVE (bump) or change colour for
   // good (hint) leave the static batch. Native: only the hint leaves the
@@ -1024,6 +1038,7 @@ function BoardContent(props: {
     () => arrowArtCache.geometryForNativeView(),
     [arrowArtCache],
   );
+  const skinGeometry = useMemo(() => skinPickerEnabled() ? arrowArtCache.cellsForSkin() : undefined, [arrowArtCache]);
   const nativeVisibilityMask = useMemo(
     PERF_MASK_TIMING
       ? () => timeMaskBuild(() => arrowArtCache.visibilityMask(arrows, nativeExcludedArrows))
@@ -1055,6 +1070,7 @@ function BoardContent(props: {
     () => shakingId !== null && shakingArrow !== null
       ? {
         id: shakingId,
+        ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(shakingArrow) ?? -1 } : null),
         ...arrowArtCache.artFor(shakingArrow),
         ...dirVec(shakingArrow.headDir),
         // R6a: a marked arrow's heart mix ends at the mark, not ink.
@@ -1063,24 +1079,26 @@ function BoardContent(props: {
         cover: palette.bg,
       }
       : null,
-    [shakingId, shakingArrow, arrowArtCache, shakingMarked, markColor, palette.bg],
+    [shakingId, shakingArrow, arrowArtCache, shakingMarked, markColor, palette.bg, selectedSkin],
   );
   const blockerArt = useMemo(
-    () => blocker ? { id: blocker.id, ...arrowArtCache.artFor(blocker.arrow) } : null,
-    [blocker, arrowArtCache],
+    () => blocker ? { id: blocker.id, ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(blocker.arrow) ?? -1 } : null), ...arrowArtCache.artFor(blocker.arrow) } : null,
+    [blocker, arrowArtCache, selectedSkin],
   );
   const pressedArt = useMemo(
-    () => pressed ? { id: pressed.id, ...arrowArtCache.artFor(pressed.arrow) } : null,
-    [pressed, arrowArtCache],
+    () => pressed ? { id: pressed.id, ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(pressed.arrow) ?? -1 } : null), ...arrowArtCache.artFor(pressed.arrow) } : null,
+    [pressed, arrowArtCache, selectedSkin],
   );
   const hintArt = useMemo(
-    () => hint ? { id: hint.id, ...arrowArtCache.artFor(hint.arrow) } : null,
-    [hint, arrowArtCache],
+    () => hint ? { id: hint.id, ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(hint.arrow) ?? -1 } : null), ...arrowArtCache.artFor(hint.arrow) } : null,
+    [hint, arrowArtCache, selectedSkin],
   );
 
   return (
     <>
-      <StaticBoardSurface
+      {(!skinPickerEnabled() || initialCameraScale !== undefined) && <StaticBoardSurface
+        key={skinPickerEnabled() ? nativeGeometry : undefined}
+        initialCameraScale={initialCameraScale}
         scale={scale}
         tx={tx}
         ty={ty}
@@ -1091,6 +1109,7 @@ function BoardContent(props: {
         shaftD={staticArt.shaftD}
         headD={staticArt.headD}
         nativeGeometry={nativeGeometry}
+        skinGeometry={skinGeometry}
         nativeVisibilityMask={nativeVisibilityMask}
         background={palette.bg}
         ink={palette.ink}
@@ -1110,7 +1129,7 @@ function BoardContent(props: {
         markHeadD={markArt.headD}
         nativeMarkMask={nativeMarkMask}
         markColor={markColor}
-      />
+      />}
       {Platform.OS === 'web' && hasDynamicLayer && (
         <WebDynamicBoardLayer
           scale={scale}

@@ -9,6 +9,7 @@
 type Flags = Record<string, unknown>;
 
 const NAMED_META_FLAGS = [
+  'META_SKIN_PICKER',
   'META_STREAK_FREEZE',
   'META_EXIT_TO_SCREEN_EDGE',
   'META_BOARD_GRID',
@@ -93,14 +94,14 @@ test.each(NAMED_META_FLAGS)('%s is enabled by its own variable alone', (name) =>
   }
 });
 
-test('ART_SKIN_TEXTURED is off when its variable is absent', () => {
-  delete process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED;
-  expect(loadFlags().ART_SKIN_TEXTURED).toBe(false);
+test('ART_SKIN is absent unless explicitly selected', () => {
+  delete process.env.EXPO_PUBLIC_ART_SKIN;
+  expect(loadFlags().ART_SKIN).toBe(null);
 });
 
-test('ART_SKIN_TEXTURED requires the exact opt-in value 1', () => {
-  for (const value of ['0', 'true', 'yes', ' 1', '', '1']) {
-    process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED = value;
-    expect([value, loadFlags().ART_SKIN_TEXTURED]).toEqual([value, value === '1']);
+test('ART_SKIN accepts only exact registered spec ids', () => {
+  for (const value of ['0', 'true', '1', ' Cinnamon', 'cinnamon ', '', 'cinnamon', 'sherbet', 'Sherbet', 'unknown']) {
+    process.env.EXPO_PUBLIC_ART_SKIN = value;
+    expect([value, loadFlags().ART_SKIN]).toEqual([value, ['cinnamon', 'sherbet'].includes(value) ? value : null]);
   }
 });

@@ -1,3 +1,4 @@
+import { skinSpecFor } from './ui/skinSpecs';
 /**
  * Build-time feature flags shared by W2, W4, W6 and W7 (ruling I-29). Network
  * and kill gates stay literal; player-visible feature gates use EXPO_PUBLIC_*.
@@ -176,9 +177,9 @@ export const META_POST_CLEAR_TIMELINE = process.env.EXPO_PUBLIC_META_POST_CLEAR_
  */
 export const META_SETTINGS_SHEET = process.env.EXPO_PUBLIC_META_SETTINGS_SHEET === '1';
 
-/**
- * ART-SKINS-01: reserved for the Android textured-skin experiment. The render spike failed its
- * asset and performance gates and is NOT in the tree (patch series: artifacts/ART-SKINS-01/patches,
- * report: docs/next-level/reports/ART-SKINS-01.md). Nothing reads this flag yet. Never on by default.
- */
-export const ART_SKIN_TEXTURED = process.env.EXPO_PUBLIC_ART_SKIN_TEXTURED === '1';
+/** ART-SKINS-04: Android procedural skin; exact opt-in only, no image assets. */
+export const ART_SKIN = skinSpecFor(process.env.EXPO_PUBLIC_ART_SKIN)?.id ?? null;
+
+
+/** Android runtime style selection. OFF: no picker, skin persistence or procedural board props. */
+export const META_SKIN_PICKER = process.env.EXPO_PUBLIC_META_SKIN_PICKER === '1';

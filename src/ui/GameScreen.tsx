@@ -1,3 +1,5 @@
+import { useArrowStyle } from './useArrowStyle';
+import { skinBoardPalette } from './skinBoardPalette';
 import React, {
   useCallback,
   useEffect,
@@ -176,6 +178,7 @@ const writeFtueSessionLog = console.log.bind(console);
  */
 export function GameScreen({
   palette,
+  darkMode = false,
   onHome,
   tutorialId,
   initialLevelIndex,
@@ -185,6 +188,7 @@ export function GameScreen({
   onTelemetryProbeUnmount,
 }: {
   palette: Palette;
+  darkMode?: boolean;
   onHome: () => void;
   tutorialId?: TutorialId;
   initialLevelIndex?: number;
@@ -198,7 +202,9 @@ export function GameScreen({
   feedbackEnabled?: boolean;
   onTelemetryProbeUnmount?: () => void;
 }) {
+  const style = useArrowStyle();
   const p = palette;
+  const boardPalette = useMemo(() => skinBoardPalette(palette, style.spec, darkMode), [palette, style.spec, darkMode]);
   const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
   const { fontScale } = useWindowDimensions(); // POLISH-T9: tutorial line box height
 
@@ -1078,7 +1084,7 @@ export function GameScreen({
       {/* Board persists across missions; BoardView resets its mission state. */}
       <BoardView
         board={level.board}
-        palette={p}
+        palette={boardPalette}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
         onTapOutcome={onTapOutcome}

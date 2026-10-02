@@ -15,6 +15,8 @@ import {
   supportMailto,
   type SettingsRow,
 } from './settingsRows';
+import { ArrowStyleOptions } from './ArrowStyleOptions';
+import { useArrowStyle, skinPickerEnabled } from './useArrowStyle';
 import { Palette, Type } from './theme';
 
 /** The accessible name of the scrim (a tap outside the panel closes the sheet). OWNER-PICKED STARTING VALUE (copy). */
@@ -62,6 +64,11 @@ export function SettingsSheet({
   dark: boolean;
   onClose: () => void;
 }) {
+  const style = useArrowStyle();
+  const [styleListOpen, setStyleListOpen] = useState(false);
+  const pickerEnabled = skinPickerEnabled();
+  const backToSettings = () => setStyleListOpen(false);
+  const dismiss = styleListOpen ? backToSettings : onClose;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [rows] = useState<SettingsRow[]>(() =>
@@ -110,13 +117,13 @@ export function SettingsSheet({
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
       onShow={onShow}
     >
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={CLOSE_LABEL}
+          accessibilityLabel={styleListOpen ? 'Close arrow style' : CLOSE_LABEL}
           onPress={onClose}
           style={[StyleSheet.absoluteFill, { backgroundColor: p.bg, opacity: SETTINGS_SCRIM_OPACITY }]}
         />
@@ -125,8 +132,19 @@ export function SettingsSheet({
           style={[styles.panel, { width: panelWidth, backgroundColor: p.surface, borderColor: p.border }]}
         >
           <Text accessibilityRole="header" style={[styles.title, { color: p.ink }]}>
-            {SETTINGS_TITLE}
+            {styleListOpen ? 'Arrow style' : SETTINGS_TITLE}
           </Text>
+          {styleListOpen ? <ArrowStyleOptions palette={p} onBack={backToSettings} /> : <>
+          {pickerEnabled && <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Arrow style"
+            accessibilityHint={style.name}
+            onPress={() => setStyleListOpen(true)}
+            style={[styles.row, { borderTopColor: p.border }]}
+          >
+            <Text style={[styles.rowLabel, { color: p.ink }]}>Arrow style</Text>
+            <Text style={[styles.rowDetail, { color: p.inkDim }]}>{style.name}</Text>
+          </Pressable>}
           {rows.map((row) =>
             row.pressable ? (
               <PressScale
@@ -151,6 +169,7 @@ export function SettingsSheet({
               </View>
             ),
           )}
+          </>}
         </View>
       </View>
     </Modal>

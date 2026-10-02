@@ -1,7 +1,7 @@
 # How to add a skin
 
 
-> Status 2026-10-02: the catalogue and Arrow style picker are experimental, uncommitted and **default OFF**. Latest runtime forward patch: `artifacts/ART-SKINS-08/patches/skin-code-on-a4fa166.patch`, on clean a4fa166. Its companion `learning-and-checks-on-a4fa166.patch` carries the durable docs and verification tools; do not stack ART07/07b first. See [ART-SKINS-08](../next-level/reports/ART-SKINS-08.md) for passing geometry/tests/OFF checks, all eight measured opening-budget failures and pending owner review, [ART07's Controller review](../next-level/reports/ART-SKINS-07.md#controller-review) for the inherited catalogue decisions, and [ART06's Controller review](../next-level/reports/ART-SKINS-06.md#controller-review-2026-10-01) for picker/save rules.
+> Status 2026-10-02: **owner-approved and merged** behind `EXPO_PUBLIC_META_SKIN_PICKER` (default OFF; Play test builds 1.0.0 (11) and (12) set it to 1). The code is the exact ART-SKINS-08 runtime patch; the patch files under `artifacts/ART-SKINS-08/patches/` are now history. See [ART-SKINS-08](../next-level/reports/ART-SKINS-08.md) for the review, open risks and unverified performance.
 
 
 Skins are experimental and default OFF. ART-SKINS-06 uses `EXPO_PUBLIC_META_SKIN_PICKER=1` on Android
