@@ -128,7 +128,7 @@ When `arrows_reward_points` is absent:
    - the free starters;
    - every path reward whose total is ≤ points;
    - the currently selected skin (`arrows_skin`), so a style chosen in builds 11–13 is never locked.
-3. Set `arrows_reward_seen` to the highest path index already owned, so credited unlocks are silent and there is no
+3. Set `arrows_reward_seen` to the number of path rewards reached by points (not the highest owned index), so credited unlocks are silent and there is no reveal flood. (Amended 2026-10-04 after Codex review: a selected skin owned beyond the credited point must not suppress the earlier reveals.)
    reveal flood.
 
 This is one atomic step on first launch. Unit tests cover:
@@ -180,6 +180,7 @@ Sequencing and safety:
   600 ms. With reduced motion, the card appears without scale or sparkles.
 - `arrows_reward_seen` is written when the card is shown. If the app is killed mid-card, it does not repeat; the
   style is already owned, and the "new" dot in the picker covers it.
+- A reveal is never shown for a reward that was already owned before that clear (for example a style selected before the path existed, or one bought later in direction B). Reaching it on the path is silent.
 - If two thresholds are crossed in one clear (possible only after a restore), show one card for the highest; the
   rest show "new" in the picker.
 

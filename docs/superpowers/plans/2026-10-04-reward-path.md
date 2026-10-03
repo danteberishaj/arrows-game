@@ -465,6 +465,18 @@ test('crossing a threshold returns the unlock once; the reveal is not repeated a
   expect(L.recordRewardClear('campaign', false)!.unlock).toBeNull();
 });
 
+test('a style selected before the path: earlier reveals still show, its own reach is silent', () => {
+  const L = load(); const s = new Mem();
+  L.initializeRewardLedger(s, true, { writable: true, totalSolved: 2, selectedNumericId: SKIN.rainbow });
+  expect(s.m.get('arrows_reward_seen') ?? 0).toBe(0);
+  expect(L.recordRewardClear('campaign', false)!.unlock?.entry.refId).toBe('critter'); // 3 points
+  L.markRevealSeen(0);
+  for (let i = 0; i < 18; i++) L.recordRewardClear('campaign', false); // 21 points: Cinnamon, Jelly reached
+  const r = L.recordRewardClear('campaign', false)!; // 22 points: Rainbow reached, already owned
+  expect(r.unlock).toBeNull();
+  expect(L.isRewardOwned(SKIN.rainbow)).toBe(true);
+});
+
 test('daily earns 2 (+1 perfect)', () => {
   const L = load(); const s = new Mem();
   L.initializeRewardLedger(s, true, { writable: true, totalSolved: 0, selectedNumericId: 0 });
@@ -587,13 +599,16 @@ export function recordRewardClear(kind: ClearKind, perfect: boolean): ClearRewar
   const before = state.reachedIndex;
   const points = state.points + earned;
   const after = pathIndexReached(points, PATH_TOTALS);
+  const previousOwned = state.owned;
   const owned = withPath(state.owned, after);
   store.setInt(POINTS, points);
   if (owned !== state.owned) persist(owned);
   publish(snapshot(points, owned, state.pickerSeenIndex));
   const seen = count(store.getInt(SEEN, 0));
   const pathIndex = after - 1;
-  const unlock = after > before && pathIndex >= seen
+  // Never reveal a reward that was already owned before this clear (spec §5b amendment).
+  const wasOwned = pathIndex >= 0 && hasSeen(previousOwned, REWARD_PATH[pathIndex].rewardId);
+  const unlock = after > before && pathIndex >= seen && !wasOwned
     ? { entry: REWARD_PATH[pathIndex], pathIndex,
         ownedSkins: ARROW_STYLES.filter(s => hasSeen(owned, s.numericId)).length }
     : null;
