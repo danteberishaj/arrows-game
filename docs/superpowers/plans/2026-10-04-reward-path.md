@@ -67,11 +67,14 @@ this plan and the spec disagree, the spec wins. Report the conflict and do not r
   - "Next · {k} level(s)" / "After {name}" / "Later"
 - The reveal card subtitle is "Style {N} of 18 · unlocked on level {L}" for campaign and "Style {N} of 18 · unlocked on
   today's daily" for a daily. This amends the mockup's "earned in K levels": no clears-since-unlock counter exists.
-- Motion:
-  - the reveal card animates **scale only** (0.94 → 1, 220 ms, ease-out) and is mounted at opacity 1, so it is never
-    invisible if the animation stalls (engineering-lessons: visibility must not depend on an animation completing);
+- Motion (amended 2026-10-04 after the Task 5/6 audit):
+  - the reveal card has **no entrance animation of its own**;
+  - it renders as the win panel's content inside the existing `PanelOverlayFrame`, so it enters with the existing
+    panel motion (spec §5b: "enters with the existing panel motion");
+  - that motion already has the PANEL-STUCK timer and AppState settle in `src/ui/PanelPresence.tsx`, so visibility never
+    depends on an animation completing; do not add a second scale or opacity animation inside it;
   - sparkles twinkle once (about 600 ms) and are decorative;
-  - with `useReducedMotion()` true, there is no scale and no sparkles.
+  - with `useReducedMotion()` true, there are no sparkles (the panel itself already honours reduced motion).
 - `contrastAudit.ts` pins text rows to exact `file:line` sites. After every edit to a file it points at, update the
   pointers or `contrast.test.ts` fails.
 - Hard rules:
@@ -810,10 +813,11 @@ import { Daylight } from '../theme';
 const mockState = { current: null as any };
 const mockChoose = jest.fn();
 const mockMarkPickerSeen = jest.fn();
+const mockOwned = new Set([0, 2, 4, 6]);
 jest.mock('../useRewards', () => ({ useRewards: () => mockState.current }));
 jest.mock('../rewardLedger', () => ({
   ...jest.requireActual('../rewardLedger'),
-  isRewardOwned: (id: number) => [0, 2, 4, 6].includes(id),
+  isRewardOwned: (id: number) => mockOwned.has(id),
   markPickerSeen: () => mockMarkPickerSeen(),
 }));
 jest.mock('../arrowStyleSelection', () => ({ ...jest.requireActual('../arrowStyleSelection'), chooseArrowStyle: (id: string) => mockChoose(id) }));
@@ -821,7 +825,7 @@ jest.mock('../useArrowStyle', () => ({ useArrowStyle: () => ({ id: 'sherbet' }),
 import { ArrowStyleOptions } from '../ArrowStyleOptions';
 import { REWARD_PATH } from '../rewardCatalogue';
 
-beforeEach(() => { mockChoose.mockClear(); mockMarkPickerSeen.mockClear(); });
+beforeEach(() => { mockChoose.mockClear(); mockMarkPickerSeen.mockClear(); mockOwned.clear(); [0, 2, 4, 6].forEach(id => mockOwned.add(id)); });
 
 test('owned styles first with a count, then the path with the next one highlighted', () => {
   mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
@@ -839,6 +843,22 @@ test('tapping a locked style never selects it and shows the hint', () => {
   fireEvent.press(getByLabelText('Jelly, locked, unlocks in 10 levels'));
   expect(mockChoose).not.toHaveBeenCalled();
   expect(getByTestId('reward-locked-hint').props.children).toBe('Clear 10 more levels to unlock');
+});
+
+test('owned rows follow catalogue order: free styles first, then path order', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
+  const { getAllByRole } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  const owned = getAllByRole('radio').map(r => r.props.accessibilityLabel);
+  expect(owned).toEqual(['Classic', 'Sherbet', 'Candy Gloss', 'Critter']);
+});
+
+test('a style owned beyond the points reached has no "new" dot, and opening the picker clears reached dots', () => {
+  mockState.current = { points: 3, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 5, progress: 0, pickerSeenIndex: 0 };
+  mockOwned.add(12); // Rainbow Ribbon, selected before the path existed
+  const { getByLabelText } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  getByLabelText('Critter, new'); // reached since last open
+  getByLabelText('Rainbow Ribbon'); // owned beyond reachedIndex: no dot
+  expect(mockMarkPickerSeen).toHaveBeenCalled();
 });
 
 test('rewards off: today\'s flat list, every style selectable', () => {
@@ -865,23 +885,28 @@ returns a state:
 1. Call `markPickerSeen()` once in a `useEffect(() => { markPickerSeen(); }, [])`.
 2. **"Your styles" section** (`testID="reward-section-owned"`):
    - header text "Your styles", plus `{owned} of {ARROW_STYLES.length}` on the right;
-   - rows are `ARROW_STYLES.filter(s => isRewardOwned(s.numericId))` in catalogue order (free styles, then path order);
-   - a path entry with index ≥ `state.pickerSeenIndex` shows a small "new" dot: a 7 dp circle in `p.accent`, with
-     `accessibilityLabel` suffix ", new".
+   - rows are in catalogue order (free styles, then path order). Derive them from the catalogue, not from
+     `ARROW_STYLES` (whose registry order differs):
+     `REWARD_CATALOGUE.filter(e => e.kind === 'skin' && isRewardOwned(e.rewardId)).map(e => ARROW_STYLES.find(s => s.id === e.refId)!)`;
+   - a path entry shows a small "new" dot only when `pickerSeenIndex <= pathIndex < state.reachedIndex`, i.e. it was
+     reached by points since the picker was last opened. A style owned beyond `reachedIndex` (selected before the
+     path existed) never gets a dot. Draw a 7 dp circle in `p.accent`, with `accessibilityLabel` suffix ", new".
 3. **"Coming up" section** (`testID="reward-section-coming"`), only if any path entry is not owned:
    - each locked entry in `REWARD_PATH` order renders a `Pressable` with `accessibilityRole="button"` and
      `accessibilityLabel={`${name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}`, where
      `k = PATH_TOTALS[i] - state.points`;
    - the first locked entry is full colour and shows "Next · {k} level(s)" plus the same bar as the pill
      (`state.progress`);
-   - the second shows "After {previous name}" and the rest show "Later". These rows sit at opacity .45 with a lock
+   - the second shows "After {previous name}" and the rest show "Later". In these rows **only the preview** is dimmed (opacity .45 on the `StylePreview` wrapper).
+     The name and caption stay at full opacity in `p.inkDim` so they keep the 4.5:1 text contrast (spec §5c). Each row
+     has a lock
      glyph (use the existing icon set in `src/ui/icons.tsx` if it has a lock; otherwise draw a 12 dp SVG padlock and
      say so);
    - `onPress` sets local state `hint = { id, k }`; render `<Text testID="reward-locked-hint">{`Clear ${k} more ${k === 1 ? 'level' : 'levels'} to unlock`}</Text>`
      under that row. It never calls `chooseArrowStyle`.
 4. **Contrast rows:** add rows to `contrastAudit.ts` for:
    - the section header (`inkDim` on `surface`);
-   - the locked row name at opacity .45 (record the composited colour as `fgColour`);
+   - the locked row name (`inkDim` on `surface`, full opacity);
    - the hint (`inkDim`);
    - the "Next" caption.
 
@@ -994,9 +1019,8 @@ Layout, in order, centred, on a `p.surface` card with radius 26, padding 20/16/1
 
 Behaviour:
 - `useEffect(() => { onShown(); }, [])`, once on mount.
-- Motion: a Reanimated `useSharedValue(reducedMotion ? 1 : .94)` animated to 1 with
-  `withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) })` on mount. Only `transform: [{ scale }]` is
-  animated. Opacity stays at the fixed value 1.
+- Motion: none of its own. GameScreen renders the card as the panel content inside the existing `PanelOverlayFrame`,
+  which supplies the enter motion and its guaranteed settle (see Global Constraints).
 - Sparkles: a single opacity 0 → 1 → .6 sequence, about 600 ms total, decorative only.
 - Both pressables pass `disabled` and have `accessibilityRole="button"`. The card root has
   `accessibilityViewIsModal` and `accessibilityLabel={`New style unlocked: ${name}`}`.
