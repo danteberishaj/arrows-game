@@ -1023,7 +1023,7 @@ Expected: FAIL with "Cannot find module '../RewardRevealCard'"
 
 - [ ] **Step 3: Implement**
 
-Layout, in order, centred, on a `p.surface` card with radius 26, padding 20/16/16 and the existing panel shadow:
+Layout, in order, centred. The card has **no background, radius, padding or shadow of its own**: it renders as the win panel's content, so it sits on the panel's existing fill (including the W5-05 shadow-free depth fill when `ART_PANEL_DEPTH_ENABLED` is on; panels never use shadows, see `src/ui/theme.ts`). "Premium" comes from the stage, the badge, spacing and type, not a shadow:
 
 1. A badge pill "NEW STYLE UNLOCKED" (`p.heart` → `p.accent` is not available as a gradient in RN without a
    dependency, so use solid `p.accent` with `p.inkOnAccent` text).
