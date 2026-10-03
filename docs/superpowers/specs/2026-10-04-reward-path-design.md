@@ -106,6 +106,7 @@ direction B.
 | `arrows_reward_points` | Lifetime points earned | Only increases. Absent means not yet initialised. |
 | `arrows_rewards_owned_lo` / `_hi` | Owned rewardIds, bits 0–29 and 30–59 | Bits are only ever set, never cleared. Same lo/hi pattern and `sanitizeMask` as `arrows_shapes_seen_*`. |
 | `arrows_reward_seen` | Highest path index whose reveal card has been shown | Prevents a repeat reveal after restore or relaunch. |
+| `arrows_reward_picker_seen` | Path count already shown in the picker | Drives the "new" dot; set when Settings → Arrow style opens. (Amendment 2026-10-04, from planning.) |
 
 The owned bits are the source of truth:
 - A path unlock writes its bit when points cross the threshold.
@@ -158,7 +159,7 @@ Contents:
 - a preview stage: the real skin preview drawn by the picker's thumbnail component, on the skin's board tint, with
   three sparkles;
 - the name;
-- "Style N of 18 · earned in K levels";
+- "Style N of 18 · unlocked on level L" (or "· unlocked on today's daily"; amended 2026-10-04: there is no clears-since-unlock counter);
 - three short feature chips taken from catalogue data;
 - a primary button and a secondary button;
 - "Up next: <reward> · <levels>".
