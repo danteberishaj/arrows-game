@@ -664,7 +664,7 @@ export function rewardPathEnabled(): boolean { return META_REWARD_PATH && skinPi
 ```
 
 In `App.tsx:152`, change the call to `initSaveSystem(skinPickerEnabled(), rewardPathEnabled())`, importing
-`rewardPathEnabled` from `./src/ui/rewardGate`. If `storage.test.ts` or `arrowStylePersistence.test.ts` (Node
+`rewardPathEnabled` from `./src/ui/rewardGate`. Then update the source-order anchor in `src/ui/__tests__/gameSessionLifecycle.test.ts` (the W3-05 test, `source.indexOf('initSaveSystem(skinPickerEnabled())')`) to the exact new call `'initSaveSystem(skinPickerEnabled(), rewardPathEnabled())'`. Change only that string; every ordering assertion stays as it is. If `storage.test.ts` or `arrowStylePersistence.test.ts` (Node
 project) then fails to parse any react-native import, the cause is an import chain into `rewardGate.ts` or
 `useArrowStyle.ts`. Remove that chain; do not add a react-native mock to the Node project.
 
