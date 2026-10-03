@@ -53,3 +53,6 @@ credentials.backup.enc
 
 # Generated art previews
 out/art/
+
+# Brainstorm mockups (local only)
+.superpowers/
