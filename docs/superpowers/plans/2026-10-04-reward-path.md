@@ -229,7 +229,7 @@ Add to `src/featureFlags.ts`, directly after `META_SKIN_PICKER`:
 ```ts
 /**
  * REWARD-PATH (spec 2026-10-04): clears earn points that unlock arrow styles along a fixed path.
- * Effective only with META_SKIN_PICKER on Android (src/ui/rewardLedger.ts rewardPathEnabled).
+ * Effective only with META_SKIN_PICKER on Android (src/ui/rewardGate.ts rewardPathEnabled).
  * OFF: no reward key is read or written; picker and win panel are unchanged.
  */
 export const META_REWARD_PATH = process.env.EXPO_PUBLIC_META_REWARD_PATH === '1';
@@ -366,17 +366,20 @@ Expected: PASS
 ### Task 3: Reward ledger, save wiring and existing-player credit
 
 **Files:**
-- Create: `src/ui/rewardLedger.ts`
+- Create: `src/ui/rewardLedger.ts` (no react-native import)
+- Create: `src/ui/rewardGate.ts`
 - Modify: `src/ui/storage.ts` (`hydrate` key list, `initSaveSystem` signature and init order)
 - Modify: `App.tsx:152` (pass the reward flag)
 - Test: `src/ui/__tests__/rewardLedger.test.ts`; extend `src/ui/__tests__/storage.test.ts`
 
 **Interfaces:**
 - Consumes: Tasks 1–2; `IntStore` from `src/core/saveSystem.ts`; `markSeen`, `hasSeen`, `sanitizeMask` from
-  `src/core/collection.ts`; `skinPickerEnabled` from `src/ui/useArrowStyle.ts`; `META_REWARD_PATH`.
+  `src/core/collection.ts`. Only `rewardGate.ts` uses `skinPickerEnabled` (`src/ui/useArrowStyle.ts`) and
+  `META_REWARD_PATH`.
 - Produces:
   - Constants: `REWARD_KEYS: readonly string[]`.
-  - Gate: `rewardPathEnabled(): boolean`.
+  - Gate (separate file, so the ledger stays importable from Node tests):
+    `src/ui/rewardGate.ts` exports `rewardPathEnabled(): boolean`.
   - `initializeRewardLedger(store: IntStore | null, enabled: boolean, opts: { writable: boolean; totalSolved: number; selectedNumericId: number }): void`
   - `interface RewardState { points: number; owned: OwnedMasks; reachedIndex: number; next: RewardEntry | null; levelsToNext: number | null; progress: number; pickerSeenIndex: number }`
   - `getRewardState(): RewardState | null` (null when disabled)
@@ -515,11 +518,9 @@ Expected: FAIL with "Cannot find module '../rewardLedger'"
 - [ ] **Step 3: Implement `src/ui/rewardLedger.ts`**
 
 ```ts
-import { Platform } from 'react-native';
 import type { IntStore } from '../core/saveSystem';
 import { hasSeen, markSeen, sanitizeMask } from '../core/collection';
 import { levelsToNext, pathIndexReached, pointsForClear, progressToNext, type ClearKind, type OwnedMasks } from '../core/rewardPath';
-import { META_REWARD_PATH, META_SKIN_PICKER } from '../featureFlags';
 import { FREE_REWARD_IDS, PATH_TOTALS, REWARD_PATH, type RewardEntry } from './rewardCatalogue';
 import { ARROW_STYLES } from './skinSpecs';
 
@@ -531,9 +532,8 @@ const PICKER_SEEN = 'arrows_reward_picker_seen';
 /** Additive keys hydrated only when the path is on (spec §3; PICKER_SEEN is the plan's fifth key). */
 export const REWARD_KEYS: readonly string[] = [POINTS, OWNED_LO, OWNED_HI, SEEN, PICKER_SEEN];
 
-export function rewardPathEnabled(): boolean {
-  return META_REWARD_PATH && META_SKIN_PICKER && Platform.OS === 'android';
-}
+// No react-native import here: .test.ts files run in the Node ts-jest project (jest.config.js "core").
+// The platform/flag gate lives in src/ui/rewardGate.ts.
 
 export interface RewardState {
   points: number; owned: OwnedMasks; reachedIndex: number; next: RewardEntry | null;
@@ -636,7 +636,14 @@ export function markPickerSeen(): void {
 In `src/ui/storage.ts`:
 - Import `REWARD_KEYS` and `initializeRewardLedger`.
 - Change the signature to `initSaveSystem(skinPicker = false, rewardPath = false)`.
-- Hydrate `[...SaveSystem.persistenceKeys, ...(skinPicker ? [ARROW_SKIN_KEY] : []), ...(skinPicker && rewardPath ? REWARD_KEYS : [])]`.
+- Hydrate exactly as today when the picker is off, so `storage.test.ts:38` (array identity with
+  `SaveSystem.persistenceKeys`) still holds:
+
+  ```ts
+  const keys = !skinPicker ? SaveSystem.persistenceKeys
+    : [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY, ...(rewardPath ? REWARD_KEYS : [])];
+  const healthy = await store.hydrate(keys);
+  ```
 - Call `initializeRewardLedger(null, false, …)` next to the existing `initializeArrowStyle(null, false)` at the top.
 - After `initializeArrowStyle(store, skinPicker)`, add:
 
@@ -646,7 +653,20 @@ initializeRewardLedger(store, skinPicker && rewardPath, {
 });
 ```
 
-In `App.tsx:152`, change the call to `initSaveSystem(skinPickerEnabled(), rewardPathEnabled())`.
+Create `src/ui/rewardGate.ts`:
+
+```ts
+import { META_REWARD_PATH } from '../featureFlags';
+import { skinPickerEnabled } from './useArrowStyle';
+
+/** The reward path runs only where the picker does (Android + picker flag) and its own flag is on. */
+export function rewardPathEnabled(): boolean { return META_REWARD_PATH && skinPickerEnabled(); }
+```
+
+In `App.tsx:152`, change the call to `initSaveSystem(skinPickerEnabled(), rewardPathEnabled())`, importing
+`rewardPathEnabled` from `./src/ui/rewardGate`. If `storage.test.ts` or `arrowStylePersistence.test.ts` (Node
+project) then fails to parse any react-native import, the cause is an import chain into `rewardGate.ts` or
+`useArrowStyle.ts`. Remove that chain; do not add a react-native mock to the Node project.
 
 Add a test to `storage.test.ts`:
 - with AsyncStorage `multiGet` mocked to throw and `initSaveSystem(true, true)`, `getRewardState()!.points` is 0;
@@ -671,7 +691,7 @@ Expected: PASS, tsc exit 0
 - Test: `src/ui/__tests__/RewardProgressPill.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 3 (`getRewardState`, `subscribeRewards`, `rewardPathEnabled`, `RewardState`); `StylePreview`;
+- Consumes: Task 3 (`getRewardState`, `subscribeRewards`, `RewardState`; `rewardPathEnabled` from `src/ui/rewardGate.ts`); `StylePreview`;
   `ARROW_STYLES`.
 - Produces:
   - `useRewards(): RewardState | null`
@@ -721,7 +741,8 @@ Expected: FAIL with "Cannot find module '../RewardProgressPill'"
 
 ```ts
 import { useSyncExternalStore } from 'react';
-import { getRewardState, rewardPathEnabled, subscribeRewards, type RewardState } from './rewardLedger';
+import { rewardPathEnabled } from './rewardGate';
+import { getRewardState, subscribeRewards, type RewardState } from './rewardLedger';
 
 const none = () => () => {};
 const nullSnapshot = () => null;
@@ -1045,7 +1066,7 @@ Expected: PASS
   getter for `META_REWARD_PATH`/`META_SKIN_PICKER` and a `Platform.OS = 'android'` mock.
 
 **Interfaces:**
-- Consumes: `recordRewardClear`, `markRevealSeen`, `rewardPathEnabled` (Task 3); `useRewards` (Task 4);
+- Consumes: `recordRewardClear`, `markRevealSeen` (Task 3, `rewardLedger.ts`); `rewardPathEnabled` (Task 3, `rewardGate.ts`); `useRewards` (Task 4);
   `RewardProgressPill` (Task 4); `RewardRevealCard` (Task 6); `chooseArrowStyle` (`src/ui/arrowStyleSelection.ts`).
 - Produces: the user-visible behaviour in spec §5.
 
