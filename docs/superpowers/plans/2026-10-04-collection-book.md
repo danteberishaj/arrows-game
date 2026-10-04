@@ -623,12 +623,24 @@ already the next unowned style after this clear's grants. Keep that order.
   - `src/ui/__tests__/gameSessionLifecycle.test.ts` (W3-05): change only the anchor string to
     `'initSaveSystem(skinPickerEnabled(), rewardPathEnabled(), rewardBookEnabled())'`. Every ordering assertion stays.
   - `src/ui/GameScreen.tsx` is unchanged here. `ClearReward` keeps its name.
+  - **Authorized fixture edit (amended):** add `book: false` to every existing `initializeRewardLedger(...)` call
+    outside `rewardLedger.test.ts`. Today that is `src/ui/__tests__/GameScreen.rewards.test.tsx` lines ~150, ~188
+    and ~197; search for others with `rg -n "initializeRewardLedger\(" src`. Change nothing else in those tests.
 
 - [ ] **Step 5: Run the tests and confirm they pass**
 
 Run: `npx jest src/ui/__tests__/rewardLedger.test.ts src/ui/__tests__/storage.test.ts src/ui/__tests__/gameSessionLifecycle.test.ts && npx tsc --noEmit -p .`
-Expected: PASS. tsc will flag the UI still reading `pickerSeenIndex`; Tasks 4–5 fix those reads. If tsc fails only on
-those references, note it and continue.
+Expected: the named suites PASS.
+
+**Temporary tsc exception (amended), until Task 5 ends:** `npx tsc --noEmit -p .` may fail only on these, all fixed
+by Tasks 4–5:
+- (a) `pickerSeenIndex` reads in `src/ui/ArrowStyleOptions.tsx`;
+- (b) `RewardState` fixtures in `RewardProgressPill.test.tsx`, `ArrowStyleOptions.rewards.test.tsx` and
+  `RewardRevealCard.test.tsx` missing `newMask` / `petals` / `canBuy`;
+- (c) the reveal-card `unlock` fixtures missing `upNext`.
+
+Record the exact tsc error list at the end of Task 3. Any other tsc error is a stop-and-report. tsc must exit 0 at
+the end of Task 5 and again in Task 6 Step 4.
 
 - [ ] **Step 6: Checkpoint.**
 
@@ -649,7 +661,8 @@ those references, note it and continue.
 
 - Pill: with `state.petals: 12`, `getByTestId('petal-icon')` exists. With `petals: null`, `queryByTestId('petal-icon')`
   is null.
-- Pill fixtures replace `pickerSeenIndex` with `newMask: { lo: 0, hi: 0 }, petals: null`.
+- Pill fixtures (and every other `RewardState` fixture in this task's files) replace `pickerSeenIndex` with
+  `newMask: { lo: 0, hi: 0 }, petals: null, canBuy: false`.
 - Card: the `unlock` fixture becomes
   `{ entry: REWARD_PATH[0], pathIndex: 0, ownedSkins: 4, upNext: { entry: REWARD_PATH[1], levels: 5 } }`, and
   `getByText('Up next: Cinnamon Roll · 5 levels')` still holds.
