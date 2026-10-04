@@ -369,7 +369,7 @@ describe('game session lifecycle', () => {
     // App.tsx cannot run under node jest; the stamp itself is tested over the
     // real initSaveSystem in storage.test.ts. This guards only its placement.
     const source = readFileSync(join(__dirname, '..', '..', '..', 'App.tsx'), 'utf8');
-    const init = source.indexOf('initSaveSystem(skinPickerEnabled(), rewardPathEnabled(), rewardBookEnabled())');
+    const init = source.indexOf('initSaveSystem(skinPickerEnabled(), rewardPathEnabled(), rewardBookEnabled(), seasonsEnabled())');
     const then = source.indexOf('.then(', init);
     const stamp = source.indexOf('stampGenSwitchLevel(SaveSystem)', then);
     const ready = source.indexOf('setReady(true)', then);

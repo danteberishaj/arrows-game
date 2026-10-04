@@ -195,3 +195,10 @@ export const META_REWARD_PATH = process.env.EXPO_PUBLIC_META_REWARD_PATH === '1'
  * OFF: no petal key is read or written; the picker keeps the reward-path layout.
  */
 export const META_REWARD_BOOK = process.env.EXPO_PUBLIC_META_REWARD_BOOK === '1';
+/**
+ * HALLOWEEN-01: seasonal styles (Halloween pack) in the collection book, BOOK-ONLY and dated by the phone's
+ * local clock. Effective only when the book is on (src/ui/rewardGate.ts seasonsEnabled). OFF: seasonal styles
+ * appear in no picker, a saved seasonal id renders as Classic, and no key is added (ownership reuses
+ * arrows_rewards_owned_*).
+ */
+export const META_SEASONS = process.env.EXPO_PUBLIC_META_SEASONS === '1';

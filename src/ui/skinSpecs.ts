@@ -1,6 +1,8 @@
 /** All geometry widths are fractions of a cell. Native code has no skin-id branches. */
 export interface SkinLayer {
-  kind: 'shadow' | 'rim' | 'body' | 'stripe' | 'ribbon' | 'bands' | 'seam' | 'shine' | 'glow' | 'spots' | 'fold' | 'headFill' | 'tailFill';
+  /** `lengthBands` (HALLOWEEN-01): `bands` colour equal fractions of the visible shaft, tail → head, each with a
+   *  nested head cap sized by `bandWidths` (the existing matching nested heads). One paint per band. */
+  kind: 'shadow' | 'rim' | 'body' | 'stripe' | 'ribbon' | 'bands' | 'seam' | 'shine' | 'glow' | 'spots' | 'fold' | 'headFill' | 'tailFill' | 'lengthBands';
   colour: string | 'palette';
   width: number;
   opacity?: number;
@@ -30,7 +32,10 @@ export interface SkinSpec {
   head: { shape: 'tri' | 'rounded' | 'swept' | 'step'; halfWidth: number; tipPastCentre: number; back: number; shine: boolean; cornerRadius?: number };
   tail: { kind: 'none' | 'dot' | 'roll+face' | 'fletch' | 'marble'; radius: number; rim: number; oneCell: 'dot' | 'none'; colours?: readonly string[] };
   bends: 'rounded' | 'crease';
-  face: { eyes: boolean; blush: boolean; closedOnBlocked: boolean; ink: string; blushColour: string; anchor?: 'tail' | 'head'; eyeRadius?: number; eyeHalfGap?: number; mouthWidth?: number; blushSize?: readonly [number, number]; blushOffset?: readonly [number, number]; headOffset?: number };
+  face: { eyes: boolean; blush: boolean; closedOnBlocked: boolean; ink: string; blushColour: string; anchor?: 'tail' | 'head'; eyeRadius?: number; eyeHalfGap?: number; mouthWidth?: number; blushSize?: readonly [number, number]; blushOffset?: readonly [number, number]; headOffset?: number;
+    /** HALLOWEEN-01: open-eye shape. Omitted = 'dot' (today's circles, byte-identical). 'arc' draws the closed-eye arc
+     *  as the open eye (sleepy); 'triangle' an upright triangle inside the eye radius. Blocked eyes keep the arc. */
+    eyeShape?: 'dot' | 'arc' | 'triangle' };
   lod: { faceMinDp: number; detailMinDp: number; flatMinDp: number };
   motion: { pressScale: number; anticipationMs: number; particles: { count: number; size: number; colours: readonly string[]; lifeMs: number } };
 }
@@ -132,6 +137,35 @@ const strawberryGlazed = canvasSpec('strawberry-glazed', 17, 'Strawberry Glazed'
   { kind: 'spots', colour: '#6CC8F2', width: .045, period: .3, sideOffset: -.085 },
   { kind: 'ribbon', colour: '#FF9EBB', width: .075, offset: [0, 0], fadeCells: 1, fadeFraction: .35 },
 ], { head: { ...cinnamon.head }, tail: { ...cinnamon.tail }, face: { ...cinnamon.face } });
+/** HALLOWEEN-01 pack (book-only seasonal styles, src/ui/rewardCatalogue.ts). Launch-polish proportions, one board tint. */
+// CONFLICT (HALLOWEEN-01 report): the brief's dark tint #2A2140 fails the REQUIRED missed-mark tint row (heart at .75 over
+// the board, 2.992:1 < 3:1, src/ui/__tests__/seasons.test.ts pins it). Dark keeps the stock Ink Night board until the owner
+// rules; the light tint is the brief's.
+export const HALLOWEEN_BRIEF_DARK_TINT = '#2A2140';
+const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#13111C' };
+const polishedHead: SkinSpec['head'] = { ...sherbet.head, shape: 'rounded', halfWidth: .44, tipPastCentre: .46, cornerRadius: .10, shine: false };
+const headFace = (ink: string, eyeShape: 'arc' | 'triangle', blushColour?: string): SkinSpec['face'] => ({ eyes: true, blush: blushColour !== undefined, eyeShape,
+  closedOnBlocked: true, ink, blushColour: blushColour ?? '#EE9C99', anchor: 'head', eyeRadius: .045, eyeHalfGap: .13,
+  mouthWidth: .12, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 });
+const particles = (colours: readonly string[]): SkinSpec['motion'] => ({ ...sherbet.motion, particles: { ...sherbet.motion.particles, colours } });
+const pumpkin = canvasSpec('pumpkin', 18, 'Pumpkin', one('#E0661B'), [
+  rim('#9A633F', .48), body(.425),
+  // Rib lobes: orange circles centred on each bead, almost touching, so the deep-orange body reads as thin rib
+  // creases (iteration 2; iteration 1's .30 lobes read as separate balls) plus a narrow edge inside the outline.
+  { kind: 'spots', colour: '#FF8A2A', width: .34, period: .35, sideOffset: 0 },
+  { kind: 'tailFill', colour: '#6BAA4F', width: .425 }, { kind: 'headFill', colour: '#FF8A2A', width: .425 },
+], { board: HALLOWEEN_BOARD, bodyPattern: 'beads', beads: { diameter: .48, pitch: .35, tubeWidth: .34 }, head: polishedHead,
+  tail: { kind: 'dot', radius: .12, rim: .025, oneCell: 'none' }, face: headFace('#9A633F', 'triangle'),
+  motion: particles(['#FF8A2A', '#E0661B', '#6BAA4F']) });
+const ghost = canvasSpec('ghost', 19, 'Ghost', one('#E9E2F5'), [
+  rim('#8C7BB5', .48), body(.425), shine(.22, '#F7F4FF'), { kind: 'headFill', colour: '#F7F4FF', width: .425 },
+], { board: HALLOWEEN_BOARD, bodyPattern: 'beads', beads: { diameter: .48, pitch: .30, tubeWidth: .32 }, head: polishedHead,
+  face: headFace('#8C7BB5', 'arc', '#D9CFEA'), motion: particles(['#F7F4FF', '#E9E2F5', '#D9CFEA']) });
+const candyCorn = canvasSpec('candy-corn', 20, 'Candy Corn', one('#FFD24A'), [
+  rim('#8C7BB5', .48), body(.425),
+  // Thirds of the visible shaft, tail → head; the head repeats them as nested caps with the white innermost.
+  { kind: 'lengthBands', colour: 'palette', width: .425, bands: ['#FFD24A', '#FF8A2A', '#FFF8E8'], bandWidths: [.425, .29, .155] },
+], { board: HALLOWEEN_BOARD, head: polishedHead, motion: particles(['#FFD24A', '#FF8A2A', '#FFF8E8']) });
 /** One shared data recipe; untouched specs keep their original JSON and native defaults. */
 function launchPolish(spec: SkinSpec, light: string, dark: string): SkinSpec {
   const oldBody = spec.layers.find(layer => layer.kind === 'body')!.width;
@@ -157,6 +191,7 @@ export const SKIN_SPECS: Readonly<Record<string, SkinSpec>> = {
   archery, pixel, 'neon-glass': neonGlass, 'rainbow-ribbon': launchPolish(rainbowRibbon,'#F7F5FF','#13111C'), 'clear-glass': clearGlass,
   'stained-glass': stainedGlass, campfire: launchPolish(campfire,'#FFF6EC','#17110D'), 'lava-rock': lavaRock,
   'strawberry-glazed': launchPolish(strawberryGlazed,'#FFF7EA','#1A1410'),
+  pumpkin, ghost, 'candy-corn': candyCorn,
 };
 export function skinSpecFor(id: string | undefined): SkinSpec | null { return id ? SKIN_SPECS[id] ?? null : null; }
 /** Stable selection payload; size/motion are separate props and never cause JSON re-parsing. */

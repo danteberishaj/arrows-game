@@ -2,8 +2,9 @@ import type { IntStore } from '../core/saveSystem';
 import { hasSeen, markSeen, sanitizeMask } from '../core/collection';
 import { etaForRank, grantNext, levelsToNext, pathIndexReached, pointsForClear, progressToNext, unownedPath,
   type ClearKind, type OwnedMasks } from '../core/rewardPath';
-import { FREE_REWARD_IDS, PATH_TOTALS, REWARD_CATALOGUE, REWARD_PATH, REWARD_PATH_IDS, type RewardEntry } from './rewardCatalogue';
-import { ARROW_STYLES } from './skinSpecs';
+import { FREE_REWARD_IDS, PATH_TOTALS, REWARD_CATALOGUE, REWARD_PATH, REWARD_PATH_IDS, seasonFor, visibleStyleCounts,
+  type RewardEntry } from './rewardCatalogue';
+import { inSeason } from './seasons';
 
 const POINTS = 'arrows_reward_points';
 const OWNED_LO = 'arrows_rewards_owned_lo';
@@ -24,16 +25,20 @@ export interface RewardState {
   levelsToNext: number | null; progress: number; newMask: OwnedMasks; petals: number | null;
   /** Book on AND the save is writable (SAVE-GUARD). The Buy button is disabled when false. */
   canBuy: boolean;
+  /** HALLOWEEN-01: seasonal styles are on (book on AND META_SEASONS). Absent/false hides every seasonal style. */
+  seasons?: boolean;
 }
 export interface ClearReward {
   earned: number;
-  unlock: { entry: RewardEntry; pathIndex: number; ownedSkins: number;
+  /** ownedSkins / totalSkins count only the styles the player can see (seasonal rule, HALLOWEEN-01). */
+  unlock: { entry: RewardEntry; pathIndex: number; ownedSkins: number; totalSkins: number;
     upNext: { entry: RewardEntry; levels: number } | null } | null;
 }
 export type BuyResult = 'bought' | 'owned' | 'insufficient' | 'unavailable';
 
 let store: IntStore | null = null;
 let writable = false;
+let seasons = false;
 let grants = 0;
 let state: RewardState | null = null;
 const listeners = new Set<() => void>();
@@ -42,12 +47,13 @@ const count = (v: number) => (Number.isSafeInteger(v) && v > 0 ? v : 0);
 const masks = (lo: string, hi: string): OwnedMasks =>
   ({ lo: sanitizeMask(store!.getInt(lo, 0)), hi: sanitizeMask(store!.getInt(hi, 0)) });
 const entryById = (id: number) => REWARD_CATALOGUE.find(e => e.rewardId === id)!;
-const ownedSkins = (owned: OwnedMasks) => ARROW_STYLES.filter(s => hasSeen(owned, s.numericId)).length;
+const styleCounts = (owned: OwnedMasks, now: Date) => visibleStyleCounts(id => hasSeen(owned, id), seasons, now);
+const collected = ({ owned, total }: { owned: number; total: number }) => ({ ownedSkins: owned, totalSkins: total });
 
 function snapshot(points: number, owned: OwnedMasks, newMask: OwnedMasks, petals: number | null): RewardState {
   const nextId = unownedPath(owned, REWARD_PATH_IDS)[0];
   const stepsLeft = grants < PATH_TOTALS.length;
-  return { points, owned, reachedIndex: grants, newMask, petals, canBuy: writable && petals !== null,
+  return { points, owned, reachedIndex: grants, newMask, petals, canBuy: writable && petals !== null, seasons,
     next: nextId === undefined || !stepsLeft ? null : entryById(nextId),
     levelsToNext: nextId === undefined ? null : levelsToNext(points, PATH_TOTALS),
     progress: progressToNext(points, PATH_TOTALS) };
@@ -71,9 +77,11 @@ function grantSteps(points: number, owned: OwnedMasks, newMask: OwnedMasks) {
 }
 
 export function initializeRewardLedger(next: IntStore | null, enabled: boolean,
-  opts: { writable: boolean; totalSolved: number; selectedNumericId: number; book: boolean }): void {
+  opts: { writable: boolean; totalSolved: number; selectedNumericId: number; book: boolean; seasons?: boolean }): void {
   store = enabled ? next : null;
   writable = enabled && opts.writable && next !== null;
+  // Seasonal styles are book-only (HALLOWEEN-01): no book, no seasons.
+  seasons = enabled && opts.book && opts.seasons === true;
   grants = 0;
   if (!store) { publish(null); return; }
   let owned = masks(OWNED_LO, OWNED_HI);
@@ -126,7 +134,7 @@ export function etaFor(rewardId: number): number | null {
   return rank < 0 ? null : etaForRank(state.points, PATH_TOTALS, grants, rank);
 }
 
-export function recordRewardClear(kind: ClearKind, perfect: boolean): ClearReward | null {
+export function recordRewardClear(kind: ClearKind, perfect: boolean, now: Date = new Date()): ClearReward | null {
   if (!state || !store || !writable) return null;
   const earned = pointsForClear(kind, perfect);
   const points = state.points + earned;
@@ -142,17 +150,20 @@ export function recordRewardClear(kind: ClearKind, perfect: boolean): ClearRewar
   const seen = count(store.getInt(SEEN, 0));
   const upNextEntry = state.next;
   const unlock = last && last.step >= seen
-    ? { entry: entryById(last.id), pathIndex: last.step, ownedSkins: ownedSkins(g.owned),
+    ? { entry: entryById(last.id), pathIndex: last.step, ...collected(styleCounts(g.owned, now)),
         upNext: upNextEntry && state.levelsToNext !== null ? { entry: upNextEntry, levels: state.levelsToNext } : null }
     : null;
   return { earned, unlock };
 }
 
-export function buyReward(rewardId: number): BuyResult {
+/** `now` is the caller's local date (the UI passes it); seasonal styles sell only inside their window. */
+export function buyReward(rewardId: number, now: Date = new Date()): BuyResult {
   if (!state || !store || !writable || state.petals === null) return 'unavailable';
   if (hasSeen(state.owned, rewardId)) return 'owned';
   const price = REWARD_CATALOGUE.find(e => e.rewardId === rewardId)?.price;
   if (price == null) return 'unavailable';
+  const season = seasonFor(rewardId);
+  if (season && (!seasons || !inSeason(season, now))) return 'unavailable';
   if (state.petals < price) return 'insufficient';
   const owned = markSeen(state.owned, rewardId);
   const petals = state.petals - price;

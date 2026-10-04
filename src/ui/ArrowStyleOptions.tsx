@@ -8,9 +8,9 @@ import { PERF_MODE } from '../perfMode';
 import { useArrowStyle } from './useArrowStyle';
 import { useRewards } from './useRewards';
 import { PetalIcon } from './PetalIcon';
-import { CollectionBook } from './CollectionBook';
+import { CollectionBook, openSeasons } from './CollectionBook';
 import { etaFor, isRewardNew, isRewardOwned, markPickerSeen } from './rewardLedger';
-import { REWARD_CATALOGUE, REWARD_PATH } from './rewardCatalogue';
+import { REWARD_CATALOGUE, REWARD_PATH, isStyleVisible, visibleStyleCounts } from './rewardCatalogue';
 
 const writePickerLog = console.log.bind(console);
 
@@ -48,6 +48,12 @@ export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyl
           return <G key={bandColour}><Path d="M5 15H37" stroke={bandColour} strokeWidth={9*ratio} />
             <Path d={head} fill={bandColour} transform={`translate(37 15) scale(${ratio}) translate(-37 -15)`} /></G>;
         }))}
+        {spec?.layers.filter(layer => layer.kind === 'lengthBands').flatMap(layer => layer.bands!.map((bandColour, i, all) => {
+          const ratio = (layer.bandWidths?.[i] ?? layer.width*(1-i/all.length)) / layer.width;
+          const from = 5 + 26*i/all.length;
+          return <G key={bandColour}><Path d={`M${from} 10H${from + 26/all.length}V20H${from}Z`} fill={bandColour} />
+            <Path d={head} fill={bandColour} transform={`translate(37 15) scale(${ratio}) translate(-37 -15)`} /></G>;
+        }))}
         {spec?.bodyPattern === 'beads' && [8,15,22,29].map(x => <Circle key={x} cx={x} cy={15} r={4} fill={body} stroke={outline} />)}
         {spec?.layers.filter(layer => layer.kind === 'headFill').map((layer,i) => <Path key={i} d={head} fill={colour(layer.colour)} />)}
         {spec?.layers.filter(layer => layer.kind === 'fold').map((layer,i) => <Path key={i} d={layer.fillHalf === false ? "M31 15H49" : "M31 15H49L31 26Z"} fill={layer.fillHalf === false ? "none" : colour(layer.colour)} stroke={layer.fillHalf === false ? colour(layer.colour) : undefined} strokeWidth={1} opacity={layer.opacity} />)}
@@ -59,12 +65,15 @@ export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyl
       {spec?.tail.kind === 'roll+face' && <><Circle cx={7} cy={15} r={4} fill={body} stroke={outline} /><Path d="M5 15C5 11 10 12 9 15S6 17 6 15" stroke={outline} fill="none" /></>}
       {spec?.tail.kind === 'fletch' && <Path d="M3 15L7 10H12L9 15L12 20H7Z" fill={spec.layers.find(layer => layer.kind === 'tailFill')?.colour ?? body} stroke={outline} />}
       {spec?.tail.kind === 'dot' && <Circle cx={7} cy={15} r={2.5} fill={spec.layers.find(layer => layer.kind === 'tailFill')?.colour ?? body} />}
-      {spec?.face.anchor === 'head' && <><Circle cx={37} cy={13} r={.8} fill={spec.face.ink} /><Circle cx={37} cy={17} r={.8} fill={spec.face.ink} /></>}
+      {spec?.face.anchor === 'head' && [13, 17].map(cy => spec.face.eyeShape === 'triangle'
+        ? <Path key={cy} d={`M37 ${cy-1.1}L38 ${cy+.6}H36Z`} fill={spec.face.ink} />
+        : spec.face.eyeShape === 'arc' ? <Path key={cy} d={`M36.2 ${cy-.3}Q37 ${cy+.9} 37.8 ${cy-.3}`} stroke={spec.face.ink} strokeWidth={.5} fill="none" />
+        : <Circle key={cy} cx={37} cy={cy} r={.8} fill={spec.face.ink} />)}
     </Svg>
   </View>;
 }
 
-export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; onBack: () => void }) {
+export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { palette: Palette; onBack: () => void; now?: Date }) {
   const selected = useArrowStyle();
   const state = useRewards();
   const [hint, setHint] = useState<{ id: number; k: number | null } | null>(null);
@@ -95,8 +104,13 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
     </Pressable>;
   }
 
-  const owned = state ? REWARD_CATALOGUE.filter(e => e.kind === 'skin' && isRewardOwned(e.rewardId))
+  // HALLOWEEN-01: only visible styles are listed or counted (seasonal ones need seasons on; flat picker never shows them).
+  const seasons = state?.seasons === true;
+  const visible = (id: number) => isStyleVisible(id, isRewardOwned, seasons, now);
+  const owned = state ? REWARD_CATALOGUE.filter(e => e.kind === 'skin' && isRewardOwned(e.rewardId) && visible(e.rewardId))
     .map(e => ARROW_STYLES.find(s => s.id === e.refId)!) : [];
+  const bookCount = state ? REWARD_PATH.filter(e => !isRewardOwned(e.rewardId)).length
+    + openSeasons(state, now).reduce((n, g) => n + g.entries.length, 0) : 0;
   const allLocked = state ? REWARD_PATH.filter(e => !isRewardOwned(e.rewardId)) : [];
   // UX review: show the next two only; a long list of locked rows reads as a chore, not a goal.
   const locked = allLocked.slice(0, 2);
@@ -104,7 +118,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
   const nextEta = state?.next ? etaFor(state.next.rewardId) : null;
   return <>
     <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
-      {!state ? ARROW_STYLES.map(style => <StyleRow key={style.id} style={style} />) : state.petals !== null ? <>
+      {!state ? ARROW_STYLES.filter(style => isStyleVisible(style.numericId, () => true, false, now)).map(style => <StyleRow key={style.id} style={style} />) : state.petals !== null ? <>
         <View testID="petal-purse" style={styles.purse} accessibilityLabel={`${state.petals} petals`}>
           <PetalIcon size={14} />
           <Text style={[styles.note, { color: p.accentText }]}>{`${state.petals} ${state.petals === 1 ? 'petal' : 'petals'}`}</Text>
@@ -116,7 +130,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
           </Pressable>
           <Pressable testID="tab-book" accessibilityRole="tab" accessibilityState={{ selected: tab === 'book' }}
             onPress={() => setTab('book')} style={[styles.tab, tab === 'book' && { backgroundColor: p.surface }]}>
-            <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${allLocked.length}`}</Text>
+            <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${bookCount}`}</Text>
           </Pressable>
         </View>
         {tab === 'styles' ? <>
@@ -125,11 +139,11 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
             onPress={() => setTab('book')} style={styles.nextFree}>
             <Text style={[styles.note, { color: p.inkDim }]}>{`Next free style: ${state.next.name} · ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}</Text>
           </Pressable>}
-        </> : <CollectionBook palette={p} state={state} onUse={id => { chooseArrowStyle(id); setTab('styles'); }} />}
+        </> : <CollectionBook palette={p} state={state} now={now} onUse={id => { chooseArrowStyle(id); setTab('styles'); }} />}
       </> : <>
         <View testID="reward-section-owned" style={styles.section}>
           <Text style={[styles.note, { color: p.inkDim }]}>Your styles</Text>
-          <Text style={[styles.note, { color: p.inkDim }]}>{owned.length} of {ARROW_STYLES.length}</Text>
+          <Text style={[styles.note, { color: p.inkDim }]}>{owned.length} of {visibleStyleCounts(isRewardOwned, seasons, now).total}</Text>
         </View>
         {owned.map(style => <StyleRow key={style.id} style={style} />)}
         {locked.length > 0 && <View testID="reward-section-coming" style={styles.section}>

@@ -340,3 +340,34 @@ there is no evidence-backed category of styles that can never be optimized.
 The ON capture must also contain its expected opaque rim, not just its tint: a native draw log can
 precede visible presentation. The checker rejects the retained blank capture; all eight real ON
 screenshots pass. This is visual presence evidence, not a GPU-completion timer.
+
+## Seasonal styles and the Halloween pack (HALLOWEEN-01)
+
+**Seasonal rule.** A catalogue entry may carry `season: { id, name, start: 'MM-DD', end: 'MM-DD' }`
+(`src/ui/rewardCatalogue.ts`). Seasonal styles are **book-only**: `pathCost: null`, never on the path, never free,
+20 petals. Windows are whole local days, inclusive, and may wrap the year (`12-01..01-15`); `src/ui/seasons.ts` is
+pure and takes the date from its caller. `seasonsEnabled() = META_SEASONS && rewardBookEnabled()`
+(`EXPO_PUBLIC_META_SEASONS`, default OFF). With seasons on, the Book tab shows an in-season section at the top
+("Halloween · until 7 Nov", drawn pumpkin) listing that season's **unowned** styles; out of season they are hidden.
+Owned seasonal styles stay in "Your styles" all year. `buyReward(id, now)` returns `unavailable` out of season or with
+seasons off. Counts ("Book · N", "N of M styles collected") use `visibleStyleCounts`, never a fixed number.
+Seasons off (or book/path/picker off): no seasonal style appears in any picker, and a saved seasonal id renders as
+Classic without a repair write. No new save key: ownership uses `arrows_rewards_owned_*`.
+
+**Pack.** Pumpkin **18**, Ghost **19**, Candy Corn **20** (append-only). Launch proportions (.48 rim / .425 body,
+.44 rounded head with .10 fillets). Light board tint `#F3EEFA`. **Dark tint: owner ruling pending** — the concept's
+`#2A2140` fails the required missed-mark tint row (2.992:1 < 3:1), so the registry keeps the stock Ink Night board
+`#13111C` in dark mode (see HALLOWEEN-01 report).
+
+| Data feature | Rule | Example |
+| --- | --- | --- |
+| layer `lengthBands` | `bands` colour equal fractions of the **visible shaft** (tail point → the cap's back edge, along the body's rounded centreline), tail → head. Butt ends; each non-final band overlaps the next by .02 cell (hidden under it). Each band also adds its nested head cap (`bandWidths`, strictly decreasing, scaled about the head centre — the existing matching nested heads). One paint per band within the 7-layer limit. | Candy Corn |
+| `face.eyeShape` | `'dot'` (default, omitted = today's circles), `'arc'` (the closed-eye arc as the open eye), `'triangle'` (upright triangle in 1.25× the eye radius). Blocked eyes keep the arc. Clearance rules are unchanged (.03 cell, all directions, one-cell heads). | Ghost (arc), Pumpkin (triangle) |
+| beads (existing) | Pumpkin ribs: beads `.48/.35/.34` (diameter/pitch/tube) + `.34` orange spots centred on each bead over a deep-orange body (thin rib creases; iteration 1 with `.30` lobes read as separate balls). Ghost waves: beads `.48/.30/.32` (small bead/tube difference). No new bead-shape field was needed. | Pumpkin, Ghost |
+
+Native checks: `run-skin-contract.mjs halloween` (new `SkinHalloweenContract.kt`) proves every spec without a new
+field keeps byte-identical paths against the frozen starting renderer (`Halloween01BeforePaths.kt`), checks band
+order/fractions, nested heads and shaft coverage for `lengthBands` (reversed-order and head-removed fixtures must be
+rejected), and classifies eye shapes in four directions (a swapped shape must be rejected). `after` adds
+`lengthBands` to the feature fit/nested-head controls; `polish` compares against frozen ART08 paths only for the 17
+specs that existed then. Owner look review is separate.

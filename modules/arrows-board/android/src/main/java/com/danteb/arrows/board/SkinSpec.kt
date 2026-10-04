@@ -50,6 +50,8 @@ class SkinSpec(json: String) {
   val blushX = face.optJSONArray("blushOffset")?.getDouble(0)?.toFloat() ?: .15f
   val blushY = face.optJSONArray("blushOffset")?.getDouble(1)?.toFloat() ?: .0825f
   val faceHeadOffset = face.optDouble("headOffset", 0.0).toFloat()
+  /** Open-eye shape; omitted = "dot" (the original circles). General data, never keyed by skin id. */
+  val eyeShape = face.optString("eyeShape", "dot")
   val customFace = face.has("eyeRadius") || face.has("eyeHalfGap") || face.has("mouthWidth") || face.has("blushSize") || face.has("blushOffset") || face.has("headOffset")
   private val lod = source.getJSONObject("lod")
   val flatMin = lod.getDouble("flatMinDp").toFloat(); val detailMin = lod.getDouble("detailMinDp").toFloat(); val faceMin = lod.getDouble("faceMinDp").toFloat()
@@ -66,6 +68,7 @@ class SkinSpec(json: String) {
     require(headShape in listOf("tri", "rounded", "swept", "step"))
     require(bodyPattern in listOf("tube", "beads", "square"))
     require(faceAnchor in listOf("tail", "head"))
+    require(eyeShape in listOf("dot", "arc", "triangle"))
     require(oneCellTail in listOf("dot", "none"))
     require(tailKind in listOf("none", "dot", "roll+face", "fletch", "marble"))
     require(layers.count { it.kind == "body" } == 1 && layers.count { it.kind == "rim" } == 1)
@@ -80,11 +83,11 @@ class SkinSpec(json: String) {
     require(pressScale in .8f..1f && anticipation in 0..100 && particleCount in 0..24 && particleLife in 1..2000)
     val body = layers.single { it.kind == "body" }
     layers.forEach {
-      require(it.kind in listOf("shadow", "rim", "body", "stripe", "ribbon", "bands", "seam", "shine", "glow", "spots", "fold", "headFill", "tailFill"))
+      require(it.kind in listOf("shadow", "rim", "body", "stripe", "ribbon", "bands", "seam", "shine", "glow", "spots", "fold", "headFill", "tailFill", "lengthBands"))
       require(it.width in 0f.. .9f && it.period > 0f && it.fadeFraction in 0f..1f)
       require(it.opacity in 0f..1f && it.dash.all { n -> n > 0f } && (it.dash.isEmpty() || it.dash.size == 2))
       require(!it.tailPalette || tailColours.isNotEmpty())
-      if(it.kind == "bands") {
+      if(it.kind == "bands" || it.kind == "lengthBands") {
         require(it.bands.isNotEmpty() && (it.bandWidths.isEmpty() || it.bandWidths.size == it.bands.size))
         require(it.bandWidths.all { n -> n > 0f && n <= it.width })
         require(it.bandWidths.toList().zipWithNext().all { pair -> pair.first > pair.second })
@@ -93,7 +96,7 @@ class SkinSpec(json: String) {
       if(it.kind in listOf("stripe", "spots")) require(kotlin.math.abs(it.sideOffset) + it.width/2 <= body.width/2 - .03f)
       if(it.kind == "ribbon") require(it.dx == 0f && it.dy == 0f && it.amplitude + it.width / 2 <= body.width / 2 - .03f)
     }
-    require(layers.sumOf { if(it.kind == "bands") it.bands.size else 1 } + (if(blush) 1 else 0) + (if(eyes) 1 else 0) <= 7)
+    require(layers.sumOf { if(it.kind == "bands" || it.kind == "lengthBands") it.bands.size else 1 } + (if(blush) 1 else 0) + (if(eyes) 1 else 0) <= 7)
   }
   fun detail(screenCell: Float) = if(screenCell < flatMin) 0 else if(screenCell < detailMin) 1 else 2
   fun colour(index: Int, length: Int, direction: Int): Int = colours[Math.floorMod(when(rule) {

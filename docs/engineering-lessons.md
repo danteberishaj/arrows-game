@@ -548,3 +548,39 @@ render guard that removes the three decorative nodes. Keep the reveal's entrance
 tests). On emulator-5556, `transition_animation_scale=0` produces a visible reveal without sparkles in both the
 entrance recording and screenshot; the original setting is restored. Evidence and retained failures are in
 [REWARD-01](next-level/reports/REWARD-01.md).
+
+## Generated skin concepts need visual and geometric checks separately
+
+**Observed (2026-10-04, HALLOWEEN-CONCEPT-01):** the first generated sheet labelled examples as one/four
+cells while drawing roughly 60–70 px heads on a roughly 51 px grid. A geometry edit reduced their size,
+but restarted Candy Corn's yellow body band at the bend. **Cause hypothesis:** the generator interprets
+grid coordinates and labels as approximate illustration constraints, rather than enforcing path invariants.
+**Correction:** inspect cell boundaries as well as labels, review an approximately 30 px/cell derivative,
+and correct remaining band order with a targeted edit. **Verified:** final direction/face readability and
+yellow→orange→white body order by visual review. Exact cell fit, raster hex values and native contracts
+remain unverified; concept art does not certify a registered spec. Prompts, retained drafts and review are in
+[HALLOWEEN-CONCEPT-01](../artifacts/HALLOWEEN-CONCEPT-01/review.txt).
+
+## A killed build runner leaves diagnostics in the product tree; split strokes leave raster slivers
+
+**Observed (2026-10-04, HALLOWEEN-01):** the contract runner `build-skin-catalogue.py contract` injects the diagnostic
+Kotlin classes into `modules/arrows-board/.../board/` plus a `skinTest` Gradle type and an instrumentation manifest entry,
+and restores them in `finally`. When the agent session was killed mid-build, `finally` never ran: ten diagnostic classes
+stayed in the product module and the generated `android/` kept both edits. **Cause confirmed:** a SIGKILL skips Python
+`finally`. **Correction:** before any normal build, the HALLOWEEN-01 build script refuses to start if any diagnostic class
+exists in the product module, and the APK proof rejects an `instrumentation` manifest entry (UTF-16 binary manifest).
+R8 renames the helper classes, so a dex string search only sees the manifest-kept `SkinContractInstrumentation`
+(positive control: the contract APK shows it, the helpers' names never appear); treat a zero dex count for the others as
+blind, not as proof. Run long build runners under `nohup` so a session loss lets the restore finish. **Verified:** both
+test-ads APKs passed the proof; the module and `android/` were clean afterwards.
+
+**Length bands:** stroking a sub-segment of the body's rounded centreline does not rasterise identically to stroking the
+whole curve. The first coverage oracle (≤40 uncovered samples at 400/cell) failed Candy Corn with 169, then 150, uncovered
+samples. Drawing band *i* from its start to the visible end (each later band over the previous) removed real seams; the
+remaining 152-sample maximum is slivers ≤2 samples wide (hypothesis: different curve flattening), so the oracle now
+judges gaps after a 3×3 erosion and must still reject a deliberate .05-cell cut. **Verified** on v1 0–19 + 3827.
+Retained: `artifacts/HALLOWEEN-01/logs/contract-halloween-probe*.txt`.
+
+**Owner-approved concept colours still need the real audit:** the concept dark tint `#2A2140` passed the precomputed
+outline ratios but fails the required missed-mark tint row (2.992:1). The registry keeps the stock dark board pending an
+owner ruling; a test pins the failing ratio. See [HALLOWEEN-01](next-level/reports/HALLOWEEN-01.md).

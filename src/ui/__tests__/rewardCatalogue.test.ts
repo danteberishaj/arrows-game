@@ -8,9 +8,9 @@ test('every arrow style appears exactly once, keyed by its numericId', () => {
   for (const style of ARROW_STYLES) expect(rewardForSkin(style.numericId)?.refId).toBe(style.id);
 });
 
-test('Classic, Sherbet and Candy Gloss are free; everything else is on the path', () => {
+test('Classic, Sherbet and Candy Gloss are free; everything else is on the path or seasonal (book-only)', () => {
   expect([...FREE_REWARD_IDS].sort((a, b) => a - b)).toEqual([0, 2, 4]);
-  expect(REWARD_PATH.length + FREE_REWARD_IDS.length).toBe(REWARD_CATALOGUE.length);
+  expect(REWARD_PATH.length + FREE_REWARD_IDS.length + SEASONAL_REWARD_IDS.length).toBe(REWARD_CATALOGUE.length);
 });
 
 test('path order and costs are the spec table', () => {
@@ -29,10 +29,10 @@ test('rewardIds are unique, below 60, and every path entry has three chips', () 
   for (const e of REWARD_PATH) expect(e.chips).toHaveLength(3);
 });
 
-import { REWARD_PATH_IDS } from '../rewardCatalogue';
+import { REWARD_PATH_IDS, SEASONAL_REWARD_IDS } from '../rewardCatalogue';
 
 test('book prices by path tier: 10 / 20 / 35; free styles have no price', () => {
   expect(REWARD_PATH.map(e => e.price)).toEqual([10, 10, 10, 10, 10, 20, 20, 20, 20, 20, 35, 35, 35, 35, 35]);
-  expect(REWARD_CATALOGUE.filter(e => e.pathCost === null).every(e => e.price === null)).toBe(true);
+  expect(REWARD_CATALOGUE.filter(e => e.pathCost === null && !e.season).every(e => e.price === null)).toBe(true);
   expect(REWARD_PATH_IDS).toEqual(REWARD_PATH.map(e => e.rewardId));
 });

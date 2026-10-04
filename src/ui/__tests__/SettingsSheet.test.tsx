@@ -250,7 +250,10 @@ describe('ART-SKINS-06 runtime picker', () => {
     const sheet = renderSheet();
     fireEvent.press(sheet.getByRole('button', { name: 'Arrow style' }));
     const radios = sheet.getAllByRole('radio');
-    expect(radios.map(r => r.props.accessibilityLabel)).toEqual(require('../skinSpecs').ARROW_STYLES.map((s: {name: string}) => s.name));
+    // HALLOWEEN-01: seasonal styles are book-only and never in the flat picker.
+    const seasonal: readonly number[] = require('../rewardCatalogue').SEASONAL_REWARD_IDS;
+    expect(radios.map(r => r.props.accessibilityLabel)).toEqual(require('../skinSpecs').ARROW_STYLES
+      .filter((s: {numericId: number}) => !seasonal.includes(s.numericId)).map((s: {name: string}) => s.name));
     expect(radios.map(r => r.props.accessibilityState.checked)).toEqual(radios.map((_, i) => i === 0));
     radios.forEach(r => expect(flat(r).minHeight).toBeGreaterThanOrEqual(44));
     fireEvent.press(radios[1]);

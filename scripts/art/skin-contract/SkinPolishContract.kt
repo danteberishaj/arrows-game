@@ -8,6 +8,9 @@ import org.json.JSONArray
 object SkinPolishContract {
   private val polish=setOf("cinnamon","sherbet","candy-gloss","jelly","critter","rainbow-ribbon","campfire","strawberry-glazed")
   private val crease=setOf("paper-craft","stained-glass","archery")
+  /** HALLOWEEN-01: only the 17 specs that existed at ART08 have frozen ART08 paths; later specs are new data. */
+  private val art08=setOf("cinnamon","sherbet","ink-pro","candy-gloss","jelly","critter","yarn","paper-craft","archery","pixel",
+    "neon-glass","rainbow-ribbon","clear-glass","stained-glass","campfire","lava-rock","strawberry-glazed")
   private fun region(path: Path,x: Float=0f,y: Float=0f): Region {
     val scaled=Path(path); scaled.transform(Matrix().apply { setScale(10f,10f); postTranslate(-x*10,-y*10) })
     return Region().apply { setPath(scaled,Region(-100000,-100000,100000,100000)) }
@@ -78,7 +81,9 @@ object SkinPolishContract {
         rejects { check(SkinSpec(sharp.toString()).headCornerRadius>=.10f) }; negative++
       }
       if(spec.beadDiameter!=null) {
-        check(spec.beadDiameter==.52f && spec.beadPitch==.5f && spec.beadTubeWidth!!>=.28f)
+        // Critter's owner-approved ART08 bead recipe stays pinned; later bead specs need only the connected .28 spine.
+        if(id=="critter") check(spec.beadDiameter==.52f && spec.beadPitch==.5f)
+        check(spec.beadTubeWidth!!>=.28f)
         val g=SkinGeometry(3,intArrayOf(0,0,0,1,0,2))
         fun spineFits(r: SkinPaths): Boolean {
           val body=region(r.build(g,0,2).paths[r.bodyIndex]); val spine=Region(200,144,1000,256)
@@ -90,7 +95,7 @@ object SkinPolishContract {
         check(components(region(r.build(g,0,2).paths[r.bodyIndex]))>1) { "$id damaged beads were not disconnected" }
         check(!spineFits(r)) { "$id disconnected bead fixture accepted" }; r.clear(); negative++
       }
-      if(id !in polish) {
+      if(id !in polish && id in art08) {
         val before=Art08BeforePaths(40f,spec,true); before.setPalette(geometry)
         val fold=spec.layers.indexOfFirst { it.kind=="fold" }
         for((index,g) in geometry.withIndex()) {

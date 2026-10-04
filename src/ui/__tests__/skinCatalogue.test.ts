@@ -1,6 +1,6 @@
 import { ARROW_STYLES, SKIN_SPECS, arrowStyleForNumber } from '../skinSpecs';
-const names = ['Classic', 'Cinnamon Roll', 'Sherbet', 'Ink Pro', 'Candy Gloss', 'Jelly', 'Critter', 'Yarn', 'Paper Craft', 'Archery', 'Pixel', 'Neon Glass', 'Rainbow Ribbon', 'Clear Glass', 'Stained Glass', 'Campfire', 'Lava Rock', 'Strawberry Glazed'];
-it('all eighteen styles have append-only numeric identities in registry order', () => {
+const names = ['Classic', 'Cinnamon Roll', 'Sherbet', 'Ink Pro', 'Candy Gloss', 'Jelly', 'Critter', 'Yarn', 'Paper Craft', 'Archery', 'Pixel', 'Neon Glass', 'Rainbow Ribbon', 'Clear Glass', 'Stained Glass', 'Campfire', 'Lava Rock', 'Strawberry Glazed', 'Pumpkin', 'Ghost', 'Candy Corn'];
+it('all styles (18 + the HALLOWEEN-01 pack) have append-only numeric identities in registry order', () => {
   expect(ARROW_STYLES.map(style => style.name)).toEqual(names);
   expect(ARROW_STYLES.map(style => style.numericId)).toEqual(names.map((_,i) => i));
   for(let id=0;id<names.length;id++) expect(arrowStyleForNumber(id).name).toBe(names[id]);

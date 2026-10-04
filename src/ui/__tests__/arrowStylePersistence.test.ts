@@ -89,10 +89,26 @@ it('PERF capture preserves the unread preference after a failed read', async () 
   expect(diskApi.multiSet).not.toHaveBeenCalled(); expect([...disk]).toEqual(before);
 });
 
-// Append-only catalogue entries use the same additive key and survive a fresh hydrate.
-it.each(ARROW_STYLES.map(s => [s.id, s.numericId] as const))('catalogue %s persists numeric id %i without changing progress', async (id, numericId) => {
+// Append-only catalogue entries use the same additive key and survive a fresh hydrate. Seasonal styles (HALLOWEEN-01)
+// are selectable only with seasons on: covered below.
+const seasonalIds: readonly number[] = require('../rewardCatalogue').SEASONAL_REWARD_IDS;
+it.each(ARROW_STYLES.filter(s => !seasonalIds.includes(s.numericId)).map(s => [s.id, s.numericId] as const))('catalogue %s persists numeric id %i without changing progress', async (id, numericId) => {
   const disk = seed(); const before = new Map(disk); await boot(true);
   selection.chooseArrowStyle(id); await settle(); await boot(true);
   expect(selection.getArrowStyle().numericId).toBe(numericId);
   for(const key of SaveSystem.persistenceKeys) expect(disk.get(key)).toBe(before.get(key));
+});
+
+it.each(ARROW_STYLES.filter(s => seasonalIds.includes(s.numericId)).map(s => [s.id, s.numericId] as const))(
+  'seasonal %s persists numeric id %i with seasons on, and an off build reads it as Classic without rewriting', async (id, numericId) => {
+  const disk = seed(); const before = new Map(disk);
+  await initSaveSystem(true, true, true, true); await settle();
+  selection.chooseArrowStyle(id); await settle();
+  await initSaveSystem(true, true, true, true); await settle();
+  expect(selection.getArrowStyle().numericId).toBe(numericId);
+  for(const key of SaveSystem.persistenceKeys) expect(disk.get(key)).toBe(before.get(key));
+  const saved = disk.get('arrows_skin');
+  await initSaveSystem(true, true, true, false); await settle();
+  expect(selection.getArrowStyle().id).toBe('classic');
+  expect(disk.get('arrows_skin')).toBe(saved);
 });

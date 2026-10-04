@@ -3,8 +3,9 @@ package com.danteb.arrows.board
 import android.graphics.*
 import kotlin.math.*
 
-/** Generic retained art: one filled compound path per ordered colour layer. No skin-id branches. */
-class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: Boolean = false) {
+/** FROZEN copy of SkinPaths.kt at HALLOWEEN-01 start (HEAD 7397fb6); diagnostic APK only, never runtime source.
+ * Generic retained art: one filled compound path per ordered colour layer. No skin-id branches. */
+class Halloween01BeforePaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: Boolean = false) {
   class Layers(val count: Int = 8) {
     val paths = Array(count) { Path() }
     val simple = Array(2) { Path() }
@@ -31,14 +32,13 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
       else for(i in simple.indices) simple[i].addPath(art.simple[i])
     }
   }
-  private fun banded(layer: SkinSpec.Layer) = layer.kind == "bands" || layer.kind == "lengthBands"
-  private val kinds = spec.layers.flatMap { if(banded(it)) List(it.bands.size) { _ -> it.kind } else listOf(it.kind) } +
+  private val kinds = spec.layers.flatMap { if(it.kind == "bands") List(it.bands.size) { _ -> "bands" } else listOf(it.kind) } +
     (if(spec.blush) listOf("blush") else emptyList()) + (if(spec.eyes) listOf("eyes") else emptyList())
-  private val layerColours = spec.layers.flatMap { if(banded(it)) it.bands.toList() else listOf(it.colour) } +
+  private val layerColours = spec.layers.flatMap { if(it.kind == "bands") it.bands.toList() else listOf(it.colour) } +
     (if(spec.blush) listOf(spec.blushColour) else emptyList()) + (if(spec.eyes) listOf(spec.faceInk) else emptyList())
-  private val layerOpacity = spec.layers.flatMap { layer -> List(if(banded(layer)) layer.bands.size else 1) { layer.opacity } } +
+  private val layerOpacity = spec.layers.flatMap { layer -> List(if(layer.kind == "bands") layer.bands.size else 1) { layer.opacity } } +
     (if(spec.blush) listOf(1f) else emptyList()) + (if(spec.eyes) listOf(1f) else emptyList())
-  private val tailPaletteLayers = spec.layers.flatMap { layer -> List(if(banded(layer)) layer.bands.size else 1) { layer.tailPalette } } +
+  private val tailPaletteLayers = spec.layers.flatMap { layer -> List(if(layer.kind == "bands") layer.bands.size else 1) { layer.tailPalette } } +
     (if(spec.blush) listOf(false) else emptyList()) + (if(spec.eyes) listOf(false) else emptyList())
   private val paints = layerColours.map { colour -> Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colour ?: spec.colours[0]; isFilterBitmap = false } }
   private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
@@ -68,7 +68,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
   var spiralBuildCount = 0; private set
   var centrelineBuildCount = 0; private set
   var bandHeadBuildCount = 0; private set
-  private val needsCentreline = spec.layers.any { it.kind in listOf("stripe", "seam", "spots", "lengthBands") ||
+  private val needsCentreline = spec.layers.any { it.kind in listOf("stripe", "seam", "spots") ||
     (it.kind in listOf("ribbon", "shine") && accentFitsBody(it)) }
   // A centreline stroke this narrow cannot reach an unowned exterior edge. Wider/offset
   // future specs keep the general intersection fallback. Heads are clipped separately.
@@ -225,8 +225,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
       }
       fill.op(box,Path.Op.INTERSECT)
       val cap = clockwiseCap(fill)
-      // Matching nested heads, in slot order, for both band kinds (lengthBands reuse the same scaled caps).
-      val bands = if(detail == 2) spec.layers.filter { banded(it) }.flatMap { layer ->
+      val bands = if(detail == 2) spec.layers.filter { it.kind == "bands" }.flatMap { layer ->
         layer.bands.indices.map { i ->
           val width = if(layer.bandWidths.isEmpty()) layer.width*(1f-i.toFloat()/layer.bands.size) else layer.bandWidths[i]
           bandHeadBuildCount++
@@ -386,26 +385,6 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
           }
           if(tailKind == "marble" && layer.kind == "shine") target.addCircle(out.tailX-cell*.045f,out.tailY-cell*.045f,cell*.03f,Path.Direction.CW)
         }
-        "lengthBands" -> if(detail == 2) {
-          // Equal fractions of the VISIBLE shaft (tail point to the cap's back edge), along the same rounded
-          // centreline as the body, tail -> head. Band i runs from its own start to the visible end and is drawn
-          // over band i-1, so every boundary is one butt edge on top of a continuous band: no seam or gap even
-          // where a boundary falls inside a tight bend. Each band also repeats its nested head cap.
-          stripeMeasure.setPath(roundedCentreline,false)
-          val visible = maxOf(0f,stripeMeasure.length-spec.back*cell)
-          val n = layer.bands.size
-          for(i in 0 until n) {
-            val target = out.paths[slot+i]
-            if(length > 0f && visible > 0f) {
-              scratch.rewind()
-              stripeMeasure.getSegment(visible*i/n,visible,scratch,true)
-              stroke.strokeCap = Paint.Cap.BUTT; stroke.strokeJoin = Paint.Join.ROUND; stroke.pathEffect = null
-              stroke.strokeWidth = cell*layer.width; stroke.getFillPath(scratch,filled); target.addPath(filled)
-            }
-            target.addPath(caps.bands[bandSlot+i],hx,hy)
-          }
-          bandSlot += n
-        }
         "bands" -> if(detail == 2) {
           for(i in layer.bands.indices) {
             // Nested widths yield ordered bands with independently baked fill paths.
@@ -416,7 +395,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
           bandSlot += layer.bands.size
         }
       }
-      slot += if(banded(layer)) layer.bands.size else 1
+      slot += if(layer.kind == "bands") layer.bands.size else 1
     }
     if((spec.faceAnchor == "head" || (!oneCell && length > 0f && tailKind == "roll+face")) && detail == 2 && (spec.blush || spec.eyes)) {
       if(staticTemplate && spec.faceAnchor == "tail") {
@@ -503,22 +482,10 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
         else out.paths[start].addOval(x+side*cell*.15f-cell*.04f,y+cell*.06f,x+side*cell*.15f+cell*.04f,y+cell*.105f,Path.Direction.CW)
       }
       if(spec.eyes) {
-        val ex=x+side*cell*spec.eyeHalfGap
+        out.paths[eyeIndex].addCircle(x+side*cell*spec.eyeHalfGap,y,cell*spec.eyeRadius,Path.Direction.CW)
         val closedHalf=if(spec.customFace) spec.eyeRadius else .032f
-        scratch.rewind(); scratch.addArc(RectF(ex-cell*closedHalf,y-cell*.02f,ex+cell*closedHalf,y+cell*.03f),10f,160f)
+        scratch.rewind(); scratch.addArc(RectF(x+side*cell*spec.eyeHalfGap-cell*closedHalf,y-cell*.02f,x+side*cell*spec.eyeHalfGap+cell*closedHalf,y+cell*.03f),10f,160f)
         fillStroke(scratch,cell*.02f,filled); out.closedEyes.addPath(filled)
-        when(spec.eyeShape) {
-          // Sleepy: the open eye IS the closed-eye arc.
-          "arc" -> out.paths[eyeIndex].addPath(filled)
-          // Upright triangle inscribed in 1.25x the eye radius, centred on the eye.
-          "triangle" -> {
-            val r=cell*spec.eyeRadius*1.25f
-            scratch.rewind(); scratch.moveTo(ex,y-r)
-            scratch.lineTo(ex+r*.8660254f,y+r*.5f); scratch.lineTo(ex-r*.8660254f,y+r*.5f); scratch.close()
-            out.paths[eyeIndex].addPath(scratch)
-          }
-          else -> out.paths[eyeIndex].addCircle(ex,y,cell*spec.eyeRadius,Path.Direction.CW)
-        }
       }
     }
     if(spec.eyes) { scratch.rewind(); scratch.addArc(RectF(x-cell*(spec.mouthWidth/2),y+cell*.03f,x+cell*(spec.mouthWidth/2),y+cell*.095f),10f,160f)

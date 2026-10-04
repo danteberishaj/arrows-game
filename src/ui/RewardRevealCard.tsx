@@ -26,7 +26,7 @@ interface RewardRevealCardProps {
 /** Content of the existing win panel; only its decorative sparkles animate here. */
 export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p, dark,
   reducedMotion, disabled, onUse, onKeep, onShown }: RewardRevealCardProps) {
-  const { entry, ownedSkins } = unlock;
+  const { entry, ownedSkins, totalSkins } = unlock;
   const style = ARROW_STYLES.find(s => s.id === entry.refId)!;
   const upNext = unlock.upNext;
   const sparkleOpacity = useSharedValue(0);
@@ -58,7 +58,7 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
         </Animated.View>)}
     </View>
     <Text style={[styles.name, { color: p.ink }]}>{entry.name}</Text>
-    <Text style={[styles.caption, { color: p.inkDim }]}>{`${ownedSkins} of ${ARROW_STYLES.length} styles collected`}</Text>
+    <Text style={[styles.caption, { color: p.inkDim }]}>{`${ownedSkins} of ${totalSkins} styles collected`}</Text>
     <PressScale testID="reward-use" disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}
       onPress={onUse} style={({ pressed }) => [styles.primary, { backgroundColor: pressed ? p.accentDeep : p.accent, transform: pressSnapTransform(pressed) }]}>
       <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>{`${mode === 'daily' ? 'Use' : 'Play with'} ${entry.name}`}</Text>

@@ -94,7 +94,7 @@ class HydratedIntStore implements IntStore {
  * succeeded: stamping a version over a save that was never read would mark it
  * migrated.
  */
-export async function initSaveSystem(skinPicker = false, rewardPath = false, rewardBook = false): Promise<void> {
+export async function initSaveSystem(skinPicker = false, rewardPath = false, rewardBook = false, seasons = false): Promise<void> {
   const store = new HydratedIntStore();
   SaveSystem.setPersistenceHealthy(false);
   initializeArrowStyle(null, false);
@@ -105,10 +105,12 @@ export async function initSaveSystem(skinPicker = false, rewardPath = false, rew
   SaveSystem.useStore(store);
   SaveSystem.setPersistenceHealthy(healthy);
   if (healthy) SaveSystem.migrate();
-  initializeArrowStyle(store, skinPicker);
+  // HALLOWEEN-01: seasons add no key; they only change which saved/owned styles are shown.
+  const seasonal = skinPicker && rewardPath && rewardBook && seasons;
+  initializeArrowStyle(store, skinPicker, seasonal);
   initializeRewardLedger(store, skinPicker && rewardPath, {
     writable: healthy, totalSolved: SaveSystem.totalSolved, selectedNumericId: getArrowStyle().numericId,
-    book: skinPicker && rewardPath && rewardBook,
+    book: skinPicker && rewardPath && rewardBook, seasons: seasonal,
   });
 }
 

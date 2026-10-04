@@ -18,6 +18,9 @@ class SkinContractInstrumentation : Instrumentation() {
         result.putString("result",SkinOptimizationContract.check(data).toString())
         finish(0,result);return
       }
+      if(arguments.getString("mode")=="halloween") {
+        result.putString("result",SkinHalloweenContract.check(data).toString()); finish(0,result); return
+      }
       if(arguments.getString("mode")=="polish") {
         result.putString("result",SkinPolishContract.check(data).toString()); finish(0,result); return
       }
@@ -217,7 +220,7 @@ class SkinContractInstrumentation : Instrumentation() {
     bitmap.recycle()
   }
   private fun featureKinds(spec: SkinSpec): List<String> =
-    (spec.layers.filter { it.kind in listOf("glow","spots","fold","headFill","tailFill","bands","seam") }.map { it.kind } +
+    (spec.layers.filter { it.kind in listOf("glow","spots","fold","headFill","tailFill","bands","seam","lengthBands") }.map { it.kind } +
       listOf(spec.tailKind).filter { it in listOf("fletch","marble") } +
       listOf(spec.bodyPattern).filter { it == "beads" } + listOf(spec.headShape).filter { it == "step" } +
       listOf(spec.faceAnchor).filter { it == "head" }).distinct()
@@ -226,7 +229,7 @@ class SkinContractInstrumentation : Instrumentation() {
     val art=renderer.build(g,0,2); val allowed=allowedRegion(g)
     var slot=0
     val slots=HashMap<String,Int>()
-    for(layer in spec.layers) { slots[layer.kind]=slot; slot += if(layer.kind == "bands") layer.bands.size else 1 }
+    for(layer in spec.layers) { slots[layer.kind]=slot; slot += if(layer.kind == "bands" || layer.kind == "lengthBands") layer.bands.size else 1 }
     for(kind in featureKinds(spec)) {
       val path=when(kind) {
         "fletch","marble" -> art.tailDecoration
@@ -243,13 +246,14 @@ class SkinContractInstrumentation : Instrumentation() {
       android.util.Log.i("ArtSkinFeatureNegative","spec=${spec.id} kind=$kind rejectedArea=${area(damaged)}")
     }
     // Every nested band must contain a head cap as well as a shaft.
-    for(layer in spec.layers.filter { it.kind == "bands" }) {
+    for(layer in spec.layers.filter { it.kind == "bands" || it.kind == "lengthBands" }) {
+      val first=slots.getValue(layer.kind)
       for(i in layer.bands.indices) {
         val width=if(layer.bandWidths.isEmpty()) layer.width*(1f-i.toFloat()/layer.bands.size) else layer.bandWidths[i]
         val cap=Path(art.headDecoration)
         val x=g.x(g.length-1,40f); val y=g.y(g.length-1,40f)
         cap.transform(Matrix().apply { setScale(width/layer.width,width/layer.width,x,y) })
-        val expected=region(cap,0f,0f); val actual=region(art.paths[slots.getValue("bands")+i],0f,0f)
+        val expected=region(cap,0f,0f); val actual=region(art.paths[first+i],0f,0f)
         val missing=Region(expected); missing.op(actual,Region.Op.DIFFERENCE); check(missing.isEmpty)
         val noHead=Region(actual); noHead.op(expected,Region.Op.DIFFERENCE)
         val negative=Region(expected); negative.op(noHead,Region.Op.DIFFERENCE); check(!negative.isEmpty)
