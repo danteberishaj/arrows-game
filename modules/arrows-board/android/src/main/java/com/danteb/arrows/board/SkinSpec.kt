@@ -6,7 +6,8 @@ import org.json.JSONObject
 /** A parsed selection, never consulted by skin id. Fractions remain in cell units. */
 class SkinSpec(json: String) {
   data class Layer(val kind: String, val colour: Int?, val width: Float, val dx: Float, val dy: Float,
-    val amplitude: Float, val period: Float, val fade: Float, val bands: IntArray, val fadeFraction: Float, val sideOffset: Float, val opacity: Float, val dash: FloatArray, val bandWidths: FloatArray, val tailPalette: Boolean, val fillHalf: Boolean)
+    val amplitude: Float, val period: Float, val fade: Float, val bands: IntArray, val fadeFraction: Float, val sideOffset: Float, val opacity: Float, val dash: FloatArray, val bandWidths: FloatArray, val tailPalette: Boolean, val fillHalf: Boolean,
+    /** Seam dash end cap: "round" (default, today) or "butt" (bars across the body). */ val cap: String = "round")
   val source = JSONObject(json)
   val id = source.getString("id")
   private val palette = source.getJSONObject("palette")
@@ -21,7 +22,7 @@ class SkinSpec(json: String) {
       if(bands == null) IntArray(0) else IntArray(bands.length()) { Color.parseColor(bands.getString(it)) },
       o.optDouble("fadeFraction",1.0).toFloat(), o.optDouble("sideOffset",0.0).toFloat(), o.optDouble("opacity", if(o.getString("kind") == "shadow") 35.0/255.0 else 1.0).toFloat(),
       if(dash == null) FloatArray(0) else FloatArray(dash.length()) { dash.getDouble(it).toFloat() },
-      if(widths == null) FloatArray(0) else FloatArray(widths.length()) { widths.getDouble(it).toFloat() }, o.getString("colour") == "tailPalette", o.optBoolean("fillHalf",true))
+      if(widths == null) FloatArray(0) else FloatArray(widths.length()) { widths.getDouble(it).toFloat() }, o.getString("colour") == "tailPalette", o.optBoolean("fillHalf",true), o.optString("cap","round"))
   } }
   private val head = source.getJSONObject("head")
   val headShape = head.getString("shape"); val halfWidth = head.getDouble("halfWidth").toFloat()
@@ -31,6 +32,8 @@ class SkinSpec(json: String) {
   private val tail = source.getJSONObject("tail")
   val tailKind = tail.getString("kind"); val tailRadius = tail.getDouble("radius").toFloat(); val tailRim = tail.getDouble("rim").toFloat()
   val oneCellTail = tail.getString("oneCell")
+  /** Multi-cell arrows shorter than this draw no tail; default 2 = every multi-cell arrow (today). */
+  val tailMinCells = tail.optInt("minCells", 2)
   val tailColours = tail.optJSONArray("colours")?.let { a -> IntArray(a.length()) { Color.parseColor(a.getString(it)) } } ?: IntArray(0)
   val bodyPattern = source.optString("bodyPattern", "tube")
   private val beads = source.optJSONObject("beads")
@@ -70,6 +73,7 @@ class SkinSpec(json: String) {
     require(faceAnchor in listOf("tail", "head"))
     require(eyeShape in listOf("dot", "arc", "triangle"))
     require(oneCellTail in listOf("dot", "none"))
+    require(tailMinCells in 2..64)
     require(tailKind in listOf("none", "dot", "roll+face", "fletch", "marble"))
     require(layers.count { it.kind == "body" } == 1 && layers.count { it.kind == "rim" } == 1)
     require(tip in 0f.. .46f && halfWidth in 0f.. .46f && back in 0f.. .46f)
@@ -87,6 +91,7 @@ class SkinSpec(json: String) {
       require(it.width in 0f.. .9f && it.period > 0f && it.fadeFraction in 0f..1f)
       require(it.opacity in 0f..1f && it.dash.all { n -> n > 0f } && (it.dash.isEmpty() || it.dash.size == 2))
       require(!it.tailPalette || tailColours.isNotEmpty())
+      require(it.cap in listOf("round", "butt") && (it.cap == "round" || it.kind == "seam"))
       if(it.kind == "bands" || it.kind == "lengthBands") {
         require(it.bands.isNotEmpty() && (it.bandWidths.isEmpty() || it.bandWidths.size == it.bands.size))
         require(it.bandWidths.all { n -> n > 0f && n <= it.width })

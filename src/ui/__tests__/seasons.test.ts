@@ -171,3 +171,16 @@ describe('HALLOWEEN-01 conflict evidence: the brief dark tint', () => {
     expect(skinContrastRows([pumpkin]).filter(r => r.required && !r.pass)).toEqual([]);
   });
 });
+
+describe('HALLOWEEN-01b: the owner-chosen dark tint', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { skinContrastRows } = require('../contrastAudit') as typeof import('../contrastAudit');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { SKIN_SPECS } = require('../skinSpecs') as typeof import('../skinSpecs');
+  test.each(['pumpkin', 'ghost', 'candy-corn'])('#221A36 passes every required row for %s', id => {
+    const spec = { ...SKIN_SPECS[id], board: { light: '#F3EEFA', dark: '#221A36' } };
+    const rows = skinContrastRows([spec]);
+    expect(rows.filter(r => r.required && !r.pass)).toEqual([]);
+    expect(rows.filter(r => r.palette === 'Ink Night' && r.required).every(r => r.bg === '#221A36' || r.usage.kind === 'text')).toBe(true);
+  });
+});

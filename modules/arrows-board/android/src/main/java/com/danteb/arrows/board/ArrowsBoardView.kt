@@ -90,6 +90,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
     var skin: SkinPaths.Layers? = null
     var skinHead: Path? = null
     var skinOneCell = false
+    var skinCellCount = Int.MAX_VALUE
     var head: Path? = null
     var trail: Path? = null
     // POLISH-T8 (#8): the visible body is trail[travelled, travelled + bodyLength], cut with a
@@ -569,7 +570,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       slot.head = arrowPaths[arrowIndex].head
       if (skin != null) {
         slot.skin = SkinPaths.Layers(skin!!.layerCount).also { it.paletteColour = skin!!.spec.colour(arrowIndex,skinCells[arrowIndex].length,skinCells[arrowIndex].direction) }
-        slot.skinHead = Path(); slot.skinOneCell = skinCells[arrowIndex].length == 1
+        slot.skinHead = Path(); slot.skinOneCell = skinCells[arrowIndex].length == 1; slot.skinCellCount = skinCells[arrowIndex].length
         skinMotion?.cancel(arrowIndex)
         if(!reducedMotion) skinMotion?.emit(arrowPaths[arrowIndex].shaft, AnimationUtils.currentAnimationTimeMillis())
       }
@@ -977,7 +978,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         canvas.scale(if (horizontal) along else across, if (horizontal) across else along,
           art.bounds.centerX(), art.bounds.centerY())
       }
-      renderer.buildInto(art,slot.segment,movingHead,skinDetail,slot.skinOneCell); renderer.draw(canvas,art,screenCell,alpha)
+      renderer.buildInto(art,slot.segment,movingHead,skinDetail,slot.skinOneCell,slot.skinCellCount); renderer.draw(canvas,art,screenCell,alpha)
       canvas.restoreToCount(save)
       return true
     }

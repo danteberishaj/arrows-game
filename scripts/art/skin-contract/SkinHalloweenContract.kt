@@ -27,7 +27,47 @@ object SkinHalloweenContract {
   }
   private fun containsPoint(path: Path,x: Float,y: Float): Boolean = region(path).contains((x*10).toInt(),(y*10).toInt())
   private fun usesNewField(spec: SkinSpec) = spec.eyeShape != "dot" || spec.layers.any { it.kind == "lengthBands" } ||
-    spec.source.getJSONObject("face").has("eyeShape")
+    spec.source.getJSONObject("face").has("eyeShape") || usesNew01bField(spec)
+  /** HALLOWEEN-01b fields: seam `cap` and `tail.minCells`. */
+  private fun usesNew01bField(spec: SkinSpec) = spec.layers.any { it.cap != "round" } || spec.source.getJSONObject("tail").has("minCells")
+  private fun parseFlat(record: String): Pair<Path,Path> {
+    val v=record.split(',').map { it.toFloat() }; val count=v[0].toInt(); val shaft=Path()
+    shaft.moveTo(v[1],v[2]); for(i in 1 until count) shaft.lineTo(v[1+i*2],v[2+i*2])
+    val j=1+count*2; val head=Path(); head.moveTo(v[j],v[j+1]); head.lineTo(v[j+2],v[j+3]); head.lineTo(v[j+4],v[j+5]); head.close()
+    return shaft to head
+  }
+  /** Butt-capped seam bars on a straight horizontal arrow: every dash component spans <= dash[0] (+1 sample) along the
+   *  path and nearly the full seam width across it. Round caps would add the width along the path. */
+  private fun buttBars(spec: SkinSpec,renderer: SkinPaths,slot: Int,layer: SkinSpec.Layer): Int {
+    val g=SkinGeometry(3,intArrayOf(0,0,0,1,0,2,0,3,0,4)); val art=renderer.build(g,0,2)
+    val r=region(art.paths[slot]); check(!r.isEmpty) { "${spec.id} seam bars not drawn" }
+    val iterator=RegionIterator(r); val rect=Rect(); var minX=Int.MAX_VALUE; var maxX=Int.MIN_VALUE
+    val runs=ArrayList<IntArray>()
+    while(iterator.next(rect)) runs.add(intArrayOf(rect.left,rect.right))
+    // Columns covered, merged into contiguous along-path spans.
+    val columns=java.util.TreeSet<Int>(); for(run in runs) for(x in run[0] until run[1]) columns.add(x)
+    var spans=0; var start=-1; var previous=-2
+    fun close(end: Int) { if(start>=0) { check(end-start+1 <= (layer.dash[0]*400).toInt()+2) { "${spec.id} seam bar ${end-start+1} samples along the path" }; spans++ } }
+    for(x in columns) { if(x!=previous+1) { close(previous); start=x }; previous=x }
+    close(previous); minX=columns.first(); maxX=columns.last()
+    val b=r.bounds; check(b.height() >= (layer.width*400*.95f).toInt()) { "${spec.id} seam bars do not span the tube (${b.height()})" }
+    return spans
+  }
+  /** tail.minCells: arrows of 2..minCells-1 cells have no tail (static and exit art); longer ones keep it. */
+  private fun minCellsRule(spec: SkinSpec,renderer: SkinPaths,geometry: List<SkinGeometry>,flat: List<Pair<Path,Path>>): Int {
+    var checks=0
+    for((index,g) in geometry.withIndex()) {
+      if(g.length<2) continue
+      val expectTail=g.length >= spec.tailMinCells
+      val art=renderer.build(g,index,2)
+      check(!art.tailDecoration.isEmpty == expectTail) { "${spec.id} static tail cells=${g.length} expected=$expectTail" }
+      val exit=SkinPaths.Layers(renderer.layerCount)
+      renderer.buildInto(exit,flat[index].first,flat[index].second,2,false,g.length)
+      check(!exit.tailDecoration.isEmpty == expectTail) { "${spec.id} exit tail cells=${g.length} expected=$expectTail" }
+      checks++
+    }
+    return checks
+  }
   private fun rejects(block: () -> Unit) { var rejected=false; try { block() } catch(_: Throwable) { rejected=true }; check(rejected) { "Damaged fixture was accepted" } }
 
   /** Straight horizontal arrow, independent of the renderer's measure: the TOPMOST band (bands draw in order) at the
@@ -50,9 +90,15 @@ object SkinHalloweenContract {
       check(missing.isEmpty) { "${spec.id} band $i lacks its nested head" }
     }
   }
-  /** Classifies the open-eye blob around an eye centre: bounding-box fill ratio and height (cell units). */
-  private fun eyeShape(eyes: Path,cx: Float,cy: Float): String {
-    val box=Region(((cx-.06f*CELL)*10).toInt(),((cy-.06f*CELL)*10).toInt(),((cx+.06f*CELL)*10).toInt(),((cy+.06f*CELL)*10).toInt())
+
+  /** The sample window follows the validated spec's eye size (HALLOWEEN-01b: larger eyes) and stays above the mouth. */
+  private fun eyeShape(eyes: Path,cx: Float,cy: Float,sized: SkinSpec): String {
+    val big=1.25f*sized.eyeRadius
+    val (x0,y0,x1,y1)=when(sized.eyeShape) {
+      "triangle" -> listOf(cx-big*CELL,cy-1.1f*big*CELL,cx+big*CELL,cy+.6f*big*CELL)
+      else -> listOf(cx-.06f*CELL,cy-.06f*CELL,cx+.06f*CELL,cy+.06f*CELL)
+    }
+    val box=Region((x0*10).toInt(),(y0*10).toInt(),(x1*10).toInt(),(y1*10).toInt())
     val blob=region(eyes); blob.op(box,Region.Op.INTERSECT)
     check(!blob.isEmpty) { "no eye at $cx,$cy" }
     val b=blob.bounds; val fill=area(blob).toFloat()/(b.width().toFloat()*b.height())
@@ -66,6 +112,19 @@ object SkinHalloweenContract {
     for(id in specs.keys()) {
       val json=specs.getJSONObject(id); val spec=SkinSpec(json.toString())
       val entry=JSONObject().put("spec",id).put("eyeShape",spec.eyeShape).put("lengthBands",spec.layers.count { it.kind=="lengthBands" })
+      if(spec.id != "pumpkin") {
+        // HALLOWEEN-01b: every spec without a 01b field keeps the exact cd10d12 paths (Ghost and Candy Corn included).
+        check(!usesNew01bField(spec))
+        val now=SkinPaths(CELL,spec,true); val old=Halloween01bBeforePaths(CELL,spec,true)
+        now.setPalette(geometry); old.setPalette(geometry); var compared=0
+        for(detail in listOf(2,0)) for((index,g) in geometry.withIndex()) {
+          val a=now.build(g,index,detail); val b=old.build(g,index,detail)
+          for(i in a.paths.indices) { check(a.paths[i].approximate(.001f).contentEquals(b.paths[i].approximate(.001f))) { "$id changed vs cd10d12 arrow=$index layer=$i" }; compared++ }
+          for(i in a.simple.indices) { check(a.simple[i].approximate(.001f).contentEquals(b.simple[i].approximate(.001f))); compared++ }
+          check(a.closedEyes.approximate(.001f).contentEquals(b.closedEyes.approximate(.001f))); compared++
+        }
+        now.clear(); old.clear(); entry.put("unchangedVsCd10d12",compared)
+      }
       if(!usesNewField(spec)) {
         val now=SkinPaths(CELL,spec,true); val old=Halloween01BeforePaths(CELL,spec,true)
         now.setPalette(geometry); old.setPalette(geometry)
@@ -83,6 +142,28 @@ object SkinHalloweenContract {
         entries.put(entry.put("unchangedPathArrays",compared).put("displacementControlRejected",true)); continue
       }
       val renderer=SkinPaths(CELL,spec,true); renderer.setPalette(geometry)
+      if(usesNew01bField(spec)) {
+        var seamSlot=0; for(layer in spec.layers) { if(layer.kind=="seam" && layer.cap=="butt") {
+          val spans=buttBars(spec,renderer,seamSlot,layer); entry.put("buttRibBars",spans)
+          // Negative control: the same seam with round caps must fail the bar oracle.
+          val round=JSONObject(json.toString()); round.getJSONArray("layers").let { a -> for(i in 0 until a.length()) a.getJSONObject(i).let { if(it.getString("kind")=="seam") it.remove("cap") } }
+          val roundSpec=SkinSpec(round.toString()); val roundRenderer=SkinPaths(CELL,roundSpec,true)
+          rejects { buttBars(roundSpec,roundRenderer,seamSlot,roundSpec.layers[spec.layers.indexOf(layer)]) }
+          roundRenderer.clear(); entry.put("roundCapControlRejected",true)
+        }; seamSlot += if(layer.kind=="bands"||layer.kind=="lengthBands") layer.bands.size else 1 }
+        if(spec.tailMinCells > 2) {
+          val flat=level.getString("geometry").split(';').map { parseFlat(it) }
+          entry.put("minCellsChecks",minCellsRule(spec,renderer,geometry,flat))
+          val every=JSONObject(json.toString()); every.getJSONObject("tail").remove("minCells")
+          val everySpec=SkinSpec(every.toString()); val everyRenderer=SkinPaths(CELL,everySpec,true); everyRenderer.setPalette(geometry)
+          // Negative control: the default (tail on every multi-cell arrow) violates the declared minimum.
+          if(geometry.any { it.length in 2 until spec.tailMinCells }) {
+            rejects { minCellsRule(spec, everyRenderer, geometry, flat) }
+            entry.put("defaultTailControlRejected",true)
+          }
+          everyRenderer.clear()
+        }
+      }
       var slot=0; val firstSlot=HashMap<SkinSpec.Layer,Int>()
       for(layer in spec.layers) { firstSlot[layer]=slot; slot += if(layer.kind=="bands"||layer.kind=="lengthBands") layer.bands.size else 1 }
       for(layer in spec.layers.filter { it.kind=="lengthBands" }) {
@@ -141,7 +222,7 @@ object SkinHalloweenContract {
           val art=r.build(g,0,2)
           val hx=g.x(0,CELL)+g.dx*CELL*s.faceHeadOffset; val hy=g.y(0,CELL)+g.dy*CELL*s.faceHeadOffset
           val eyes=r.eyePaths(art).first()
-          return listOf(-1,1).map { side -> eyeShape(eyes,hx+side*CELL*s.eyeHalfGap,hy) }
+          return listOf(-1,1).map { side -> eyeShape(eyes,hx+side*CELL*s.eyeHalfGap,hy,spec) }
         }
         for(direction in 0..3) { check(classify(renderer,spec,direction).all { it==spec.eyeShape }) { "$id eyes are not ${spec.eyeShape} direction=$direction" }; shapeChecks+=2 }
         // Negative control: swapping the shape must change the classification.

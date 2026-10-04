@@ -3,8 +3,9 @@ package com.danteb.arrows.board
 import android.graphics.*
 import kotlin.math.*
 
-/** Generic retained art: one filled compound path per ordered colour layer. No skin-id branches. */
-class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: Boolean = false) {
+/** FROZEN copy of SkinPaths.kt at HALLOWEEN-01b start (cd10d12); diagnostic APK only, never runtime source.
+ * Generic retained art: one filled compound path per ordered colour layer. No skin-id branches. */
+class Halloween01bBeforePaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: Boolean = false) {
   class Layers(val count: Int = 8) {
     val paths = Array(count) { Path() }
     val simple = Array(2) { Path() }
@@ -147,7 +148,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
     for(i in 1 until geometry.length) shaft.lineTo(geometry.x(i,cell),geometry.y(i,cell))
     val hx = geometry.x(geometry.length-1,cell); val hy = geometry.y(geometry.length-1,cell)
     // Shaft reaches the head centre; its rounded cap is fully covered by the dominant head.
-    buildPaths(out,shaft,hx,hy,geometry.dx,geometry.dy,detail,if(localFit) null else geometry.allowed(cell),staticTemplate = true,cells = geometry.length)
+    buildPaths(out,shaft,hx,hy,geometry.dx,geometry.dy,detail,if(localFit) null else geometry.allowed(cell),staticTemplate = true)
   }
   private fun makeHead(x: Float,y: Float,dx: Float,dy: Float) {
     val px = -dy; val py = dx
@@ -191,7 +192,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
     head.close()
   }
   /** Exit geometry follows the original slither timing; scratch buffers and destination are reused. */
-  fun buildInto(out: Layers, originalShaft: Path, originalHead: Path, detail: Int = 2, oneCell: Boolean = false, cells: Int = Int.MAX_VALUE) {
+  fun buildInto(out: Layers, originalShaft: Path, originalHead: Path, detail: Int = 2, oneCell: Boolean = false) {
     measure.setPath(originalShaft,false)
     shaft.rewind(); measure.getSegment(minOf(cell*.42f,measure.length),measure.length,shaft,true)
     originalHead.computeBounds(out.bounds,true)
@@ -203,7 +204,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
     val dx = if(horizontal) sign(tipX-position[0]) else 0f
     val dy = if(horizontal) 0f else sign(tipY-position[1])
     val hx = tipX - dx*cell*.5f; val hy = tipY - dy*cell*.5f
-    buildPaths(out,shaft,hx,hy,dx,dy,detail,null,oneCell,cells = cells)
+    buildPaths(out,shaft,hx,hy,dx,dy,detail,null,oneCell)
   }
   fun facePathsEmpty(art: Layers) = kinds.indices.filter { kinds[it] == "eyes" || kinds[it] == "blush" }.all { art.paths[it].isEmpty } && art.closedEyes.isEmpty
   fun eyePaths(art: Layers) = kinds.indices.filter { kinds[it] == "eyes" }.map { art.paths[it] } + art.closedEyes
@@ -251,19 +252,18 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
       close()
     }
   }
-  private fun fillStroke(path: Path,width: Float,out: Path,effect: PathEffect? = null,butt: Boolean = false) {
-    stroke.strokeCap = if(butt) Paint.Cap.BUTT else if(spec.bodyPattern == "square") Paint.Cap.SQUARE else Paint.Cap.ROUND
+  private fun fillStroke(path: Path,width: Float,out: Path,effect: PathEffect? = null) {
+    stroke.strokeCap = if(spec.bodyPattern == "square") Paint.Cap.SQUARE else Paint.Cap.ROUND
     stroke.strokeJoin = if(spec.bodyPattern == "square") Paint.Join.MITER else Paint.Join.ROUND
     stroke.strokeWidth = width; stroke.pathEffect = effect; stroke.getFillPath(path,out)
   }
-  private fun buildPaths(out: Layers, line: Path,hx: Float,hy: Float,dx: Float,dy: Float,detail: Int,allowed: Path?,oneCell: Boolean = false,staticTemplate: Boolean = false,cells: Int = Int.MAX_VALUE) {
+  private fun buildPaths(out: Layers, line: Path,hx: Float,hy: Float,dx: Float,dy: Float,detail: Int,allowed: Path?,oneCell: Boolean = false,staticTemplate: Boolean = false) {
     out.rewind(); measure.setPath(line,false); val length = measure.length
     measure.getPosTan(0f,position,tangent); out.tailX = position[0]; out.tailY = position[1]
     if(length == 0f) { out.tailX = hx; out.tailY = hy }
     val caps = caps(dx,dy,detail)
     if(auditGeometry) out.headDecoration.addPath(caps.fill,hx,hy)
-    // tail.minCells: a multi-cell arrow shorter than the spec's minimum draws no tail (default 2 = every arrow).
-    val tailKind = if(oneCell || length == 0f) spec.oneCellTail else if(cells < spec.tailMinCells) "none" else spec.tailKind
+    val tailKind = if(oneCell || length == 0f) spec.oneCellTail else spec.tailKind
     val tailRadius = if(oneCell || length == 0f) minOf(spec.tailRadius, .13f) else spec.tailRadius
     val bodyWidth = spec.layers.single { it.kind == "body" }.width
     interior.rewind()
@@ -326,7 +326,7 @@ class SkinPaths(val cell: Float, val spec: SkinSpec, private val auditGeometry: 
           }
         }
         "seam" -> if(detail == 2 && length > 0f) {
-          fillStroke(roundedCentreline,cell*layer.width,target,if(layer.dash.isNotEmpty()) DashPathEffect(layer.dash.map { it*cell }.toFloatArray(),0f) else null,layer.cap == "butt")
+          fillStroke(roundedCentreline,cell*layer.width,target,if(layer.dash.isNotEmpty()) DashPathEffect(layer.dash.map { it*cell }.toFloatArray(),0f) else null)
           if(needsInterior) target.op(interior,Path.Op.INTERSECT)
           if(auditGeometry) out.accentRuns[slot].set(target)
         }

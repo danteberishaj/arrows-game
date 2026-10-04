@@ -16,9 +16,7 @@ test('append-only ids 18/19/20 after Strawberry Glazed; the 18 existing identiti
 
 test('concept colours, launch proportions, light board tint and no one-cell tail', () => {
   expect([layer('pumpkin', 'rim').colour, layer('ghost', 'rim').colour, layer('candy-corn', 'rim').colour]).toEqual(['#9A633F', '#8C7BB5', '#8C7BB5']);
-  expect(spec('pumpkin').palette.colours).toEqual(['#E0661B']);
-  expect(layer('pumpkin', 'spots').colour).toBe('#FF8A2A');
-  expect(layer('pumpkin', 'headFill').colour).toBe('#FF8A2A');
+  expect(spec('pumpkin').palette.colours).toEqual(['#FF8A2A']); // HALLOWEEN-01b: orange tube, deep-orange ribs
   expect(layer('pumpkin', 'tailFill').colour).toBe('#6BAA4F');
   expect(spec('ghost').palette.colours).toEqual(['#E9E2F5']);
   expect(layer('ghost', 'shine').colour).toBe('#F7F4FF');
@@ -36,12 +34,11 @@ test('concept colours, launch proportions, light board tint and no one-cell tail
   expect(spec('candy-corn').tail.kind).toBe('none');
 });
 
-test('beads make the pumpkin ribs and the ghost waves (no new bead-shape field)', () => {
-  expect(spec('pumpkin').bodyPattern).toBe('beads');
+test('beads make the ghost waves (no new bead-shape field); Pumpkin is a smooth tube (HALLOWEEN-01b)', () => {
+  expect(spec('pumpkin').bodyPattern ?? 'tube').toBe('tube');
+  expect(spec('pumpkin').beads).toBeUndefined();
   expect(spec('ghost').bodyPattern).toBe('beads');
-  expect(Object.keys(spec('pumpkin').beads!).sort()).toEqual(['diameter', 'pitch', 'tubeWidth']);
-  // Pumpkin rib lobes sit on the beads: the spot period equals the bead pitch.
-  expect(layer('pumpkin', 'spots').period).toBe(spec('pumpkin').beads!.pitch);
+  expect(spec('critter').bodyPattern).toBe('beads');
   // Ghost: a small bead/tube difference (soft waves).
   const g = spec('ghost').beads!;
   expect(g.diameter - (g.tubeWidth + .055)).toBeGreaterThan(0);
@@ -76,4 +73,38 @@ test('K4 outline: the brief ratios on the light tint and on its dark tint; regis
   const rows = skinContrastRows(pack.map(spec));
   expect(rows.filter(row => row.required && !row.pass)).toEqual([]);
   expect(rows.filter(row => row.usage.id.includes('-outline-')).every(row => row.required && row.ratio >= 3)).toBe(true);
+});
+
+describe('HALLOWEEN-01b owner rulings', () => {
+  test('dark tint #221A36 for all three, and it passes every required K4/tint row', () => {
+    for (const id of pack) expect(spec(id).board).toEqual({ light: '#F3EEFA', dark: '#221A36' });
+    const rows = skinContrastRows(pack.map(spec));
+    expect(rows.filter(r => r.required && !r.pass)).toEqual([]);
+    const night = (id: string, usage: string) => rows.find(r => r.palette === 'Ink Night' && r.usage.id === `skin-${id}-${usage}`)!;
+    expect(night('pumpkin', 'tint-arrow-missed-mark').bg).toBe('#221A36');
+    expect(night('pumpkin', 'tint-arrow-missed-mark').ratio).toBeGreaterThanOrEqual(3);
+    expect(night('pumpkin', 'outline-0').ratio).toBeGreaterThanOrEqual(3);
+    expect(night('ghost', 'outline-0').ratio).toBeGreaterThanOrEqual(3);
+    expect(night('candy-corn', 'outline-0').ratio).toBeGreaterThanOrEqual(3);
+  });
+  test('Pumpkin ribs: a butt-capped dashed deep-orange seam across the tube (one general field: layer.cap)', () => {
+    const ribs = layer('pumpkin', 'seam');
+    expect(ribs.colour).toBe('#E0661B');
+    expect(ribs.cap).toBe('butt');
+    expect(ribs.dash).toHaveLength(2);
+    expect(ribs.dash![0]).toBeLessThan(ribs.dash![1]); // thin ribs, wide segments
+    expect(ribs.width).toBeLessThanOrEqual(layer('pumpkin', 'body').width - .06); // within the accent inset
+    expect(ribs.offset ?? [0, 0]).toEqual([0, 0]);
+    expect(spec('pumpkin').layers.some(l => l.kind === 'spots' || l.kind === 'headFill')).toBe(false);
+    for (const s of Object.values(SKIN_SPECS).filter(s => s.id !== 'pumpkin')) expect(s.layers.some(l => l.cap !== undefined)).toBe(false);
+  });
+  test('Pumpkin stem only on arrows of 4+ cells (one general field: tail.minCells); others keep the default', () => {
+    expect(spec('pumpkin').tail).toEqual(expect.objectContaining({ kind: 'dot', minCells: 4, oneCell: 'none' }));
+    expect(layer('pumpkin', 'tailFill').colour).toBe('#6BAA4F');
+    for (const s of Object.values(SKIN_SPECS).filter(s => s.id !== 'pumpkin')) expect(s.tail.minCells).toBeUndefined();
+  });
+  test('Pumpkin face: bigger triangle eyes (.045 -> .065 radius, .13 -> .14 half-gap)', () => {
+    expect(spec('pumpkin').face).toEqual(expect.objectContaining({ eyeShape: 'triangle', eyeRadius: .065, eyeHalfGap: .14, anchor: 'head' }));
+    expect(spec('ghost').face).toEqual(expect.objectContaining({ eyeRadius: .045, eyeHalfGap: .13 }));
+  });
 });

@@ -16,6 +16,9 @@ export interface SkinLayer {
   fadeFraction?: number;
   sideOffset?: number;
   bands?: readonly string[];
+  /** HALLOWEEN-01b, `seam` only: stroke end cap of each dash. Omitted = 'round' (today). 'butt' with a wide width and a
+   *  short `dash[0]` draws thin bars ACROSS the body (Pumpkin ribs). */
+  cap?: 'round' | 'butt';
 }
 export interface SkinSpec {
   id: string;
@@ -30,7 +33,9 @@ export interface SkinSpec {
   palette: { rule: 'one' | 'length' | 'direction' | 'cycle'; colours: readonly string[]; lengthStops?: readonly number[] };
   layers: readonly SkinLayer[];
   head: { shape: 'tri' | 'rounded' | 'swept' | 'step'; halfWidth: number; tipPastCentre: number; back: number; shine: boolean; cornerRadius?: number };
-  tail: { kind: 'none' | 'dot' | 'roll+face' | 'fletch' | 'marble'; radius: number; rim: number; oneCell: 'dot' | 'none'; colours?: readonly string[] };
+  tail: { kind: 'none' | 'dot' | 'roll+face' | 'fletch' | 'marble'; radius: number; rim: number; oneCell: 'dot' | 'none'; colours?: readonly string[];
+    /** HALLOWEEN-01b: multi-cell arrows shorter than this draw no tail. Omitted = 2 (every multi-cell arrow, today). */
+    minCells?: number };
   bends: 'rounded' | 'crease';
   face: { eyes: boolean; blush: boolean; closedOnBlocked: boolean; ink: string; blushColour: string; anchor?: 'tail' | 'head'; eyeRadius?: number; eyeHalfGap?: number; mouthWidth?: number; blushSize?: readonly [number, number]; blushOffset?: readonly [number, number]; headOffset?: number;
     /** HALLOWEEN-01: open-eye shape. Omitted = 'dot' (today's circles, byte-identical). 'arc' draws the closed-eye arc
@@ -138,24 +143,24 @@ const strawberryGlazed = canvasSpec('strawberry-glazed', 17, 'Strawberry Glazed'
   { kind: 'ribbon', colour: '#FF9EBB', width: .075, offset: [0, 0], fadeCells: 1, fadeFraction: .35 },
 ], { head: { ...cinnamon.head }, tail: { ...cinnamon.tail }, face: { ...cinnamon.face } });
 /** HALLOWEEN-01 pack (book-only seasonal styles, src/ui/rewardCatalogue.ts). Launch-polish proportions, one board tint. */
-// CONFLICT (HALLOWEEN-01 report): the brief's dark tint #2A2140 fails the REQUIRED missed-mark tint row (heart at .75 over
-// the board, 2.992:1 < 3:1, src/ui/__tests__/seasons.test.ts pins it). Dark keeps the stock Ink Night board until the owner
-// rules; the light tint is the brief's.
+// The concept's dark tint #2A2140 fails the REQUIRED missed-mark tint row (2.992:1, pinned in seasons.test.ts).
+// OWNER RULING 2026-10-04 (HALLOWEEN-01b): dark tint #221A36 for all three.
 export const HALLOWEEN_BRIEF_DARK_TINT = '#2A2140';
-const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#13111C' };
+const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#221A36' };
 const polishedHead: SkinSpec['head'] = { ...sherbet.head, shape: 'rounded', halfWidth: .44, tipPastCentre: .46, cornerRadius: .10, shine: false };
 const headFace = (ink: string, eyeShape: 'arc' | 'triangle', blushColour?: string): SkinSpec['face'] => ({ eyes: true, blush: blushColour !== undefined, eyeShape,
   closedOnBlocked: true, ink, blushColour: blushColour ?? '#EE9C99', anchor: 'head', eyeRadius: .045, eyeHalfGap: .13,
   mouthWidth: .12, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 });
 const particles = (colours: readonly string[]): SkinSpec['motion'] => ({ ...sherbet.motion, particles: { ...sherbet.motion.particles, colours } });
-const pumpkin = canvasSpec('pumpkin', 18, 'Pumpkin', one('#E0661B'), [
+// HALLOWEEN-01b owner rulings: smooth orange tube with deep-orange rib bars across it (butt-capped dashed seam), the
+// green stem only on 4+ cell arrows, bigger triangle eyes (.045 -> .065 radius, .13 -> .14 half-gap).
+const pumpkin = canvasSpec('pumpkin', 18, 'Pumpkin', one('#FF8A2A'), [
   rim('#9A633F', .48), body(.425),
-  // Rib lobes: orange circles centred on each bead, almost touching, so the deep-orange body reads as thin rib
-  // creases (iteration 2; iteration 1's .30 lobes read as separate balls) plus a narrow edge inside the outline.
-  { kind: 'spots', colour: '#FF8A2A', width: .34, period: .35, sideOffset: 0 },
-  { kind: 'tailFill', colour: '#6BAA4F', width: .425 }, { kind: 'headFill', colour: '#FF8A2A', width: .425 },
-], { board: HALLOWEEN_BOARD, bodyPattern: 'beads', beads: { diameter: .48, pitch: .35, tubeWidth: .34 }, head: polishedHead,
-  tail: { kind: 'dot', radius: .12, rim: .025, oneCell: 'none' }, face: headFace('#9A633F', 'triangle'),
+  { kind: 'seam', colour: '#E0661B', width: .36, dash: [.035, .465], offset: [0, 0], cap: 'butt' },
+  { kind: 'tailFill', colour: '#6BAA4F', width: .425 },
+], { board: HALLOWEEN_BOARD, head: polishedHead,
+  tail: { kind: 'dot', radius: .12, rim: .025, oneCell: 'none', minCells: 4 },
+  face: { ...headFace('#9A633F', 'triangle'), eyeRadius: .065, eyeHalfGap: .14 },
   motion: particles(['#FF8A2A', '#E0661B', '#6BAA4F']) });
 const ghost = canvasSpec('ghost', 19, 'Ghost', one('#E9E2F5'), [
   rim('#8C7BB5', .48), body(.425), shine(.22, '#F7F4FF'), { kind: 'headFill', colour: '#F7F4FF', width: .425 },

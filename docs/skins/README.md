@@ -355,15 +355,28 @@ Seasons off (or book/path/picker off): no seasonal style appears in any picker, 
 Classic without a repair write. No new save key: ownership uses `arrows_rewards_owned_*`.
 
 **Pack.** Pumpkin **18**, Ghost **19**, Candy Corn **20** (append-only). Launch proportions (.48 rim / .425 body,
-.44 rounded head with .10 fillets). Light board tint `#F3EEFA`. **Dark tint: owner ruling pending** — the concept's
-`#2A2140` fails the required missed-mark tint row (2.992:1 < 3:1), so the registry keeps the stock Ink Night board
-`#13111C` in dark mode (see HALLOWEEN-01 report).
+.44 rounded head with .10 fillets). Light board tint `#F3EEFA`; dark `#221A36` (owner ruling HALLOWEEN-01b; the concept's `#2A2140` fails the
+required missed-mark tint row at 2.992:1).
 
 | Data feature | Rule | Example |
 | --- | --- | --- |
 | layer `lengthBands` | `bands` colour equal fractions of the **visible shaft** (tail point → the cap's back edge, along the body's rounded centreline), tail → head. Butt ends; each non-final band overlaps the next by .02 cell (hidden under it). Each band also adds its nested head cap (`bandWidths`, strictly decreasing, scaled about the head centre — the existing matching nested heads). One paint per band within the 7-layer limit. | Candy Corn |
 | `face.eyeShape` | `'dot'` (default, omitted = today's circles), `'arc'` (the closed-eye arc as the open eye), `'triangle'` (upright triangle in 1.25× the eye radius). Blocked eyes keep the arc. Clearance rules are unchanged (.03 cell, all directions, one-cell heads). | Ghost (arc), Pumpkin (triangle) |
-| beads (existing) | Pumpkin ribs: beads `.48/.35/.34` (diameter/pitch/tube) + `.34` orange spots centred on each bead over a deep-orange body (thin rib creases; iteration 1 with `.30` lobes read as separate balls). Ghost waves: beads `.48/.30/.32` (small bead/tube difference). No new bead-shape field was needed. | Pumpkin, Ghost |
+| beads (existing) | Ghost waves: beads `.48/.30/.32` (small bead/tube difference). No new bead-shape field was needed. (HALLOWEEN-01's bead-lobe Pumpkin was replaced in 01b.) | Ghost |
+
+**HALLOWEEN-01b owner rulings (2026-10-04).** Dark tint `#221A36` for all three (the earlier conflict is closed:
+every required row passes, missed mark ≥3:1). Pumpkin is now a smooth orange tube (no beads) with deep-orange rib bars,
+a stem only on 4+ cell arrows and larger triangle eyes. Two general fields:
+
+| Data feature | Rule | Example |
+| --- | --- | --- |
+| `seam.cap` | `'round'` (default; omitted = today) or `'butt'`. A butt-capped dashed seam with a wide width and short `dash[0]` draws thin bars ACROSS the body that follow bends; width stays within the accent inset (body − .06). Only `seam` may set it. | Pumpkin ribs `.36` wide, dash `[.035, .465]` |
+| `tail.minCells` | Multi-cell arrows shorter than this draw no tail cap/fill (static strips and exit art alike; the view passes the arrow's cell count). Omitted = 2 = every multi-cell arrow (today). One-cell arrows keep `oneCell`. | Pumpkin stem `4` |
+
+`run-skin-contract.mjs halloween` additionally compares every spec except Pumpkin with the frozen cd10d12 renderer
+(`Halloween01bBeforePaths.kt`), checks butt rib bars (each ≤ dash length along the path, spanning the tube; the same
+seam with round caps must be rejected) and the minimum-cells rule on static and exit art (the default-tail variant must
+be rejected).
 
 Native checks: `run-skin-contract.mjs halloween` (new `SkinHalloweenContract.kt`) proves every spec without a new
 field keeps byte-identical paths against the frozen starting renderer (`Halloween01BeforePaths.kt`), checks band

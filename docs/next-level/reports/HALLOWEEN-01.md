@@ -207,3 +207,67 @@ pending on the dark tint and the look.**
 2. **Ghost** is close to the concept. Its waves are subtle at 29 dp.
 3. **Candy Corn:** the length bands work. The head is concentric (white centre), where the concept stripes it; it reads
    fine.
+
+## HALLOWEEN-01b — owner rulings (2026-10-04, on cd10d12)
+
+Implemented, uncommitted. Same rules (Node v20.19.4, emulator-5556 only, local test-ads, no commits/EAS). Evidence in
+`artifacts/HALLOWEEN-01b/`. **Owner look review pending; the dark-tint conflict above is closed by the ruling.**
+
+### Values changed (old → new)
+
+| Item | Old | New |
+| --- | --- | --- |
+| Dark board tint, Pumpkin/Ghost/Candy Corn | `#13111C` (stock, conflict fallback) | **`#221A36`** (owner) |
+| Pumpkin body | bead body `.48/.35/.34`, deep-orange `#E0661B` fill, `.34` orange spots, orange headFill | smooth **tube** (no beads), orange `#FF8A2A` fill; spots and headFill removed |
+| Pumpkin ribs | — | `seam` `#E0661B`, width `.36`, dash `[.035, .465]` (a rib every .5 cell), **`cap: 'butt'`** |
+| Pumpkin stem | dot stem on every multi-cell arrow | **`tail.minCells: 4`** (stem only on 4+ cell arrows) |
+| Pumpkin triangle eyes | `eyeRadius .045` (triangle circumradius .056), `eyeHalfGap .13` | **`eyeRadius .065`** (circumradius .081), **`eyeHalfGap .14`** |
+| Ghost / Candy Corn | — | unchanged except the dark tint |
+
+Two new general fields (data, no skin-id branch): `seam.cap` ('round' default | 'butt'; only `seam` may set it) and
+`tail.minCells` (default 2 = today). The view now passes each arrow's cell count to exit art (`ArrowsBoardView.kt`
+`skinCellCount` → `SkinPaths.buildInto(..., cells)`) so the stem rule holds during exits.
+
+**Real audit, Ink Night on `#221A36`:** Pumpkin outline **3.33**, Ghost/Candy Corn outline **4.42**, missed mark
+**3.20**, press hint 3.67, blocked 4.70; every required row passes for all three (`checks/contrast.json`). The `#2A2140`
+failure test is kept (2.992).
+
+### Evidence
+
+- TS red → green: `logs/red-ts.txt` (halloweenSkins suite fails to compile: `cap`/`minCells` absent) →
+  `logs/green-ts.txt`. The new `#221A36` audit test passed before the data change (it audits a constructed spec); its
+  failing twin is the kept `#2A2140` test.
+- `npx tsc --noEmit -p .` exit 0; `npx jest --silent` **132 suites / 2,276 tests / 12 snapshots** (was 2,269).
+- Native contract (`perf/catalogue-contract.apk`, data from `skin-contract-data.cjs`; `logs/contract-all.txt`,
+  `checks/contract-summary.json`): before = ART03 red control fails (17,191); after/polish/halloween 21/21 levels PASS
+  for all 21 specs: K1 0 fit failures, K2 max 8 draws incl. mark (Pumpkin 6), K3 0, K5/K6 21/21, K8 449 one-cell checks
+  each. Pumpkin face clearance 2,118 checks incl. 449 one-cell heads with the larger eyes; eye-shape classifier 168
+  checks (window now scales with eye radius), swapped shape rejected. New oracles: butt rib bars (168 bars, each ≤ dash
+  length along the path and spanning the tube; the same seam with round caps rejected on 21/21 levels); `minCells` on
+  static and exit art for 1,669 multi-cell arrows (default-tail variant rejected 21/21). **Every spec except Pumpkin is
+  byte-identical to the cd10d12 renderer** (`Halloween01bBeforePaths.kt`, e.g. Ghost 38,124 / Candy Corn 33,888 path
+  arrays), and the 18 original specs still match the pre-HALLOWEEN-01 renderer.
+- Contact sheets: `artifacts/HALLOWEEN-01b/screens/contact-halloween-light.png` and `-dark.png` — rows: Pumpkin BEFORE
+  (HALLOWEEN-01), Pumpkin AFTER, Ghost, Candy Corn; columns: concept | 29.39 dp level 3828 crop (7 one-cell arrows) |
+  38 dp fixture (4 one-cell arrows). Native Canvas renders, unresized (`screens/contact-manifest.json`).
+- Device (emulator-5556, `build/on/test-ads.apk` sha 4af3cb71…, test id [9,0], production ids [0,0], no instrumentation,
+  `EXPO_PUBLIC_META_SEASONS=1`; Pumpkin owned/selected via the save, documented in `device.py fixture pumpkin-*`):
+  `screens/01b-pumpkin-light-board.png` (light tint `#F3EEFA` 2.72 M px) and `screens/02b-pumpkin-dark-board.png`
+  (`#221A36` 2.72 M px; header keeps `#13111C`); both have Pumpkin rim/body/rib/stem pixels (`checks/device-board-pixels.txt`).
+  Save (0-byte originals), settings and the prior BOOK-01 OFF app restored; emulator stopped.
+
+### Changed tests
+
+- `halloweenSkins.test.ts` (HALLOWEEN-01's own): Pumpkin colour assertions (body `#FF8A2A`; spots/headFill gone) and the
+  beads test (Pumpkin is now a tube; Ghost/Critter keep beads) — superseded by the owner ruling. New describe block with 4
+  tests (tint, ribs/`cap`, stem/`minCells`, eye sizes).
+- `seasons.test.ts`: new `#221A36` passes-every-required-row test for the three specs (3 cases).
+- Native tooling: `SkinHalloweenContract.kt` (01b oracles, cd10d12 equivalence, eye window), new frozen
+  `Halloween01bBeforePaths.kt`. `docs/skins/README.md` documents both fields.
+
+### UNVERIFIED
+
+- Owner look approval of the new Pumpkin (rib bars on tight bends render as short diagonal wedges along the rounded
+  centreline; face ink stays the palette outline `#9A633F`, lighter than the concept's face).
+- Exit-art stem rule verified in the native contract (`buildInto` with cell counts), not by recording a real exit.
+- Performance not measured (per brief). iOS not applicable.
