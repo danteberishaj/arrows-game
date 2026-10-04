@@ -1,6 +1,6 @@
 // src/ui/__tests__/RewardProgressPill.test.tsx
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, within } from '@testing-library/react-native';
 import { RewardProgressPill } from '../RewardProgressPill';
 import { REWARD_PATH } from '../rewardCatalogue';
 import { InkNight } from '../theme';
@@ -45,4 +45,12 @@ test('book on: the pill announces petals, not points', () => {
   const { getByTestId } = render(<RewardProgressPill palette={InkNight} earned={2}
     state={{ ...base, points: 2, reachedIndex: 0, next: REWARD_PATH[0], levelsToNext: 1, progress: 2 / 3, petals: 12 }} />);
   expect(getByTestId('reward-pill').props.accessibilityLabel).toMatch(/^Plus 2 petals\./);
+});
+
+test('the name has the label row to itself; "+N" sits on the caption row (no wrap beside long names)', () => {
+  const { getByTestId } = render(<RewardProgressPill palette={InkNight} earned={2}
+    state={{ ...base, points: 4, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, petals: 12 }} />);
+  const caption = within(getByTestId('pill-caption-row'));
+  caption.getByText('4 more levels'); caption.getByText('+2'); caption.getByTestId('petal-icon');
+  expect(within(getByTestId('pill-label-row')).queryByText('+2')).toBeNull();
 });

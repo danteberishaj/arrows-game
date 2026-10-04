@@ -80,3 +80,13 @@ test('empty book', () => {
   const { getByTestId, getByText } = render(<CollectionBook palette={Daylight} state={{ ...base, next: null, petals: 5 }} onUse={() => {}} />);
   getByTestId('book-empty'); getByText('All styles collected · new ones coming soon');
 });
+
+test('a disabled Buy looks inactive: no fill, an outline, dimmed label', () => {
+  mockOwned.clear(); [0, 2, 4, 6].forEach(id => mockOwned.add(id)); // the empty-book test owns everything
+  const { getByTestId } = render(<CollectionBook palette={Daylight} state={{ ...base, petals: 3, canBuy: true }} onUse={() => {}} />);
+  fireEvent.press(getByTestId('book-tile-campfire'));
+  const style = Object.assign({}, ...[getByTestId('book-buy').props.style].flat(3).filter(Boolean));
+  expect(style.backgroundColor).toBe('transparent');
+  expect(style.borderWidth).toBeGreaterThan(0);
+  expect(style.borderStyle).toBe('dashed');
+});

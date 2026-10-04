@@ -76,7 +76,10 @@ export function CollectionBook({ palette: p, state, onUse }: { palette: Palette;
       <Text style={[styles.name, { color: p.ink }]}>{entry.name}</Text>
       <Text style={[styles.caption, { color: p.inkDim }]}>{k === null ? 'Not on the path' : `On the path in ${k} ${k === 1 ? 'level' : 'levels'} · or get it now`}</Text>
       <PressScale testID="book-buy" accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
-        onPress={buy} style={({ pressed }) => [styles.primary, { backgroundColor: disabled ? p.bg : pressed ? p.accentDeep : p.accent, transform: pressSnapTransform(pressed) }]}>
+        onPress={buy} style={({ pressed }) => [styles.primary, disabled
+          // UX: clearly unavailable — no fill, a dashed outline, dimmed label (not a pale look-alike of the CTA).
+          ? { backgroundColor: 'transparent', borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.border }
+          : { backgroundColor: pressed ? p.accentDeep : p.accent, transform: pressSnapTransform(pressed) }]}>
         <Text style={[styles.buttonText, { color: disabled ? p.inkDim : p.inkOnAccent }]}>{`Buy for ${price} petals`}</Text>
       </PressScale>
       <Text style={[styles.caption, { color: p.inkDim }]}>{balanceLine}</Text>

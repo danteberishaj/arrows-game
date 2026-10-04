@@ -20,29 +20,33 @@ export function RewardProgressPill({ state, earned, palette: p }: { state: Rewar
     accessible accessibilityLabel={`Plus ${plural(earned, state.petals !== null ? 'petal' : 'point', state.petals !== null ? 'petals' : 'points')}. Next style ${style.name}, ${plural(state.levelsToNext, 'level', 'levels')} to go`}>
     <StylePreview style={style} palette={p} />
     <View style={styles.text}>
-      <View style={styles.labelRow}>
+      {/* UX: the name gets the whole row; "+N" moves to the caption row so long names don't wrap. */}
+      <View testID="pill-label-row">
         <Text style={[styles.label, { color: p.ink }]}>Next style: {style.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          <Text style={[styles.earned, { color: p.accentText }]}>{`+${earned}`}</Text>
-          {state.petals !== null && <PetalIcon size={12} />}
-        </View>
       </View>
       <View style={[styles.track, { backgroundColor: p.border }]}>
         <View style={[styles.fill, { width: `${Math.round(state.progress * 100)}%`, backgroundColor: p.accent }]} />
       </View>
-      <Text style={[styles.caption, { color: p.inkDim }]}>
-        {plural(state.levelsToNext, 'more level', 'more levels')}
-      </Text>
+      <View testID="pill-caption-row" style={styles.captionRow}>
+        <Text style={[styles.caption, { color: p.inkDim }]}>
+          {plural(state.levelsToNext, 'more level', 'more levels')}
+        </Text>
+        <View style={styles.earnedGroup}>
+          <Text style={[styles.earned, { color: p.accentText }]}>{`+${earned}`}</Text>
+          {state.petals !== null && <PetalIcon size={12} />}
+        </View>
+      </View>
     </View>
   </View>;
 }
 const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 10, marginTop: 12, alignSelf: 'stretch' },
   text: { flex: 1 },
-  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  captionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 3, gap: 8 },
+  earnedGroup: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   earned: { ...Type.menuStats, fontWeight: '700' },
   label: { ...Type.menuStats, fontWeight: '700' },
   track: { height: 7, borderRadius: 4, marginTop: 5, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
-  caption: { ...Type.menuStats, marginTop: 3 },
+  caption: { ...Type.menuStats },
 });
