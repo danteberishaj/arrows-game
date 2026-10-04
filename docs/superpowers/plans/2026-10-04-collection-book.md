@@ -877,7 +877,7 @@ Behaviour:
   - the line "You'll have {petals - price} left", or "You need {price - petals} more petal(s)";
   - "Not now" (testID `book-not-now`, `minHeight: 48`) returning to the grid.
 - **On buy:** `const r = buyReward(entry.rewardId)`.
-  - If `'bought'`: `Haptic.<success>(true)`, announce "{name} added to your styles", then show bought.
+  - If `'bought'`: call `Haptic.cleared();` (`import { Haptic } from './haptics'`; no arguments, the success notification). Do NOT call `feedback('cleared', …)`: on Android it also plays the win sound. Then announce "{name} added to your styles" and show bought. In `CollectionBook.test.tsx` mock `../haptics` as `{ Haptic: { cleared: jest.fn() } }` and assert one call per purchase.
   - If anything else: return to the grid (the state will have changed).
 - **Bought (testID `book-bought`):**
   - an outlined badge "ADDED TO YOUR STYLES" (same style as the reveal badge: `borderWidth: 1.5`, `p.accentText`);
