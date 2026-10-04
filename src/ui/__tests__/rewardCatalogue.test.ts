@@ -28,3 +28,11 @@ test('rewardIds are unique, below 60, and every path entry has three chips', () 
   expect(Math.max(...ids)).toBeLessThan(60);
   for (const e of REWARD_PATH) expect(e.chips).toHaveLength(3);
 });
+
+import { REWARD_PATH_IDS } from '../rewardCatalogue';
+
+test('book prices by path tier: 10 / 20 / 35; free styles have no price', () => {
+  expect(REWARD_PATH.map(e => e.price)).toEqual([10, 10, 10, 10, 10, 20, 20, 20, 20, 20, 35, 35, 35, 35, 35]);
+  expect(REWARD_CATALOGUE.filter(e => e.pathCost === null).every(e => e.price === null)).toBe(true);
+  expect(REWARD_PATH_IDS).toEqual(REWARD_PATH.map(e => e.rewardId));
+});

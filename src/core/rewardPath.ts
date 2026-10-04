@@ -4,6 +4,8 @@
  * Pure: no storage, no UI. Owned rewards reuse the collection's 60-bit lo/hi masks.
  */
 export type { ShapeMasks as OwnedMasks } from './collection';
+import { hasSeen, markSeen } from './collection';
+import type { ShapeMasks as OwnedMasks2 } from './collection';
 
 export type ClearKind = 'campaign' | 'daily';
 
@@ -42,4 +44,20 @@ export function progressToNext(points: number, totals: readonly number[]): numbe
   if (index >= totals.length) return 1;
   const start = index === 0 ? 0 : totals[index - 1];
   return (safePoints(points) - start) / (totals[index] - start);
+}
+
+/** Book spec §3: a path step grants the first path id not owned yet; null when every path id is owned. */
+export function grantNext(owned: OwnedMasks2, pathIds: readonly number[]): { owned: OwnedMasks2; granted: number | null } {
+  const id = pathIds.find(candidate => !hasSeen(owned, candidate));
+  return id === undefined ? { owned, granted: null } : { owned: markSeen(owned, id), granted: id };
+}
+
+export function unownedPath(owned: OwnedMasks2, pathIds: readonly number[]): number[] {
+  return pathIds.filter(id => !hasSeen(owned, id));
+}
+
+/** Levels (at +1 each) until the step that would grant the `rank`-th unowned path style; null when past the last step. */
+export function etaForRank(points: number, totals: readonly number[], grants: number, rank: number): number | null {
+  const step = grants + rank;
+  return step >= totals.length ? null : Math.max(0, totals[step] - safePoints(points));
 }

@@ -7,8 +7,10 @@ import { Palette, Type } from './theme';
 import { PERF_MODE } from '../perfMode';
 import { useArrowStyle } from './useArrowStyle';
 import { useRewards } from './useRewards';
-import { isRewardOwned, markPickerSeen } from './rewardLedger';
-import { PATH_TOTALS, REWARD_CATALOGUE, REWARD_PATH, rewardForSkin } from './rewardCatalogue';
+import { PetalIcon } from './PetalIcon';
+import { CollectionBook } from './CollectionBook';
+import { etaFor, isRewardNew, isRewardOwned, markPickerSeen } from './rewardLedger';
+import { REWARD_CATALOGUE, REWARD_PATH } from './rewardCatalogue';
 
 const writePickerLog = console.log.bind(console);
 
@@ -65,14 +67,13 @@ export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyl
 export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; onBack: () => void }) {
   const selected = useArrowStyle();
   const state = useRewards();
-  const [hint, setHint] = useState<{ id: number; k: number } | null>(null);
+  const [hint, setHint] = useState<{ id: number; k: number | null } | null>(null);
+  const [tab, setTab] = useState<'styles' | 'book'>('styles');
   const { height } = useWindowDimensions();
   useEffect(() => { markPickerSeen(); }, []);
 
   function StyleRow({ style }: { style: ArrowStyle }) {
-    const entry = rewardForSkin(style.numericId);
-    const pathIndex = entry ? REWARD_PATH.indexOf(entry) : -1;
-    const isNew = !!state && pathIndex >= state.pickerSeenIndex && pathIndex < state.reachedIndex;
+    const isNew = !!state && isRewardNew(style.numericId);
     return <Pressable
       accessibilityRole="radio"
       accessibilityLabel={`${style.name}${isNew ? ', new' : ''}`}
@@ -100,9 +101,32 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
   // UX review: show the next two only; a long list of locked rows reads as a chore, not a goal.
   const locked = allLocked.slice(0, 2);
   const moreLocked = allLocked.length - locked.length;
+  const nextEta = state?.next ? etaFor(state.next.rewardId) : null;
   return <>
     <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
-      {!state ? ARROW_STYLES.map(style => <StyleRow key={style.id} style={style} />) : <>
+      {!state ? ARROW_STYLES.map(style => <StyleRow key={style.id} style={style} />) : state.petals !== null ? <>
+        <View testID="petal-purse" style={styles.purse} accessibilityLabel={`${state.petals} petals`}>
+          <PetalIcon size={14} />
+          <Text style={[styles.note, { color: p.accentText }]}>{`${state.petals} ${state.petals === 1 ? 'petal' : 'petals'}`}</Text>
+        </View>
+        <View style={styles.tabs}>
+          <Pressable testID="tab-styles" accessibilityRole="tab" accessibilityState={{ selected: tab === 'styles' }}
+            onPress={() => setTab('styles')} style={styles.tab}>
+            <Text style={[styles.note, { color: tab === 'styles' ? p.ink : p.inkDim }]}>{`Your styles · ${owned.length}`}</Text>
+          </Pressable>
+          <Pressable testID="tab-book" accessibilityRole="tab" accessibilityState={{ selected: tab === 'book' }}
+            onPress={() => setTab('book')} style={styles.tab}>
+            <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${allLocked.length}`}</Text>
+          </Pressable>
+        </View>
+        {tab === 'styles' ? <>
+          {owned.map(style => <StyleRow key={style.id} style={style} />)}
+          {state.next && <Pressable testID="next-free-line" accessibilityRole="button"
+            onPress={() => setTab('book')} style={styles.nextFree}>
+            <Text style={[styles.note, { color: p.inkDim }]}>{`Next free style: ${state.next.name} · ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}</Text>
+          </Pressable>}
+        </> : <CollectionBook palette={p} state={state} onUse={id => { chooseArrowStyle(id); setTab('styles'); }} />}
+      </> : <>
         <View testID="reward-section-owned" style={styles.section}>
           <Text style={[styles.note, { color: p.inkDim }]}>Your styles</Text>
           <Text style={[styles.note, { color: p.inkDim }]}>{owned.length} of {ARROW_STYLES.length}</Text>
@@ -113,12 +137,12 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
         </View>}
         {locked.map((entry, index) => {
           const style = ARROW_STYLES.find(s => s.id === entry.refId)!;
-          const k = PATH_TOTALS[REWARD_PATH.indexOf(entry)] - state.points;
-          const caption = index === 0 ? `Next · ${k} ${k === 1 ? 'level' : 'levels'}`
+          const k = etaFor(entry.rewardId);
+          const caption = index === 0 ? (k === null ? 'Not on the path' : `Next · ${k} ${k === 1 ? 'level' : 'levels'}`)
             : `After ${locked[index - 1].name}`;
           return <React.Fragment key={entry.rewardId}>
             <Pressable accessibilityRole="button"
-              accessibilityLabel={`${entry.name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}
+              accessibilityLabel={k === null ? `${entry.name}, locked, Not on the path` : `${entry.name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}
               onPress={() => setHint({ id: entry.rewardId, k })}
               style={[styles.option, { borderTopColor: p.border }]}>
               <View style={{ opacity: index === 0 ? 1 : .45 }}><StylePreview style={style} palette={p} /></View>
@@ -134,7 +158,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
               </Svg>
             </Pressable>
             {hint?.id === entry.rewardId && <Text testID="reward-locked-hint" accessibilityLiveRegion="polite"
-              style={[styles.hint, { color: p.inkDim }]}>{`Clear ${hint.k} more ${hint.k === 1 ? 'level' : 'levels'} to unlock`}</Text>}
+              style={[styles.hint, { color: p.inkDim }]}>{hint.k === null ? 'Not on the path' : `Clear ${hint.k} more ${hint.k === 1 ? 'level' : 'levels'} to unlock`}</Text>}
           </React.Fragment>;
         })}
         {moreLocked > 0 && <Text style={[styles.more, { color: p.inkDim, borderTopColor: p.border }]}>{`+${moreLocked} more to unlock`}</Text>}
@@ -147,6 +171,10 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
   </>;
 }
 const styles = StyleSheet.create({
+  purse: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, paddingVertical: 12 },
+  tabs: { flexDirection: 'row', paddingHorizontal: 12 },
+  tab: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  nextFree: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, justifyContent: 'center' },
   option: { minHeight: 60, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1 },
   nameGroup: { flex: 1 },
   more: { ...Type.menuStats, minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1 },

@@ -6,7 +6,7 @@ import { RewardRevealCard } from '../RewardRevealCard';
 import { REWARD_PATH } from '../rewardCatalogue';
 import { InkNight } from '../theme';
 
-const unlock = { entry: REWARD_PATH[0], pathIndex: 0, ownedSkins: 4 };
+const unlock = { entry: REWARD_PATH[0], pathIndex: 0, ownedSkins: 4, upNext: { entry: REWARD_PATH[1], levels: 5 } };
 function card(mode: 'campaign' | 'daily', extra: object = {}) {
   const onUse = jest.fn(), onKeep = jest.fn(), onShown = jest.fn();
   const r = render(<RewardRevealCard unlock={unlock} mode={mode} levelNumber={3} points={3} palette={InkNight}
@@ -52,4 +52,9 @@ test('announces the unlock to screen readers once, and the secondary target is a
   const style = [getByTestId('reward-keep').props.style].flat();
   expect(Math.max(...style.map((s: { minHeight?: number }) => s?.minHeight ?? 0))).toBeGreaterThanOrEqual(48);
   announce.mockRestore();
+});
+
+test('no next free reward: omits the Up next line', () => {
+  const { queryByText } = card('campaign', { unlock: { ...unlock, upNext: null } });
+  expect(queryByText(/Up next:/)).toBeNull();
 });

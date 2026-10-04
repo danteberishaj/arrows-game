@@ -4,7 +4,6 @@ import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence,
 import { StylePreview } from './ArrowStyleOptions';
 import { Icon } from './icons';
 import { PressScale, pressSnapTransform } from './PressScale';
-import { PATH_TOTALS, REWARD_PATH } from './rewardCatalogue';
 import type { ClearReward } from './rewardLedger';
 import { skinBoardPalette } from './skinBoardPalette';
 import { ARROW_STYLES } from './skinSpecs';
@@ -27,10 +26,9 @@ interface RewardRevealCardProps {
 /** Content of the existing win panel; only its decorative sparkles animate here. */
 export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p, dark,
   reducedMotion, disabled, onUse, onKeep, onShown }: RewardRevealCardProps) {
-  const { entry, pathIndex, ownedSkins } = unlock;
+  const { entry, ownedSkins } = unlock;
   const style = ARROW_STYLES.find(s => s.id === entry.refId)!;
-  const next = REWARD_PATH[pathIndex + 1];
-  const k = PATH_TOTALS[pathIndex + 1] - points;
+  const upNext = unlock.upNext;
   const sparkleOpacity = useSharedValue(0);
   const sparkleStyle = useAnimatedStyle(() => ({ opacity: sparkleOpacity.value }));
   // Only the preview pops (scale, never opacity): the card's visibility stays with the guarded panel motion.
@@ -69,7 +67,7 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
       onPress={onKeep} style={styles.secondary}>
       <Text style={[styles.caption, { color: p.inkDim }]}>Keep my current style</Text>
     </Pressable>
-    {next && <Text style={[styles.caption, { color: p.inkDim }]}>{`Up next: ${next.name} · ${k} ${k === 1 ? 'level' : 'levels'}`}</Text>}
+    {upNext && <Text style={[styles.caption, { color: p.inkDim }]}>{`Up next: ${upNext.entry.name} · ${upNext.levels} ${upNext.levels === 1 ? 'level' : 'levels'}`}</Text>}
   </View>;
 }
 

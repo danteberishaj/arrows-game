@@ -263,6 +263,7 @@ function assertLegacyGettersMatchSeed(): void {
   // dayStreak depends on today's date, so read the raw day-chain values instead.
 }
 
+
 test('P-01 A3: every registered key survives a cold start; an unregistered key does not', async () => {
   const disk = useMapBackedStorage([['arrows_schema_version', '1']]);
   const first = await coldStart();
@@ -691,4 +692,16 @@ describe('W3-05 boot classification of the generator switch level', () => {
     expect(disk.has(KEY)).toBe(false);
     expect(SaveSystem.genSwitchLevel).toBeNull();
   });
+});
+
+test('BOOK-01: book off does not hydrate the petal key', async () => {
+  jest.clearAllMocks();
+  await initSaveSystem(true, true, false);
+  expect(storage.multiGet.mock.calls[0]?.[0]).not.toContain('arrows_petals');
+});
+
+test('BOOK-01: book on hydrates the petal key', async () => {
+  jest.clearAllMocks();
+  await initSaveSystem(true, true, true);
+  expect(storage.multiGet.mock.calls[0]?.[0]).toContain('arrows_petals');
 });

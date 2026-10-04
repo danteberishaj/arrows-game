@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { StylePreview } from './ArrowStyleOptions';
+import { PetalIcon } from './PetalIcon';
 import type { RewardState } from './rewardLedger';
 import { ARROW_STYLES } from './skinSpecs';
 import { Type, type Palette } from './theme';
@@ -21,7 +22,10 @@ export function RewardProgressPill({ state, earned, palette: p }: { state: Rewar
     <View style={styles.text}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: p.ink }]}>Next style: {style.name}</Text>
-        <Text style={[styles.earned, { color: p.accentText }]}>{`+${earned}`}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <Text style={[styles.earned, { color: p.accentText }]}>{`+${earned}`}</Text>
+          {state.petals !== null && <PetalIcon size={12} />}
+        </View>
       </View>
       <View style={[styles.track, { backgroundColor: p.border }]}>
         <View style={[styles.fill, { width: `${Math.round(state.progress * 100)}%`, backgroundColor: p.accent }]} />

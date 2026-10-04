@@ -189,3 +189,9 @@ export const META_SKIN_PICKER = process.env.EXPO_PUBLIC_META_SKIN_PICKER === '1'
  * OFF: no reward key is read or written; picker and win panel are unchanged.
  */
 export const META_REWARD_PATH = process.env.EXPO_PUBLIC_META_REWARD_PATH === '1';
+/**
+ * COLLECTION-BOOK (spec 2026-10-04): petals from clears buy any locked arrow style early.
+ * Effective only when the reward path is on (src/ui/rewardGate.ts rewardBookEnabled).
+ * OFF: no petal key is read or written; the picker keeps the reward-path layout.
+ */
+export const META_REWARD_BOOK = process.env.EXPO_PUBLIC_META_REWARD_BOOK === '1';

@@ -11,6 +11,7 @@ type Flags = Record<string, unknown>;
 const NAMED_META_FLAGS = [
   'META_SKIN_PICKER',
   'META_REWARD_PATH',
+  'META_REWARD_BOOK',
   'META_STREAK_FREEZE',
   'META_EXIT_TO_SCREEN_EDGE',
   'META_BOARD_GRID',

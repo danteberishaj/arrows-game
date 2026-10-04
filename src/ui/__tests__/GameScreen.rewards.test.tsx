@@ -148,7 +148,7 @@ async function advance(ms: number) {
 function seedPoints(points: number) {
   store.setInt('arrows_reward_points', points);
   rewardLedger.initializeRewardLedger(store, true, {
-    writable: true, totalSolved: 0, selectedNumericId: 0,
+    writable: true, totalSolved: 0, selectedNumericId: 0, book: false,
   });
   store.clearAccesses();
 }
@@ -186,7 +186,7 @@ beforeEach(() => {
   store.setInt('arrows_total_solved', 0);
   store.setInt('arrows_ftue_stage', 3);
   rewardLedger.initializeRewardLedger(store, true, {
-    writable: true, totalSolved: 0, selectedNumericId: 0,
+    writable: true, totalSolved: 0, selectedNumericId: 0, book: false,
   });
   initializeArrowStyle(store, true);
   store.clearAccesses();
@@ -195,7 +195,7 @@ beforeEach(() => {
 
 afterEach(() => {
   rewardLedger.initializeRewardLedger(null, false, {
-    writable: false, totalSolved: 0, selectedNumericId: 0,
+    writable: false, totalSolved: 0, selectedNumericId: 0, book: false,
   });
   initializeArrowStyle(null, false);
   SaveSystem.useStore(previousStore);

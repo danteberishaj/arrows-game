@@ -10,7 +10,7 @@ export interface RewardEntry {
   name: string;
   /** Points after the previous path reward; null = free from the start. */
   pathCost: number | null;
-  /** Direction B (collection book) price; null until B ships. */
+  /** Collection book price (petals); null for free styles. */
   price: number | null;
   chips: readonly string[];
 }
@@ -42,7 +42,11 @@ function skinEntry(id: string, pathCost: number | null, chips: readonly string[]
   return { rewardId: style.numericId, kind: 'skin', refId: id, name: style.name, pathCost, price: null, chips };
 }
 
-export const REWARD_PATH: readonly RewardEntry[] = PATH.map(([id, cost, chips]) => skinEntry(id, cost, chips));
+/** OWNER-APPROVED STARTING VALUES (book spec §2): price by path position. */
+function priceForPosition(index: number): number { return index < 5 ? 10 : index < 10 ? 20 : 35; }
+
+export const REWARD_PATH: readonly RewardEntry[] = PATH.map(([id, cost, chips], i) => ({ ...skinEntry(id, cost, chips), price: priceForPosition(i) }));
+export const REWARD_PATH_IDS: readonly number[] = REWARD_PATH.map(e => e.rewardId);
 export const REWARD_CATALOGUE: readonly RewardEntry[] = [...FREE.map(id => skinEntry(id, null, [])), ...REWARD_PATH];
 export const FREE_REWARD_IDS: readonly number[] = FREE.map(id => byId.get(id)!.numericId);
 export const PATH_TOTALS: readonly number[] = pathTotals(REWARD_PATH.map(e => e.pathCost!));
