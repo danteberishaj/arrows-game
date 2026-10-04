@@ -584,3 +584,18 @@ Retained: `artifacts/HALLOWEEN-01/logs/contract-halloween-probe*.txt`.
 **Owner-approved concept colours still need the real audit:** the concept dark tint `#2A2140` passed the precomputed
 outline ratios but fails the required missed-mark tint row (2.992:1). The registry keeps the stock dark board pending an
 owner ruling; a test pins the failing ratio. See [HALLOWEEN-01](next-level/reports/HALLOWEEN-01.md).
+
+## A rewarded test ad cannot be dismissed early with BACK; source-text pins break on new arguments
+
+**Observed (2026-10-05, PETAL-ADS-01):** on emulator-5556, Google's rewarded test unit ignored BACK while it showed
+"Reward in 4 seconds". The ad stayed in `AdActivity`, then showed "Reward granted", and a later BACK closed it with the
+reward earned (+3 petals). A first attempt sent BACK one second before the reward and also earned it. **Cause
+(observed, not documented by Google):** the test creative blocks BACK until the reward is earned. **Rule:** a
+"dismissed early grants nothing" check cannot be produced on device with BACK alone, and tapping the creative's close
+control is forbidden. Cover that path with the fake-SDK test (`CLOSED` without `EARNED_REWARD`) and mark the device check
+UNVERIFIED. Evidence: `artifacts/PETAL-ADS-01/screens/07a-*.png` and `07b-*.png`, and the save rows in
+`artifacts/PETAL-ADS-01/device/`.
+**Also:** `gameSessionLifecycle.test.ts` pins App.tsx's exact `initSaveSystem(...)` call text. Any new boot flag
+argument breaks it, so update that string together with the call.
+**Hermes:** a string that contains `·` is stored as UTF-16LE. The positive control `'Watch an ad'` counted [0, 1].
+Bundle proofs must keep checking both encodings. Report: [PETAL-ADS-01](next-level/reports/PETAL-ADS-01.md).

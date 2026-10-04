@@ -15,7 +15,8 @@
  * minifier drops the object literal. A test build therefore does not even
  * contain the owner unit IDs (proved by a bundle grep in the ADMOB-B report).
  *
- * ADMOB-C adds the menu banner unit (ruling M4) under the same rule.
+ * ADMOB-C adds the menu banner unit (ruling M4) under the same rule; PETAL-ADS-01 the
+ * petals rewarded unit (owner-created 2026-10-04).
  * Ad unit IDs ship in every binary and are not secrets.
  */
 
@@ -23,6 +24,8 @@ export interface AdUnitIds {
   interstitial: string;
   rewardedHint: string;
   rewardedContinue: string;
+  /** PETAL-ADS-01: the collection book's "+3 petals" rewarded ad (owner unit "Arrows - Rewarded - Petals"). */
+  rewardedPetals: string;
   /** ADMOB-C (ruling M4): the menu's anchored adaptive banner. */
   banner: string;
 }
@@ -47,6 +50,7 @@ export const OWNER_AD_UNITS: AdUnitIds | null =
         interstitial: 'ca-app-pub-9813131856455133/6706292920',
         rewardedHint: 'ca-app-pub-9813131856455133/7549521178',
         rewardedContinue: 'ca-app-pub-9813131856455133/3505414519',
+        rewardedPetals: 'ca-app-pub-9813131856455133/5754923896',
         banner: 'ca-app-pub-9813131856455133/5508761320',
       };
 
@@ -67,9 +71,10 @@ export function selectAdUnits(input: {
       set: 'test',
       units: {
         interstitial: testIds.INTERSTITIAL,
-        // Google publishes one rewarded sample unit; both placements use it.
+        // Google publishes one rewarded sample unit; every rewarded placement uses it.
         rewardedHint: testIds.REWARDED,
         rewardedContinue: testIds.REWARDED,
+        rewardedPetals: testIds.REWARDED,
         banner: testIds.ADAPTIVE_BANNER,
       },
     };

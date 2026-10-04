@@ -93,17 +93,17 @@ const schemaDef = {
   },
   ad_request: {
     format: enumOf('interstitial', 'rewarded'),
-    placement: enumOf('between_levels', 'continue', 'hint'),
+    placement: enumOf('between_levels', 'continue', 'hint', 'petals'),
   },
   ad_result: {
     format: enumOf('interstitial', 'rewarded'),
-    placement: enumOf('between_levels', 'continue', 'hint'),
+    placement: enumOf('between_levels', 'continue', 'hint', 'petals'),
     outcome: enumOf('shown', 'not_ready', 'killed', 'display_failed', 'dismissed'),
   },
   ad_reward: {
     // OWNER-PICKED STARTING VALUE: `earned` as boolean (reward granted or
     // not); the brief names the key but not its kind.
-    placement: enumOf('continue', 'hint'),
+    placement: enumOf('continue', 'hint', 'petals'),
     earned: bool(),
   },
   error: {

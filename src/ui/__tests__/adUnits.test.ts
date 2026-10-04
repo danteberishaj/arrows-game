@@ -18,6 +18,7 @@ const OWNER: AdUnitIds = {
   interstitial: 'ca-app-pub-9813131856455133/6706292920',
   rewardedHint: 'ca-app-pub-9813131856455133/7549521178',
   rewardedContinue: 'ca-app-pub-9813131856455133/3505414519',
+  rewardedPetals: 'ca-app-pub-9813131856455133/5754923896', // PETAL-ADS-01 (owner unit, 2026-10-04)
   banner: 'ca-app-pub-9813131856455133/5508761320',
 };
 
@@ -25,6 +26,7 @@ const TEST_UNITS: AdUnitIds = {
   interstitial: TEST_IDS.INTERSTITIAL,
   rewardedHint: TEST_IDS.REWARDED,
   rewardedContinue: TEST_IDS.REWARDED,
+  rewardedPetals: TEST_IDS.REWARDED, // PETAL-ADS-01
   banner: TEST_IDS.ADAPTIVE_BANNER,
 };
 

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SaveSystem, type IntStore } from '../core/saveSystem';
 import { ARROW_SKIN_KEY, getArrowStyle, initializeArrowStyle } from './arrowStyleSelection';
-import { BOOK_KEYS, REWARD_KEYS, initializeRewardLedger } from './rewardLedger';
+import { BOOK_KEYS, PETAL_AD_KEYS, REWARD_KEYS, initializeRewardLedger } from './rewardLedger';
 export { getArrowStyle, chooseArrowStyle } from './arrowStyleSelection';
 
 /**
@@ -94,13 +94,14 @@ class HydratedIntStore implements IntStore {
  * succeeded: stamping a version over a save that was never read would mark it
  * migrated.
  */
-export async function initSaveSystem(skinPicker = false, rewardPath = false, rewardBook = false, seasons = false): Promise<void> {
+export async function initSaveSystem(skinPicker = false, rewardPath = false, rewardBook = false, seasons = false, petalAds = false): Promise<void> {
   const store = new HydratedIntStore();
   SaveSystem.setPersistenceHealthy(false);
   initializeArrowStyle(null, false);
   initializeRewardLedger(null, false, { writable: false, totalSolved: 0, selectedNumericId: 0, book: false });
   const keys = !skinPicker ? SaveSystem.persistenceKeys
-    : [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY, ...(rewardPath ? REWARD_KEYS : []), ...(rewardPath && rewardBook ? BOOK_KEYS : [])];
+    : [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY, ...(rewardPath ? REWARD_KEYS : []), ...(rewardPath && rewardBook ? BOOK_KEYS : []),
+      ...(rewardPath && rewardBook && petalAds ? PETAL_AD_KEYS : [])]; // PETAL-ADS-01: only with petal ads on
   const healthy = await store.hydrate(keys);
   SaveSystem.useStore(store);
   SaveSystem.setPersistenceHealthy(healthy);
@@ -110,7 +111,7 @@ export async function initSaveSystem(skinPicker = false, rewardPath = false, rew
   initializeArrowStyle(store, skinPicker, seasonal);
   initializeRewardLedger(store, skinPicker && rewardPath, {
     writable: healthy, totalSolved: SaveSystem.totalSolved, selectedNumericId: getArrowStyle().numericId,
-    book: skinPicker && rewardPath && rewardBook, seasons: seasonal,
+    book: skinPicker && rewardPath && rewardBook, seasons: seasonal, petalAds: skinPicker && rewardPath && rewardBook && petalAds,
   });
 }
 

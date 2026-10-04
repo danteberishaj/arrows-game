@@ -16,9 +16,16 @@ const NEW_LO = 'arrows_rewards_new_lo';
 const NEW_HI = 'arrows_rewards_new_hi';
 const PETALS = 'arrows_petals';
 const WELCOME_PETALS = 10; // OWNER-APPROVED STARTING VALUE (book spec §1)
+// PETAL-ADS-01 (owner-approved 2026-10-04): local day number of the last counted petal ad, and ads counted that day.
+const PETAL_AD_DAY = 'arrows_petal_ads_day';
+const PETAL_AD_COUNT = 'arrows_petal_ads_count';
+export const PETALS_PER_AD = 3;
+export const PETAL_ADS_PER_DAY = 5;
 
 export const REWARD_KEYS: readonly string[] = [POINTS, OWNED_LO, OWNED_HI, SEEN, PICKER_SEEN, GRANTS, NEW_LO, NEW_HI];
 export const BOOK_KEYS: readonly string[] = [PETALS];
+/** Hydrated (and read or written) only when petal ads are on: storage.ts appends them after BOOK_KEYS. */
+export const PETAL_AD_KEYS: readonly string[] = [PETAL_AD_DAY, PETAL_AD_COUNT];
 
 export interface RewardState {
   points: number; owned: OwnedMasks; reachedIndex: number; next: RewardEntry | null;
@@ -27,6 +34,8 @@ export interface RewardState {
   canBuy: boolean;
   /** HALLOWEEN-01: seasonal styles are on (book on AND META_SEASONS). Absent/false hides every seasonal style. */
   seasons?: boolean;
+  /** PETAL-ADS-01: the "Watch an ad · +3 petals" button is offered (book on AND META_PETAL_ADS). Absent/false hides it. */
+  petalAds?: boolean;
 }
 export interface ClearReward {
   earned: number;
@@ -35,10 +44,12 @@ export interface ClearReward {
     upNext: { entry: RewardEntry; levels: number } | null } | null;
 }
 export type BuyResult = 'bought' | 'owned' | 'insufficient' | 'unavailable';
+export type PetalAdResult = 'granted' | 'capped' | 'unavailable';
 
 let store: IntStore | null = null;
 let writable = false;
 let seasons = false;
+let petalAds = false;
 let grants = 0;
 let state: RewardState | null = null;
 const listeners = new Set<() => void>();
@@ -53,7 +64,7 @@ const collected = ({ owned, total }: { owned: number; total: number }) => ({ own
 function snapshot(points: number, owned: OwnedMasks, newMask: OwnedMasks, petals: number | null): RewardState {
   const nextId = unownedPath(owned, REWARD_PATH_IDS)[0];
   const stepsLeft = grants < PATH_TOTALS.length;
-  return { points, owned, reachedIndex: grants, newMask, petals, canBuy: writable && petals !== null, seasons,
+  return { points, owned, reachedIndex: grants, newMask, petals, canBuy: writable && petals !== null, seasons, petalAds,
     next: nextId === undefined || !stepsLeft ? null : entryById(nextId),
     levelsToNext: nextId === undefined ? null : levelsToNext(points, PATH_TOTALS),
     progress: progressToNext(points, PATH_TOTALS) };
@@ -77,11 +88,13 @@ function grantSteps(points: number, owned: OwnedMasks, newMask: OwnedMasks) {
 }
 
 export function initializeRewardLedger(next: IntStore | null, enabled: boolean,
-  opts: { writable: boolean; totalSolved: number; selectedNumericId: number; book: boolean; seasons?: boolean }): void {
+  opts: { writable: boolean; totalSolved: number; selectedNumericId: number; book: boolean; seasons?: boolean; petalAds?: boolean }): void {
   store = enabled ? next : null;
   writable = enabled && opts.writable && next !== null;
   // Seasonal styles are book-only (HALLOWEEN-01): no book, no seasons.
   seasons = enabled && opts.book && opts.seasons === true;
+  // Petal ads are book-only too (PETAL-ADS-01); their keys are read lazily, never at init.
+  petalAds = enabled && opts.book && opts.petalAds === true;
   grants = 0;
   if (!store) { publish(null); return; }
   let owned = masks(OWNED_LO, OWNED_HI);
@@ -183,4 +196,47 @@ export function markPickerSeen(): void {
   if (!state || !store || !writable || (state.newMask.lo === 0 && state.newMask.hi === 0)) return;
   store.setInt(NEW_LO, 0); store.setInt(NEW_HI, 0);
   publish({ ...state, newMask: { lo: 0, hi: 0 } });
+}
+
+/** Days since 2020-01-01 in LOCAL time (the same count as SaveSystem.today()), so the cap resets at local midnight. */
+export function localDayNumber(t: Date): number {
+  return Math.floor((Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()) - Date.UTC(2020, 0, 1)) / 86400000);
+}
+
+/**
+ * Petal ads already counted on `today`. Fail closed (never more than the cap a day):
+ * - a saved day AFTER today (clock moved back, restore from a device ahead) counts as today;
+ * - a missing or corrupt day (not a non-negative integer) counts as today, so a lone or damaged count is kept;
+ * - only a valid EARLIER day resets the count to 0;
+ * - the count is truncated and clamped to 0..cap; a non-finite count reads as the cap.
+ */
+function petalAdsUsed(today: number): number {
+  const day = store!.getInt(PETAL_AD_DAY, -1);
+  const raw = store!.getInt(PETAL_AD_COUNT, 0);
+  if (Number.isSafeInteger(day) && day >= 0 && day < today) return 0;
+  if (!Number.isFinite(raw)) return PETAL_ADS_PER_DAY;
+  return Math.min(PETAL_ADS_PER_DAY, Math.max(0, Math.trunc(raw)));
+}
+
+/** Petal ads left today. 0 when petal ads are off (and then no key is read). */
+export function petalAdState(now: Date): { left: number } {
+  if (!state || !store || !petalAds) return { left: 0 };
+  return { left: PETAL_ADS_PER_DAY - petalAdsUsed(localDayNumber(now)) };
+}
+
+/**
+ * Call ONLY after the ad SDK reported an earned reward. +3 petals and one more ad counted today, written in the same
+ * tick (one coalesced native batch). Read-only session (SAVE-GUARD), book or petal ads off: 'unavailable', no write.
+ */
+export function grantPetalAd(now: Date): PetalAdResult {
+  if (!state || !store || !writable || !petalAds || state.petals === null) return 'unavailable';
+  const today = localDayNumber(now);
+  const used = petalAdsUsed(today);
+  if (used >= PETAL_ADS_PER_DAY) return 'capped';
+  const petals = state.petals + PETALS_PER_AD;
+  store.setInt(PETALS, petals);
+  store.setInt(PETAL_AD_DAY, today);
+  store.setInt(PETAL_AD_COUNT, used + 1);
+  publish(snapshot(state.points, state.owned, state.newMask, petals));
+  return 'granted';
 }

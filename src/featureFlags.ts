@@ -202,3 +202,9 @@ export const META_REWARD_BOOK = process.env.EXPO_PUBLIC_META_REWARD_BOOK === '1'
  * arrows_rewards_owned_*).
  */
 export const META_SEASONS = process.env.EXPO_PUBLIC_META_SEASONS === '1';
+/**
+ * PETAL-ADS-01: a rewarded ad in the collection book ("Watch an ad · +3 petals", 5 per local day) on its own
+ * 'petals' placement. Effective only when the book is on (src/ui/rewardGate.ts petalAdsEnabled). OFF: no button,
+ * no petals ad object is created or requested, and `arrows_petal_ads_day` / `_count` are never read or written.
+ */
+export const META_PETAL_ADS = process.env.EXPO_PUBLIC_META_PETAL_ADS === '1';

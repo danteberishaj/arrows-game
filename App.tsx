@@ -41,7 +41,7 @@ import {
 } from './src/telemetry/sink.http';
 import { createMemorySink, Telemetry } from './src/telemetry/telemetry';
 import { skinPickerEnabled } from './src/ui/useArrowStyle';
-import { rewardBookEnabled, rewardPathEnabled, seasonsEnabled } from './src/ui/rewardGate';
+import { petalAdsEnabled, rewardBookEnabled, rewardPathEnabled, seasonsEnabled } from './src/ui/rewardGate';
 import { initSaveSystem, initSkinPickerCapture } from './src/ui/storage';
 import { createThemeScrimTransition, useThemeToggle } from './src/ui/themeTransition';
 import { paletteFor } from './src/ui/theme';
@@ -150,7 +150,7 @@ export default function App() {
     // SaveSystem.useStore swap could write an in-memory level-1 session over real
     // progress. On a rejection SaveSystem keeps its in-memory store, which never
     // writes to AsyncStorage, so saved progress cannot be overwritten.
-    initSaveSystem(skinPickerEnabled(), rewardPathEnabled(), rewardBookEnabled(), seasonsEnabled())
+    initSaveSystem(skinPickerEnabled(), rewardPathEnabled(), rewardBookEnabled(), seasonsEnabled(), petalAdsEnabled())
       .then(() => {
         // W3-05: stamp the generator switch level once, from the HYDRATED save
         // and before any screen can deal or fold a campaign board. A no-op

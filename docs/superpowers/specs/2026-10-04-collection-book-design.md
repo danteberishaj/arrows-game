@@ -15,7 +15,7 @@ they love early, while the path keeps giving free styles.
 - Every player gets a 10-petal welcome gift.
 - Layout B: two tabs, with the book as an album grid.
 - Buying always goes through a confirm step.
-- **No rewarded ads for petals** (owner: "no rewarded ads for now").
+- ~~No rewarded ads for petals~~ **Reversed by the owner 2026-10-04:** a rewarded ad gives +3 petals, 5 per day (PETAL-ADS-01, flag EXPO_PUBLIC_META_PETAL_ADS).
 
 **Assumption:** retention cannot be measured yet (telemetry is off). Prices are starting values, tuned from tester
 feedback.

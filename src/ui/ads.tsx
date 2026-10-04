@@ -12,6 +12,7 @@ import { CONSENT_GATE, META_BANNER } from '../featureFlags';
 import type { EventProps } from '../telemetry/events';
 import { Telemetry } from '../telemetry/telemetry';
 import { adDecision, type AdFormat } from './adGate';
+import { petalAdsEnabled } from './rewardGate';
 import { AD_INIT_RETRY_DELAYS_MS, createAdInitController } from './adInit';
 import { afterDisplayed, isInterstitialDue, sanitizeCounter } from './adPacing';
 import { createReadiness } from './adReadiness';
@@ -38,6 +39,9 @@ import { Fonts, Palette, Type } from './theme';
  * (shown only after a clear) and two rewarded ads, one per placement: the
  * "+1 heart continue" and the hint (ruling M3). Each rewarded placement has its
  * own ad unit and its own readiness, so one being unready never blocks the other.
+ * PETAL-ADS-01 adds a third placement, 'petals' (the collection book's "+3 petals"),
+ * created and requested ONLY when petalAdsEnabled(): with the flag off there are
+ * exactly the two rewarded ad objects above, as before.
  *
  * Ad units (ruling M1, src/ui/adUnits.ts): Google's sample units in every
  * `__DEV__` build and in any build made with EXPO_PUBLIC_ADMOB_TEST_ADS=1; the
@@ -192,7 +196,13 @@ type AdMobModule = typeof import('react-native-google-mobile-ads');
 type FullScreenAd = InterstitialAd | RewardedAd;
 type RewardedPlacement = EventProps<'ad_reward'>['placement'];
 
-const REWARDED_PLACEMENTS: readonly RewardedPlacement[] = ['continue', 'hint'];
+const BASE_PLACEMENTS: readonly RewardedPlacement[] = ['continue', 'hint'];
+const ALL_PLACEMENTS: readonly RewardedPlacement[] = ['continue', 'hint', 'petals'];
+
+/** The placements this build creates, loads and can show (petals only with PETAL-ADS-01 on). */
+function rewardedPlacements(): readonly RewardedPlacement[] {
+  return petalAdsEnabled() ? ALL_PLACEMENTS : BASE_PLACEMENTS;
+}
 
 interface InterstitialSlot {
   ad: InterstitialAd;
@@ -215,7 +225,7 @@ let adMobUnavailable = false;
 let sdkInitialized = false;
 let unitSet: AdUnitSet | null = null;
 let interstitial: InterstitialSlot | null = null;
-const rewarded: Record<RewardedPlacement, RewardedSlot | null> = { continue: null, hint: null };
+const rewarded: Record<RewardedPlacement, RewardedSlot | null> = { continue: null, hint: null, petals: null };
 
 let consentSource: ConsentSource | undefined;
 let consentAllowsAdSurfaces = !CONSENT_GATE;
@@ -245,10 +255,12 @@ function killed(format: AdFormat): boolean {
 }
 
 /** Native, per placement: the last rewarded SDK event left a loaded, unconsumed ad. */
-const rewardedLoaded: Record<RewardedPlacement, boolean> = { continue: false, hint: false };
+const rewardedLoaded: Record<RewardedPlacement, boolean> = { continue: false, hint: false, petals: false };
 const rewardedReadiness = {
   continue: createReadiness(false),
   hint: createReadiness(false),
+  // Never set true while the petals placement is off (it is outside rewardedPlacements()).
+  petals: createReadiness(false),
 };
 
 /**
@@ -283,7 +295,7 @@ function syncBanner(): void {
  * release build without the native SDK is never ready.
  */
 function syncRewardedReady(): void {
-  for (const placement of REWARDED_PLACEMENTS) {
+  for (const placement of rewardedPlacements()) {
     if (!consentAllowsAdSurfaces || killed('rewarded')) {
       // Refused or killed: the button shows W0-02's "no ad available" state.
       rewardedReadiness[placement].set(false);
@@ -319,7 +331,7 @@ function requestLoad(ad: FullScreenAd, format: AdFormat): void {
 /** Re-requests every idle ad, e.g. after a kill lifted or consent returned. */
 function loadIdleAds(): void {
   if (interstitial) requestLoad(interstitial.ad, 'interstitial');
-  for (const placement of REWARDED_PLACEMENTS) {
+  for (const placement of rewardedPlacements()) {
     const slot = rewarded[placement];
     if (slot) requestLoad(slot.ad, 'rewarded');
   }
@@ -459,7 +471,8 @@ function createRewardedSlot(
   placement: RewardedPlacement,
 ): RewardedSlot {
   const { AdEventType, RewardedAd, RewardedAdEventType } = gma;
-  const unit = placement === 'hint' ? units.rewardedHint : units.rewardedContinue;
+  const unit = placement === 'hint' ? units.rewardedHint
+    : placement === 'petals' ? units.rewardedPetals : units.rewardedContinue;
   const ad = RewardedAd.createForAdRequest(unit, options);
   const slot: RewardedSlot = { ad, displayed: false, earned: false, onClosed: null, unsubscribe: [] };
   const load = () => requestLoad(ad, 'rewarded');
@@ -552,13 +565,13 @@ function createAds(gma: AdMobModule, reason: string): void {
   releaseLog(`[ads] ${reason}; unitSet=${unitSet}`);
 
   interstitial = createInterstitialSlot(liveConfig);
-  for (const placement of REWARDED_PLACEMENTS) {
+  for (const placement of rewardedPlacements()) {
     rewarded[placement] = createRewardedSlot(liveConfig, placement);
   }
   syncRewardedReady();
 
   requestLoad(interstitial.ad, 'interstitial');
-  for (const placement of REWARDED_PLACEMENTS) requestLoad(rewarded[placement]!.ad, 'rewarded');
+  for (const placement of rewardedPlacements()) requestLoad(rewarded[placement]!.ad, 'rewarded');
 }
 
 /** Releases every ad object; a show still waiting resolves as not shown. */
@@ -571,7 +584,7 @@ function destroyAds(): void {
     inter.onClosed = null;
     done?.();
   }
-  for (const placement of REWARDED_PLACEMENTS) {
+  for (const placement of ALL_PLACEMENTS) {
     const slot = rewarded[placement];
     rewarded[placement] = null;
     rewardedLoaded[placement] = false;
@@ -950,11 +963,15 @@ export const Ads = {
   },
 
   /**
-   * Shows the placement's own rewarded ad ("continue" / hint). Resolves with
+   * Shows the placement's own rewarded ad ("continue" / hint / petals). Resolves with
    * whether the user actually earned the reward; false when no ad is available.
    */
   async showRewarded(placement: RewardedPlacement = 'continue'): Promise<boolean> {
     emitAdRequest('rewarded', placement);
+    // PETAL-ADS-01 off: the petals placement does not exist, so there is nothing to show.
+    if (!rewardedPlacements().includes(placement)) {
+      return finishRewarded(placement, 'not_ready', false);
+    }
     if (killed('rewarded')) {
       return finishRewarded(placement, 'killed', false);
     }

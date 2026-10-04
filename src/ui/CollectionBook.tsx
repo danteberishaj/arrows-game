@@ -3,6 +3,7 @@ import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-nati
 import Animated, { ReduceMotion, useAnimatedStyle, useReducedMotion, useSharedValue, withSpring } from 'react-native-reanimated';
 import { StylePreview } from './ArrowStyleOptions';
 import { Haptic } from './haptics';
+import { PetalAdButton } from './PetalAdButton';
 import { PetalIcon } from './PetalIcon';
 import { PressScale, pressSnapTransform } from './PressScale';
 import { PumpkinIcon } from './PumpkinIcon';
@@ -67,6 +68,7 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
       </Pressable>;
     };
     return <View testID="book-grid">
+      {state.petalAds === true && <View style={styles.adSlot}><PetalAdButton palette={p} state={state} now={now} /></View>}
       {seasons.map(({ season, entries: seasonal }) => <View key={season.id} testID={`book-season-${season.id}`}>
         <View style={styles.seasonHeader} accessibilityRole="header" accessible>
           <PumpkinIcon size={16} />
@@ -106,6 +108,7 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
         <Text style={[styles.buttonText, { color: disabled ? p.inkDim : p.inkOnAccent }]}>{`Buy for ${price} petals`}</Text>
       </PressScale>
       <Text style={[styles.caption, { color: p.inkDim }]}>{balanceLine}</Text>
+      {state.petalAds === true && state.canBuy && petals < price && <PetalAdButton palette={p} state={state} now={now} />}
       <Pressable testID="book-not-now" accessibilityRole="button" onPress={() => setScreen({ kind: 'grid' })} style={styles.secondary}>
         <Text style={[styles.caption, { color: p.inkDim }]}>Not now</Text>
       </Pressable>
@@ -139,6 +142,7 @@ const styles = StyleSheet.create({
   tileCaption: { ...Type.menuStats, textAlign: 'center' },
   priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
   empty: { padding: 24 },
+  adSlot: { paddingHorizontal: 12, paddingTop: 12 },
   purchase: { padding: 12, alignItems: 'center', gap: 12 },
   stage: { width: 210, height: 104, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   name: { ...Type.panelTitle, textAlign: 'center' },
