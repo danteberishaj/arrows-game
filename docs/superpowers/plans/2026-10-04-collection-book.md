@@ -74,6 +74,7 @@ is commits `680370b` and `79d4d7d`; read `src/ui/rewardLedger.ts`, `src/ui/Arrow
   - "{N} of 18 styles collected"
   - "Use it now"
   - "Back to the book"
+  - "Buying is paused right now"
 - Accessibility:
   - tiles are buttons labelled "{name}, {price} petals" plus ", free in {k} levels" for the next free style;
   - tabs use `accessibilityRole="tab"` with `accessibilityState={{ selected }}`;
@@ -305,6 +306,7 @@ Then append:
 
 ```ts
 const PET = 'arrows_petals';
+import { REWARD_PATH_IDS } from '../rewardCatalogue';
 
 test('skip rule: a style owned before the path is skipped, every step grants something new', () => {
   const L = load(); const s = new Mem();
@@ -388,6 +390,25 @@ test('etaFor ranks unowned path styles after the grants already made', () => {
   expect(L.etaFor(0)).toBeNull();           // Classic: not on the path
 });
 
+test('a step crossed with every path style owned is still persisted (grants never lag behind)', () => {
+  const L = load(); const s = new Mem();
+  s.m.set(PET, 999);
+  L.initializeRewardLedger(s, true, { writable: true, totalSolved: 0, selectedNumericId: 0, book: true });
+  for (const id of REWARD_PATH_IDS) L.buyReward(id);
+  L.recordRewardClear('campaign', true); // 2
+  L.recordRewardClear('campaign', false); // 3: step 0 crossed, nothing left to grant
+  expect(s.m.get('arrows_path_grants')).toBe(1);
+});
+
+test('canBuy is false in a read-only session and true when writable with the book on', () => {
+  const L = load(); const s = new Mem();
+  L.initializeRewardLedger(s, true, { writable: false, totalSolved: 0, selectedNumericId: 0, book: true });
+  expect(L.getRewardState()!.canBuy).toBe(false);
+  const L2 = load();
+  L2.initializeRewardLedger(new Mem(), true, { writable: true, totalSolved: 0, selectedNumericId: 0, book: true });
+  expect(L2.getRewardState()!.canBuy).toBe(true);
+});
+
 test('complete path with the book on: next is null, petals keep accruing', () => {
   const L = load(); const s = new Mem();
   L.initializeRewardLedger(s, true, { writable: true, totalSolved: 300, selectedNumericId: 0, book: true });
@@ -434,6 +455,8 @@ export const BOOK_KEYS: readonly string[] = [PETALS];
 export interface RewardState {
   points: number; owned: OwnedMasks; reachedIndex: number; next: RewardEntry | null;
   levelsToNext: number | null; progress: number; newMask: OwnedMasks; petals: number | null;
+  /** Book on AND the save is writable (SAVE-GUARD). The Buy button is disabled when false. */
+  canBuy: boolean;
 }
 export interface ClearReward {
   earned: number;
@@ -457,7 +480,7 @@ const ownedSkins = (owned: OwnedMasks) => ARROW_STYLES.filter(s => hasSeen(owned
 function snapshot(points: number, owned: OwnedMasks, newMask: OwnedMasks, petals: number | null): RewardState {
   const nextId = unownedPath(owned, REWARD_PATH_IDS)[0];
   const stepsLeft = grants < PATH_TOTALS.length;
-  return { points, owned, reachedIndex: grants, newMask, petals,
+  return { points, owned, reachedIndex: grants, newMask, petals, canBuy: writable && petals !== null,
     next: nextId === undefined || !stepsLeft ? null : entryById(nextId),
     levelsToNext: nextId === undefined ? null : levelsToNext(points, PATH_TOTALS),
     progress: progressToNext(points, PATH_TOTALS) };
@@ -541,10 +564,12 @@ export function recordRewardClear(kind: ClearKind, perfect: boolean): ClearRewar
   const earned = pointsForClear(kind, perfect);
   const points = state.points + earned;
   const petals = state.petals === null ? null : state.petals + earned;
+  const grantsBefore = grants;
   const g = grantSteps(points, state.owned, state.newMask);
   store.setInt(POINTS, points);
   if (petals !== null) store.setInt(PETALS, petals);
-  if (g.granted.length > 0) write(g.owned, g.newMask);
+  // Persist whenever a step was used, even one that granted nothing (all path styles owned): spec §4 amendment.
+  if (grants !== grantsBefore) write(g.owned, g.newMask);
   publish(snapshot(points, g.owned, g.newMask, petals));
   const last = g.granted[g.granted.length - 1];
   const seen = count(store.getInt(SEEN, 0));
@@ -684,7 +709,7 @@ Expected: PASS
 
 ```tsx
 test('book on: purse, tabs, and the next-free line switches to Book', () => {
-  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, newMask: { lo: 0, hi: 0 }, petals: 18 };
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, newMask: { lo: 0, hi: 0 }, petals: 18, canBuy: true };
   const { getByTestId, getByText, getByRole } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
   getByText('18 petals');
   expect(getByTestId('tab-styles').props.accessibilityState).toEqual(expect.objectContaining({ selected: true }));
@@ -699,6 +724,13 @@ test('book on: purse, tabs, and the next-free line switches to Book', () => {
 - [ ] **Step 3: Implement**
 
 1. Replace the `isNew` computation in `StyleRow` with `const isNew = !!state && isRewardNew(style.numericId);`.
+1a. **Book-off "Coming up" layout (amended):** every ETA in it uses `etaFor(entry.rewardId)` instead of
+    `PATH_TOTALS[REWARD_PATH.indexOf(entry)] - state.points`. That covers the "Next · k" caption, the locked
+    accessibility label and the locked-tap hint, so the skip rule shows correct counts. The order stays
+    `REWARD_PATH` filtered to unowned (identical to `unownedPath`). Test: in the picker test file, mock
+    `etaFor: (id) => mockEta.get(id) ?? null` (a `Map`). With Critter owned and 0 points (`mockEta` Cinnamon → 3),
+    the Cinnamon row reads "Next · 3 levels" and its label is "Cinnamon Roll, locked, unlocks in 3 levels". Set
+    `mockEta` in the existing tests to keep their expected numbers (Cinnamon 4, Jelly 10).
 2. When `state && state.petals !== null`, render instead of the reward-path sections:
    - purse row: `<PetalIcon size={14} />` plus a `Text` reading "{n} petal(s)", in `p.accentText`, centred,
      `accessibilityLabel` "{n} petals";
@@ -755,7 +787,7 @@ jest.mock('../rewardLedger', () => ({
 }));
 import { CollectionBook } from '../CollectionBook';
 
-const base = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, newMask: { lo: 0, hi: 0 } };
+const base = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, newMask: { lo: 0, hi: 0 }, canBuy: true };
 beforeEach(() => { mockBuy.mockReset(); });
 
 test('grid lists unowned path styles in order, next free outlined with "free in k"', () => {
@@ -790,6 +822,14 @@ test('cannot afford: buy is disabled and explains the gap', () => {
   expect(mockBuy).not.toHaveBeenCalled();
 });
 
+test('read-only save: buy disabled even with enough petals, and says why', () => {
+  const { getByTestId, getByText } = render(<CollectionBook palette={Daylight} state={{ ...base, petals: 50, canBuy: false }} onUse={() => {}} />);
+  fireEvent.press(getByTestId('book-tile-campfire'));
+  getByText('Buying is paused right now');
+  fireEvent.press(getByTestId('book-buy'));
+  expect(mockBuy).not.toHaveBeenCalled();
+});
+
 test('empty book', () => {
   REWARD_PATH.forEach(e => mockOwned.add(e.rewardId));
   const { getByTestId, getByText } = render(<CollectionBook palette={Daylight} state={{ ...base, next: null, petals: 5 }} onUse={() => {}} />);
@@ -818,7 +858,8 @@ Behaviour:
   - the spring-popped `StylePreview size={3}`;
   - the name (`Type.panelTitle`);
   - the ETA line: `etaFor` → "On the path in {k} level(s) · or get it now", or "Not on the path";
-  - `PressScale` testID `book-buy`, `minHeight: 52`, `disabled` when `petals < price`, labelled
+  - `PressScale` testID `book-buy`, `minHeight: 52`, `disabled` when `!state.canBuy || petals < price`. When
+    `!state.canBuy` the line under it reads "Buying is paused right now" (`inkDim`). Labelled
     "Buy for {price} petals";
   - the line "You'll have {petals - price} left", or "You need {price - petals} more petal(s)";
   - "Not now" (testID `book-not-now`, `minHeight: 48`) returning to the grid.

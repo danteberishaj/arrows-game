@@ -87,7 +87,8 @@ Free styles (Classic, Sherbet, Candy Gloss) have no price and are always owned.
 Existing keys keep their meaning:
 - `arrows_rewards_owned_*` holds path grants and purchases alike, and is never cleared;
 - `arrows_reward_points` stays the lifetime total;
-- `arrows_reward_seen` and `arrows_reward_picker_seen` count grants (unchanged meaning, since grants are sequential).
+- `arrows_reward_seen` counts grants (unchanged meaning, since grants are sequential).
+- **Amended 2026-10-04 (BOOK-01):** `arrows_reward_picker_seen` becomes legacy. It is read once to migrate A-era saves and never written again. The picker's "new" dot uses new keys `arrows_rewards_new_lo` / `_hi` (a mask of granted styles not yet seen), because purchases make "step index = style" untrue.
 
 Further rules:
 - Reconcile on load: while `grants < stepsReached(points)`, grant the next unowned path style **silently**, mark
@@ -96,7 +97,8 @@ Further rules:
   write batch.
 - If the bit write ever happened without the balance write, the player keeps the style and the petals (fail
   generous).
-- SAVE-GUARD: when the hydrate failed, the book is read-only. Buy buttons are disabled, and nothing is written.
+- SAVE-GUARD: when the hydrate failed, the book is read-only. Buy buttons are disabled, with the line "Buying is paused right now", and nothing is written.
+- `arrows_path_grants` is persisted whenever the in-memory count changes, including a step crossed while every path style is already owned (it grants nothing, but the step is used).
 - Android Auto Backup restore: take the values as they are, then reconcile.
 
 ## 5. Screens (approved mockups: `.superpowers/brainstorm/…/book-layout.html`, option B)
