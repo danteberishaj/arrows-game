@@ -1,5 +1,11 @@
 import { useArrowStyle } from './useArrowStyle';
 import { skinBoardPalette } from './skinBoardPalette';
+import { chooseArrowStyle } from './arrowStyleSelection';
+import { recordRewardClear, markRevealSeen, type ClearReward } from './rewardLedger';
+import { rewardPathEnabled } from './rewardGate';
+import { useRewards } from './useRewards';
+import { RewardProgressPill } from './RewardProgressPill';
+import { RewardRevealCard } from './RewardRevealCard';
 import React, {
   useCallback,
   useEffect,
@@ -248,6 +254,8 @@ export function GameScreen({
   // 0). Data only, set on the clear path before the won panel; W5's silhouette
   // celebration decides whether and how to show it.
   const newlyDiscoveredRef = useRef(false);
+  const [clearReward, setClearReward] = useState<ClearReward | null>(null);
+  const rewards = useRewards();
   const [hearts, setHearts] = useState(() => level.hearts);
   const [remaining, setRemaining] = useState(() => level.arrowCount);
   // W2-07 (META_HEART_REFILL_POP): bumped only by an earned rewarded continue,
@@ -459,6 +467,7 @@ export function GameScreen({
     removalsThisBoardRef.current = 0;
     assistedAtClearRef.current = false;
     perfectAtClearRef.current = false;
+    setClearReward(null);
     setTutorialLine(initialTutorialLine(next.tutorialId));
     exitCombo.current = null;
     setPhase('playing');
@@ -550,6 +559,7 @@ export function GameScreen({
             SaveSystem.setFtueStage(DONE_STAGE);
           }
           SaveSystem.registerSolve(perfect); // perfect = no heart lost
+          setClearReward(rewardPathEnabled() ? recordRewardClear(dailyDay !== null ? 'daily' : 'campaign', perfect) : null);
           if (dailyDay !== null) {
             // W4-06: a daily is not a campaign level and adds no ad exposure.
             // W4-07: it records the cleared board's shape in the collection.
@@ -697,7 +707,7 @@ export function GameScreen({
   // Android has the app paused, so a kept timer would ask right at resume.
   // OFF: no timer and no listener; expo-store-review is never loaded.
   useEffect(() => {
-    if (!META_REVIEW_PROMPT || phase !== 'won' || benchmarkMode || activeTutorialId) {
+    if (!META_REVIEW_PROMPT || phase !== 'won' || benchmarkMode || activeTutorialId || clearReward?.unlock) {
       return undefined;
     }
     reviewTimerRef.current = setTimeout(() => {
@@ -711,7 +721,7 @@ export function GameScreen({
       cancelReviewAsk();
       appState.remove();
     };
-  }, [activeTutorialId, askForReview, benchmarkMode, cancelReviewAsk, phase]);
+  }, [activeTutorialId, askForReview, benchmarkMode, cancelReviewAsk, phase, clearReward]);
 
   /**
    * W4-11: Next / Done wait (at most REVIEW_FLOW_WAIT_MAX_MS) for an in-flight
@@ -884,6 +894,14 @@ export function GameScreen({
   );
 
   const panelContent = overlayMounted ? (
+    panelPhase === 'won' && clearReward?.unlock ? (
+      <RewardRevealCard unlock={clearReward.unlock} mode={dailyDay !== null ? 'daily' : 'campaign'}
+        levelNumber={levelIndex + 1} points={rewards?.points ?? 0} palette={p} dark={darkMode}
+        reducedMotion={reducedMotion} disabled={adBusy}
+        onShown={() => markRevealSeen(clearReward.unlock!.pathIndex)}
+        onUse={() => { chooseArrowStyle(clearReward.unlock!.entry.refId); dailyDay !== null ? onDailyDone() : onNextLevel(); }}
+        onKeep={() => (dailyDay !== null ? onDailyDone() : onNextLevel())} />
+    ) : (
     <>
       <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}>
         {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
@@ -907,6 +925,9 @@ export function GameScreen({
           palette={p}
           feedbackEnabled={feedbackEnabled}
         />
+      )}
+      {panelPhase === 'won' && rewards && clearReward && !clearReward.unlock && (
+        <RewardProgressPill state={rewards} earned={clearReward.earned} palette={p} />
       )}
       <Text style={[styles.panelSub, { color: p.inkDim, ...depthSubSpacing }]}>
         {panelPhase === 'won'
@@ -986,7 +1007,7 @@ export function GameScreen({
           ✦ {SaveSystem.perfectStreak} perfect in a row
         </Text>
       ))}
-    </>
+    </>)
   ) : null;
 
   return (

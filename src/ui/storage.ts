@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SaveSystem, type IntStore } from '../core/saveSystem';
-import { ARROW_SKIN_KEY, initializeArrowStyle } from './arrowStyleSelection';
+import { ARROW_SKIN_KEY, getArrowStyle, initializeArrowStyle } from './arrowStyleSelection';
+import { REWARD_KEYS, initializeRewardLedger } from './rewardLedger';
 export { getArrowStyle, chooseArrowStyle } from './arrowStyleSelection';
 
 /**
@@ -93,15 +94,21 @@ class HydratedIntStore implements IntStore {
  * succeeded: stamping a version over a save that was never read would mark it
  * migrated.
  */
-export async function initSaveSystem(skinPicker = false): Promise<void> {
+export async function initSaveSystem(skinPicker = false, rewardPath = false): Promise<void> {
   const store = new HydratedIntStore();
   SaveSystem.setPersistenceHealthy(false);
   initializeArrowStyle(null, false);
-  const healthy = await store.hydrate(skinPicker ? [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY] : SaveSystem.persistenceKeys);
+  initializeRewardLedger(null, false, { writable: false, totalSolved: 0, selectedNumericId: 0 });
+  const keys = !skinPicker ? SaveSystem.persistenceKeys
+    : [...SaveSystem.persistenceKeys, ARROW_SKIN_KEY, ...(rewardPath ? REWARD_KEYS : [])];
+  const healthy = await store.hydrate(keys);
   SaveSystem.useStore(store);
   SaveSystem.setPersistenceHealthy(healthy);
   if (healthy) SaveSystem.migrate();
   initializeArrowStyle(store, skinPicker);
+  initializeRewardLedger(store, skinPicker && rewardPath, {
+    writable: healthy, totalSolved: SaveSystem.totalSolved, selectedNumericId: getArrowStyle().numericId,
+  });
 }
 
 

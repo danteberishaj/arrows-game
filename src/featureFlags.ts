@@ -183,3 +183,9 @@ export const ART_SKIN = skinSpecFor(process.env.EXPO_PUBLIC_ART_SKIN)?.id ?? nul
 
 /** Android runtime style selection. OFF: no picker, skin persistence or procedural board props. */
 export const META_SKIN_PICKER = process.env.EXPO_PUBLIC_META_SKIN_PICKER === '1';
+/**
+ * REWARD-PATH (spec 2026-10-04): clears earn points that unlock arrow styles along a fixed path.
+ * Effective only with META_SKIN_PICKER on Android (src/ui/rewardGate.ts rewardPathEnabled).
+ * OFF: no reward key is read or written; picker and win panel are unchanged.
+ */
+export const META_REWARD_PATH = process.env.EXPO_PUBLIC_META_REWARD_PATH === '1';

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, ScrollView, useWindowDimensions } from 'react-native';
 import Svg, { Path, Circle, Defs, ClipPath, G } from 'react-native-svg';
 import { chooseArrowStyle } from './arrowStyleSelection';
@@ -6,6 +6,9 @@ import { ARROW_STYLES, type ArrowStyle } from './skinSpecs';
 import { Palette, Type } from './theme';
 import { PERF_MODE } from '../perfMode';
 import { useArrowStyle } from './useArrowStyle';
+import { useRewards } from './useRewards';
+import { isRewardOwned, markPickerSeen } from './rewardLedger';
+import { PATH_TOTALS, REWARD_CATALOGUE, REWARD_PATH, rewardForSkin } from './rewardCatalogue';
 
 const writePickerLog = console.log.bind(console);
 
@@ -16,7 +19,7 @@ export function preferredThemeNote(style: ArrowStyle): string | undefined {
 }
 
 /** Decorative thumbnail only: spec colours, static SVG, no native board or animation. */
-function StylePreview({ style, palette: p }: { style: ArrowStyle; palette: Palette }) {
+export function StylePreview({ style, palette: p }: { style: ArrowStyle; palette: Palette }) {
   const body = style.spec?.palette.colours[0] ?? p.ink;
   const rim = style.spec?.layers.find(layer => layer.kind === 'rim')?.colour;
   // Bright dark-preference rims fail on the white sheet, so their thumbnail uses ink. A light preference keeps its rim.
@@ -59,13 +62,18 @@ function StylePreview({ style, palette: p }: { style: ArrowStyle; palette: Palet
 
 export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; onBack: () => void }) {
   const selected = useArrowStyle();
+  const state = useRewards();
+  const [hint, setHint] = useState<{ id: number; k: number } | null>(null);
   const { height } = useWindowDimensions();
-  return <>
-    <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
-    {ARROW_STYLES.map(style => <Pressable
-      key={style.id}
+  useEffect(() => { markPickerSeen(); }, []);
+
+  function StyleRow({ style }: { style: ArrowStyle }) {
+    const entry = rewardForSkin(style.numericId);
+    const pathIndex = entry ? REWARD_PATH.indexOf(entry) : -1;
+    const isNew = !!state && pathIndex >= state.pickerSeenIndex && pathIndex < state.reachedIndex;
+    return <Pressable
       accessibilityRole="radio"
-      accessibilityLabel={style.name}
+      accessibilityLabel={`${style.name}${isNew ? ', new' : ''}`}
       accessibilityHint={preferredThemeNote(style)}
       accessibilityState={{ checked: selected.id === style.id }}
       onPress={() => {
@@ -79,8 +87,52 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
         <Text style={[styles.label, { color: p.ink }]}>{style.name}</Text>
         {preferredThemeNote(style) && <Text style={[styles.note, { color: p.inkDim }]}>{preferredThemeNote(style)}</Text>}
       </View>
+      {isNew && <View accessible={false} style={[styles.newDot, { backgroundColor: p.accent }]} />}
       <Text accessible={false} style={[styles.check, { color: p.ink }]}>{selected.id === style.id ? '✓' : ''}</Text>
-    </Pressable>)}
+    </Pressable>;
+  }
+
+  const owned = state ? REWARD_CATALOGUE.filter(e => e.kind === 'skin' && isRewardOwned(e.rewardId))
+    .map(e => ARROW_STYLES.find(s => s.id === e.refId)!) : [];
+  const locked = state ? REWARD_PATH.filter(e => !isRewardOwned(e.rewardId)) : [];
+  return <>
+    <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
+      {!state ? ARROW_STYLES.map(style => <StyleRow key={style.id} style={style} />) : <>
+        <View testID="reward-section-owned" style={styles.section}>
+          <Text style={[styles.note, { color: p.inkDim }]}>Your styles</Text>
+          <Text style={[styles.note, { color: p.inkDim }]}>{owned.length} of {ARROW_STYLES.length}</Text>
+        </View>
+        {owned.map(style => <StyleRow key={style.id} style={style} />)}
+        {locked.length > 0 && <View testID="reward-section-coming" style={styles.section}>
+          <Text style={[styles.note, { color: p.inkDim }]}>Coming up</Text>
+        </View>}
+        {locked.map((entry, index) => {
+          const style = ARROW_STYLES.find(s => s.id === entry.refId)!;
+          const k = PATH_TOTALS[REWARD_PATH.indexOf(entry)] - state.points;
+          const caption = index === 0 ? `Next · ${k} ${k === 1 ? 'level' : 'levels'}`
+            : index === 1 ? `After ${locked[index - 1].name}` : 'Later';
+          return <React.Fragment key={entry.rewardId}>
+            <Pressable accessibilityRole="button"
+              accessibilityLabel={`${entry.name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}
+              onPress={() => setHint({ id: entry.rewardId, k })}
+              style={[styles.option, { borderTopColor: p.border }]}>
+              <View style={{ opacity: index === 0 ? 1 : .45 }}><StylePreview style={style} palette={p} /></View>
+              <View style={styles.nameGroup}>
+                <Text style={[styles.label, { color: p.inkDim }]}>{entry.name}</Text>
+                <Text style={[styles.note, { color: p.inkDim }]}>{caption}</Text>
+                {index === 0 && <View style={[styles.bar, { backgroundColor: p.border }]}>
+                  <View style={[styles.barFill, { backgroundColor: p.accent, width: `${state.progress * 100}%` }]} />
+                </View>}
+              </View>
+              <Svg accessible={false} width={12} height={12} viewBox="0 0 12 12">
+                <Path d="M3.5 5V3.5a2.5 2.5 0 0 1 5 0V5M2.5 5h7v6h-7Z" fill="none" stroke={p.inkDim} strokeWidth={1.4} strokeLinejoin="round" />
+              </Svg>
+            </Pressable>
+            {hint?.id === entry.rewardId && <Text testID="reward-locked-hint" accessibilityLiveRegion="polite"
+              style={[styles.hint, { color: p.inkDim }]}>{`Clear ${hint.k} more ${hint.k === 1 ? 'level' : 'levels'} to unlock`}</Text>}
+          </React.Fragment>;
+        })}
+      </>}
     </ScrollView>
     <Pressable accessibilityRole="button" accessibilityLabel="Back to settings" onPress={onBack}
       style={[styles.back, { borderTopColor: p.border }]}>
@@ -96,4 +148,9 @@ const styles = StyleSheet.create({
   check: { ...Type.menuEntry, width: 22, textAlign: 'center' },
   backLabel: { ...Type.menuEntry },
   back: { minHeight: 52, paddingHorizontal: 24, justifyContent: 'center', borderTopWidth: 1 },
+  section: { paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between' },
+  newDot: { width: 7, height: 7, borderRadius: 3.5 },
+  bar: { height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2 },
+  hint: { ...Type.menuStats, paddingHorizontal: 18, paddingBottom: 10 },
 });

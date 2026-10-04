@@ -1,0 +1,51 @@
+// src/ui/rewardCatalogue.ts
+import { pathTotals } from '../core/rewardPath';
+import { ARROW_STYLES } from './skinSpecs';
+
+/** One unlockable. rewardId is persisted as a bit (0–59): never change or reuse one. Skins use their numericId. */
+export interface RewardEntry {
+  rewardId: number;
+  kind: 'skin' | 'exit' | 'board';
+  refId: string;
+  name: string;
+  /** Points after the previous path reward; null = free from the start. */
+  pathCost: number | null;
+  /** Direction B (collection book) price; null until B ships. */
+  price: number | null;
+  chips: readonly string[];
+}
+
+/** OWNER-APPROVED STARTING VALUES (spec §2). Tune costs here only. */
+const PATH: readonly (readonly [string, number, readonly string[]])[] = [
+  ['critter', 3, ['Little faces', 'Caterpillar body', 'Mint board']],
+  ['cinnamon', 5, ['Sweet swirl', 'Sleepy face', 'Cream board']],
+  ['jelly', 6, ['Glossy', 'Soft spots', 'Blue board']],
+  ['rainbow-ribbon', 8, ['Six colours', 'Nested heads', 'Lilac board']],
+  ['strawberry-glazed', 8, ['Pink icing', 'Sprinkles', 'Cream board']],
+  ['campfire', 10, ['Warm bands', 'Little faces', 'Ember board']],
+  ['yarn', 10, ['Stitched', 'Soft colours', 'Cosy']],
+  ['neon-glass', 12, ['Glow', 'Bright colours', 'Best in dark']],
+  ['clear-glass', 12, ['Icy glass', 'Marble tail', 'Clean']],
+  ['pixel', 13, ['Retro steps', 'Hard shadow', 'Bold']],
+  ['paper-craft', 14, ['Folded', 'Paper creases', 'Crafty']],
+  ['stained-glass', 15, ['Lead lines', 'Jewel panes', 'Classic']],
+  ['archery', 15, ['Feathered', 'Arrowhead', 'Sharp']],
+  ['lava-rock', 15, ['Glowing cracks', 'Dark stone', 'Best in dark']],
+  ['ink-pro', 15, ['Swept head', 'Ink', 'Best in light']],
+];
+const FREE = ['classic', 'sherbet', 'candy-gloss'];
+
+const byId = new Map(ARROW_STYLES.map(style => [style.id, style]));
+function skinEntry(id: string, pathCost: number | null, chips: readonly string[]): RewardEntry {
+  const style = byId.get(id);
+  if (!style) throw new Error(`rewardCatalogue: unknown skin ${id}`);
+  return { rewardId: style.numericId, kind: 'skin', refId: id, name: style.name, pathCost, price: null, chips };
+}
+
+export const REWARD_PATH: readonly RewardEntry[] = PATH.map(([id, cost, chips]) => skinEntry(id, cost, chips));
+export const REWARD_CATALOGUE: readonly RewardEntry[] = [...FREE.map(id => skinEntry(id, null, [])), ...REWARD_PATH];
+export const FREE_REWARD_IDS: readonly number[] = FREE.map(id => byId.get(id)!.numericId);
+export const PATH_TOTALS: readonly number[] = pathTotals(REWARD_PATH.map(e => e.pathCost!));
+export function rewardForSkin(numericId: number): RewardEntry | undefined {
+  return REWARD_CATALOGUE.find(e => e.kind === 'skin' && e.rewardId === numericId);
+}

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LevelGenerator, SaveSystem, catalogueIndexOf, stampGenSwitchLevel, type IntStore } from '../../core';
 import { EMPTY_SHAPE_MASKS, markSeen, type ShapeMasks } from '../../core/collection';
 import { initSaveSystem } from '../storage';
+import { getRewardState, recordRewardClear } from '../rewardLedger';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   __esModule: true,
@@ -113,6 +114,19 @@ test('falls back to in-memory defaults when hydration fails', async () => {
 
   expect(SaveSystem.currentLevel).toBe(0);
   expect(SaveSystem.soundOn).toBe(true);
+});
+
+test('REWARD-01: failed hydration leaves the reward ledger read-only and writes no reward keys', async () => {
+  jest.clearAllMocks();
+  storage.multiGet.mockRejectedValue(new Error('persistence unavailable'));
+
+  await initSaveSystem(true, true);
+  expect(getRewardState()!.points).toBe(0);
+  expect(recordRewardClear('campaign', true)).toBeNull();
+  await settlePersistence();
+
+  const writtenKeys = storage.multiSet.mock.calls.flatMap(([pairs]) => pairs.map(([key]) => key));
+  expect(writtenKeys.filter(key => key.startsWith('arrows_reward'))).toEqual([]);
 });
 
 test('collapses same-microtask writes into one multiSet with the latest values', async () => {

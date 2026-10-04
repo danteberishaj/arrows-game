@@ -1,0 +1,63 @@
+// src/ui/__tests__/ArrowStyleOptions.rewards.test.tsx
+import React from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
+import { Daylight } from '../theme';
+
+const mockState = { current: null as any };
+const mockChoose = jest.fn();
+const mockMarkPickerSeen = jest.fn();
+const mockOwned = new Set([0, 2, 4, 6]);
+jest.mock('../useRewards', () => ({ useRewards: () => mockState.current }));
+jest.mock('../rewardLedger', () => ({
+  ...jest.requireActual('../rewardLedger'),
+  isRewardOwned: (id: number) => mockOwned.has(id),
+  markPickerSeen: () => mockMarkPickerSeen(),
+}));
+jest.mock('../arrowStyleSelection', () => ({ ...jest.requireActual('../arrowStyleSelection'), chooseArrowStyle: (id: string) => mockChoose(id) }));
+jest.mock('../useArrowStyle', () => ({ useArrowStyle: () => ({ id: 'sherbet' }), skinPickerEnabled: () => true }));
+import { ArrowStyleOptions } from '../ArrowStyleOptions';
+import { REWARD_PATH } from '../rewardCatalogue';
+
+beforeEach(() => { mockChoose.mockClear(); mockMarkPickerSeen.mockClear(); mockOwned.clear(); [0, 2, 4, 6].forEach(id => mockOwned.add(id)); });
+
+test('owned styles first with a count, then the path with the next one highlighted', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
+  const { getByTestId, getByText } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  getByTestId('reward-section-owned'); getByText('4 of 18');
+  getByTestId('reward-section-coming');
+  getByText('Next · 4 levels');
+  getByText('After Cinnamon Roll');
+  expect(mockMarkPickerSeen).toHaveBeenCalledTimes(1);
+});
+
+test('tapping a locked style never selects it and shows the hint', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
+  const { getByLabelText, getByTestId } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  fireEvent.press(getByLabelText('Jelly, locked, unlocks in 10 levels'));
+  expect(mockChoose).not.toHaveBeenCalled();
+  expect(getByTestId('reward-locked-hint').props.children).toBe('Clear 10 more levels to unlock');
+});
+
+test('owned rows follow catalogue order: free styles first, then path order', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
+  const { getAllByRole } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  const owned = getAllByRole('radio').map(r => r.props.accessibilityLabel);
+  expect(owned).toEqual(['Classic', 'Sherbet', 'Candy Gloss', 'Critter']);
+});
+
+test('a style owned beyond the points reached has no "new" dot, and opening the picker clears reached dots', () => {
+  mockState.current = { points: 3, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 5, progress: 0, pickerSeenIndex: 0 };
+  mockOwned.add(12); // Rainbow Ribbon, selected before the path existed
+  const { getByLabelText } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  getByLabelText('Critter, new'); // reached since last open
+  getByLabelText('Rainbow Ribbon'); // owned beyond reachedIndex: no dot
+  expect(mockMarkPickerSeen).toHaveBeenCalled();
+});
+
+test('rewards off: today\'s flat list, every style selectable', () => {
+  mockState.current = null;
+  const { getByLabelText, queryByTestId } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  expect(queryByTestId('reward-section-owned')).toBeNull();
+  fireEvent.press(getByLabelText('Jelly'));
+  expect(mockChoose).toHaveBeenCalledWith('jelly');
+});

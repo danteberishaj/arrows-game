@@ -534,3 +534,17 @@ only built when logging is on. The capture tools that launch without the extra n
 Evidence is in `artifacts/LOG-GATE/`. The intent-extra path was read from the compiled code, not run.
 **Rule:** a new diagnostic must have an explicit switch, and any tool that needs it must turn it on. Never gate
 diagnostics on the product feature flag.
+
+## Decorative Reanimated timing still needs an explicit reduced-motion policy
+
+**Observed (2026-10-04, REWARD-01):** the reveal component omitted sparkle nodes when reduced motion was enabled,
+but the integrated suite failed `reduceMotionPolicy.test.ts` because its two `withTiming` configs lacked an
+explicit policy. The component's own tests had passed.
+**Cause:** the source audit requires the policy on every timing call; a conditional render/effect does not
+satisfy that contract.
+**Correction:** set `reduceMotion: ReduceMotion.System` on both 300 ms sparkle timing configs, and retain the
+render guard that removes the three decorative nodes. Keep the reveal's entrance on the existing guarded panel.
+**Verified:** reveal plus policy checks pass (2 suites / 7 tests), then the full suite passes (126 suites / 2,116
+tests). On emulator-5556, `transition_animation_scale=0` produces a visible reveal without sparkles in both the
+entrance recording and screenshot; the original setting is restored. Evidence and retained failures are in
+[REWARD-01](next-level/reports/REWARD-01.md).
