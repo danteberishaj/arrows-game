@@ -320,13 +320,14 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:132`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
   { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:132`, note: "the scrim over the Play pill's `accent` fill" },
 
-  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:87', sizeSite: 'src/ui/ArrowStyleOptions.tsx:147' },
-  { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:88', sizeSite: 'src/ui/ArrowStyleOptions.tsx:146' },
-  { id: 'skin-picker-check', fgRole: 'ink', bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx:91' },
-  { id: 'skin-picker-section', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:102', sizeSite: 'src/ui/ArrowStyleOptions.tsx:146' },
-  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:121', sizeSite: 'src/ui/ArrowStyleOptions.tsx:147' },
-  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:132', sizeSite: 'src/ui/ArrowStyleOptions.tsx:155' },
-  { id: 'skin-picker-next-caption', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:122', sizeSite: 'src/ui/ArrowStyleOptions.tsx:146' },
+  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:89', sizeSite: 'src/ui/ArrowStyleOptions.tsx:154' },
+  { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:90', sizeSite: 'src/ui/ArrowStyleOptions.tsx:153' },
+  { id: 'skin-picker-check', fgRole: 'ink', bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx:93' },
+  { id: 'skin-picker-section', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:107', sizeSite: 'src/ui/ArrowStyleOptions.tsx:153' },
+  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:126', sizeSite: 'src/ui/ArrowStyleOptions.tsx:154' },
+  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:137', sizeSite: 'src/ui/ArrowStyleOptions.tsx:162' },
+  { id: 'skin-picker-next-caption', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:127', sizeSite: 'src/ui/ArrowStyleOptions.tsx:153' },
+  { id: 'skin-picker-more', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:140', sizeSite: 'src/ui/ArrowStyleOptions.tsx:152' },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
   { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1115' },

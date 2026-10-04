@@ -1,6 +1,7 @@
 // src/ui/__tests__/RewardRevealCard.test.tsx
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 import { RewardRevealCard } from '../RewardRevealCard';
 import { REWARD_PATH } from '../rewardCatalogue';
 import { InkNight } from '../theme';
@@ -14,20 +15,21 @@ function card(mode: 'campaign' | 'daily', extra: object = {}) {
 }
 
 test('campaign card: informative copy and both buttons', () => {
-  const { getByText, getByTestId, onUse, onKeep, onShown } = card('campaign');
+  const { getByText, queryByText, getByTestId, onUse, onKeep, onShown } = card('campaign');
   getByText('NEW STYLE UNLOCKED'); getByText('Critter');
-  getByText('Style 4 of 18 · unlocked on level 3');
-  getByText('Little faces'); getByText('Up next: Cinnamon Roll · 5 levels');
+  getByText('4 of 18 styles collected');
+  expect(queryByText('Little faces')).toBeNull(); // chips repeat the preview: removed (UX review)
+  getByText('Up next: Cinnamon Roll · 5 levels');
   expect(onShown).toHaveBeenCalledTimes(1);
   fireEvent.press(getByTestId('reward-use')); expect(onUse).toHaveBeenCalledTimes(1);
   fireEvent.press(getByTestId('reward-keep')); expect(onKeep).toHaveBeenCalledTimes(1);
-  getByText('Play with Critter'); getByText('Keep current style · Next level');
+  getByText('Play with Critter'); getByText('Keep my current style');
 });
 
 test('daily card uses Use / Keep current style and the daily subtitle', () => {
   const { getByText } = card('daily');
-  getByText('Use Critter'); getByText('Keep current style');
-  getByText("Style 4 of 18 · unlocked on today's daily");
+  getByText('Use Critter'); getByText('Keep my current style');
+  getByText('4 of 18 styles collected');
 });
 
 test('disabled while an ad is busy: presses do nothing', () => {
@@ -39,4 +41,15 @@ test('disabled while an ad is busy: presses do nothing', () => {
 test('reduced motion renders no sparkles', () => {
   const { queryAllByTestId } = card('campaign', { reducedMotion: true });
   expect(queryAllByTestId('reward-sparkle')).toHaveLength(0);
+});
+
+test('announces the unlock to screen readers once, and the secondary target is at least 48 dp', () => {
+  const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility').mockImplementation(() => {});
+  announce.mockClear(); // jest-expo already mocks this with a shared jest.fn: drop earlier tests' calls
+  const { getByTestId } = card('campaign');
+  expect(announce).toHaveBeenCalledTimes(1);
+  expect(announce).toHaveBeenCalledWith('New style unlocked: Critter');
+  const style = [getByTestId('reward-keep').props.style].flat();
+  expect(Math.max(...style.map((s: { minHeight?: number }) => s?.minHeight ?? 0))).toBeGreaterThanOrEqual(48);
+  announce.mockRestore();
 });

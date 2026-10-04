@@ -246,3 +246,27 @@ Result: Critter's missing “new” label failure, both full-run failures, prese
 Neither blocks a test build.
 
 **Risk line.** No real phone has run this. The emulator scenarios used seeded saves and test ads. Pacing (points per unlock) is a starting value.
+
+## UX polish (2026-10-04, controller)
+
+Changes came from an Emil Kowalski design-engineering review plus the ui-ux-pro-max mobile checklist. The aim was to
+inform without overloading the reveal card.
+
+**Reveal card:**
+- The three chips are removed (they repeated the preview).
+- The subtitle is now "N of 18 styles collected".
+- The badge is accent-outline text, so the CTA is the only filled shape.
+- The preview is drawn as a 3× vector with a thinner outline (`StylePreview size`).
+- The preview only does a spring pop (scale 0.92 → 1, `ReduceMotion.System`; none under reduced motion). The card's
+  visibility still comes from the guarded panel motion.
+- The secondary button reads "Keep my current style" and is 48 dp tall.
+- A screen-reader announcement fires on show.
+
+**Pill:** the caption is "{k} more level(s)" on one line, with "+N" in the accent colour beside the label.
+
+**Picker:** "Coming up" shows the next two styles, then "+N more to unlock". A contrast row was added for it and the
+`skin-picker-*` line pointers were moved.
+
+**Verified:** tsc 0; jest 126 suites / 2,121 tests. The new tests failed first (6 red), and one test covers the
+announcement and the 48 dp target. **UNVERIFIED on device:** the owner skipped the emulator check for this polish
+(2026-10-04). The layout and spring pop have only been checked in tests. Confirm them on the next phone build.

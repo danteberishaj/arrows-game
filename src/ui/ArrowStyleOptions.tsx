@@ -19,7 +19,9 @@ export function preferredThemeNote(style: ArrowStyle): string | undefined {
 }
 
 /** Decorative thumbnail only: spec colours, static SVG, no native board or animation. */
-export function StylePreview({ style, palette: p }: { style: ArrowStyle; palette: Palette }) {
+export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyle; palette: Palette; size?: number }) {
+  // Drawn at `size`× as vector (crisp); the outline thins so a large preview reads like the board, not a scaled icon.
+  const outlineWidth = size > 1 ? 2.6 / size : 2;
   const body = style.spec?.palette.colours[0] ?? p.ink;
   const rim = style.spec?.layers.find(layer => layer.kind === 'rim')?.colour;
   // Bright dark-preference rims fail on the white sheet, so their thumbnail uses ink. A light preference keeps its rim.
@@ -33,11 +35,11 @@ export function StylePreview({ style, palette: p }: { style: ArrowStyle; palette
   const clip = `preview-${style.id}`;
   const colour = (value: string) => value === 'palette' ? body : value === 'tailPalette' ? spec?.tail.colours?.[0] ?? body : value;
   return <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-    <Svg width={54} height={30} viewBox="0 0 54 30">
+    <Svg width={54 * size} height={30 * size} viewBox="0 0 54 30">
       <Defs><ClipPath id={clip}><Path d={silhouette} /></ClipPath></Defs>
       {spec?.layers.filter(layer => layer.kind === 'glow').map((layer, i) =>
         <Path key={i} d={silhouette} fill={colour(layer.colour)} opacity={layer.opacity} stroke={colour(layer.colour)} strokeWidth={4} />)}
-      <Path d={silhouette} fill={body} stroke={outline} strokeWidth={2} strokeLinejoin={spec?.head.shape === 'step' ? 'miter' : 'round'} />
+      <Path d={silhouette} fill={body} stroke={outline} strokeWidth={outlineWidth} strokeLinejoin={spec?.head.shape === 'step' ? 'miter' : 'round'} />
       <G clipPath={`url(#${clip})`}>
         {spec?.layers.filter(layer => layer.kind === 'bands').flatMap(layer => layer.bands!.map((bandColour, i) => {
           const ratio = (layer.bandWidths?.[i] ?? layer.width*(1-i/layer.bands!.length)) / layer.width;
@@ -94,7 +96,10 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
 
   const owned = state ? REWARD_CATALOGUE.filter(e => e.kind === 'skin' && isRewardOwned(e.rewardId))
     .map(e => ARROW_STYLES.find(s => s.id === e.refId)!) : [];
-  const locked = state ? REWARD_PATH.filter(e => !isRewardOwned(e.rewardId)) : [];
+  const allLocked = state ? REWARD_PATH.filter(e => !isRewardOwned(e.rewardId)) : [];
+  // UX review: show the next two only; a long list of locked rows reads as a chore, not a goal.
+  const locked = allLocked.slice(0, 2);
+  const moreLocked = allLocked.length - locked.length;
   return <>
     <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
       {!state ? ARROW_STYLES.map(style => <StyleRow key={style.id} style={style} />) : <>
@@ -110,7 +115,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
           const style = ARROW_STYLES.find(s => s.id === entry.refId)!;
           const k = PATH_TOTALS[REWARD_PATH.indexOf(entry)] - state.points;
           const caption = index === 0 ? `Next · ${k} ${k === 1 ? 'level' : 'levels'}`
-            : index === 1 ? `After ${locked[index - 1].name}` : 'Later';
+            : `After ${locked[index - 1].name}`;
           return <React.Fragment key={entry.rewardId}>
             <Pressable accessibilityRole="button"
               accessibilityLabel={`${entry.name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}
@@ -132,6 +137,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
               style={[styles.hint, { color: p.inkDim }]}>{`Clear ${hint.k} more ${hint.k === 1 ? 'level' : 'levels'} to unlock`}</Text>}
           </React.Fragment>;
         })}
+        {moreLocked > 0 && <Text style={[styles.more, { color: p.inkDim, borderTopColor: p.border }]}>{`+${moreLocked} more to unlock`}</Text>}
       </>}
     </ScrollView>
     <Pressable accessibilityRole="button" accessibilityLabel="Back to settings" onPress={onBack}
@@ -143,6 +149,7 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
 const styles = StyleSheet.create({
   option: { minHeight: 60, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1 },
   nameGroup: { flex: 1 },
+  more: { ...Type.menuStats, minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, borderTopWidth: 1 },
   note: { ...Type.menuStats },
   label: { ...Type.menuEntry },
   check: { ...Type.menuEntry, width: 22, textAlign: 'center' },

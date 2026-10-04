@@ -61,3 +61,12 @@ test('rewards off: today\'s flat list, every style selectable', () => {
   fireEvent.press(getByLabelText('Jelly'));
   expect(mockChoose).toHaveBeenCalledWith('jelly');
 });
+
+test('coming up shows the next two styles, then one "+N more to unlock" row', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, pickerSeenIndex: 1 };
+  const { getByLabelText, getByText, queryByLabelText } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  getByLabelText('Cinnamon Roll, locked, unlocks in 4 levels');
+  getByLabelText('Jelly, locked, unlocks in 10 levels');
+  expect(queryByLabelText(/^Rainbow Ribbon, locked/)).toBeNull();
+  getByText('+12 more to unlock');
+});

@@ -11,13 +11,15 @@ test('shows the next style, points earned and levels to go (singular)', () => {
   const { getByText } = render(<RewardProgressPill palette={InkNight} earned={2}
     state={{ ...base, points: 2, reachedIndex: 0, next: REWARD_PATH[0], levelsToNext: 1, progress: 2 / 3 }} />);
   getByText('Next style: Critter');
-  getByText('+2 points · 1 more level');
+  getByText('1 more level'); // one line: no wrap (UX review)
+  getByText('+2');
 });
 
 test('plural levels and singular point', () => {
   const { getByText } = render(<RewardProgressPill palette={InkNight} earned={1}
     state={{ ...base, points: 4, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2 }} />);
-  getByText('+1 point · 4 more levels');
+  getByText('4 more levels');
+  getByText('+1');
 });
 
 test('complete path shows the collected line', () => {
