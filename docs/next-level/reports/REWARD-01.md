@@ -226,3 +226,23 @@ Result: Critter's missing “new” label failure, both full-run failures, prese
 ### R4: report creation
 
 `tools.apply_patch` added `docs/next-level/reports/REWARD-01.md` with this draft. Its exact body is this report; the calling tool result is retained in the conversation. Device placeholders are intentionally not acceptance claims.
+
+## Controller review
+
+2026-10-04, controller. **Verdict: APPROVE behind the default-OFF flag; owner look review pending.**
+
+| Check | Register | Evidence |
+| --- | --- | --- |
+| Tests and types | Executed | tsc exit 0; full jest 126 suites / 2,116 tests / 12 snapshots on the delivered tree. |
+| Boot and save wiring | Read | Picker off: `SaveSystem.persistenceKeys` is passed as the identical array. Picker on: the reward keys hydrate only with the reward flag. The ledger is `writable: healthy` (SAVE-GUARD). The ledger and catalogue import no react-native; the gate lives in `rewardGate.ts`. |
+| Integration | Read | Earning only in the non-benchmark win branch (tutorial branch untouched); review ask skipped on a reveal clear; the card's buttons reuse `onNextLevel`/`onDailyDone`, so ad, scrim and review ordering are unchanged. |
+| Test edits | Read | W3-05: only the anchor string changed; every ordering assertion is intact. |
+| Device look | Executed (viewed) | Pill, reveal light and dark, Critter board, fresh and upgrade picker, reduced-motion reveal, flag-off win panel. All numbers match the spec table: 4 points gives "Up next: Cinnamon Roll · 4 levels"; 10 points gives "Jelly · Next · 4 levels". |
+
+**Look findings for the owner:**
+1. The pill caption wraps to two lines in the narrow win panel.
+2. The reveal stage's arrow is a scaled-up 54×30 thumbnail, so it looks heavy-outlined next to the real Critter board.
+
+Neither blocks a test build.
+
+**Risk line.** No real phone has run this. The emulator scenarios used seeded saves and test ads. Pacing (points per unlock) is a starting value.
