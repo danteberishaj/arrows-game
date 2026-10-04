@@ -17,7 +17,7 @@ export function RewardProgressPill({ state, earned, palette: p }: { state: Rewar
   }
   const style = ARROW_STYLES.find(s => s.id === state.next!.refId)!;
   return <View testID="reward-pill" style={[styles.pill, { backgroundColor: p.surface }]}
-    accessible accessibilityLabel={`Plus ${plural(earned, 'point', 'points')}. Next style ${style.name}, ${plural(state.levelsToNext, 'level', 'levels')} to go`}>
+    accessible accessibilityLabel={`Plus ${plural(earned, state.petals !== null ? 'petal' : 'point', state.petals !== null ? 'petals' : 'points')}. Next style ${style.name}, ${plural(state.levelsToNext, 'level', 'levels')} to go`}>
     <StylePreview style={style} palette={p} />
     <View style={styles.text}>
       <View style={styles.labelRow}>

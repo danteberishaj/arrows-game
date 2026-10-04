@@ -2572,3 +2572,25 @@ cmp docs/engineering-lessons.md artifacts/BOOK-01/checks/engineering-lessons-bef
 ```
 
 Exit 0. Inventory save and this final appendix update also succeeded. No implementation change follows the passing suite and type check.
+
+## Controller review
+
+2026-10-04, controller. **Verdict: APPROVE behind the default-OFF flag (commit `853ec1a`); owner look review pending.**
+
+| Check | Register | Evidence |
+| --- | --- | --- |
+| Tests and types | Executed | tsc 0; full jest 127 suites / 2,215 tests on the delivered tree. |
+| Device look | Executed (viewed) | Screens 01–04 and 07–10. All numbers are consistent with the spec: 10 petals buys Critter, leaving 0. The first path step reveals Cinnamon Roll ("Up next: Jelly · 4 levels"). Paper Craft (35) at 4 petals shows "You need 31 more petals" and a disabled Buy. |
+| Codex's plan conflicts | Read | 6 stops, all real and all resolved by plan or spec commits (`d3b29cb`, `ffd84cf`, `5fa7cd2`). |
+
+**Controller follow-up (separate commit), red-first:**
+- **Selected tab:** it was signalled by text colour alone. It is now a filled segment (`surface`) on a `bg` track, as in
+  the approved mockup B. The unselected tab's contrast row moves to `bg`.
+- **Pill label:** with the book on, the pill's accessible label says petals, not points. This is one of Codex's two
+  deferred minors.
+- **Result:** jest 127 / 2,217, tsc 0.
+- **UNVERIFIED on device:** the follow-up (tab segment) has not been captured on the emulator.
+
+**Look notes for the owner:**
+- The pill's "Next style: Cinnamon Roll" wraps to two lines next to "+2 ✿".
+- The disabled "Buy" button is a pale pill. Readable, but it could look more clearly inactive.

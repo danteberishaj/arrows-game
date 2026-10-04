@@ -40,3 +40,9 @@ test('book off: earned points have no petal mark', () => {
     state={{ ...base, points: 2, reachedIndex: 0, next: REWARD_PATH[0], levelsToNext: 1, progress: 2 / 3 }} />);
   expect(queryByTestId('petal-icon')).toBeNull();
 });
+
+test('book on: the pill announces petals, not points', () => {
+  const { getByTestId } = render(<RewardProgressPill palette={InkNight} earned={2}
+    state={{ ...base, points: 2, reachedIndex: 0, next: REWARD_PATH[0], levelsToNext: 1, progress: 2 / 3, petals: 12 }} />);
+  expect(getByTestId('reward-pill').props.accessibilityLabel).toMatch(/^Plus 2 petals\./);
+});

@@ -109,13 +109,13 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
           <PetalIcon size={14} />
           <Text style={[styles.note, { color: p.accentText }]}>{`${state.petals} ${state.petals === 1 ? 'petal' : 'petals'}`}</Text>
         </View>
-        <View style={styles.tabs}>
+        <View testID="tab-track" style={[styles.tabs, { backgroundColor: p.bg }]}>
           <Pressable testID="tab-styles" accessibilityRole="tab" accessibilityState={{ selected: tab === 'styles' }}
-            onPress={() => setTab('styles')} style={styles.tab}>
+            onPress={() => setTab('styles')} style={[styles.tab, tab === 'styles' && { backgroundColor: p.surface }]}>
             <Text style={[styles.note, { color: tab === 'styles' ? p.ink : p.inkDim }]}>{`Your styles · ${owned.length}`}</Text>
           </Pressable>
           <Pressable testID="tab-book" accessibilityRole="tab" accessibilityState={{ selected: tab === 'book' }}
-            onPress={() => setTab('book')} style={styles.tab}>
+            onPress={() => setTab('book')} style={[styles.tab, tab === 'book' && { backgroundColor: p.surface }]}>
             <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${allLocked.length}`}</Text>
           </Pressable>
         </View>
@@ -172,8 +172,9 @@ export function ArrowStyleOptions({ palette: p, onBack }: { palette: Palette; on
 }
 const styles = StyleSheet.create({
   purse: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, paddingVertical: 12 },
-  tabs: { flexDirection: 'row', paddingHorizontal: 12 },
-  tab: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  // UX review: the selected tab is a filled segment on a track, not colour alone (approved mockup B).
+  tabs: { flexDirection: 'row', marginHorizontal: 12, padding: 4, borderRadius: 14 },
+  tab: { flex: 1, minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10 },
   nextFree: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, justifyContent: 'center' },
   option: { minHeight: 60, paddingHorizontal: 18, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 1 },
   nameGroup: { flex: 1 },

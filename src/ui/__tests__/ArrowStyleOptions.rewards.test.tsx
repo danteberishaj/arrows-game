@@ -93,3 +93,14 @@ test('book off: skip-aware Coming up ETA uses the next step for Cinnamon', () =>
   getByText('Next · 3 levels');
   getByLabelText('Cinnamon Roll, locked, unlocks in 3 levels');
 });
+
+test('book on: the selected tab is a filled segment on a track (not colour alone)', () => {
+  mockState.current = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2, newMask: { lo: 0, hi: 0 }, petals: 18, canBuy: true };
+  const { getByTestId } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} />);
+  const bg = (id: string) => [getByTestId(id).props.style].flat(3).reduce((a: string | undefined, s: { backgroundColor?: string }) => s?.backgroundColor ?? a, undefined);
+  expect(bg('tab-styles')).toBe(Daylight.surface);
+  expect(bg('tab-book')).toBeUndefined();
+  expect(bg('tab-track')).toBe(Daylight.bg);
+  fireEvent.press(getByTestId('tab-book'));
+  expect(bg('tab-book')).toBe(Daylight.surface);
+});

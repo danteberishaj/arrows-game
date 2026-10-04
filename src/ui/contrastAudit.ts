@@ -320,18 +320,18 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:132`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
   { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:132`, note: "the scrim over the Play pill's `accent` fill" },
 
-  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:90', sizeSite: 'src/ui/ArrowStyleOptions.tsx:182' },
+  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:90', sizeSite: 'src/ui/ArrowStyleOptions.tsx:183' },
   { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:91', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
   { id: 'skin-picker-check', fgRole: 'ink', bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx:94' },
   { id: 'skin-picker-section', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:131', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
-  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:150', sizeSite: 'src/ui/ArrowStyleOptions.tsx:182' },
-  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:161', sizeSite: 'src/ui/ArrowStyleOptions.tsx:190' },
+  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:150', sizeSite: 'src/ui/ArrowStyleOptions.tsx:183' },
+  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:161', sizeSite: 'src/ui/ArrowStyleOptions.tsx:191' },
   { id: 'skin-picker-next-caption', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:151', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
-  { id: 'skin-picker-more', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:164', sizeSite: 'src/ui/ArrowStyleOptions.tsx:180' },
+  { id: 'skin-picker-more', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:164', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
 
   { id: 'book-purse', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:110', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
   { id: 'book-tab-selected', fgRole: 'ink', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:115', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
-  { id: 'book-tab-unselected', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:119', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
+  { id: 'book-tab-unselected', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:119', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
   { id: 'book-next-free', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:126', sizeSite: 'src/ui/ArrowStyleOptions.tsx:181' },
 
   { id: 'book-empty', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:34', sizeSite: 'src/ui/CollectionBook.tsx:117' },
