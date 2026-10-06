@@ -17,12 +17,13 @@ export interface DisplayTierThresholds {
 }
 
 /**
- * OWNER-PICKED STARTING VALUE (W3-20). Measured, not typed: `npx tsx scripts/analysis/display-tier-report.ts`
- * picks the cuts that give the v2 fresh-install corpus (displayed levels 1-1000) the cycle's own share,
- * Normal 1/2, Hard 1/3, Super Hard 1/6 (measured 49.3% / 33.8% / 16.9%). The same report prints the
- * share v1 and an existing v2 player (switch level 1) get. Re-run it after any curve or generator change.
+ * OWNER-PICKED (W3-20, owner ruling 2026-10-06: 95 / 133). Measured, not typed:
+ * `npx tsx scripts/analysis/display-tier-report.ts` prints the cuts that give the v2 fresh-install corpus
+ * (displayed levels 1-1000) the six-level cycle's own share, Normal 4/6, Hard 1/6, Super Hard 1/6 (measured
+ * 67.4% / 15.7% / 16.9%), and the share v1 (55.0 / 25.5 / 19.5) and an existing v2 player at switch level 1
+ * (53.0 / 21.8 / 25.2) get. Re-run it after any curve or generator change.
  */
-export const DISPLAY_TIER_THRESHOLDS: DisplayTierThresholds = { hard: 88, superHard: 133 };
+export const DISPLAY_TIER_THRESHOLDS: DisplayTierThresholds = { hard: 95, superHard: 133 };
 
 /** The displayed tier of a board with `arrowCount` arrows. */
 export function displayTierForArrowCount(

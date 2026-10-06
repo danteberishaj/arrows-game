@@ -228,7 +228,9 @@ function main(): void {
   console.log(`Alternative (the cycle's real shares on the same corpus): hard = ${cycleAlternative.hard}, `
     + `superHard = ${cycleAlternative.superHard}`);
   console.log(`Shipped DISPLAY_TIER_THRESHOLDS: hard = ${shipped.hard}, superHard = ${shipped.superHard} `
-    + `(${shipped.hard === proposal.hard && shipped.superHard === proposal.superHard ? 'EQUALS the proposal' : 'DIFFERS from the proposal'})`);
+    + `(${shipped.hard === proposal.hard && shipped.superHard === proposal.superHard ? 'EQUALS the proposal'
+      : shipped.hard === cycleAlternative.hard && shipped.superHard === cycleAlternative.superHard
+        ? 'EQUALS the cycle-share alternative, the owner\'s pick 2026-10-06' : 'DIFFERS from both'})`);
   if (level12) {
     console.log(`v1 level 12: ${level12.shape}, ${level12.arrows} arrows; cycle tier ${Difficulties.displayName(level12.cycleTier)}; `
       + `displayed (shipped thresholds) ${Difficulties.displayName(displayTierForArrowCount(level12.arrows, shipped))}`);

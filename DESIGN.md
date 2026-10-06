@@ -197,9 +197,9 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   `TIER_LABEL_V2_ENABLED` = `EXPO_PUBLIC_TIER_LABEL_V2=1`, default OFF, `src/featureFlags.ts`). **OFF (shipped):**
   the header and the menu name the cycle position above, so the bands overlap (v1 levels 1–1000: Normal 53–132,
   Hard 95–197, Super Hard 47–249 arrows) and level 12, a 54-arrow Bolt, reads "Super Hard". **ON:** the word and
-  its colour come from the dealt board's arrow count alone (`src/core/displayTier.ts`): Normal below 88 arrows,
-  Hard 88–132, Super Hard 133 and up (`DISPLAY_TIER_THRESHOLDS`, an OWNER-PICKED STARTING VALUE measured by
-  `npx tsx scripts/analysis/display-tier-report.ts` for a 1/2, 1/3, 1/6 share on v2's fresh-install curve). The
+  its colour come from the dealt board's arrow count alone (`src/core/displayTier.ts`): Normal below 95 arrows,
+  Hard 95–132, Super Hard 133 and up (`DISPLAY_TIER_THRESHOLDS`, owner-picked 2026-10-06; measured by
+  `npx tsx scripts/analysis/display-tier-report.ts` to keep the cycle's 4/1/1 share on v2's fresh-install curve). The
   displayed tiers cannot overlap. The menu names the board Play will deal at this install's generator version
   and switch level (`src/ui/tierLabel.ts`). The cycle still drives everything else: cell targets, shape pools,
   hearts, ads, the daily board's config and the collection. Shares and first sightings per generator are in

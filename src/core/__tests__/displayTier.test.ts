@@ -8,7 +8,7 @@ import { DISPLAY_TIER_THRESHOLDS, displayTier, displayTierForArrowCount } from '
 
 describe('DISPLAY_TIER_THRESHOLDS', () => {
   test('pins the measured starting values (re-run the report before changing them)', () => {
-    expect(DISPLAY_TIER_THRESHOLDS).toEqual({ hard: 88, superHard: 133 });
+    expect(DISPLAY_TIER_THRESHOLDS).toEqual({ hard: 95, superHard: 133 });
   });
 });
 
@@ -26,9 +26,9 @@ describe('displayTierForArrowCount band edges', () => {
     expect(displayTierForArrowCount(arrows)).toBe(tier);
   });
 
-  test('literal edges: 87 Normal, 88 Hard, 132 Hard, 133 Super Hard', () => {
-    expect(displayTierForArrowCount(87)).toBe(Difficulty.Normal);
-    expect(displayTierForArrowCount(88)).toBe(Difficulty.Hard);
+  test('literal edges: 94 Normal, 95 Hard, 132 Hard, 133 Super Hard', () => {
+    expect(displayTierForArrowCount(94)).toBe(Difficulty.Normal);
+    expect(displayTierForArrowCount(95)).toBe(Difficulty.Hard);
     expect(displayTierForArrowCount(132)).toBe(Difficulty.Hard);
     expect(displayTierForArrowCount(133)).toBe(Difficulty.SuperHard);
   });
