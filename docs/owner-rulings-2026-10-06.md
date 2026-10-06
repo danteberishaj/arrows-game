@@ -337,3 +337,16 @@ finding that every fixed width overflows on tall shapes.)
   scales, font scale and `wm` are identical. The installed APK was untouched (sha `c2967710…f340`). Scripts:
   `artifacts/OWNER-RULINGS-2026-10-06/scripts/backup.sh` and `restore.sh`. Proof:
   `artifacts/OWNER-RULINGS-2026-10-06/device/`. No ad appeared, and nothing was tapped on an ad.
+
+## Owner answers, 2026-10-06
+
+Given against the visuals in `artifacts/OWNER-RULINGS-2026-10-06/` (q1-lunge-normal-then-4x-slow.mp4,
+q2-first-session-screens.png, q3-timing-options.png + q3-clear-timeline-normal-4x-mockup.mp4,
+q4-share-card-mockup.png):
+
+- **Q1 (W2-11): B.** A 4 pt minimum on-screen lunge for the blocked-tap bump, no pull-back.
+- **Q2 (W1-11): approve.** The three tutorial strings verbatim, the assist rule as built (it turns on only after
+  W3-17, per ruling I-27), tutorial clears do not count toward stats, `resetProgress()` clears the FTUE stage when
+  a reset surface ships. **Stall hint OFF.**
+- **Q3 (W5-17 + W2-06): B.** Pause 250 ms, outline 400 ms, slither x1.0; panel at about 0.74-0.84 s.
+- **Q4 (W4-13): yes, purple.** Purple/white squares capped at 10 x 10, no store link.
