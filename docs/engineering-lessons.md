@@ -783,3 +783,25 @@ Report: [owner rulings 2026-10-06](owner-rulings-2026-10-06.md).
 before the panel in every unstalled run); the reconciliation table and builds are in
 [W5-17](next-level/reports/W5-17.md). The other items are observations from the same runs
 ([W1-11](next-level/reports/W1-11.md), [W2-11](next-level/reports/W2-11.md), [W4-13](next-level/reports/W4-13.md)).
+
+## Vector art: react-native-svg truncates numeric Svg sizes; abutting faces need underlaps
+
+**Observed (2026-10-06, W5-13):**
+- `<Svg width={80.5} height={80.5}>` laid out at 80 x 80. react-native-svg's `Svg` runs `parseInt` on numeric
+  `width`/`height` (`node_modules/react-native-svg/src/elements/Svg.tsx`, the `overrideStyles` block) and that
+  override wins over `style`. The Wordmark layout test caught it (received 103, expected 103.5 at size 72).
+  **Correction:** size an exact `View` and give the `Svg` `width="100%" height="100%"`. A test pins both.
+- Flat polygons that share an edge let the background through along it when antialiased (coverage a + b - ab).
+  Measured on the emblem (`artifacts/W5-13/geometry/seams.ts`): 1,103 px at 1024 px differed by more than 16 from an
+  8x-supersampled render. A back face carrying an "underlap" subpath under the front face (same `<path>`, same
+  winding, nonzero) cut that to 57.
+  **Two traps:** an underlap that reaches the front face's far edge tints that edge with its own colour (magenta
+  specks along a 2-unit-wide sliver). An underlap built along the whole front edge, where only part of it is shared,
+  tints the part that borders a hole. Keep underlaps clear of the front face's other edges, and only along the
+  shared segment.
+- A fidelity diff is not an edge-softness metric. On 64 px rasters, an exact-coverage vector render measured
+  1.33 px for the 10-90 % edge rise against 1.23 px for the old Lanczos downsample. Lanczos sharpens and rings.
+  There is no softness to remove at downsampled sizes; only the upscaled 1024 px layers improved (2.2 -> 1.2 px).
+
+**Verified:** jest (layout + vector tests), the seam measurement, `scripts/art/mark-audit.ts`.
+**Unverified:** device rendering of the Svg path (react-native-svg on Android Canvas). Report: [W5-13](next-level/reports/W5-13.md).
