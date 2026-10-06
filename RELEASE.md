@@ -79,9 +79,12 @@ install via the opt-in link, and play a few levels.
 **Store listing** (assets are in `store/`):
 - App icon: `store/playstore-icon-512.png`
 - Feature graphic: `store/feature-graphic.png` (Higgsfield brand art)
-- Promo art in `store/marketing/`: board-heart / board-crescent / board-flower
-  are REAL generated levels rendered with the game's exact line-art (regenerate
-  with `npx tsx scripts/generate-promo-art.ts`) — safe as listing imagery because
+- Promo art in `store/marketing/`: board-heart / board-crescent / board-flower (v1,
+  what players are dealt today). When generator v2 is switched on, replace them with
+  the owner-approved v2 set board-heart / board-cat / board-pine
+  (`npx tsx scripts/generate-promo-art.ts --gen-version 2`, preview in
+  `artifacts/W3-21/promo-art-2/`) and delete the Crescent and Flower files. They
+  are REAL generated levels rendered with the game's exact line-art — safe as listing imagery because
   they show true gameplay boards. Alternate logo and wordmark-banner takes are
   there too (brand art, fine for the feature graphic).
 - Screenshots (W7-09): the captured phone set, its proposed order and everything needed

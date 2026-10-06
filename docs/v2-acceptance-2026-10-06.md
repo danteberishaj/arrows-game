@@ -104,14 +104,18 @@ sqlite: count 0.
 
 ## Promo art (v2, fresh install). Not installed in `store/marketing/`
 
+**Owner ruling 2026-10-06:** keep Heart; Cat and Pine replace Crescent (its only v2 board was Normal tier and
+sparse) and Flower (read as a blob). Cat and Pine are dealt by both generators.
+
 | File | Board |
 |---|---|
-| `artifacts/W3-21/promo-art/board-heart.png` | Heart, 56 arrows, 18×18 (v2 level 66, Super Hard) |
-| `artifacts/W3-21/promo-art/board-crescent.png` | Crescent, 22 arrows, 18×18 (v2 level 23, **Normal**: no v2 Super Hard Crescent exists) |
-| `artifacts/W3-21/promo-art/board-flower.png` | Flower, 90 arrows, 28×28 (v2 level 174, Super Hard) |
+| `artifacts/W3-21/promo-art-2/board-heart.png` | Heart, 56 arrows, 18×18 (v2 level 66, Super Hard; same bytes as the first run) |
+| `artifacts/W3-21/promo-art-2/board-cat.png` | Cat, 58 arrows, 24×24 (v2 level 84, Super Hard, Ink Night) |
+| `artifacts/W3-21/promo-art-2/board-pine.png` | Pine, 71 arrows, 32×29 (v2 level 102, Super Hard, Daylight) |
 
-Produced with `npx tsx scripts/generate-promo-art.ts --gen-version 2 --out artifacts/W3-21/promo-art`.
-The default run (v1) still reproduces the three store PNGs byte for byte.
+Produced with `npx tsx scripts/generate-promo-art.ts --gen-version 2 --out artifacts/W3-21/promo-art-2`.
+`store/marketing/` still holds the v1 Heart, Crescent and Flower, which match the generator players get today.
+Swap in the v2 set when v2 is switched on. The superseded first run is in `artifacts/W3-21/promo-art/`.
 
 ## Not verified
 

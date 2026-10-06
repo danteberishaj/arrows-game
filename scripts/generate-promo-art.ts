@@ -17,8 +17,12 @@
  *
  * Outputs (store/marketing/ by default):
  *   board-heart.png     1080x1920  a real SuperHard Heart level, Ink Night
- *   board-crescent.png  1080x1920  a real SuperHard Crescent level, Ink Night
- *   board-flower.png    1080x1920  a real SuperHard Flower level, Daylight
+ *   board-cat.png       1080x1920  a real SuperHard Cat level, Ink Night
+ *   board-pine.png      1080x1920  a real SuperHard Pine level, Daylight
+ *
+ * Owner ruling 2026-10-06: keep Heart; Cat and Pine replace Crescent and Flower
+ * (Crescent had no v2 Super Hard board; Flower read as a blob). Both are dealt
+ * by v1 and v2, so the art stays true whichever generator a player is on.
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -123,8 +127,8 @@ async function renderPromo(
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   await renderPromo('board-heart.png', findLevel('Heart', GEN_VERSION), InkNight, true);
-  await renderPromo('board-crescent.png', findLevel('Crescent', GEN_VERSION), InkNight, true);
-  await renderPromo('board-flower.png', findLevel('Flower', GEN_VERSION), Daylight, true);
+  await renderPromo('board-cat.png', findLevel('Cat', GEN_VERSION), InkNight, true);
+  await renderPromo('board-pine.png', findLevel('Pine', GEN_VERSION), Daylight, true);
 }
 
 main().catch((e) => {
