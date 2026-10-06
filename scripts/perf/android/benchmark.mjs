@@ -50,6 +50,9 @@ import {
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(SCRIPT_DIR, '../../..');
 const APPLICATION_ID = 'com.danteb.arrows';
+// The default single-level workload: v1 index 3827, 250 arrows on 39x39. W3-15
+// lets --level/--gen-version pick any board; rows and cols then come from the
+// generated level (createSingleLevelPlan), never from GRID_SIZE.
 const FIXED_LEVEL = 3827;
 const GRID_SIZE = 39;
 export const FIT_MARGIN = 0.94;
@@ -141,6 +144,8 @@ export function parseArgs(argv, env = process.env) {
     avd: 'fleet_floor_api31',
     api: 31,
     level: FIXED_LEVEL,
+    // W3-15: must match the APK's EXPO_PUBLIC_PERF_GEN_VERSION (perfBuildEnv sets it).
+    genVersion: 1,
     runs: 10,
     warmups: 1,
     apk: null,
@@ -186,6 +191,10 @@ export function parseArgs(argv, env = process.env) {
   }
 
   for (const key of ['api', 'level', 'runs', 'warmups']) options[key] = Number(options[key]);
+  if (options.genVersion !== 1 && options.genVersion !== '1' && options.genVersion !== '2') {
+    throw new Error('--gen-version must be 1 or 2');
+  }
+  options.genVersion = Number(options.genVersion);
   options.motionScale = parseMotionScale(options.motionScale);
   if (typeof options.assertRendered === 'string') {
     options.assertRendered = options.assertRendered.split(',').map((phase) => phase.trim()).filter(Boolean);
@@ -205,6 +214,7 @@ export function parseArgs(argv, env = process.env) {
     if (options.soakLevels !== null) throw new Error('--assert-rendered cannot be combined with --soak-levels');
   }
   const blockedCellWasExplicit = options.assertRenderedBlockedCell !== null;
+  options.assertRenderedBlockedCellExplicit = blockedCellWasExplicit;
   options.assertRenderedBlockedCell = blockedCellWasExplicit
     ? parseAssertRenderedBlockedCell(options.assertRenderedBlockedCell)
     : [...DEFAULT_ASSERT_RENDERED_BLOCKED_CELL];
@@ -220,8 +230,8 @@ export function parseArgs(argv, env = process.env) {
     options.runs = 1;
   }
   if (options.soakLevels !== null) options.soakLevels = Number(options.soakLevels);
-  if (options.soakLevels === null && options.level !== FIXED_LEVEL) {
-    throw new Error('The single-level workload is pinned to level 3827');
+  if (options.soakLevels === null && (!Number.isSafeInteger(options.level) || options.level < 0)) {
+    throw new Error('--level must be a safe integer of at least zero');
   }
   if (options.soakLevels !== null) {
     if (!Number.isInteger(options.soakLevels) || options.soakLevels < 20 || options.soakLevels > 50) {
@@ -370,6 +380,7 @@ const VALUE_OPTIONS = {
   '--avd': 'avd',
   '--api': 'api',
   '--level': 'level',
+  '--gen-version': 'genVersion',
   '--runs': 'runs',
   '--warmups': 'warmups',
   '--apk': 'apk',
@@ -402,6 +413,7 @@ function createSoakPlan(options) {
     join(SCRIPT_DIR, 'soak-plan.ts'),
     '--start-level', String(options.level),
     '--measured-levels', String(options.soakLevels),
+    '--gen-version', String(options.genVersion ?? 1),
   ]);
   let plan;
   try {
@@ -421,8 +433,47 @@ function createSoakPlan(options) {
   return plan;
 }
 
-export function createSingleLevelPlan() {
-  return createSoakPlan({ level: FIXED_LEVEL, soakLevels: 20 }).measured[0];
+/**
+ * W3-15: the generated level the single-level workload measures, from the same
+ * generator call the PERF build makes (soak-plan.ts createSingleLevelPlan).
+ */
+export function createSingleLevelPlan(options) {
+  const tsxCli = join(PROJECT_ROOT, 'node_modules/tsx/dist/cli.mjs');
+  if (!existsSync(tsxCli)) throw new Error(`tsx CLI does not exist: ${tsxCli}`);
+  const output = capture(process.execPath, [
+    tsxCli,
+    join(SCRIPT_DIR, 'soak-plan.ts'),
+    '--single-level', String(options.level),
+    '--gen-version', String(options.genVersion ?? 1),
+  ]);
+  let plan;
+  try {
+    plan = JSON.parse(output);
+  } catch (error) {
+    throw new Error(`Could not parse the generated single-level plan: ${error.message}`);
+  }
+  if (plan.levelIndex !== options.level || plan.genVersion !== (options.genVersion ?? 1)) {
+    throw new Error('Generated single-level plan did not match the requested level and version');
+  }
+  assertTapPlanMatchesArrowCount(plan);
+  return plan;
+}
+
+/** W3-15: a run is invalid unless the planned solve taps every arrow exactly once. */
+export function assertTapPlanMatchesArrowCount(plan) {
+  if (plan.taps.length !== plan.arrowCount) {
+    throw new Error(
+      `Run invalid: level ${plan.levelIndex} has ${plan.taps.length} planned taps for ${plan.arrowCount} arrows`,
+    );
+  }
+}
+
+/**
+ * W3-15: the exit phase taps at 250 arrows left on a board of 250 or more (the
+ * historical point on 3827) and at the full board on a smaller one.
+ */
+export function exitStartingArrowCount(plan) {
+  return Math.min(EXIT_PHASE_STARTING_ARROW_COUNT, plan.arrowCount);
 }
 
 
@@ -487,6 +538,8 @@ export function perfBuildEnv(options, env = process.env) {
     EXPO_PUBLIC_PERF_SCREEN: options.perfScreen,
     EXPO_PUBLIC_PERF_MASK_TIMING: options.perfMaskTiming ? '1' : '0',
     EXPO_PUBLIC_PERF_TELEMETRY_TIMING: options.perfTelemetryTiming ? '1' : '0',
+    // W3-15: the generator version the PERF build deals (src/perfMode.ts).
+    EXPO_PUBLIC_PERF_GEN_VERSION: String(options.genVersion ?? 1),
   };
 }
 
@@ -667,13 +720,13 @@ export function cellCenter(bounds, row, col, rows = GRID_SIZE, cols = GRID_SIZE)
   return cellCenterForBoard(bounds, row, col, rows, cols, FIT_MARGIN);
 }
 
-function tapCell(context, bounds, row, col) {
-  const { x, y } = cellCenter(bounds, row, col);
+function tapCell(context, bounds, row, col, rows = GRID_SIZE, cols = GRID_SIZE) {
+  const { x, y } = cellCenter(bounds, row, col, rows, cols);
   adb(context.adbExecutable, context.serial, ['shell', 'input', 'tap', String(x), String(y)]);
 }
 
-function timedTapCell(context, bounds, row, col, animationDurationMs) {
-  const point = cellCenter(bounds, row, col);
+function timedTapCell(context, bounds, row, col, animationDurationMs, rows = GRID_SIZE, cols = GRID_SIZE) {
+  const point = cellCenter(bounds, row, col, rows, cols);
   const timing = invokeGestureDriver(context, ['tap', String(point.x), String(point.y)]);
   return {
     ...timing,
@@ -723,10 +776,7 @@ function zoomIn(context, geometry, steps = GESTURE_STEPS, durationMs = GESTURE_D
 }
 
 function prepareExitTrailWorkload(context, bounds, levelPlan) {
-  const startingArrowCount = EXIT_PHASE_STARTING_ARROW_COUNT;
-  if (levelPlan.arrowCount < startingArrowCount) {
-    throw new Error(`Exit workload requires at least ${startingArrowCount} arrows`);
-  }
+  const startingArrowCount = exitStartingArrowCount(levelPlan);
   const prefixTapCount = levelPlan.arrowCount - startingArrowCount;
   const prefixPoints = levelPlan.taps
     .slice(0, prefixTapCount)
@@ -737,8 +787,10 @@ function prepareExitTrailWorkload(context, bounds, levelPlan) {
       levelPlan.rows,
       levelPlan.cols,
     ));
-  for (const chunk of chunkTapPoints(prefixPoints, 8, 1)) {
-    runTapSequence(context, chunk);
+  if (prefixPoints.length > 0) {
+    for (const chunk of chunkTapPoints(prefixPoints, 8, 1)) {
+      runTapSequence(context, chunk);
+    }
   }
   waitForUiText(context, `${startingArrowCount} left`);
   delay(220);
@@ -756,14 +808,17 @@ function prepareWorkload(context, phase, bounds, levelPlan) {
 
 function runWorkload(context, phase, bounds, levelPlan) {
   if (phase === 'blocked') {
-    const timing = timedTapCell(context, bounds, 35, 19, 300);
+    const { row, col } = levelPlan.blockedTaps[0];
+    const timing = timedTapCell(context, bounds, row, col, 300, levelPlan.rows, levelPlan.cols);
     delay(500);
     return timing;
   }
   if (phase === 'exit') {
-    const tapIndex = levelPlan.arrowCount - EXIT_PHASE_STARTING_ARROW_COUNT;
+    const tapIndex = levelPlan.arrowCount - exitStartingArrowCount(levelPlan);
     const { row, col } = levelPlan.taps[tapIndex];
-    const timing = timedTapCell(context, bounds, row, col, EXIT_ANIMATION_DURATION_MS);
+    const timing = timedTapCell(
+      context, bounds, row, col, EXIT_ANIMATION_DURATION_MS, levelPlan.rows, levelPlan.cols,
+    );
     delay(EXIT_ANIMATION_DURATION_MS + 260);
     return timing;
   }
@@ -813,7 +868,65 @@ function startReady(context) {
   ], { timeout: 30_000 });
   const bounds = findBoardBounds(context);
   delay(700); // board layout, fit transform, and 180 ms entrance fade
+  drainGenerationLog(context);
   return bounds;
+}
+
+/**
+ * W3-15: PERF builds log one `[gen]` line per campaign deal
+ * (src/ui/gameSessionLifecycle.ts). Each launch must yield exactly one; the
+ * reconciliation (lines vs launches) is part of the result.
+ */
+export function parseGenerationLines(text) {
+  const lines = [];
+  for (const match of String(text).matchAll(
+    /\[gen\] index=(\d+) version=(\d) arrows=(\d+) rows=(\d+) cols=(\d+) ms=([0-9.]+)/g,
+  )) {
+    lines.push({
+      index: Number(match[1]),
+      version: Number(match[2]),
+      arrows: Number(match[3]),
+      rows: Number(match[4]),
+      cols: Number(match[5]),
+      ms: Number(match[6]),
+    });
+  }
+  return lines;
+}
+
+function drainGenerationLog(context) {
+  if (!context.generation) return;
+  const text = tryCapture(context.adbExecutable, [
+    '-s', context.serial, 'logcat', '-d', '-v', 'brief', '-s', 'ReactNativeJS:V',
+  ]) ?? '';
+  tryCapture(context.adbExecutable, ['-s', context.serial, 'logcat', '-c']);
+  const lines = parseGenerationLines(text);
+  context.generation.launches += 1;
+  context.generation.perLaunchLineCounts.push(lines.length);
+  context.generation.lines.push(...lines);
+}
+
+export function summarizeGeneration(generation, levelPlan) {
+  if (!generation) return null;
+  const matching = generation.lines.filter((line) =>
+    line.index === levelPlan.levelIndex &&
+    line.version === levelPlan.genVersion &&
+    line.arrows === levelPlan.arrowCount);
+  const sorted = matching.map((line) => line.ms).sort((a, b) => a - b);
+  const at = (p) => sorted.length === 0 ? null : sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)];
+  return {
+    launches: generation.launches,
+    linesRead: generation.lines.length,
+    linesMatchingPlan: matching.length,
+    launchesWithExactlyOneLine: generation.perLaunchLineCounts.filter((count) => count === 1).length,
+    reconciled: generation.launches === matching.length &&
+      generation.perLaunchLineCounts.every((count) => count === 1),
+    minMs: sorted[0] ?? null,
+    medianMs: at(0.5),
+    p95Ms: at(0.95),
+    maxMs: sorted.at(-1) ?? null,
+    valuesMs: matching.map((line) => line.ms),
+  };
 }
 
 /** Launches a PERF build whose first screen is not the board. */
@@ -932,32 +1045,38 @@ function measurePhase(context, phase, levelPlan) {
     'shell', 'dumpsys', 'gfxinfo', APPLICATION_ID, 'reset',
   ]);
   const driverTiming = runWorkload(context, phase, bounds, levelPlan);
-  const gfxInfo = adb(context.adbExecutable, context.serial, [
-    'shell', 'dumpsys', 'gfxinfo', APPLICATION_ID, 'framestats',
-  ]);
-  const memInfo = adb(context.adbExecutable, context.serial, [
-    'shell', 'dumpsys', 'meminfo', APPLICATION_ID,
-  ]);
+  // W3-15: the board's SurfaceFlinger history is read first, as soon as the driver returns, then
+  // the root's, then gfxinfo and meminfo. Frames inside the driver window are the same in any
+  // order; reading later let frames presented after the window (post-gesture motion plus slow
+  // dumps on a loaded host) fill the 127-entry history and trip the overflow guard below.
+  // EXECUTED before this order: 122 = 1 before + 48 inside + 73 after the window (meminfo last),
+  // 127 = 0 + 30 + 97 (meminfo moved first). Evidence: artifacts/W3-15/diag/, series-pre-reorder/.
   const timingWindow = driverTiming
     ? {
         startNs: driverTiming.captureStartNs ?? driverTiming.startNs,
         endNs: driverTiming.captureEndNs ?? driverTiming.endNs,
       }
     : null;
-  const surfaces = Object.fromEntries(
-    Object.entries({ root: surfaceLayers.root, board: surfaceLayers.board }).map(([key, layer]) => {
-      const latency = surfaceFlinger(context, '--latency', layer);
-      return [key, {
-        layer,
-        ...parseSurfaceFlingerLatency(latency, timingWindow),
-      }];
-    }),
-  );
+  const surfaces = {};
+  for (const [key, layer] of [['board', surfaceLayers.board], ['root', surfaceLayers.root]]) {
+    const latency = surfaceFlinger(context, '--latency', layer);
+    surfaces[key] = { layer, ...parseSurfaceFlingerLatency(latency, timingWindow) };
+  }
+  const gfxInfo = adb(context.adbExecutable, context.serial, [
+    'shell', 'dumpsys', 'gfxinfo', APPLICATION_ID, 'framestats',
+  ]);
+  const memInfo = adb(context.adbExecutable, context.serial, [
+    'shell', 'dumpsys', 'meminfo', APPLICATION_ID,
+  ]);
   if (GESTURE_PHASES.has(phase)) {
     const retainedCount = surfaces.board.frames.length;
     const rawCount = surfaces.board.rawFrameCount;
     if (rawCount >= 120) {
-      throw new Error(`${phase} filled the SurfaceFlinger history (${rawCount} frames)`);
+      throw new Error(
+        `${phase} filled the SurfaceFlinger history (${rawCount} frames: ` +
+        `${surfaces.board.rawBeforeWindow} before, ${retainedCount} inside, ` +
+        `${surfaces.board.rawAfterWindow} after the driver window)`,
+      );
     }
     if (retainedCount < 5) {
       throw new Error(`${phase} retained only ${retainedCount} visual-board frames`);
@@ -1053,24 +1172,22 @@ function tapBounds(context, bounds) {
 function validateWorkload(context, levelPlan) {
   log('validating deterministic workload');
   let bounds = startReady(context);
-  assertUiContains(context, 'LEVEL 3828');
-  assertUiContains(context, '250 left');
+  assertUiContains(context, `LEVEL ${levelPlan.displayedLevel}`);
+  assertUiContains(context, `${levelPlan.arrowCount} left`);
   prepareExitTrailWorkload(context, bounds, levelPlan);
-  const exitTap = levelPlan.taps[
-    levelPlan.arrowCount - EXIT_PHASE_STARTING_ARROW_COUNT
-  ];
-  tapCell(context, bounds, exitTap.row, exitTap.col);
+  const startingArrowCount = exitStartingArrowCount(levelPlan);
+  const exitTap = levelPlan.taps[levelPlan.arrowCount - startingArrowCount];
+  tapCell(context, bounds, exitTap.row, exitTap.col, levelPlan.rows, levelPlan.cols);
   delay(500);
-  assertUiContains(context, `${EXIT_PHASE_STARTING_ARROW_COUNT - 1} left`);
+  assertUiContains(context, `${startingArrowCount - 1} left`);
 
   bounds = startReady(context);
   // Three DIFFERENT blocked arrows: a blocked arrow costs one heart the first
-  // time only (src/ui/tapRules.ts), so re-tapping (35,19) would not end the
-  // level. Cells chosen from the level-3827 board: (35,19) owns "35,19,R:LLU",
-  // (31,14) owns "31,17,R:LLLLL", (30,21) owns "31,22,D:UULDD"; all blocked
-  // at the start of the mission.
-  for (const [row, col] of [[35, 19], [31, 14], [30, 21]]) {
-    tapCell(context, bounds, row, col);
+  // time only (src/ui/tapRules.ts), so re-tapping one would not end the level.
+  // soak-plan.ts createSingleLevelPlan picks them (3827/v1: the historical
+  // (35,19), (31,14), (30,21)) and checks each is blocked on the fresh board.
+  for (const { row, col } of levelPlan.blockedTaps) {
+    tapCell(context, bounds, row, col, levelPlan.rows, levelPlan.cols);
     delay(400);
   }
   delay(400);
@@ -1605,7 +1722,9 @@ async function runAssertRendered(context, options, levelPlan) {
     const headerBottom = headerBottomFromUi(context);
     let measured;
     if (phase === 'blocked') {
-      const [row, col] = options.assertRenderedBlockedCell;
+      const [row, col] = options.assertRenderedBlockedCellExplicit
+        ? options.assertRenderedBlockedCell
+        : [levelPlan.blockedTaps[0].row, levelPlan.blockedTaps[0].col];
       const point = cellCenter(bounds, row, col, levelPlan.rows, levelPlan.cols);
       const probe = await calibrate.probeBlockedPair(context.adbExecutable, context.serial, {
         bounds,
@@ -1625,7 +1744,7 @@ async function runAssertRendered(context, options, levelPlan) {
       };
     } else {
       prepareExitTrailWorkload(context, bounds, levelPlan);
-      const tap = levelPlan.taps[levelPlan.arrowCount - EXIT_PHASE_STARTING_ARROW_COUNT];
+      const tap = levelPlan.taps[levelPlan.arrowCount - exitStartingArrowCount(levelPlan)];
       const direction = calibrate.DIRECTION_NAMES[tap.dir];
       const probe = await calibrate.probeExitRecording(context.adbExecutable, context.serial, {
         display,
@@ -1689,7 +1808,7 @@ function gpuRenderer(adbExecutable, serial) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const soakPlan = options.soakLevels === null ? null : createSoakPlan(options);
-  const singleLevelPlan = soakPlan === null ? createSingleLevelPlan() : null;
+  const singleLevelPlan = soakPlan === null ? createSingleLevelPlan(options) : null;
   const configuration = benchmarkConfiguration(options);
   const sdkRoot = resolveAndroidSdkRoot();
   const tempRoot = mkdtempSync(join(tmpdir(), 'arrows-perf-android-'));
@@ -1726,6 +1845,10 @@ async function main() {
       remoteJar,
       perfScreen: options.perfScreen,
       displayHeight: physicalDisplaySize(adbExecutable, options.serial).height,
+      // W3-15: on-device generation time, one `[gen]` line per board launch.
+      generation: singleLevelPlan === null
+        ? null
+        : { launches: 0, lines: [], perLaunchLineCounts: [] },
     };
     const motion = applyMotionScale(
       adbExecutable,
@@ -1743,6 +1866,8 @@ async function main() {
       `(${motion.appReducedMotionSource})`,
     );
     assertAppReducedMotionMatches(motion.readBack, motion.appReducedMotion);
+    // W3-15: drop the motion relaunch's own `[gen]` line so each counted launch owns one.
+    tryCapture(adbExecutable, ['-s', options.serial, 'logcat', '-c']);
     const motionFields = {
       ...motion.environment,
       ...(options.diagnosticBogusScaleKeys ? { motionDiagnostic: 'bogus-scale-keys' } : {}),
@@ -1886,19 +2011,26 @@ async function main() {
       label: options.label,
       timestamp: new Date().toISOString(),
       benchmark: {
-        levelIndex: FIXED_LEVEL,
-        displayedLevel: FIXED_LEVEL + 1,
-        rows: 39,
-        cols: 39,
-        arrowCount: 250,
-        checksum: 'b1f50ecb',
+        levelIndex: singleLevelPlan.levelIndex,
+        displayedLevel: singleLevelPlan.displayedLevel,
+        genVersion: singleLevelPlan.genVersion,
+        rows: singleLevelPlan.rows,
+        cols: singleLevelPlan.cols,
+        arrowCount: singleLevelPlan.arrowCount,
+        shapeName: singleLevelPlan.shapeName,
+        checksum: singleLevelPlan.boardChecksum,
+        solveChecksum: singleLevelPlan.solveChecksum,
+        tapPlan: { plannedTaps: singleLevelPlan.taps.length, arrowCount: singleLevelPlan.arrowCount, valid: true },
+        blockedTaps: singleLevelPlan.blockedTaps,
         warmups: options.warmups,
         measuredRuns: options.runs,
         phases: options.phases,
         feedbackEnabled: options.feedback,
         ...configuration,
-        exitTrailPhaseStartingArrowCount: EXIT_PHASE_STARTING_ARROW_COUNT,
+        exitTrailPhaseStartingArrowCount: exitStartingArrowCount(singleLevelPlan),
       },
+      // W3-15: generation time on device; launches vs lines is the sample reconciliation.
+      generation: summarizeGeneration(context.generation, singleLevelPlan),
       environment: {
         serial: options.serial,
         avd: options.avd,

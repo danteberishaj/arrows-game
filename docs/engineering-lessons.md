@@ -599,3 +599,23 @@ UNVERIFIED. Evidence: `artifacts/PETAL-ADS-01/screens/07a-*.png` and `07b-*.png`
 argument breaks it, so update that string together with the call.
 **Hermes:** a string that contains `·` is stored as UTF-16LE. The positive control `'Watch an ad'` counted [0, 1].
 Bundle proofs must keep checking both encodings. Report: [PETAL-ADS-01](next-level/reports/PETAL-ADS-01.md).
+
+## Read windowed frame history first; a test interstitial can sit behind a MainActivity focus line
+
+**Observed (2026-10-06, W3-15):** the harness's SurfaceFlinger overflow guard (≥120 raw frames) rejected whole
+sessions on a loaded host (3 of 3 attempts on the v2 board). A split of the raw history showed the overflow came
+**after** the driver window: 122 = 1 before + 48 inside + 73 after, 127 = 0 + 30 + 97. **Cause (confirmed by the
+split):** the board history was read after the gfxinfo and meminfo dumps, so post-gesture frames filled it.
+**Correction:** `measurePhase` reads the board history first, as soon as the driver returns. Window frames are
+unchanged and the guard is not loosened. **Verified:** 40 v2 pan runs, then a full A/A/B/A/B series, with no
+overflow rejection. Generalisation: read the windowed instrument before slow dumps, and print before/inside/after
+counts in any overflow error. Report: [W3-15](next-level/reports/W3-15.md).
+
+**Observed (2026-10-06, W7-09):** with a Google test interstitial on screen, `dumpsys window` still printed
+`mCurrentFocus=…MainActivity`, while `dumpsys activity activities` showed `mResumedActivity` = `AdActivity`. A
+focus-only guard let one screenshot capture the ad. No input was sent, and the ad was closed with BACK.
+**Correction:** the capture driver now also requires `mResumedActivity` to be MainActivity before any input or
+capture. **Verified** on the same ad: the resumed-activity line named AdActivity until BACK. Separately, Play needs
+"24-bit PNG (no alpha)" and emulator `screencap` writes RGBA. Prove alpha is 255 everywhere, then save RGB.
+macOS Vision OCR (`artifacts/W7-09/ocr/ocr.swift`) is a working "Test Ad" detector: its positive control reads
+"Test Ad" on the quarantined capture. Report: [W7-09](next-level/reports/W7-09.md).

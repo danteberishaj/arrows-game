@@ -91,6 +91,18 @@ export function levelGenVersion(index: number): GenVersion {
 }
 
 /**
+ * W3-15: one line per campaign deal in a PERF build, read from logcat by
+ * scripts/perf/android/benchmark.mjs (parseGenerationLines). The timed span is
+ * the `LevelGenerator.generate` call alone.
+ */
+function logPerfGeneration(index: number, version: GenVersion, level: GeneratedLevel, elapsedMs: number): void {
+  console.log(
+    `[gen] index=${index} version=${version} arrows=${level.arrowCount} ` +
+    `rows=${level.board.rows} cols=${level.board.cols} ms=${elapsedMs.toFixed(3)}`,
+  );
+}
+
+/**
  * Generate the level before publishing the next session to React. Keeping the
  * generator outside a state-updater callback prevents React from replaying an
  * expensive generation when it verifies updater purity in development.
@@ -108,10 +120,14 @@ export function levelGenVersion(index: number): GenVersion {
  * `curve`/`clearableBias`), so a v1 session passes nothing.
  */
 export function createLevelSession(index: number, revision: number, version: GenVersion): LevelSession {
+  // W3-15: PERF builds time the deal on device (Hermes). PERF_MODE is false in every
+  // player build (EXPO_PUBLIC_PERF_LEVEL unset), so neither the clock reads nor the log run there.
+  const generationStart = PERF_MODE ? performance.now() : 0;
   const level =
     version === 2
       ? LevelGenerator.generate(index, version, { switchLevel: SaveSystem.genSwitchLevel })
       : LevelGenerator.generate(index, version);
+  if (PERF_MODE) logPerfGeneration(index, version, level, performance.now() - generationStart);
   return {
     index,
     revision,

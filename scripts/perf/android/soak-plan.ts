@@ -21,6 +21,22 @@ export interface SoakLevelPlan {
   taps: SoakTap[];
 }
 
+export interface BlockedTap {
+  row: number;
+  col: number;
+}
+
+/** W3-15: one level for the single-level workload, with its generator version and blocked cells. */
+export interface SingleLevelPlan extends SoakLevelPlan {
+  genVersion: GenVersion;
+  /**
+   * Three cells owned by three different arrows that are all blocked on the
+   * fresh board. The `blocked` phase taps the first; validation taps all three
+   * (a blocked arrow costs one heart the first time only, src/ui/tapRules.ts).
+   */
+  blockedTaps: BlockedTap[];
+}
+
 export interface SoakPlan {
   schemaVersion: 1;
   startLevelIndex: number;
@@ -55,6 +71,56 @@ export function createSoakPlan(
       (_, offset) => createLevelPlan(startLevelIndex + offset, version),
     ),
   };
+}
+
+/**
+ * W3-15: level 3827 on v1 keeps the cells every earlier run tapped. (35,19)
+ * owns "35,19,R:LLU", (31,14) owns "31,17,R:LLLLL", (30,21) owns
+ * "31,22,D:UULDD"; all blocked at the start of the mission (benchmark.mjs
+ * comment before W3-15). Checked against the board, not trusted.
+ */
+const HISTORICAL_3827_BLOCKED_TAPS: readonly BlockedTap[] = [
+  { row: 35, col: 19 },
+  { row: 31, col: 14 },
+  { row: 30, col: 21 },
+];
+// Any other level: blocked heads nearest the spot (35,19) occupies on the 39x39
+// harness board, scaled to this grid, so the tap lands in the same region.
+const BLOCKED_ANCHOR = { row: 35 / 39, col: 19 / 39 };
+
+/**
+ * W3-15: the single-level workload's plan. `version` must match the PERF
+ * build's EXPO_PUBLIC_PERF_GEN_VERSION, or every tap misses the board.
+ */
+export function createSingleLevelPlan(levelIndex: number, version: GenVersion = 1): SingleLevelPlan {
+  if (!Number.isSafeInteger(levelIndex) || levelIndex < 0) {
+    throw new Error('The single-level index must be a safe integer of at least zero');
+  }
+  const plan = createLevelPlan(levelIndex, version);
+  const fresh = LevelGenerator.generate(levelIndex, version).board;
+  const blockedOwner = (tap: BlockedTap) => {
+    const owner = fresh.ownerAt(tap.row, tap.col);
+    return owner !== null && !fresh.canExit(owner) ? owner : null;
+  };
+  let blockedTaps: BlockedTap[];
+  if (levelIndex === 3827 && version === 1) {
+    blockedTaps = HISTORICAL_3827_BLOCKED_TAPS.map((tap) => ({ ...tap }));
+  } else {
+    const anchorRow = BLOCKED_ANCHOR.row * (fresh.rows - 1);
+    const anchorCol = BLOCKED_ANCHOR.col * (fresh.cols - 1);
+    blockedTaps = fresh.arrows()
+      .filter((arrow) => !fresh.canExit(arrow))
+      .map((arrow) => ({ row: arrow.head.r, col: arrow.head.c }))
+      .sort((a, b) =>
+        Math.hypot(a.row - anchorRow, a.col - anchorCol) - Math.hypot(b.row - anchorRow, b.col - anchorCol) ||
+        a.row - b.row || a.col - b.col)
+      .slice(0, 3);
+  }
+  const owners = blockedTaps.map(blockedOwner);
+  if (owners.length !== 3 || owners.some((owner) => owner === null) || new Set(owners).size !== 3) {
+    throw new Error(`Level ${levelIndex} (v${version}) has no three distinct blocked arrows to tap`);
+  }
+  return { ...plan, genVersion: version, blockedTaps };
 }
 
 /**
@@ -110,28 +176,44 @@ function checksum(lines: readonly string[]): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function parseCli(argv: string[]): { startLevelIndex: number; measuredLevelCount: number } {
-  let startLevelIndex: number | null = null;
-  let measuredLevelCount: number | null = null;
+interface CliOptions {
+  startLevelIndex: number | null;
+  measuredLevelCount: number | null;
+  singleLevelIndex: number | null;
+  version: GenVersion;
+}
+
+function parseCli(argv: string[]): CliOptions {
+  const options: CliOptions = {
+    startLevelIndex: null,
+    measuredLevelCount: null,
+    singleLevelIndex: null,
+    version: 1,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
     const rawValue = argv[++index];
     if (rawValue === undefined) throw new Error(`${option} requires a value`);
-    if (option === '--start-level') startLevelIndex = Number(rawValue);
-    else if (option === '--measured-levels') measuredLevelCount = Number(rawValue);
-    else throw new Error(`Unknown option: ${option}`);
+    if (option === '--start-level') options.startLevelIndex = Number(rawValue);
+    else if (option === '--measured-levels') options.measuredLevelCount = Number(rawValue);
+    else if (option === '--single-level') options.singleLevelIndex = Number(rawValue);
+    else if (option === '--gen-version') {
+      if (rawValue !== '1' && rawValue !== '2') throw new Error('--gen-version must be 1 or 2');
+      options.version = rawValue === '2' ? 2 : 1;
+    } else throw new Error(`Unknown option: ${option}`);
   }
-  if (startLevelIndex === null) throw new Error('--start-level is required');
-  if (measuredLevelCount === null) throw new Error('--measured-levels is required');
-  return { startLevelIndex, measuredLevelCount };
+  if (options.singleLevelIndex !== null) return options;
+  if (options.startLevelIndex === null) throw new Error('--start-level is required');
+  if (options.measuredLevelCount === null) throw new Error('--measured-levels is required');
+  return options;
 }
 
 function main(): void {
   const options = parseCli(process.argv.slice(2));
-  process.stdout.write(`${JSON.stringify(createSoakPlan(
-    options.startLevelIndex,
-    options.measuredLevelCount,
-  ))}\n`);
+  const plan = options.singleLevelIndex !== null
+    ? createSingleLevelPlan(options.singleLevelIndex, options.version)
+    : createSoakPlan(options.startLevelIndex!, options.measuredLevelCount!, options.version);
+  process.stdout.write(`${JSON.stringify(plan)}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

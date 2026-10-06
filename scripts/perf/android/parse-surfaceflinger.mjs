@@ -21,6 +21,9 @@ export function parseSurfaceFlingerLatency(text, window = null) {
 
   const unique = new Map();
   let rawFrameCount = 0;
+  // W3-15 diagnostic: where the raw history frames fall relative to the measured window.
+  let rawBeforeWindow = 0;
+  let rawAfterWindow = 0;
   for (const line of lines.slice(1)) {
     const fields = line.split(/\s+/);
     if (fields.length !== 3 || fields.includes(PENDING_FENCE)) continue;
@@ -30,8 +33,8 @@ export function parseSurfaceFlingerLatency(text, window = null) {
     const frameReadyNs = parsePositiveBigInt(fields[2]);
     if (desiredPresentNs === null || actualPresentNs === null || frameReadyNs === null) continue;
     rawFrameCount++;
-    if (startNs !== null && actualPresentNs < startNs) continue;
-    if (endNs !== null && actualPresentNs > endNs) continue;
+    if (startNs !== null && actualPresentNs < startNs) { rawBeforeWindow++; continue; }
+    if (endNs !== null && actualPresentNs > endNs) { rawAfterWindow++; continue; }
 
     unique.set(actualPresentNs.toString(), {
       desiredPresentNs,
@@ -59,6 +62,8 @@ export function parseSurfaceFlingerLatency(text, window = null) {
     refreshPeriodNs: refreshPeriodNs.toString(),
     refreshPeriodMs,
     rawFrameCount,
+    rawBeforeWindow,
+    rawAfterWindow,
     frames,
   };
 }

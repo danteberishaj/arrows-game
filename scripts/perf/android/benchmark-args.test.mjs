@@ -3,9 +3,14 @@ import test from 'node:test';
 import {
   DEFAULT_PHASES,
   VALID_PHASES,
+  assertTapPlanMatchesArrowCount,
   benchmarkConfiguration,
+  createSingleLevelPlan,
+  exitStartingArrowCount,
   parseArgs,
+  parseGenerationLines,
   perfBuildEnv,
+  summarizeGeneration,
   renderedVerdict,
 } from './benchmark.mjs';
 
@@ -179,4 +184,69 @@ test('exit verdict: pixels changing without moving fails the moved check (alpha-
   const slither = renderedVerdict('exit', { displacementPx: 518.4, maxChangedFraction: 0.0011 }, FLOORS);
   assert.equal(slither.passed, true);
   assert.equal(renderedVerdict('exit', { displacementPx: 1, maxChangedFraction: 0.001 }, FLOORS).passed, false);
+});
+
+// W3-15: the single-level workload takes any level and generator version.
+test('--level and --gen-version reach the single-level workload; 3827/v1 stays the default', () => {
+  const defaults = parseArgs([], {});
+  assert.equal(defaults.level, 3827);
+  assert.equal(defaults.genVersion, 1);
+  const v2 = parseArgs(['--level', '5363', '--gen-version', '2'], {});
+  assert.equal(v2.level, 5363);
+  assert.equal(v2.genVersion, 2);
+  assert.equal(parseArgs(['--level', '0'], {}).level, 0);
+  assert.throws(() => parseArgs(['--gen-version', '3'], {}), /--gen-version must be 1 or 2/);
+  assert.throws(() => parseArgs(['--level', '-1'], {}), /--level/);
+  assert.throws(() => parseArgs(['--level', '1.5'], {}), /--level/);
+});
+
+test('the build env deals the requested generator version', () => {
+  assert.equal(perfBuildEnv(parseArgs([], {}), {}).EXPO_PUBLIC_PERF_GEN_VERSION, '1');
+  const v2 = parseArgs(['--level', '80507', '--gen-version', '2'], {});
+  assert.equal(perfBuildEnv(v2, {}).EXPO_PUBLIC_PERF_GEN_VERSION, '2');
+  assert.equal(perfBuildEnv(v2, {}).EXPO_PUBLIC_PERF_LEVEL, '80507');
+});
+
+test('the single-level plan for index 5363 reads rows 34 and cols 37 from the level', () => {
+  const plan = createSingleLevelPlan(parseArgs(['--level', '5363'], {}));
+  assert.equal(plan.levelIndex, 5363);
+  assert.equal(plan.rows, 34);
+  assert.equal(plan.cols, 37);
+  assert.equal(plan.taps.length, plan.arrowCount);
+  assert.equal(exitStartingArrowCount(plan), Math.min(250, plan.arrowCount));
+});
+
+test('the exit phase starts at 250 arrows on the 250-arrow board and at the full board below that', () => {
+  assert.equal(exitStartingArrowCount({ arrowCount: 250 }), 250);
+  assert.equal(exitStartingArrowCount({ arrowCount: 262 }), 250);
+  assert.equal(exitStartingArrowCount({ arrowCount: 194 }), 194);
+});
+
+test('a plan whose tap count differs from its arrow count is invalid', () => {
+  assert.throws(
+    () => assertTapPlanMatchesArrowCount({ levelIndex: 7, arrowCount: 3, taps: [{}, {}] }),
+    /invalid.*2 planned taps.*3 arrows/,
+  );
+  assert.doesNotThrow(() => assertTapPlanMatchesArrowCount({ levelIndex: 7, arrowCount: 2, taps: [{}, {}] }));
+});
+
+test('generation lines are parsed and reconciled one per launch against the plan', () => {
+  const text = [
+    'I/ReactNativeJS( 123): [gen] index=3827 version=1 arrows=250 rows=39 cols=39 ms=81.250',
+    'I/ReactNativeJS( 123): unrelated',
+    'I/ReactNativeJS( 456): [gen] index=3827 version=1 arrows=250 rows=39 cols=39 ms=79.500',
+  ].join('\n');
+  const lines = parseGenerationLines(text);
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines[1], { index: 3827, version: 1, arrows: 250, rows: 39, cols: 39, ms: 79.5 });
+  const plan = { levelIndex: 3827, genVersion: 1, arrowCount: 250 };
+  const ok = summarizeGeneration({ launches: 2, lines, perLaunchLineCounts: [1, 1] }, plan);
+  assert.equal(ok.reconciled, true);
+  assert.equal(ok.medianMs, 79.5);
+  assert.equal(ok.maxMs, 81.25);
+  const missing = summarizeGeneration({ launches: 3, lines, perLaunchLineCounts: [1, 0, 1] }, plan);
+  assert.equal(missing.reconciled, false);
+  const wrongLevel = summarizeGeneration({ launches: 2, lines, perLaunchLineCounts: [1, 1] }, { ...plan, levelIndex: 5363 });
+  assert.equal(wrongLevel.linesMatchingPlan, 0);
+  assert.equal(wrongLevel.reconciled, false);
 });

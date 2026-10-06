@@ -285,6 +285,46 @@ describe('game session lifecycle', () => {
       const { lifecycle } = perfLifecycle({ EXPO_PUBLIC_PERF_LEVEL: '3827', EXPO_PUBLIC_PERF_GEN_VERSION: raw });
       expect(lifecycle.levelGenVersion(3827)).toBe(1);
     });
+
+    // W3-15: a PERF build logs one generation-time line per campaign deal, read by benchmark.mjs.
+    it('W3-15: a PERF build logs the deal of its level with its version, size and generation time', () => {
+      const { lifecycle } = perfLifecycle({ EXPO_PUBLIC_PERF_LEVEL: '5363', EXPO_PUBLIC_PERF_GEN_VERSION: undefined });
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        const session = lifecycle.createLevelSession(5363, 0, lifecycle.levelGenVersion(5363));
+        const lines = log.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith('[gen]'));
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toMatch(/^\[gen\] index=5363 version=1 arrows=\d+ rows=34 cols=37 ms=\d+\.\d{3}$/);
+        expect(lines[0]).toContain(`arrows=${session.level.arrowCount} `);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('W3-15: the v2 PERF deal logs version 2', () => {
+      const { lifecycle } = perfLifecycle({ EXPO_PUBLIC_PERF_LEVEL: '2705', EXPO_PUBLIC_PERF_GEN_VERSION: '2' });
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        lifecycle.createLevelSession(2705, 0, lifecycle.levelGenVersion(2705));
+        const lines = log.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith('[gen]'));
+        expect(lines).toHaveLength(1);
+        expect(lines[0]).toMatch(/^\[gen\] index=2705 version=2 /);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('W3-15: a non-PERF build logs no generation line', () => {
+      const { perf, lifecycle } = perfLifecycle({ EXPO_PUBLIC_PERF_LEVEL: undefined });
+      expect(perf.PERF_MODE).toBe(false);
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        lifecycle.createLevelSession(5363, 0, 1);
+        expect(log.mock.calls.filter((call) => String(call[0]).startsWith('[gen]'))).toHaveLength(0);
+      } finally {
+        log.mockRestore();
+      }
+    });
   });
 
   describe('W3-06 EXPO_PUBLIC_DEV_GEN_VERSION', () => {

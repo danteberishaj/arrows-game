@@ -84,10 +84,28 @@ install via the opt-in link, and play a few levels.
   with `npx tsx scripts/generate-promo-art.ts`) — safe as listing imagery because
   they show true gameplay boards. Alternate logo and wordmark-banner takes are
   there too (brand art, fine for the feature graphic).
-- Screenshots: take at least 2 phone screenshots (portrait) from the internal-test
-  build — the menu and a mid-level board make a good pair; a SuperHard silhouette
-  (heart/crescent) makes a great third. Play policy expects screenshots to show
-  REAL gameplay — use the promo art around them, not instead of them.
+- Screenshots (W7-09): the captured phone set, its proposed order and everything needed
+  to reproduce it are in [`store/screenshots/README.md`](store/screenshots/README.md).
+  Recipe, in short:
+  1. Re-read Play Console's "Add preview assets" help page and paste its dimension and
+     ratio rules (with the date) into that README. On 2026-10-06 the long side could be
+     at most twice the short side, so the 1440x3120 AVD is captured at
+     `adb -s emulator-5556 shell wm size 1440x2880` (the app lays itself out at that
+     size), always followed by `wm size reset`. Record `wm size` for every capture.
+  2. Build TEST-ADS release APKs only (`EXPO_PUBLIC_ADMOB_TEST_ADS=1`; never real units
+     on an emulator), prove each Hermes bundle holds `3940256099942544` and no owner unit
+     id before installing, and install with `install -r -d`.
+  3. Menu, win-panel and other normal-build shots: every `EXPO_PUBLIC_PERF_*` variable
+     **unset** (a PERF build skips the menu, the save and the theme). `EXPO_PUBLIC_META_BANNER`
+     unset or 0 in every store build, so no ad UI is in any listing image.
+  4. Late silhouettes (Heart index 161, Cat 167) and the densest board of indices 0..199
+     come from PERF builds (`EXPO_PUBLIC_PERF_LEVEL=<index>`), used only after the
+     perf-vs-normal chrome check in the README passes.
+  5. Save each shot with `adb exec-out screencap -p`, convert it to a 24-bit PNG (no alpha;
+     Play rejects alpha), and name it `<nn>-<subject>-<theme>-<apk sha256 first 8>.png`.
+  6. Back up and restore the emulator save, settings, `wm size`/density and date around the
+     session. Play policy expects real gameplay: use the promo art around the screenshots,
+     not instead of them.
 - Title candidates, short description (≤80 chars) and full description: the checked
   drafts in [`store/listing/play.md`](store/listing/play.md) (W7-08; run
   `node scripts/check-listing.js store/listing/play.md` after any edit). The owner picks
