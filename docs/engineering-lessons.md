@@ -751,3 +751,35 @@ Report: [HEADER-FIT](next-level/reports/HEADER-FIT.md).
 - Register an overlay against ink in the frame. Do not trust a stored camera.
 
 Report: [owner rulings 2026-10-06](owner-rulings-2026-10-06.md).
+
+## A timing target carries its flag set; count a reveal's delay from the event, not from the mount
+
+**Observed (2026-10-06, owner-rulings implementation: W1-11, W2-11, W5-17, W4-13; emulator-5556, host load 40-226):**
+- The owner's "panel at 0.74-0.84 s after the last tap" (set B) was computed from W2-06's exit range of 90..187 ms,
+  which was measured with `META_EXIT_TO_SCREEN_EDGE` on. With it off (the player default), level 1's last exit is the
+  244 ms board-edge trail, so the same constants put the panel at 0.83-0.97 s. The app's own log line
+  (`[capture-diag] clear wonDelayMs=…`) showed the schedule was exact; only the basis differed.
+- W5-17's outline node mounted 93-262 ms after the clearing tap (a React commit under load). A `withDelay` counted from
+  the mount squeezed the outline's 400 ms slot to ~250 ms; one 2.2 s JS stall mounted it after the panel. The delay is
+  now counted from the tap (`clearRevealTiming.ts`).
+- Seasonal skins (Ghost, id 19) render as Classic without `META_SEASONS`: a "dark skin" capture seeded with Ghost
+  silently showed the Classic Ink Night board. The board colour read from the frame caught it.
+- `dumpsys input` `eventTime` is CLOCK_MONOTONIC in **ns**; `logcat -v monotonic` prints **seconds**. Mixing them made
+  every tap→handler delta null until both were converted to ms.
+- Other sessions' agent worktrees appeared under `.claude/worktrees/` mid-task; `npx jest <path>` then also ran their
+  copies of the same suite. `npx jest "$PWD/(src|scripts)/"` keeps the run to this tree (count it: 147 suites here).
+- The owner's emulator backup (`d9c9d46d…a466`) holds a 0-byte RKStorage: it is a fresh-install state, so it routes to
+  the tutorial; an "existing player" over-install check needs a seeded save with progress.
+
+**Rules:**
+- When a brief quotes a time or size target, name the flag set it was measured under and re-derive it for the flag set
+  being shipped before calling a measurement off-target.
+- An animation that must land a fixed time after an input counts its delay from the input's timestamp, and a
+  capture-only log line records how late its node mounted.
+- After seeding any skin or theme, assert it from the frame (a board pixel), not from the seed.
+- Convert every clock to one unit before subtracting; print the raw values next to the delta.
+
+**Verified:** W5-17's tap-clock fix on device (`[capture-diag] reveal mount +93..+262ms remaining=…`, the outline
+before the panel in every unstalled run); the reconciliation table and builds are in
+[W5-17](next-level/reports/W5-17.md). The other items are observations from the same runs
+([W1-11](next-level/reports/W1-11.md), [W2-11](next-level/reports/W2-11.md), [W4-13](next-level/reports/W4-13.md)).

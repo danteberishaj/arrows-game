@@ -20,6 +20,7 @@ import {
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   PixelRatio,
+  Share,
   StyleSheet,
   Text,
   type TextLayoutEventData,
@@ -55,6 +56,7 @@ import {
   META_PANEL_MOTION,
   META_POST_CLEAR_TIMELINE,
   META_REVIEW_PROMPT,
+  META_SHARE_CARD,
 } from '../featureFlags';
 import { Ads } from './ads';
 import {
@@ -129,6 +131,7 @@ import {
   reviewSession,
   settleWithin,
 } from './reviewPrompt';
+import { buildDailyShareText } from './shareCard';
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Palette, Type } from './theme';
@@ -157,6 +160,8 @@ const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
 const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
 const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
+/** W4-13 (META_SHARE_CARD): the daily win panel's share control. */
+const DAILY_SHARE_LABEL = 'Share'; // OWNER-PICKED STARTING VALUE
 
 /**
  * HEADER-FIT: "LEVEL N" / "TODAY" stays one line and shrinks its font only when it is wider than its column. The
@@ -810,6 +815,23 @@ export function GameScreen({
     loadLevel(levelIndex + 1);
   }, [benchmarkMode, cancelReviewAsk, levelIndex, levelScrim, loadLevel, waitForReviewFlow]);
 
+  /**
+   * W4-13 (META_SHARE_CARD): the day's card as plain text through Android's share sheet. The app sends nothing: the
+   * player picks the chat (or cancels) and can edit the text. The result is ignored; a failure changes nothing.
+   */
+  const onShareDaily = useCallback(() => {
+    if (dailyDay === null) return;
+    const message = buildDailyShareText({
+      day: dailyDay,
+      mask: level.mask,
+      shapeName: level.shapeName,
+      heartsLeft: heartsRef.current,
+      maxHearts: level.hearts,
+      streak: SaveSystem.dayStreak,
+    });
+    Share.share({ message }).catch(() => undefined);
+  }, [dailyDay, level]);
+
   /** "Done" after a daily clear (W4-06): back to the menu; no ad, no next board, no scrim. */
   const dailyDonePressedRef = useRef(false);
   const onDailyDone = useCallback(async () => {
@@ -1042,6 +1064,22 @@ export function GameScreen({
           {panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'}
         </Text>
       </PressScale>
+      {/* W4-13 (META_SHARE_CARD): the daily win panel only. A plain secondary control (Retry's outline style). */}
+      {panelPhase === 'won' && dailyDay !== null && META_SHARE_CARD && (
+        <PressScale
+          accessibilityRole="button"
+          accessibilityLabel={DAILY_SHARE_LABEL}
+          disabled={adBusy}
+          style={({ pressed }) => [
+            styles.button,
+            styles.shareButton,
+            { borderColor: p.border, transform: pressSnapTransform(pressed) },
+          ]}
+          onPress={onShareDaily}
+        >
+          <Text style={[styles.buttonText, { color: p.inkDim }]}>{DAILY_SHARE_LABEL}</Text>
+        </PressScale>
+      )}
       {panelPhase === 'won' && SaveSystem.perfectStreak > 1 && (ART_ICONS_ENABLED ? (
         // W5-02: sparkle icon, then the text (the ✦ glyph came from whatever font the OS picked).
         <View style={[styles.labelRow, styles.streakRow]}>
@@ -1642,6 +1680,12 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...Type.panelButton,
+  },
+  // W4-13: the daily Share control under Done (Retry's outline look).
+  shareButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    marginTop: 12,
   },
   streak: {
     ...Type.panelStreak,

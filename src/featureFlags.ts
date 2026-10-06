@@ -151,6 +151,14 @@ export const META_BLOCKED_INK_HOLD = process.env.EXPO_PUBLIC_META_BLOCKED_INK_HO
 export const META_BLOCKED_ANTICIPATION = process.env.EXPO_PUBLIC_META_BLOCKED_ANTICIPATION === '1';
 
 /**
+ * W4-13 (owner 2026-10-06, Q4: "yes, purple"): the DAILY win panel gets a Share control that hands a plain-text card
+ * (src/ui/shareCard.ts: "Arrows · <date>", the shape, hearts left, the day streak, the shape in 🟪⬜ fitted in 10 x 10)
+ * to React Native's Share API, i.e. Android's share sheet. No link, no level index, no tracking, no new dependency.
+ * Campaign panels, losses and the menu never show it. OFF: the daily panel renders exactly as before.
+ */
+export const META_SHARE_CARD = process.env.EXPO_PUBLIC_META_SHARE_CARD === '1';
+
+/**
  * W2-07: the heart an earned rewarded continue refills gets a pop of its own.
  * The pip starts below rest (1 / 1.35) and springs up to 1, the mirror of the
  * loss overshoot, once the lose panel is gone (with META_PANEL_MOTION, after

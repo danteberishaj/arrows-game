@@ -31,6 +31,7 @@ const NAMED_META_FLAGS = [
   'META_THEME_TRANSITION', // W2-08
   'META_POST_CLEAR_TIMELINE', // W2-06
   'META_BLOCKED_ANTICIPATION', // W2-11
+  'META_SHARE_CARD', // W4-13
 ];
 
 const savedEnv = { ...process.env };
