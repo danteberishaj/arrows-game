@@ -123,10 +123,7 @@ export function createLevelSession(index: number, revision: number, version: Gen
   // W3-15: PERF builds time the deal on device (Hermes). PERF_MODE is false in every
   // player build (EXPO_PUBLIC_PERF_LEVEL unset), so neither the clock reads nor the log run there.
   const generationStart = PERF_MODE ? performance.now() : 0;
-  const level =
-    version === 2
-      ? LevelGenerator.generate(index, version, { switchLevel: SaveSystem.genSwitchLevel })
-      : LevelGenerator.generate(index, version);
+  const level = generateCampaignLevel(index, version);
   if (PERF_MODE) logPerfGeneration(index, version, level, performance.now() - generationStart);
   return {
     index,
@@ -136,6 +133,17 @@ export function createLevelSession(index: number, revision: number, version: Gen
     day: null,
     genVersion: version,
   };
+}
+
+/**
+ * The campaign board `createLevelSession` deals for (index, version): the one generate call, shared with
+ * the menu's W3-20 tier (src/ui/tierLabel.ts) so the menu can never describe a different board than Play
+ * deals. A v2 deal carries this install's stamped switch level (V2-WIRE); v1 passes no knobs.
+ */
+export function generateCampaignLevel(index: number, version: GenVersion): GeneratedLevel {
+  return version === 2
+    ? LevelGenerator.generate(index, version, { switchLevel: SaveSystem.genSwitchLevel })
+    : LevelGenerator.generate(index, version);
 }
 
 /** Build an authored tutorial board without advancing or generating campaign progress. */

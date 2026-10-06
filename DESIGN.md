@@ -40,14 +40,14 @@ values below equal `theme.ts` at the commit that last edited this table.
 | spent pip | `pipSpent` | `#988CCB` | `#635B8B` | spent heart, drawn as an outline (`GameScreen.tsx:1323`) |
 | unearned star | `starUnearned` | `#8D80C6` | `#6C6398` | unearned star on the win panel (`GameScreen.tsx:1400`) |
 | ink | `ink` | `#191724` | `#EFEDF9` | arrows (`BoardView.tsx:1096`), wordmark text (`Wordmark.tsx:35`), splash arrow (`SplashScreen.tsx:161`) |
-| ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:869`, `HomeScreen.tsx:158`), panel subline (`GameScreen.tsx:905`), Retry and disabled Continue labels (`GameScreen.tsx:935,969`; the disabled Continue fill is `bg`, `GameScreen.tsx:924`), stats line (`HomeScreen.tsx:332`) |
+| ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:889`, `HomeScreen.tsx:160`), panel subline (`GameScreen.tsx:905`), Retry and disabled Continue labels (`GameScreen.tsx:935,969`; the disabled Continue fill is `bg`, `GameScreen.tsx:924`), stats line (`HomeScreen.tsx:332`) |
 | accent | `accent` | `#6D4AEF` | `#7B5BF5` | Play pill (`HomeScreen.tsx:210`), hint and press preview (`StaticBoardSurface.native.tsx:330,494`), "Cleared!" title (`GameScreen.tsx:882`), panel buttons (`GameScreen.tsx:925,963`), earned stars (`GameScreen.tsx:1400`), splash arrowhead (`SplashScreen.tsx:171`) |
 | accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels, both 24 Bold (`GameScreen.tsx:1014`, `HomeScreen.tsx:194`) |
-| accent text | `accentText` | `#6D4AEF` | `#8C70F6` | Hard tier (`GameScreen.tsx:868`, `HomeScreen.tsx:157`), perfect-run line (`GameScreen.tsx:979`); ≥4.5:1 on `bg` and `surface` |
+| accent text | `accentText` | `#6D4AEF` | `#8C70F6` | Hard tier (`GameScreen.tsx:888`, `HomeScreen.tsx:159`), perfect-run line (`GameScreen.tsx:979`); ≥4.5:1 on `bg` and `surface` |
 | accent-core | `accentCore` | `#4A3E8C` | `#CBC4F0` | glyphs on `surface` buttons (`HeaderButton.tsx:66`) |
 | accent-deep | `accentDeep` | `#5636D6` | `#6247D6` | pressed accent buttons (`HomeScreen.tsx:210`, `GameScreen.tsx:925,963`) |
 | heart / danger | `heart` | `#E4327D` | `#F0468C` | hearts (`GameScreen.tsx:1318`), blocked arrow and blocker flash (`StaticBoardSurface.native.tsx:372,418`), "Out of hearts" title (`GameScreen.tsx:882`) |
-| heart text | `heartText` | `#E11F71` | `#F0468C` | Super Hard tier (`GameScreen.tsx:867`, `HomeScreen.tsx:156`); ≥4.5:1 on `bg` |
+| heart text | `heartText` | `#E11F71` | `#F0468C` | Super Hard tier (`GameScreen.tsx:887`, `HomeScreen.tsx:158`); ≥4.5:1 on `bg` |
 | on-accent | `inkOnAccent` | `#FFFFFF` | `#FFFFFF` | labels on accent buttons (`HomeScreen.tsx:215`, `GameScreen.tsx:935,969`) |
 
 Contrast is gated by `src/ui/contrastAudit.ts` and printed by `npx tsx scripts/contrast-audit.ts`
@@ -100,7 +100,8 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
   and mouse-wheel zoom on web (`BoardView.tsx:879-887`).
 - **Header (gameplay)**: one row (`GameScreen.tsx:992`). **Left:** a `surface` back button (‹) and,
   beside it, "LEVEL N" in `accent-light` over one line "Tier · Shape · N left" in the tier colour
-  (`ink-dim` Normal, `accent` Hard, `heart` Super Hard) (`GameScreen.tsx:993-1064,872-875`).
+  (`ink-dim` Normal, `accent` Hard, `heart` Super Hard) (`GameScreen.tsx:1023-1086,883-889`). Which tier the
+  line names is set under **Displayed tier** below.
   **Right:** the heart row, then a `surface` Hint button with a 💡 glyph (`GameScreen.tsx:1056-1084`).
   Header buttons are 36 pt squares with corner radius one third of their size, a 1 pt `border`
   edge and an `accent-core` glyph (`HeaderButton.tsx:30,62,77-84`). Retrying lives on the
@@ -124,7 +125,8 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
   level · shape · arrow-count line and Next level, or "Out of hearts" in `heart` with
   "Continue +♥ (ad)" and Retry.
 - **Menu**: `bg`; wordmark (size 56) in the upper-middle, "Level N" beneath it (`accent-light`) with
-  the resume level's **difficulty** under that (same colour-coding as the header), big violet
+  the resume level's **tier** under that (same colour-coding as the header; which tier, see
+  **Displayed tier** below; `HomeScreen.tsx:79-81,156-160,199-201`), big violet
   Play pill 56 pt below the tier (`HomeScreen.tsx:189-217`). Generous whitespace. **Top-right: two
   44 pt `surface` buttons**, the theme toggle (☀/☾) and the sound toggle (♪ glyph — `accent-core`
   when on, `glyphOff` with a diagonal strike when off; persisted) (`HomeScreen.tsx:264-300`, `HeaderButton.tsx:66,104-121`).
@@ -191,6 +193,17 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
 - **Tier schedule** (`src/core/difficulty.ts:47-62`): a repeating 6-level cycle Normal, Normal,
   Hard, Normal, Normal, Super Hard. The tier configs do not depend on the level index
   (`difficulty.ts:64-80`).
+- **Displayed tier** (W3-20 option (a), the owner's 2026-10-06 ruling; gated by
+  `TIER_LABEL_V2_ENABLED` = `EXPO_PUBLIC_TIER_LABEL_V2=1`, default OFF, `src/featureFlags.ts`). **OFF (shipped):**
+  the header and the menu name the cycle position above, so the bands overlap (v1 levels 1–1000: Normal 53–132,
+  Hard 95–197, Super Hard 47–249 arrows) and level 12, a 54-arrow Bolt, reads "Super Hard". **ON:** the word and
+  its colour come from the dealt board's arrow count alone (`src/core/displayTier.ts`): Normal below 88 arrows,
+  Hard 88–132, Super Hard 133 and up (`DISPLAY_TIER_THRESHOLDS`, an OWNER-PICKED STARTING VALUE measured by
+  `npx tsx scripts/analysis/display-tier-report.ts` for a 1/2, 1/3, 1/6 share on v2's fresh-install curve). The
+  displayed tiers cannot overlap. The menu names the board Play will deal at this install's generator version
+  and switch level (`src/ui/tierLabel.ts`). The cycle still drives everything else: cell targets, shape pools,
+  hearts, ads, the daily board's config and the collection. Shares and first sightings per generator are in
+  `docs/next-level/reports/W3-20.md`.
   **Generator v2** (W3-14, dark) keeps the cycle but reads each tier's cell target, and its
   clearable bias, from a breakpoint table indexed by level (`src/core/curve.ts`,
   `Difficulties.configV2`): level 1 is the owner's pick (88 cells, bias 3), and the targets climb
@@ -244,7 +257,8 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   | Hard | 100 | 99 | 104 | 123 | 151 | 197 | 26–39 | 26–38 |
   | Super Hard | 100 | 47 | 118 | 148 | 177 | 224 | 28–46 | 28–46 |
 
-  The tier bands overlap. What difficulty should mean is set in `PRODUCT.md` (legibility,
+  The tier bands overlap (W3-20's displayed tier, behind its flag, labels by arrow count instead; see
+  **Displayed tier** above). What difficulty should mean is set in `PRODUCT.md` (legibility,
   density, clearable fraction at deal, silhouette novelty), never tap order.
 - **Determinism**: difficulty, the chosen shape, the board size and the layout are all pure
   functions of (level index, generator version, and for v2 whether the install has a v1 floor);

@@ -208,3 +208,11 @@ export const META_SEASONS = process.env.EXPO_PUBLIC_META_SEASONS === '1';
  * no petals ad object is created or requested, and `arrows_petal_ads_day` / `_count` are never read or written.
  */
 export const META_PETAL_ADS = process.env.EXPO_PUBLIC_META_PETAL_ADS === '1';
+/**
+ * W3-20 option (a) (owner ruling 2026-10-06): the tier word on the game header and the menu, and its colour, come
+ * from the dealt board's arrow count (src/core/displayTier.ts `displayTier`) instead of the six-level cycle
+ * position, so a 54-arrow board never reads "Super Hard". The menu names the board Play will deal (src/ui/tierLabel.ts);
+ * the daily header's word is derived the same way. Generation targets, hearts, shape pools, ads, the daily board's
+ * config and the collection keep their sources. OFF: the cycle's word and colour, exactly as before.
+ */
+export const TIER_LABEL_V2_ENABLED = process.env.EXPO_PUBLIC_TIER_LABEL_V2 === '1';

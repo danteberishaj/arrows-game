@@ -109,3 +109,18 @@ test('ART_SKIN accepts only exact registered spec ids', () => {
     expect([value, loadFlags().ART_SKIN]).toEqual([value, ['cinnamon', 'sherbet'].includes(value) ? value : null]);
   }
 });
+
+// W3-20: the tier-label flag is not a META_* name (the brief names it), so it is pinned on its own.
+test('TIER_LABEL_V2_ENABLED is OFF unless EXPO_PUBLIC_TIER_LABEL_V2 is exactly 1, and enables nothing else', () => {
+  for (const value of [undefined, '0', 'true', ' 1', '']) {
+    clearMetaEnv();
+    if (value === undefined) delete process.env.EXPO_PUBLIC_TIER_LABEL_V2;
+    else process.env.EXPO_PUBLIC_TIER_LABEL_V2 = value;
+    expect([value, loadFlags().TIER_LABEL_V2_ENABLED]).toEqual([value, false]);
+  }
+  clearMetaEnv();
+  process.env.EXPO_PUBLIC_TIER_LABEL_V2 = '1';
+  const flags = loadFlags();
+  expect(flags.TIER_LABEL_V2_ENABLED).toBe(true);
+  for (const name of metaFlagNames(flags)) expect([name, flags[name]]).toEqual([name, false]);
+});

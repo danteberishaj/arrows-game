@@ -128,6 +128,7 @@ import {
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Palette, Type } from './theme';
+import { headerTier } from './tierLabel';
 
 /**
  * POLISH-T9 (smoothness audit #4): the tutorial header line is a constant
@@ -879,9 +880,12 @@ export function GameScreen({
   const depthTitleSpacing = ART_PANEL_DEPTH_ENABLED ? styles.panelTitleDepth : null;
   const depthSubSpacing = ART_PANEL_DEPTH_ENABLED ? styles.panelSubDepth : null;
 
+  // W3-20 (TIER_LABEL_V2_ENABLED): the header's tier word and colour come from the board's arrow count;
+  // OFF, from the cycle (level.difficulty), as before (tierLabel.ts).
+  const labelTier = headerTier(level);
   const diffColor =
-    level.difficulty === Difficulty.SuperHard ? p.heartText
-    : level.difficulty === Difficulty.Hard ? p.accentText
+    labelTier === Difficulty.SuperHard ? p.heartText
+    : labelTier === Difficulty.Hard ? p.accentText
     : p.inkDim;
 
   // W5-04 (ART_WIN_SILHOUETTE_ENABLED): the cleared board's outline for the win
@@ -1050,7 +1054,7 @@ export function GameScreen({
                   </Text>
                 ) : (
                   <MissionLabel
-                    difficulty={level.difficulty}
+                    difficulty={labelTier}
                     shapeName={level.shapeName}
                     color={diffColor}
                     mask={level.mask}

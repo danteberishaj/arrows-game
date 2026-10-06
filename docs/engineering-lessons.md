@@ -658,3 +658,18 @@ tests. **Driver gotchas:** the menu's Play pill animates forever, so `uiautomato
 state"). Tap 720,1925 and prove the tap with the `board_mount` line. `adb shell "dumpsys … | grep X"` exits 1 when there
 is no match yet, and `device.mjs adb()` throws on that. Append `|| true`. Report:
 [W3-17-prep](next-level/reports/W3-17-prep.md).
+
+## A brief's target share and "worst board" go stale: count them from code before using them
+
+**Observed (2026-10-06, W3-20):** the brief asked for displayed-tier thresholds giving "1/2 Normal, 1/3 Hard, 1/6 Super
+Hard, matching today's 3/2/1 cycle share". The shipped cycle is N, N, H, N, N, SH, i.e. **4/6, 1/6, 1/6**
+(`difficulty.ts` CYCLE). The report script now counts the cycle from `Difficulties.forLevel` instead of typing it,
+and prints both cut sets: the brief's shares give 88/133 (shipped), the cycle's real shares give 95/133. Separately,
+W3-15's "worst v2 board, index 80507, 194 arrows, Plus" is now Hexagon, 164 arrows: W3-19/W3-21's admissions
+re-dealt it. The current heaviest boards are index 9479 (197, fresh) and 1733 (196, switch 1) (W3-21 step 1).
+**Rule:** a share, a target or a "worst board" index quoted from a brief or an older report is a hypothesis.
+Recount it from the live code at the current commit, and name the commit next to it.
+**Also observed:** the `ui` jest project does not type-check (the tier-label tests passed in jest while
+`tsc --noEmit` failed on them). Run tsc on new test files before calling them green.
+**Verified:** `npx tsx scripts/analysis/display-tier-report.ts` and `artifacts/W3-20/menu-cost/node-timing.txt`.
+Report: [W3-20](next-level/reports/W3-20.md).

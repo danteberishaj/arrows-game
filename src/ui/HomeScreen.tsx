@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
@@ -28,6 +28,7 @@ import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
 import { useEffectUntilScreenLeaves, useStopWhenScreenLeaves } from './screenHandoff';
 import { SettingsSheet } from './SettingsSheet';
+import { menuTier } from './tierLabel';
 import { Palette, Type } from './theme';
 import { Wordmark } from './Wordmark';
 
@@ -76,7 +77,8 @@ export function HomeScreen({
   const insets = useSafeAreaInsets(); // keep the corners clear of notches (SafeArea.cs)
   const { fontScale } = useWindowDimensions();
   const resumeIndex = SaveSystem.currentLevel;
-  const difficulty = Difficulties.forLevel(resumeIndex);
+  // W3-20 (TIER_LABEL_V2_ENABLED): the tier of the board Play will deal; OFF, the cycle's (tierLabel.ts).
+  const difficulty = useMemo(() => menuTier(resumeIndex), [resumeIndex]);
   // W4-10: the composed menu, read once per mount like the entries. From the first
   // solve (before it the row and the stats line are both empty, so the menu stays
   // BASE's), whenever a W4 menu entry can show: the daily entry, the gallery entry,

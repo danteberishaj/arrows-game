@@ -1,6 +1,8 @@
 export { Direction, toDelta, zRotation, fromChar, toChar, opposite } from './direction';
 export { Difficulty, Difficulties } from './difficulty';
 export type { DifficultyConfig } from './difficulty';
+export { DISPLAY_TIER_THRESHOLDS, displayTier, displayTierForArrowCount } from './displayTier';
+export type { DisplayTierThresholds } from './displayTier';
 export { DotNetRandom, ExactDotNetRandom } from './dotnetRandom';
 export type { LevelRng } from './dotnetRandom';
 export { ArrowPath } from './arrowPath';
