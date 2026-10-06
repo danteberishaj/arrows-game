@@ -702,3 +702,35 @@ captures to within 1.5 dp: native level 18 at 58.3 dp measured against 57.9 dp m
   its bounding box over half the screen.
 
 Report: [W5-16](next-level/reports/W5-16.md).
+
+## Android `adjustsFontSizeToFit` shrinks text that fits; a fit fix must not move levels that were never broken
+
+**Observed (2026-10-06, HEADER-FIT):** the first post-fix build gave the header title `numberOfLines={1}` plus
+`adjustsFontSizeToFit` permanently. At 360 dp (480 dpi), every "LEVEL N" and "TODAY" came out about 8 % smaller
+(painted title height 48 px instead of 52 px pre-fix) although each fitted with room to spare. At 1440x3120@560
+the same build drew them unchanged (60 px both). **Cause (from RN 0.86 source, not instrumented):**
+`ReactTextView.onDraw` re-runs `adjustSpannableFontToFit` with the view's pixel-snapped height as an EXACTLY bound, and
+shrinks when the text layout is a fraction taller (`exceedsHeight`). The fix sets the shrink props only on a title whose
+`onTextLayout` reported two lines. **Verified** on emulator-5556: one-line headers are pixel-identical pre/post at
+three geometries (0 px outside the Hint glyph), and "LEVEL 2222" at font scale 1.3 shrinks to one line (57 px).
+Evidence: `artifacts/HEADER-FIT/pixel/checks-post-v1.txt` (the failed build) against `pixel/checks.txt`.
+**Also observed, from code:** a 12 dp "breathing" gap between the text and the hearts would have wrapped 1,233 more
+v1 levels at 360 dp, all of which fit today, moving their boards. "Hint unavailable ·", which replaces the mission
+words, would have changed the line count, and so re-fit the camera mid-level, on all 384 wrapped levels. The fix uses
+no gap. While that label shows, it holds the subline row at its measured height (jest-pinned; not reproduced on device).
+**Rules:**
+- Keep `adjustsFontSizeToFit` off Android text that usually fits. Enable it only after a measured overflow, and
+  pixel-diff a fitting case at 480 dpi as well as 560.
+- Before adding spacing to a layout fix, count from code how many currently fine cases it pushes over the threshold.
+- Any label that swaps in mid-level must keep the header height.
+
+**Gotchas:**
+- The brief's jest baseline (143 / 2,408) still counted the floating-hint suite removed in `b29f868`. HEAD is
+  142 / 2,396.
+- `SaveSystem.today()` counts days since 2020-01-01, not since the Unix epoch.
+- A HarfBuzz width model of Fredoka under-reads Android Text widths by up to about 2 dp per Text. Calibrate it
+  against uiautomator bounds.
+- The Hint glyph's ready/dimmed state depends on when the test ad loads. It accounts for every one-line pre/post
+  difference outside anti-aliasing (≤ 42 RGB-sum).
+
+Report: [HEADER-FIT](next-level/reports/HEADER-FIT.md).

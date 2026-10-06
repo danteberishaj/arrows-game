@@ -18,9 +18,11 @@ import React, {
 import {
   AppState,
   type LayoutChangeEvent,
+  type NativeSyntheticEvent,
   PixelRatio,
   StyleSheet,
   Text,
+  type TextLayoutEventData,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -153,6 +155,17 @@ const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
 const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
 const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
+
+/**
+ * HEADER-FIT: "LEVEL N" / "TODAY" stays one line and shrinks its font only when it is wider than its column. The
+ * widest title, "LEVEL 2222" (143.7 dp at font scale 1, HarfBuzz on Fredoka Bold), needs 0.856 at font scale 1.3 on
+ * a 360 dp screen (column 160 dp) and 0.557 at font scale 2.0 (artifacts/HEADER-FIT/analysis/header-strings.ts).
+ * The floor 0.5 keeps the title at 12 sp or more (the brief's minimum is 11 sp).
+ * The shrink props are set only on a title that laid out on more than one line: on Android, `adjustsFontSizeToFit`
+ * also shrinks a title that fits when its pixel-snapped view height is a fraction under the text layout's height
+ * (ReactTextView.onDraw's exceedsHeight check), which made every 360 dp title about 8 % smaller (HEADER-FIT captures).
+ */
+export const HEADER_TITLE_MIN_FONT_SCALE = 0.5;
 
 /**
  * W5-03: the `{remaining} left` counter's digits sit in a slot as wide as this
@@ -888,6 +901,25 @@ export function GameScreen({
     : labelTier === Difficulty.Hard ? p.accentText
     : p.inkDim;
 
+  // HEADER-FIT: "Hint unavailable ·" stands in for the mission words, which can take one line more once the subline
+  // wraps. While it shows, the row keeps the height it had with the mission words, so a failed hint (cleared again
+  // by the next board tap) never resizes the board under the player and re-fits its camera.
+  const showHintFailed = adShowFailed && phase === 'playing';
+  const hintFailedShownRef = useRef(showHintFailed);
+  hintFailedShownRef.current = showHintFailed;
+  const missionRowHeight = useRef(0);
+  // HEADER-FIT: the title that wrapped (onTextLayout saw two lines) switches to one shrinking line; any other title
+  // keeps the plain Text it always had.
+  const titleKey = dailyDay !== null ? DAILY_HEADER_LABEL : `LEVEL ${levelIndex + 1}`;
+  const [wrappedTitle, setWrappedTitle] = useState<string | null>(null);
+  const fitTitle = wrappedTitle === titleKey;
+  const onTitleTextLayout = useCallback((e: NativeSyntheticEvent<TextLayoutEventData>) => {
+    if (e.nativeEvent.lines.length > 1) setWrappedTitle(titleKey);
+  }, [titleKey]);
+  const onMissionRowLayout = useCallback((e: LayoutChangeEvent) => {
+    if (!hintFailedShownRef.current) missionRowHeight.current = e.nativeEvent.layout.height;
+  }, []);
+
   // W5-04 (ART_WIN_SILHOUETTE_ENABLED): the cleared board's outline for the win
   // panel. `level` is replaced on every loadSession (the board reference inside
   // it is not), so the memo follows the level. '' for an empty mask (W1's
@@ -1041,15 +1073,26 @@ export function GameScreen({
               </Text>
             </View>
           ) : (
-            <View>
-              <Text style={[styles.levelLabel, { color: p.accentLight }]}>
+            // HEADER-FIT: this column gives way when the header is too narrow (the hearts and hint keep theirs):
+            // the title shrinks to fit, the subline wraps (see missionLabelRow).
+            <View style={styles.headerTitleColumn}>
+              <Text
+                numberOfLines={fitTitle ? 1 : undefined}
+                adjustsFontSizeToFit={fitTitle || undefined}
+                minimumFontScale={fitTitle ? HEADER_TITLE_MIN_FONT_SCALE : undefined}
+                onTextLayout={fitTitle ? undefined : onTitleTextLayout}
+                style={[styles.levelLabel, { color: p.accentLight }]}
+              >
                 {dailyDay !== null ? DAILY_HEADER_LABEL : <>LEVEL {levelIndex + 1}</>}
               </Text>
-              <View style={styles.missionLabelRow}>
-                {adShowFailed && phase === 'playing' ? (
+              <View
+                onLayout={onMissionRowLayout}
+                style={[styles.missionLabelRow, showHintFailed && { minHeight: missionRowHeight.current }]}
+              >
+                {showHintFailed ? (
                   // Takes the mission label's place while shown: appended after
                   // "N left" it pushed the hint button off a 411 dp-wide screen.
-                  <Text style={[styles.diffLabel, { color: diffColor }]}>
+                  <Text style={[styles.diffLabel, styles.missionText, { color: diffColor }]}>
                     Hint unavailable ·{' '}
                   </Text>
                 ) : (
@@ -1208,7 +1251,7 @@ const MissionLabel = React.memo(function MissionLabel({
     return <MissionBadgeRow difficulty={difficulty} shapeName={shapeName} color={color} mask={mask} />;
   }
   return (
-    <Text style={[styles.diffLabel, { color }]}>
+    <Text style={[styles.diffLabel, styles.missionText, { color }]}>
       {Difficulties.displayName(difficulty)} · {shapeName} ·{' '}
     </Text>
   );
@@ -1474,13 +1517,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    // HEADER-FIT: a long tier line shrinks this block, not the screen's right edge (it pushed the hint off 360 dp).
+    flexShrink: 1,
   },
   tutorialHeaderLeft: { flex: 1 },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexShrink: 0, // HEADER-FIT: the hearts and the hint keep their size and their right edge
   },
+  headerTitleColumn: { flexShrink: 1 },
   tutorialHeaderRight: { flexShrink: 0 },
   levelLabel: {
     ...Type.gameLevel, // 24 (was 18: 18 bold is body text and accentLight fails 4.5:1, W0-06); matches Home
@@ -1497,11 +1544,16 @@ const styles = StyleSheet.create({
   diffLabel: {
     ...Type.gameTier,
   },
+  // HEADER-FIT: when "tier · shape · N left" is wider than the column, the counter moves to a second line whole (and
+  // at large font scales the words wrap inside missionText). Never an ellipsis: the shape and the count stay readable.
+  // A line that fits lays out exactly as before, so one-line levels keep their header height and board.
   missionLabelRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     marginTop: 2,
   },
+  missionText: { flexShrink: 1 },
   // W5-06: the badge row; `center` keeps the one-line-tall badge inside the
   // texts' line box. Its baseline (for missionLabelRow) is the tier Text's.
   missionBadgeRow: {
