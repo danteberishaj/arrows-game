@@ -56,3 +56,12 @@ export const ART_PAPER_TEXTURE_OPACITY = 0.04; // OWNER-PICKED STARTING VALUE
  * button's W0-06 strike is not drawn over it. OFF: every one of these renders exactly as before.
  */
 export const ART_ICONS_ENABLED = process.env.EXPO_PUBLIC_ART_ICONS === '1';
+
+/**
+ * W5-16 (dead-band option D, owner pick 2026-10-06): the game screen's hint button leaves the header's right end and
+ * floats at the bottom left, the mirror twin of the removed POLISH-T4 "#" grid toggle (a 44 dp HeaderButton, 16 dp
+ * plus the safe-area insets from its corner). Relocation only: the same handler, ready/disabled state, a11y name,
+ * role and hit slop; hidden on tutorial boards as before; it stays on top of the board when the player zooms in,
+ * as the "#" toggle did. The hearts then end the header row. OFF: the game screen renders exactly as before.
+ */
+export const ART_DEAD_BAND_ENABLED = process.env.EXPO_PUBLIC_ART_DEAD_BAND === '1';

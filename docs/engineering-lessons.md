@@ -673,3 +673,32 @@ Recount it from the live code at the current commit, and name the commit next to
 `tsc --noEmit` failed on them). Run tsc on new test files before calling them green.
 **Verified:** `npx tsx scripts/analysis/display-tier-report.ts` and `artifacts/W3-20/menu-cost/node-timing.txt`.
 Report: [W3-20](next-level/reports/W3-20.md).
+
+## A spec's "mirror the existing control" can name a removed control; a test build's camera is not the player's
+
+**Observed (2026-10-06, W5-16):** the brief told the floating hint to mirror "the existing '#' grid toggle"
+(`gridToggle`, `GRID_TOGGLE_INSET_PT`). That toggle was removed on 2026-09-30 (`b0fe740`), four days after the W5-15
+mocks that still show it. The W5-16 build copies its last definition from `b0fe740^` (a 44 dp `HeaderButton`,
+16 dp plus the insets), and "both bottom edges to ±1 px" became "the button's edges at the specified rect to ±1 px".
+**Also observed:** the installed test APK (PETAL-ADS-01) has `EXPO_PUBLIC_META_ZOOMED_CAMERA=1`, so its "flag-OFF"
+captures are not the camera players get. An overlap check against its ink mask would have compared two cameras.
+W5-16 built a flag-OFF twin of the flag-ON APK (the same env minus one variable, the same gradle recipe and the same
+cert) instead. **Also observed:** with `META_ZOOMED_CAMERA` off, BoardView fits the board to the **raw** layout,
+nav-bar strip included (`cameraBottomInset` is 0), so `dead-band.ts`'s "adjusted" slack under-states how far the
+board reaches down. A model that used the raw layout (`artifacts/W5-16/analysis/button-clearance.ts`) matched the
+captures to within 1.5 dp: native level 18 at 58.3 dp measured against 57.9 dp modelled, and 360x640 level 110 at
+50.0 dp against 48.5 dp. **Rules:**
+- Before mirroring a control named in a brief, `git log -S` the identifier.
+- Before quoting a flag-OFF capture as the baseline, diff the installed build's `env.txt` against the camera flags.
+- To find which boards a bottom control can cover, measure clearance from the raw layout, not from the adjusted
+  viewport.
+
+**Harness gotchas:**
+- uiautomator did not expose the rewarded test ad's "Reward granted" text on the second ad, although the screencap
+  showed it. Wait on the screencap, or OCR it, as well as the dump.
+- Two launches of the same board can differ by a few anti-aliased stroke-edge pixels: 4 pixels, RGB-sum ≤ 43. A
+  whole-screen OFF/ON diff needs a small tolerance.
+- The search for a changed control must stay near where the control is expected. Otherwise one stray pixel stretches
+  its bounding box over half the screen.
+
+Report: [W5-16](next-level/reports/W5-16.md).

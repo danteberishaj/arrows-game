@@ -55,6 +55,7 @@ import {
 } from '../featureFlags';
 import { Ads } from './ads';
 import {
+  ART_DEAD_BAND_ENABLED,
   ART_HEADER_SILHOUETTE_ENABLED,
   ART_ICONS_ENABLED,
   ART_PANEL_DEPTH_ENABLED,
@@ -148,6 +149,17 @@ const STREAK_SPARKLE_DP = 13; // OWNER-PICKED STARTING VALUE (the streak line's 
 const CONTINUE_A11Y_LABEL = 'Continue with one more heart (ad)'; // OWNER-PICKED STARTING VALUE
 const BACK_A11Y_LABEL = 'Back'; // OWNER-PICKED STARTING VALUE (the gallery's back button's name)
 const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
+
+/**
+ * W5-16 (ART_DEAD_BAND_ENABLED): the floating hint is the mirror twin of the removed POLISH-T4 "#" grid toggle
+ * (b0fe740^ GRID_TOGGLE_SIZE_PT / GRID_TOGGLE_INSET_PT): a 44 dp HeaderButton whose edge sits 16 dp plus the
+ * safe-area insets from the bottom-left corner. Its wrapper is padded by the button's hit slop (HeaderButton's
+ * `hitSlop={8}`), so the whole 60 dp target lies inside the wrapper (Android hit-tests children only inside their
+ * parent's bounds); `pointerEvents="box-none"` passes every other tap to the board.
+ */
+const FLOATING_HINT_SIZE_PT = 44; // OWNER-PICKED STARTING VALUE (the "#" toggle's, design spec A)
+const FLOATING_HINT_INSET_PT = 16; // OWNER-PICKED STARTING VALUE (the "#" toggle's, design spec A)
+const FLOATING_HINT_SLOP_PT = 8; // HeaderButton's hitSlop
 
 /** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
@@ -1014,6 +1026,21 @@ export function GameScreen({
     </>)
   ) : null;
 
+  // W5-16: the one hint button, in the header (today) or floating at the bottom left (ART_DEAD_BAND_ENABLED, a
+  // bigger `size`); the same handler, ready/disabled state, a11y name, role and hit slop either way.
+  const hintButton = (size?: number) => (
+    <HeaderButton
+      label="💡"
+      icon="hint"
+      accessibilityLabel={HINT_A11Y_LABEL}
+      palette={p}
+      onPress={onHint}
+      size={size}
+      active={!terminalPending && !adBusy && !panelExiting}
+      disabled={!hintReady || terminalPending || adBusy || panelExiting}
+    />
+  );
+
   return (
     <View
       testID={benchmarkMode ? 'perf-game-screen' : undefined}
@@ -1092,17 +1119,7 @@ export function GameScreen({
             palette={p}
             refillToken={refillToken}
           />
-          {!activeTutorialId && (
-            <HeaderButton
-              label="💡"
-              icon="hint"
-              accessibilityLabel={HINT_A11Y_LABEL}
-              palette={p}
-              onPress={onHint}
-              active={!terminalPending && !adBusy && !panelExiting}
-              disabled={!hintReady || terminalPending || adBusy || panelExiting}
-            />
-          )}
+          {!activeTutorialId && !ART_DEAD_BAND_ENABLED && hintButton()}
         </View>
       </View>
 
@@ -1120,6 +1137,24 @@ export function GameScreen({
       />
 
       {/* OWNER 2026-09-30: the board shows dots only; the POLISH-T4 "#" grid-lines toggle is removed. */}
+
+      {/* W5-16 (ART_DEAD_BAND_ENABLED): the hint floats at the bottom left, the "#" toggle's mirror. Like the "#",
+          it stays on top of the board at any zoom, and the win/lose overlays and the level scrim cover it. */}
+      {ART_DEAD_BAND_ENABLED && !activeTutorialId && (
+        <View
+          testID="floating-hint"
+          pointerEvents="box-none"
+          style={[
+            styles.floatingHint,
+            {
+              left: insets.left + FLOATING_HINT_INSET_PT - FLOATING_HINT_SLOP_PT,
+              bottom: insets.bottom + FLOATING_HINT_INSET_PT - FLOATING_HINT_SLOP_PT,
+            },
+          ]}
+        >
+          {hintButton(FLOATING_HINT_SIZE_PT)}
+        </View>
+      )}
 
       {/* Win / lose overlays */}
       {overlayMounted && (panelPresence ? (
@@ -1463,6 +1498,8 @@ function hexA(hex: string, a: number): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // W5-16: the floating hint's wrapper (its offsets come from the safe-area insets at render).
+  floatingHint: { position: 'absolute', padding: FLOATING_HINT_SLOP_PT },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
