@@ -643,3 +643,18 @@ gradle builds. A JS repack would need the upload key, because the installed app 
   4. Admitting shapes to v2 changed v2 level 1, from Pine to Diamond, because the first bag window holds every
      candidate. An admission re-deals from level 1, so it must come before a freeze.
 - Report: [W3-21](next-level/reports/W3-21.md).
+
+## A playtest log parser needs a real capture, integrity exits and a driver that survives the menu
+
+**Observed (2026-10-06, W3-17 prep):** the `[ftue]` log has no line for starting hearts, a loss, a rewarded continue,
+a hint or an ad, so every per-board outcome in the playtest tables is derived. **Practice (verified on emulator-5556):**
+derive from event order only, and make every derivation checkable. The parser
+`scripts/analysis/ftue-playtest-tables.mjs` replays a 3-heart model and checks it against each `clear <heartsLeft>`,
+reconciles removals against `arrowCount`, cross-checks `gen=` against the build in the file name, and exits 3 (tables
+still written, FAIL lines) on any contradiction, or 1 on a malformed line. Its fixtures are unedited captures made with
+the owner's exact command (`adb logcat -v time -s ReactNativeJS:I`). The dry run's numbers matched the win panels'
+arrow counts and the heart pips. Mutations (reconciliation off, 4 starting hearts, no continue inference) each failed
+tests. **Driver gotchas:** the menu's Play pill animates forever, so `uiautomator dump` fails there ("could not get idle
+state"). Tap 720,1925 and prove the tap with the `board_mount` line. `adb shell "dumpsys … | grep X"` exits 1 when there
+is no match yet, and `device.mjs adb()` throws on that. Append `|| true`. Report:
+[W3-17-prep](next-level/reports/W3-17-prep.md).

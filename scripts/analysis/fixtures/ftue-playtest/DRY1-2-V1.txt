@@ -1,0 +1,88 @@
+--------- beginning of main
+10-06 12:11:54.660 I/ReactNativeJS( 8711): Running "main"
+10-06 12:11:57.810 I/ReactNativeJS( 8711): [ads] AdMob initialize resolved; adapters=1; unitSet=test
+10-06 12:12:01.711 I/ReactNativeJS( 8711): [ftue] board_mount T1 0 gen=1 arrows=6 shape=
+10-06 12:12:09.505 I/ReactNativeJS( 8711): [ftue] removal 7794
+10-06 12:12:10.766 I/ReactNativeJS( 8711): [ftue] removal 9055
+10-06 12:12:11.779 I/ReactNativeJS( 8711): [ftue] removal 10068
+10-06 12:12:12.758 I/ReactNativeJS( 8711): [ftue] removal 11047
+10-06 12:12:13.716 I/ReactNativeJS( 8711): [ftue] removal 12005
+10-06 12:12:15.601 I/ReactNativeJS( 8711): [ftue] removal 13890
+10-06 12:12:15.634 I/ReactNativeJS( 8711): [ftue] clear 3 13922
+10-06 12:12:16.107 I/ReactNativeJS( 8711): [ftue] board_mount T2 0 gen=1 arrows=5 shape=
+10-06 12:12:21.613 I/ReactNativeJS( 8711): [ftue] blocked false grace 5504
+10-06 12:12:24.083 I/ReactNativeJS( 8711): [ftue] removal 7976
+10-06 12:12:25.016 I/ReactNativeJS( 8711): [ftue] removal 8909
+10-06 12:12:25.823 I/ReactNativeJS( 8711): [ftue] removal 9716
+10-06 12:12:26.654 I/ReactNativeJS( 8711): [ftue] removal 10547
+10-06 12:12:28.429 I/ReactNativeJS( 8711): [ftue] removal 12322
+10-06 12:12:28.447 I/ReactNativeJS( 8711): [ftue] clear 3 12340
+10-06 12:12:28.944 I/ReactNativeJS( 8711): [ftue] board_mount 0 0 gen=1 arrows=60 shape=Circle
+10-06 12:12:34.167 I/ReactNativeJS( 8711): [ftue] removal 5223
+10-06 12:12:35.139 I/ReactNativeJS( 8711): [ftue] blocked true none 6195
+10-06 12:12:37.808 I/ReactNativeJS( 8711): [ftue] blocked true none 8864
+10-06 12:12:41.874 I/ReactNativeJS( 8711): [ftue] blocked true none 12930
+10-06 12:12:59.877 I/ReactNativeJS( 8711): [ftue] restart 30932
+10-06 12:13:00.011 I/ReactNativeJS( 8711): [ftue] board_mount 0 0 gen=1 arrows=60 shape=Circle
+10-06 12:13:07.472 I/ReactNativeJS( 8711): [ftue] blocked false assist 7474
+10-06 12:13:10.309 I/ReactNativeJS( 8711): [ftue] removal 10312
+10-06 12:13:11.442 I/ReactNativeJS( 8711): [ftue] removal 11445
+10-06 12:13:12.706 I/ReactNativeJS( 8711): [ftue] removal 12709
+10-06 12:13:13.745 I/ReactNativeJS( 8711): [ftue] removal 13748
+10-06 12:13:15.034 I/ReactNativeJS( 8711): [ftue] removal 15037
+10-06 12:13:16.381 I/ReactNativeJS( 8711): [ftue] removal 16384
+10-06 12:13:17.545 I/ReactNativeJS( 8711): [ftue] removal 17548
+10-06 12:13:18.793 I/ReactNativeJS( 8711): [ftue] removal 18796
+10-06 12:13:20.075 I/ReactNativeJS( 8711): [ftue] removal 20078
+10-06 12:13:21.253 I/ReactNativeJS( 8711): [ftue] removal 21256
+10-06 12:13:22.461 I/ReactNativeJS( 8711): [ftue] removal 22464
+10-06 12:13:23.617 I/ReactNativeJS( 8711): [ftue] removal 23620
+10-06 12:13:24.415 I/ReactNativeJS( 8711): [ftue] removal 24418
+10-06 12:13:25.185 I/ReactNativeJS( 8711): [ftue] removal 25188
+10-06 12:13:25.977 I/ReactNativeJS( 8711): [ftue] removal 25980
+10-06 12:13:26.755 I/ReactNativeJS( 8711): [ftue] removal 26758
+10-06 12:13:27.527 I/ReactNativeJS( 8711): [ftue] removal 27530
+10-06 12:13:28.310 I/ReactNativeJS( 8711): [ftue] removal 28313
+10-06 12:13:29.087 I/ReactNativeJS( 8711): [ftue] removal 29090
+10-06 12:13:29.857 I/ReactNativeJS( 8711): [ftue] removal 29860
+10-06 12:13:30.618 I/ReactNativeJS( 8711): [ftue] removal 30621
+10-06 12:13:31.406 I/ReactNativeJS( 8711): [ftue] removal 31409
+10-06 12:13:32.173 I/ReactNativeJS( 8711): [ftue] removal 32176
+10-06 12:13:32.947 I/ReactNativeJS( 8711): [ftue] removal 32950
+10-06 12:13:33.709 I/ReactNativeJS( 8711): [ftue] removal 33712
+10-06 12:13:34.474 I/ReactNativeJS( 8711): [ftue] removal 34477
+10-06 12:13:35.237 I/ReactNativeJS( 8711): [ftue] removal 35240
+10-06 12:13:36.000 I/ReactNativeJS( 8711): [ftue] removal 36003
+10-06 12:13:36.769 I/ReactNativeJS( 8711): [ftue] removal 36772
+10-06 12:13:37.547 I/ReactNativeJS( 8711): [ftue] removal 37550
+10-06 12:13:38.324 I/ReactNativeJS( 8711): [ftue] removal 38327
+10-06 12:13:39.104 I/ReactNativeJS( 8711): [ftue] removal 39107
+10-06 12:13:39.896 I/ReactNativeJS( 8711): [ftue] removal 39899
+10-06 12:13:40.666 I/ReactNativeJS( 8711): [ftue] removal 40669
+10-06 12:13:41.433 I/ReactNativeJS( 8711): [ftue] removal 41436
+10-06 12:13:42.311 I/ReactNativeJS( 8711): [ftue] removal 42314
+10-06 12:13:43.112 I/ReactNativeJS( 8711): [ftue] removal 43115
+10-06 12:13:43.885 I/ReactNativeJS( 8711): [ftue] removal 43888
+10-06 12:13:44.776 I/ReactNativeJS( 8711): [ftue] removal 44779
+10-06 12:13:45.570 I/ReactNativeJS( 8711): [ftue] removal 45573
+10-06 12:13:46.358 I/ReactNativeJS( 8711): [ftue] removal 46361
+10-06 12:13:47.180 I/ReactNativeJS( 8711): [ftue] removal 47183
+10-06 12:13:47.974 I/ReactNativeJS( 8711): [ftue] removal 47977
+10-06 12:13:48.817 I/ReactNativeJS( 8711): [ftue] removal 48820
+10-06 12:13:49.745 I/ReactNativeJS( 8711): [ftue] removal 49748
+10-06 12:13:50.595 I/ReactNativeJS( 8711): [ftue] removal 50598
+10-06 12:13:51.413 I/ReactNativeJS( 8711): [ftue] removal 51416
+10-06 12:13:52.201 I/ReactNativeJS( 8711): [ftue] removal 52204
+10-06 12:13:53.028 I/ReactNativeJS( 8711): [ftue] removal 53031
+10-06 12:13:53.894 I/ReactNativeJS( 8711): [ftue] removal 53897
+10-06 12:13:54.722 I/ReactNativeJS( 8711): [ftue] removal 54725
+10-06 12:13:55.512 I/ReactNativeJS( 8711): [ftue] removal 55515
+10-06 12:13:56.348 I/ReactNativeJS( 8711): [ftue] removal 56351
+10-06 12:13:57.115 I/ReactNativeJS( 8711): [ftue] removal 57118
+10-06 12:13:57.890 I/ReactNativeJS( 8711): [ftue] removal 57893
+10-06 12:13:58.660 I/ReactNativeJS( 8711): [ftue] removal 58663
+10-06 12:13:59.417 I/ReactNativeJS( 8711): [ftue] removal 59420
+10-06 12:14:00.179 I/ReactNativeJS( 8711): [ftue] removal 60182
+10-06 12:14:00.949 I/ReactNativeJS( 8711): [ftue] removal 60952
+10-06 12:14:02.579 I/ReactNativeJS( 8711): [ftue] removal 62582
+10-06 12:14:02.590 I/ReactNativeJS( 8711): [ftue] clear 3 62593
