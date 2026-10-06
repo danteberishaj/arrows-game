@@ -255,7 +255,7 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:375`, sizeSite: `${HS}:573`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
   { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:415`, sizeSite: `${HS}:573`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
   { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:239`, sizeSite: `${HS}:573`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
-  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:194` },
+  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:43', sizeSite: `${HS}:194` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
   { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1136`, sizeSite: `${GS}:1586` },

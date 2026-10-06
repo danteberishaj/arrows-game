@@ -39,7 +39,7 @@ values below equal `theme.ts` at the commit that last edited this table.
 | glyph off | `glyphOff` | `#8D80C6` | `#6C6398` | off or disabled header glyph and the sound-off strike (`HeaderButton.tsx:66,115`, `HomeScreen.tsx:283`) |
 | spent pip | `pipSpent` | `#988CCB` | `#635B8B` | spent heart, drawn as an outline (`GameScreen.tsx:1366`) |
 | unearned star | `starUnearned` | `#8D80C6` | `#6C6398` | unearned star on the win panel (`GameScreen.tsx:1443`) |
-| ink | `ink` | `#191724` | `#EFEDF9` | arrows (`BoardView.tsx:1096`), wordmark text (`Wordmark.tsx:35`), splash arrow (`SplashScreen.tsx:161`) |
+| ink | `ink` | `#191724` | `#EFEDF9` | arrows (`BoardView.tsx:1096`), wordmark text (`Wordmark.tsx:43`), splash arrow (`SplashScreen.tsx:161`) |
 | ink-dim | `inkDim` | `#6D6988` | `#A29DC1` | Normal tier label (`GameScreen.tsx:902`, `HomeScreen.tsx:160`), panel subline (`GameScreen.tsx:937`), Retry and disabled Continue labels (`GameScreen.tsx:967,1001`; the disabled Continue fill is `bg`, `GameScreen.tsx:956`), stats line (`HomeScreen.tsx:332`) |
 | accent | `accent` | `#6D4AEF` | `#7B5BF5` | Play pill (`HomeScreen.tsx:210`), hint and press preview (`StaticBoardSurface.native.tsx:330,494`), "Cleared!" title (`GameScreen.tsx:895`), panel buttons (`GameScreen.tsx:957,995`), earned stars (`GameScreen.tsx:1443`), splash arrowhead (`SplashScreen.tsx:171`) |
 | accent-light | `accentLight` | `#8F76F0` | `#A98FF8` | "Level N" labels, both 24 Bold (`GameScreen.tsx:1046`, `HomeScreen.tsx:194`) |
@@ -63,8 +63,11 @@ One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled throug
 `@expo-google-fonts/fredoka` (`App.tsx:1-2,108`) as two families, SemiBold and Bold
 (`src/ui/theme.ts:99-102`).
 - Wordmark "▲rrows": size 56 on the menu and splash (`HomeScreen.tsx:192`, `SplashScreen.tsx:153`),
-  Bold, `ink` (`Wordmark.tsx:31-40`). The capital A is the brand-mark image `assets/images/mark.png`
-  with its violet and magenta baked in (`Wordmark.tsx:25-29`), so it reads on both themes.
+  Bold, `ink` (`Wordmark.tsx:39-50`). The capital A is the brand-mark vector `assets/images/mark.svg`
+  (nine flat faces: violet `#6C49E5`/`#5130C2`, magenta `#E63C7F`/`#BA2469`, baked in so it reads on
+  both themes), drawn with react-native-svg from `src/ui/brandMark.ts` (`Wordmark.tsx:29-37`). Every
+  emblem raster (`mark.png` for the splash, the launcher icon set, the favicon) and `brandMark.ts` are
+  generated from the SVG by `npx tsx scripts/art/render-mark.ts`; never resize a PNG instead.
 - Menu: "Level N" 24 Bold (`HomeScreen.tsx:533-536`); tier 15 SemiBold (`HomeScreen.tsx:537-540`);
   Play label 22 Bold (`HomeScreen.tsx:548-550`); stats line 13 SemiBold (`HomeScreen.tsx:551-554`).
 - Game header: "LEVEL N" 24 Bold (`GameScreen.tsx:1497-1534`); tier · shape · count line 12 SemiBold
