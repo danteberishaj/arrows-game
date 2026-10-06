@@ -80,7 +80,7 @@ import { CLEAR_REVEAL_FADE_IN_MS, CLEAR_REVEAL_MIN_STROKE_PT } from './artConfig
 import { StaticBoardSurface } from './StaticBoardSurface';
 import { clearRevealRemainingMs } from './clearRevealTiming';
 import { maskOutlinePath } from './silhouette';
-import { EMPTY_BOARD_HOLD_MS } from './gameSessionLifecycle';
+import { clearRevealStartMs } from './gameSessionLifecycle';
 import type { ExitMotion } from './nativeExitAnimation';
 import type { ClearRevealArt, NativeExitAnimation } from './StaticBoardSurface.types';
 import { BlockedTapLedger, isGhostTap, type RecentRemoval } from './tapRules';
@@ -244,7 +244,7 @@ export interface BoardViewProps {
   gridLines?: boolean;
   /**
    * W5-17 (ART_CLEAR_REVEAL_ENABLED): the level's mask; its outline (silhouette.ts `maskOutlinePath`, board space) is
-   * drawn once the clearing exit has left and EMPTY_BOARD_HOLD_MS has passed. Absent, or no filled cell = none.
+   * drawn once the clearing exit has left and CLEAR_REVEAL_HOLD_MS has passed. Absent, or no filled cell = none.
    */
   clearRevealMask?: readonly (readonly boolean[])[];
 }
@@ -725,7 +725,7 @@ export function BoardView({
       // W5-17: the outline appears after the exit's last pixel and the empty-board hold (GameScreen's panel waits the
       // same hold plus the reveal slot). Reduced motion: nothing (the panel does not wait for it either).
       if (cleared && clearRevealOutline !== '' && !reducedMotion) {
-        setClearReveal({ id, delayMs: Math.max(0, exitVisibleMs) + EMPTY_BOARD_HOLD_MS, atMs: Date.now() });
+        setClearReveal({ id, delayMs: clearRevealStartMs(exitVisibleMs), atMs: Date.now() });
       }
       onRemoved(cleared, exitVisibleMs);
     } else {

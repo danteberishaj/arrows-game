@@ -59,9 +59,10 @@ export const ART_ICONS_ENABLED = process.env.EXPO_PUBLIC_ART_ICONS === '1';
 
 /**
  * W5-17 (owner set B, 2026-10-06, docs/owner-rulings-2026-10-06.md Q3): once the last arrow's exit has left the board
- * and the 250 ms empty-board hold is over, the cleared shape's outline (silhouette.ts `maskOutlinePath`, the level's
- * real mask in board space) is drawn once on the empty board in `accent`, fading in over CLEAR_REVEAL_FADE_IN_MS and
- * then held; the win panel arrives CLEAR_REVEAL_MS (400) after the hold began. The outline is not removed when the
+ * and the empty-board hold is over (150 ms, CLEAR_REVEAL_HOLD_MS, since the owner's follow-up ruling the same day),
+ * the cleared shape's outline (silhouette.ts `maskOutlinePath`, the level's real mask in board space, corners rounded)
+ * is drawn once on the empty board in `accent`, fading in over CLEAR_REVEAL_FADE_IN_MS and then held; the win panel
+ * arrives CLEAR_REVEAL_MS (400) after the hold ends. The outline is not removed when the
  * panel arrives: it stays under the panel's scrim until the board is replaced (Next / Retry), so it never pops off.
  * Reduced motion: nothing is mounted and the panel does not wait for it. Tutorial boards (empty mask): nothing. Turning
  * it on also applies W2-06's timeline (exit + hold + reveal) whatever META_POST_CLEAR_TIMELINE says. OFF: exactly as
@@ -74,3 +75,11 @@ export const CLEAR_REVEAL_FADE_IN_MS = 150; // OWNER-PICKED 2026-10-06 (set B)
 
 /** The outline's minimum stroke on screen, in points (the rulings mock-up's 2 dp); never thinner than an arrow. */
 export const CLEAR_REVEAL_MIN_STROKE_PT = 2; // OWNER-PICKED STARTING VALUE (the owner saw it in the q3 mock-up)
+
+/**
+ * Owner ruling 2026-10-06 (b): the outline's staircase corners (convex and concave, outer contours and holes) are
+ * rounded with circular fillets of this radius, in cells, clamped to half of each adjacent straight run
+ * (silhouette.ts `maskOutlinePath`). The owner's range is 0.35..0.5; 0.5 turns every 1-cell step into one smooth
+ * S-curve with no flat tread left.
+ */
+export const CLEAR_REVEAL_CORNER_RADIUS_CELLS = 0.5; // OWNER-PICKED STARTING VALUE (range 0.35..0.5, 2026-10-06)

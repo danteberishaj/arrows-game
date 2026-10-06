@@ -805,3 +805,27 @@ before the panel in every unstalled run); the reconciliation table and builds ar
 
 **Verified:** jest (layout + vector tests), the seam measurement, `scripts/art/mark-audit.ts`.
 **Unverified:** device rendering of the Svg path (react-native-svg on Android Canvas). Report: [W5-13](next-level/reports/W5-13.md).
+
+## Rounding a cell staircase: fillets scallop diagonals; geometry tests need un-normalised input
+
+**Observed (2026-10-06, W5-17 follow-up):**
+- Circular fillets on every corner of a mask outline (r = 0.5 cell, clamped to half of each adjacent run) remove the
+  hard corners. But a diagonal of 1-cell steps turns into a row of S-curves (scallops), not a straight edge, because
+  its corners alternate convex and concave. Any per-corner rounding does this at any radius. Seen in
+  `artifacts/W5-17-ROUND/preview.png` and `detail-top-left-quadrant.png`. Whether it reads as "smooth" is the owner's
+  call.
+- A test helper that flattened paths added the implied `Z` closing run. That made a "loop is closed" assertion pass
+  for any path. The closure check has to read the written path: the last explicit point equals the `M` point.
+- A missing closing run in the reference staircase made the deviation check report 1 cell (40 units) on every
+  mask: a harness bug, not a geometry one.
+
+**Rules:**
+- Read geometry invariants (closure, vertex counts) from the raw string. Run distance and intersection checks on a
+  flattening that includes the implied closing run.
+- Give each geometry detector a positive control (a bow-tie, a fold-back, a far-off curve). Also mutate the code
+  under test once (remove the clamp: 7 tests failed) before trusting a green run.
+- For a "smooth shape" ask, show the owner a zoomed detail as well as the board-scale view. Scallops are near
+  invisible at board scale and obvious at 4x.
+
+**Verified:** jest (`src/ui/__tests__/clearReveal.test.ts`), the mutation run and the preview render.
+**Unverified:** the Skia rendering on device (vc17 build). Report: [W5-17](next-level/reports/W5-17.md), Follow-up 2026-10-06.

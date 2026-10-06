@@ -14,11 +14,13 @@ import {
   FEEDBACK_CLEANUP_MARGIN_MS,
 } from '../feedbackCurves';
 import {
+  CLEAR_REVEAL_HOLD_MS,
   CLEAR_REVEAL_MS,
   createDailySession,
   createLevelSession,
   createTutorialSession,
   EMPTY_BOARD_HOLD_MS,
+  emptyBoardHoldMs,
   levelGenVersion,
   LOSE_PANEL_DELAY_MS,
   TerminalTransitionGuard,
@@ -560,5 +562,13 @@ describe('W2-06 post-clear timeline (META_POST_CLEAR_TIMELINE)', () => {
     expect([250, 350, 500]).toContain(EMPTY_BOARD_HOLD_MS);
     expect(EMPTY_BOARD_HOLD_MS).toBe(250);
     expect(CLEAR_REVEAL_MS).toBe(400);
+  });
+
+  it('owner ruling 2026-10-06 (a): the pause before a drawn outline is 150 ms; with no outline the 250 ms hold stays', () => {
+    expect(CLEAR_REVEAL_HOLD_MS).toBe(150);
+    expect(emptyBoardHoldMs(CLEAR_REVEAL_MS)).toBe(CLEAR_REVEAL_HOLD_MS);
+    expect(emptyBoardHoldMs(0)).toBe(EMPTY_BOARD_HOLD_MS);
+    expect(wonPanelDelayMs(244, emptyBoardHoldMs(CLEAR_REVEAL_MS), CLEAR_REVEAL_MS)).toBe(794);
+    expect(wonPanelDelayMs(244, emptyBoardHoldMs(0), 0)).toBe(494);
   });
 });

@@ -23,8 +23,15 @@ export const WON_PANEL_DELAY_MS = 450; // OWNER-PICKED STARTING VALUE
  * whatever that exit did. OFF, the flat WON_PANEL_DELAY_MS left 130..270 ms (the board-edge exits) or ~265..362 ms
  * (POLISH-T10's screen-edge exits, computed from exitOnScreenMs' 88..185 ms band) of empty board, depending on how far the last arrow travelled on screen.
  * Owner set B, 2026-10-06 (docs/owner-rulings-2026-10-06.md Q3): 250 ms, then the W5-17 outline for CLEAR_REVEAL_MS.
+ * Since the owner's follow-up ruling the same day, the hold before a DRAWN outline is CLEAR_REVEAL_HOLD_MS (150 ms);
+ * this 250 ms stays for W2-06 alone and for any clear without an outline (emptyBoardHoldMs).
  */
 export const EMPTY_BOARD_HOLD_MS = 250; // OWNER-PICKED 2026-10-06 (set B)
+/**
+ * W5-17 follow-up (owner ruling 2026-10-06, "yes do both"): the empty-board pause before the outline when one is
+ * drawn, so the panel lands about 0.8 s after the last tap on the default board-edge exit (244 + 150 + 400 = 794 ms).
+ */
+export const CLEAR_REVEAL_HOLD_MS = 150; // OWNER-PICKED 2026-10-06 (follow-up to set B)
 /**
  * W5-17 (ART_CLEAR_REVEAL_ENABLED): the slot the cleared board's outline takes between the hold and the panel, owner
  * set B (150 ms fade-in, then held). Only spent when an outline is actually drawn: see clearRevealSlotMs.
@@ -41,6 +48,18 @@ export function clearRevealSlotMs({ enabled, reducedMotion, mask }: {
   mask: readonly (readonly boolean[])[];
 }): number {
   return enabled && !reducedMotion && mask.some((row) => row.some(Boolean)) ? CLEAR_REVEAL_MS : 0;
+}
+
+/** The empty-board hold for one clear: CLEAR_REVEAL_HOLD_MS before a drawn outline (revealMs > 0), else W2-06's
+ * EMPTY_BOARD_HOLD_MS. */
+export function emptyBoardHoldMs(revealMs: number): number {
+  return revealMs > 0 ? CLEAR_REVEAL_HOLD_MS : EMPTY_BOARD_HOLD_MS;
+}
+
+/** W5-17: when the outline starts, from the clearing tap: the exit's visible time (non-finite or negative = 0) + the
+ * reveal's hold. GameScreen's panel lands CLEAR_REVEAL_MS after it (wonPanelDelayMs with emptyBoardHoldMs). */
+export function clearRevealStartMs(exitVisibleMs: number): number {
+  return (Number.isFinite(exitVisibleMs) ? Math.max(0, exitVisibleMs) : 0) + CLEAR_REVEAL_HOLD_MS;
 }
 
 /**

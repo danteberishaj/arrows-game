@@ -87,7 +87,7 @@ import {
 } from './heartPip';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
-  clearRevealSlotMs, createDailySession, createLevelSession, createTutorialSession, EMPTY_BOARD_HOLD_MS,
+  clearRevealSlotMs, createDailySession, createLevelSession, createTutorialSession, emptyBoardHoldMs,
   levelGenVersion, LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS, wonPanelDelayMs,
   TerminalTransitionGuard,
   type GamePhase,
@@ -560,15 +560,15 @@ export function GameScreen({
       perfectAtClearRef.current = perfect;
       // W2-06 (META_POST_CLEAR_TIMELINE): the final exit's last pixel, then the same empty-board hold (and W5-17's
       // reveal slot, only when the outline is drawn) whatever that exit did. OFF: the flat 450 ms from the tap.
-      const revealMs = clearRevealSlotMs({
-        enabled: ART_CLEAR_REVEAL_ENABLED, reducedMotion, mask: level.mask,
-      });
+      // The hold is 150 ms before a drawn outline (owner ruling 2026-10-06), else W2-06's 250 ms (emptyBoardHoldMs).
+      const revealMs = clearRevealSlotMs({ enabled: ART_CLEAR_REVEAL_ENABLED, reducedMotion, mask: level.mask });
+      const holdMs = emptyBoardHoldMs(revealMs);
       const wonDelayMs = META_POST_CLEAR_TIMELINE || ART_CLEAR_REVEAL_ENABLED
-        ? wonPanelDelayMs(exitVisibleMs, EMPTY_BOARD_HOLD_MS, revealMs)
+        ? wonPanelDelayMs(exitVisibleMs, holdMs, revealMs)
         : WON_PANEL_DELAY_MS;
       if (CAPTURE_DIAG) {
         console.log(`[capture-diag] clear wonDelayMs=${Math.round(wonDelayMs)} exitVisibleMs=${Math.round(exitVisibleMs)}`
-          + ` holdMs=${EMPTY_BOARD_HOLD_MS} revealMs=${revealMs}`);
+          + ` holdMs=${holdMs} revealMs=${revealMs}`);
       }
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;

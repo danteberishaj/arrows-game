@@ -4,8 +4,9 @@
  * (exitToScreenEdge.ts `visibleMs`; 0 for the diagnostic 'none' kind).
  * - flag OFF: the won panel (and a cleared tutorial's hand-off) waits the flat WON_PANEL_DELAY_MS (450 ms)
  *   whatever the final exit did, exactly as before;
- * - flag ON: it waits exitVisibleMs + EMPTY_BOARD_HOLD_MS + CLEAR_REVEAL_MS, so the empty board is held for the
- *   same time after a short and after a long final exit.
+ * - flag ON: it waits exitVisibleMs + EMPTY_BOARD_HOLD_MS (250 ms), so the empty board is held for the same time
+ *   after a short and after a long final exit; with W5-17's outline drawn, exitVisibleMs + CLEAR_REVEAL_HOLD_MS
+ *   (150 ms, owner ruling 2026-10-06) + CLEAR_REVEAL_MS (400 ms).
  * The frames (the hold measured from the last trail pixel to the first overlay pixel) close only on the emulator
  * captures in artifacts/W2-06/.
  */
@@ -159,28 +160,29 @@ describe('flag ON: the final exit, then the same empty-board hold', () => {
   });
 });
 
-describe('W5-17 ART_CLEAR_REVEAL_ENABLED (owner set B): exit + 250 ms hold + 400 ms outline slot', () => {
+describe('W5-17 ART_CLEAR_REVEAL_ENABLED (owner set B, pause 150 ms by the 2026-10-06 ruling): exit + 150 ms hold + 400 ms outline slot', () => {
   beforeEach(() => {
     mockFlags.ART_CLEAR_REVEAL_ENABLED = true;
   });
 
-  test.each([false, true])('META_POST_CLEAR_TIMELINE %p: the panel at exit + 250 + 400', (timeline) => {
+  test.each([false, true])('META_POST_CLEAR_TIMELINE %p: the panel at exit + 150 + 400', (timeline) => {
     mockFlags.META_POST_CLEAR_TIMELINE = timeline;
     const screen = renderGame();
     expect(mockBoardViewProps!.clearRevealMask!.some((row) => row.some(Boolean))).toBe(true);
     clearWithFinalExit(90);
-    panelAppearsAt(screen, 90 + 250 + 400);
+    panelAppearsAt(screen, 90 + 150 + 400);
   });
 
-  test('the panel lands 740..837 ms after the last tap over the measured 90..187 ms exit range', () => {
-    for (const exitMs of [90, 187]) {
+  test('the panel lands 794 ms after the last tap for the default board-edge exit (244 ms), 640..737 ms for 90..187 ms', () => {
+    for (const exitMs of [244, 90, 187]) {
       const screen = renderGame();
       clearWithFinalExit(exitMs);
-      panelAppearsAt(screen, exitMs + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS);
+      panelAppearsAt(screen, exitMs + lifecycle.CLEAR_REVEAL_HOLD_MS + lifecycle.CLEAR_REVEAL_MS);
       screen.unmount();
     }
-    expect(90 + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(740);
-    expect(187 + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(837);
+    expect(244 + lifecycle.CLEAR_REVEAL_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(794);
+    expect(90 + lifecycle.CLEAR_REVEAL_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(640);
+    expect(187 + lifecycle.CLEAR_REVEAL_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(737);
   });
 
   test("BoardView gets the level's real mask (it traces the outline from it)", () => {
@@ -190,7 +192,7 @@ describe('W5-17 ART_CLEAR_REVEAL_ENABLED (owner set B): exit + 250 ms hold + 400
     expect(mockBoardViewProps!.clearRevealMask).toEqual(LevelGenerator.generate(0, 1).mask);
   });
 
-  test('a tutorial board (empty mask) draws no outline and its hand-off does not wait for one', () => {
+  test('a tutorial board (empty mask) draws no outline: its hand-off waits W2-06\'s 250 ms hold, not 150 + 400', () => {
     renderGame('T1');
     const t1 = mockBoardViewProps!.board;
     expect(mockBoardViewProps!.clearRevealMask).toEqual([]);
