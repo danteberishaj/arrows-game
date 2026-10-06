@@ -21,12 +21,27 @@ export const WON_PANEL_DELAY_MS = 450; // OWNER-PICKED STARTING VALUE
 /**
  * W2-06 (META_POST_CLEAR_TIMELINE): the empty board is held for this long after the final exit's last pixel is gone,
  * whatever that exit did. OFF, the flat WON_PANEL_DELAY_MS left 130..270 ms (the board-edge exits) or ~265..362 ms
- * (POLISH-T10's screen-edge exits, computed from exitOnScreenMs' 88..185 ms band) of empty board, depending on how far the last arrow travelled on screen. The
- * owner's candidates are 250, 350 and 500 (artifacts/W2-06/owner/).
+ * (POLISH-T10's screen-edge exits, computed from exitOnScreenMs' 88..185 ms band) of empty board, depending on how far the last arrow travelled on screen.
+ * Owner set B, 2026-10-06 (docs/owner-rulings-2026-10-06.md Q3): 250 ms, then the W5-17 outline for CLEAR_REVEAL_MS.
  */
-export const EMPTY_BOARD_HOLD_MS = 350; // OWNER-PICKED STARTING VALUE
-/** W2-06: the slot W5's clear reveal (W5-17) will take between the hold and the panel. Reserved; W5 sets it. */
-export const CLEAR_REVEAL_MS = 0;
+export const EMPTY_BOARD_HOLD_MS = 250; // OWNER-PICKED 2026-10-06 (set B)
+/**
+ * W5-17 (ART_CLEAR_REVEAL_ENABLED): the slot the cleared board's outline takes between the hold and the panel, owner
+ * set B (150 ms fade-in, then held). Only spent when an outline is actually drawn: see clearRevealSlotMs.
+ */
+export const CLEAR_REVEAL_MS = 400; // OWNER-PICKED 2026-10-06 (set B)
+
+/**
+ * W5-17: the reveal slot for one clear: CLEAR_REVEAL_MS when the outline is drawn, else 0, so the panel never waits
+ * for an outline nobody sees (flag OFF; reduced motion, where nothing is mounted; a tutorial board's empty mask).
+ */
+export function clearRevealSlotMs({ enabled, reducedMotion, mask }: {
+  enabled: boolean;
+  reducedMotion: boolean;
+  mask: readonly (readonly boolean[])[];
+}): number {
+  return enabled && !reducedMotion && mask.some((row) => row.some(Boolean)) ? CLEAR_REVEAL_MS : 0;
+}
 
 /**
  * W2-06: the won panel's delay after the clearing tap = the final exit's visible time (when its last pixel is gone,

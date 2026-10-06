@@ -13,6 +13,7 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withDecay,
+  withDelay,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -75,9 +76,13 @@ import {
   NO_MARKS,
   settleColor,
 } from './missedMarks';
+import { CLEAR_REVEAL_FADE_IN_MS, CLEAR_REVEAL_MIN_STROKE_PT } from './artConfig';
 import { StaticBoardSurface } from './StaticBoardSurface';
+import { clearRevealRemainingMs } from './clearRevealTiming';
+import { maskOutlinePath } from './silhouette';
+import { EMPTY_BOARD_HOLD_MS } from './gameSessionLifecycle';
 import type { ExitMotion } from './nativeExitAnimation';
-import type { NativeExitAnimation } from './StaticBoardSurface.types';
+import type { ClearRevealArt, NativeExitAnimation } from './StaticBoardSurface.types';
 import { BlockedTapLedger, isGhostTap, type RecentRemoval } from './tapRules';
 import { Palette } from './theme';
 
@@ -237,6 +242,11 @@ export interface BoardViewProps {
   /** POLISH-T4 row/column lines (only with META_BOARD_GRID). No caller turns them on since the
    *  owner removed the "#" toggle (2026-09-30); the board shows dots only. */
   gridLines?: boolean;
+  /**
+   * W5-17 (ART_CLEAR_REVEAL_ENABLED): the level's mask; its outline (silhouette.ts `maskOutlinePath`, board space) is
+   * drawn once the clearing exit has left and EMPTY_BOARD_HOLD_MS has passed. Absent, or no filled cell = none.
+   */
+  clearRevealMask?: readonly (readonly boolean[])[];
 }
 
 interface ExitingTrail {
@@ -307,6 +317,7 @@ export function BoardView({
   clearHint,
   testID,
   gridLines = false,
+  clearRevealMask,
 }: BoardViewProps) {
   const selectedSkin = useArrowStyle().spec !== null;
   const boardW = board.cols * CELL;
@@ -318,6 +329,8 @@ export function BoardView({
   const [nativeExitAnimation, setNativeExitAnimation] =
     useState<NativeExitAnimation | null>(null);
   const [shaking, setShaking] = useState<ShakingArrowState | null>(null);
+  // W5-17: the cleared board's outline, set once by the clearing removal (null on a new board).
+  const [clearReveal, setClearReveal] = useState<{ id: number; delayMs: number; atMs: number } | null>(null);
   const [blocker, setBlocker] = useState<AnimatedArrowState | null>(null);
   const [pressed, setPressed] = useState<AnimatedArrowState | null>(null);
   // POLISH-T5 (META_MISSED_MARK): arrows whose blocked tap cost a heart.
@@ -344,6 +357,11 @@ export function BoardView({
   );
   const hitTester = useMemo(() => new ArrowHitTester(board, CELL), [board]);
   const reducedMotion = useReducedMotion();
+  // W5-17: traced once per level, only when the flag passes a mask ('' = nothing to draw).
+  const clearRevealOutline = useMemo(
+    () => (clearRevealMask ? maskOutlinePath(clearRevealMask, CELL) : ''),
+    [clearRevealMask],
+  );
   boardRef.current = board;
   lockedRef.current = locked;
 
@@ -525,6 +543,7 @@ export function BoardView({
     setBlocker(null);
     setPressed(null);
     setMarked(NO_MARKS);
+    setClearReveal(null);
     const measured = measuredLayout.current;
     placeCamera(measured.w, measured.h, true);
   }, [board, placeCamera]);
@@ -703,6 +722,11 @@ export function BoardView({
         }, durationMs + EXIT_TRAIL_CLEANUP_MARGIN_MS);
         exitCleanupTimers[slot] = timer;
       }
+      // W5-17: the outline appears after the exit's last pixel and the empty-board hold (GameScreen's panel waits the
+      // same hold plus the reveal slot). Reduced motion: nothing (the panel does not wait for it either).
+      if (cleared && clearRevealOutline !== '' && !reducedMotion) {
+        setClearReveal({ id, delayMs: Math.max(0, exitVisibleMs) + EMPTY_BOARD_HOLD_MS, atMs: Date.now() });
+      }
       onRemoved(cleared, exitVisibleMs);
     } else {
       if (onTapOutcome) {
@@ -771,6 +795,7 @@ export function BoardView({
     blockedLedger,
     board,
     clearHint,
+    clearRevealOutline,
     hint,
     onBlocked,
     onRemoved,
@@ -944,6 +969,8 @@ export function BoardView({
           reducedMotion={reducedMotion}
           grid={grid}
           marked={marked}
+          clearReveal={clearReveal}
+          clearRevealOutline={clearRevealOutline}
         />
       </View>
     </GestureDetector>
@@ -972,6 +999,8 @@ function BoardContent(props: {
   reducedMotion: boolean;
   grid: BoardGrid | null;
   marked: ReadonlySet<ArrowPath>;
+  clearReveal: { id: number; delayMs: number; atMs: number } | null;
+  clearRevealOutline: string;
 }) {
   const {
     initialCameraScale,
@@ -994,6 +1023,8 @@ function BoardContent(props: {
     reducedMotion,
     grid,
     marked,
+    clearReveal,
+    clearRevealOutline,
   } = props;
 
   const selectedSkin = useArrowStyle().spec !== null;
@@ -1089,6 +1120,14 @@ function BoardContent(props: {
     () => pressed ? { id: pressed.id, ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(pressed.arrow) ?? -1 } : null), ...arrowArtCache.artFor(pressed.arrow) } : null,
     [pressed, arrowArtCache, selectedSkin],
   );
+  // W5-17: the outline in the play area's accent (the skin board tint changes only `bg`; contrastAudit
+  // `arrow-clear-reveal-outline` gates accent on every tinted bg), at least the arrow stroke.
+  const clearRevealArt: ClearRevealArt | null = useMemo(
+    () => clearReveal !== null && clearRevealOutline !== ''
+      ? { id: clearReveal.id, pathD: clearRevealOutline, delayMs: clearReveal.delayMs, atMs: clearReveal.atMs, color: palette.accent, strokeWidth: STROKE * CELL }
+      : null,
+    [clearReveal, clearRevealOutline, palette.accent],
+  );
   const hintArt = useMemo(
     () => hint ? { id: hint.id, ...(selectedSkin ? { nativeIndex: arrowArtCache.indexFor(hint.arrow) ?? -1 } : null), ...arrowArtCache.artFor(hint.arrow) } : null,
     [hint, arrowArtCache, selectedSkin],
@@ -1129,8 +1168,9 @@ function BoardContent(props: {
         markHeadD={markArt.headD}
         nativeMarkMask={nativeMarkMask}
         markColor={markColor}
+        clearReveal={clearRevealArt}
       />}
-      {Platform.OS === 'web' && hasDynamicLayer && (
+      {Platform.OS === 'web' && (hasDynamicLayer || clearRevealArt !== null) && (
         <WebDynamicBoardLayer
           scale={scale}
           tx={tx}
@@ -1147,6 +1187,7 @@ function BoardContent(props: {
           hint={hint}
           reducedMotion={reducedMotion}
           shakingSettle={shaking ? settleColor(palette, marked, shaking.arrow) : palette.ink}
+          clearReveal={clearRevealArt}
         />
       )}
     </>
@@ -1193,6 +1234,7 @@ function WebDynamicBoardLayer({
   hint,
   reducedMotion,
   shakingSettle,
+  clearReveal,
 }: {
   scale: SharedValue<number>;
   tx: SharedValue<number>;
@@ -1210,6 +1252,8 @@ function WebDynamicBoardLayer({
   reducedMotion: boolean;
   /** POLISH-T5: the colour the blocked bump settles to (mark or ink). */
   shakingSettle: string;
+  /** W5-17: the cleared board's outline; null = none. */
+  clearReveal: ClearRevealArt | null;
 }) {
   const boardProps = useAnimatedProps(() => ({
     transform: `translate(${tx.value}, ${ty.value}) scale(${scale.value})`,
@@ -1275,8 +1319,36 @@ function WebDynamicBoardLayer({
         </G>
         {/* POLISH-T3: unclipped, so the trail runs on to the screen edge. */}
         {META_EXIT_TO_SCREEN_EDGE && exitTrails}
+        {/* W5-17: unclipped, so the stroke on the board's outer edge is drawn whole. */}
+        {clearReveal !== null && <WebClearRevealOutline key={`r${clearReveal.id}`} art={clearReveal} scale={scale} />}
       </AnimatedG>
     </Svg>
+  );
+}
+
+/** W5-17 (web): the cleared shape's outline fades in after its delay and stays (see artConfig.ts). The parent never
+ * mounts it under reduced motion. */
+function WebClearRevealOutline({ art, scale }: { art: ClearRevealArt; scale: SharedValue<number> }) {
+  const opacity = useSharedValue(0);
+  const [strokeWidth] = useState(() => Math.max(art.strokeWidth, CLEAR_REVEAL_MIN_STROKE_PT / Math.max(scale.value, 1e-3)));
+  React.useEffect(() => {
+    opacity.value = withDelay(
+      clearRevealRemainingMs(art),
+      withTiming(1, { duration: CLEAR_REVEAL_FADE_IN_MS, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }),
+      ReduceMotion.System,
+    );
+  }, [art.id]);
+  const props = useAnimatedProps(() => ({ strokeOpacity: opacity.value }) as any);
+  return (
+    <AnimatedPath
+      animatedProps={props}
+      d={art.pathD}
+      stroke={art.color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
   );
 }
 

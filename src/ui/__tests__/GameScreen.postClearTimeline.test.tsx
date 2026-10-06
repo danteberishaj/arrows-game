@@ -15,7 +15,7 @@ import type { BoardViewProps } from '../BoardView';
 import { Daylight } from '../theme';
 
 let mockBoardViewProps: BoardViewProps | null = null;
-const mockFlags = { META_POST_CLEAR_TIMELINE: false };
+const mockFlags = { META_POST_CLEAR_TIMELINE: false, ART_CLEAR_REVEAL_ENABLED: false };
 
 jest.mock('../BoardView', () => ({
   BoardView: (props: BoardViewProps) => {
@@ -28,6 +28,13 @@ jest.mock('../../featureFlags', () =>
   Object.defineProperties(
     { ...jest.requireActual('../../featureFlags') },
     { META_POST_CLEAR_TIMELINE: { get: () => mockFlags.META_POST_CLEAR_TIMELINE, enumerable: true } },
+  ));
+
+// W5-17: the clear reveal's flag, switchable per test (read at render and in the clear handler).
+jest.mock('../artConfig', () =>
+  Object.defineProperties(
+    { ...jest.requireActual('../artConfig') },
+    { ART_CLEAR_REVEAL_ENABLED: { get: () => mockFlags.ART_CLEAR_REVEAL_ENABLED, enumerable: true } },
   ));
 
 jest.mock('../ads', () => ({
@@ -95,6 +102,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockBoardViewProps = null;
   mockFlags.META_POST_CLEAR_TIMELINE = false;
+  mockFlags.ART_CLEAR_REVEAL_ENABLED = false;
 });
 
 afterEach(() => {
@@ -115,10 +123,11 @@ describe('flag ON: the final exit, then the same empty-board hold', () => {
     mockFlags.META_POST_CLEAR_TIMELINE = true;
   });
 
-  test.each([0, 88, 185, 278])('final exit visible for %i ms -> the panel at exit + hold + reveal', (exitMs) => {
+  test.each([0, 88, 185, 278])('final exit visible for %i ms -> the panel at exit + hold (no outline drawn: no slot)', (exitMs) => {
     const screen = renderGame();
     clearWithFinalExit(exitMs);
-    panelAppearsAt(screen, exitMs + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS);
+    panelAppearsAt(screen, exitMs + lifecycle.EMPTY_BOARD_HOLD_MS);
+    expect(mockBoardViewProps!.clearRevealMask).toBeUndefined();
   });
 
   test('removals that do not clear schedule nothing', () => {
@@ -146,6 +155,49 @@ describe('flag ON: the final exit, then the same empty-board hold', () => {
     const screen = renderGame();
     clearBoard();
     act(() => mockBoardViewProps!.onRemoved(true, 900));
-    panelAppearsAt(screen, 150 + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS);
+    panelAppearsAt(screen, 150 + lifecycle.EMPTY_BOARD_HOLD_MS);
+  });
+});
+
+describe('W5-17 ART_CLEAR_REVEAL_ENABLED (owner set B): exit + 250 ms hold + 400 ms outline slot', () => {
+  beforeEach(() => {
+    mockFlags.ART_CLEAR_REVEAL_ENABLED = true;
+  });
+
+  test.each([false, true])('META_POST_CLEAR_TIMELINE %p: the panel at exit + 250 + 400', (timeline) => {
+    mockFlags.META_POST_CLEAR_TIMELINE = timeline;
+    const screen = renderGame();
+    expect(mockBoardViewProps!.clearRevealMask!.some((row) => row.some(Boolean))).toBe(true);
+    clearWithFinalExit(90);
+    panelAppearsAt(screen, 90 + 250 + 400);
+  });
+
+  test('the panel lands 740..837 ms after the last tap over the measured 90..187 ms exit range', () => {
+    for (const exitMs of [90, 187]) {
+      const screen = renderGame();
+      clearWithFinalExit(exitMs);
+      panelAppearsAt(screen, exitMs + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS);
+      screen.unmount();
+    }
+    expect(90 + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(740);
+    expect(187 + lifecycle.EMPTY_BOARD_HOLD_MS + lifecycle.CLEAR_REVEAL_MS).toBe(837);
+  });
+
+  test("BoardView gets the level's real mask (it traces the outline from it)", () => {
+    renderGame();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { LevelGenerator } = require('../../core') as typeof import('../../core');
+    expect(mockBoardViewProps!.clearRevealMask).toEqual(LevelGenerator.generate(0, 1).mask);
+  });
+
+  test('a tutorial board (empty mask) draws no outline and its hand-off does not wait for one', () => {
+    renderGame('T1');
+    const t1 = mockBoardViewProps!.board;
+    expect(mockBoardViewProps!.clearRevealMask).toEqual([]);
+    clearWithFinalExit(120);
+    act(() => jest.advanceTimersByTime(120 + lifecycle.EMPTY_BOARD_HOLD_MS - 1));
+    expect(mockBoardViewProps!.board).toBe(t1);
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockBoardViewProps!.board).not.toBe(t1);
   });
 });

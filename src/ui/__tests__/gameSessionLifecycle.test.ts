@@ -547,7 +547,7 @@ describe('W2-06 post-clear timeline (META_POST_CLEAR_TIMELINE)', () => {
 
   it('so the empty-board hold no longer depends on how far the last arrow travelled', () => {
     for (const exit of [88, 185, 320]) {
-      expect(wonPanelDelayMs(exit, EMPTY_BOARD_HOLD_MS, CLEAR_REVEAL_MS) - exit).toBe(EMPTY_BOARD_HOLD_MS);
+      expect(wonPanelDelayMs(exit, EMPTY_BOARD_HOLD_MS, CLEAR_REVEAL_MS) - exit).toBe(EMPTY_BOARD_HOLD_MS + CLEAR_REVEAL_MS);
     }
   });
 
@@ -556,9 +556,9 @@ describe('W2-06 post-clear timeline (META_POST_CLEAR_TIMELINE)', () => {
     expect(wonPanelDelayMs(-5, 350, 0)).toBe(350);
   });
 
-  it('the hold is an owner candidate (350 until the owner picks) and the reveal slot is reserved at 0 for W5', () => {
+  it('owner set B (2026-10-06): the hold is the 250 ms candidate and W5-17 takes a 400 ms reveal slot', () => {
     expect([250, 350, 500]).toContain(EMPTY_BOARD_HOLD_MS);
-    expect(EMPTY_BOARD_HOLD_MS).toBe(350);
-    expect(CLEAR_REVEAL_MS).toBe(0);
+    expect(EMPTY_BOARD_HOLD_MS).toBe(250);
+    expect(CLEAR_REVEAL_MS).toBe(400);
   });
 });

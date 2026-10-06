@@ -26,6 +26,20 @@ export interface BumpingArrowArt extends AnimatedArrowArt {
   cover?: string;
 }
 
+/** W5-17: the cleared board's outline (board space), shown after `delayMs` and kept until the board is replaced. */
+export interface ClearRevealArt {
+  id: number;
+  /** silhouette.ts `maskOutlinePath(mask, CELL)`: closed loops on the cell boundaries. */
+  pathD: string;
+  /** From the clearing tap (`atMs`) to the start of its fade-in: the exit's visible time + the empty-board hold. */
+  delayMs: number;
+  /** Date.now() at the clearing tap: the fade starts on that clock, not when React gets round to mounting it. */
+  atMs: number;
+  color: string;
+  /** Board units; drawn at least CLEAR_REVEAL_MIN_STROKE_PT on screen. */
+  strokeWidth: number;
+}
+
 export interface AnimatedExitTrail {
   id: number;
   path: SlitherPath;
@@ -76,4 +90,6 @@ export interface StaticBoardSurfaceProps {
   nativeMarkMask: string;
   /** Opaque deep-rose missed-mark colour (missedMarks.ts). */
   markColor: string;
+  /** W5-17 (ART_CLEAR_REVEAL_ENABLED): the cleared board's outline; null or absent = none. */
+  clearReveal?: ClearRevealArt | null;
 }

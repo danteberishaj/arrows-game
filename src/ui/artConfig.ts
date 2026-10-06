@@ -56,3 +56,21 @@ export const ART_PAPER_TEXTURE_OPACITY = 0.04; // OWNER-PICKED STARTING VALUE
  * button's W0-06 strike is not drawn over it. OFF: every one of these renders exactly as before.
  */
 export const ART_ICONS_ENABLED = process.env.EXPO_PUBLIC_ART_ICONS === '1';
+
+/**
+ * W5-17 (owner set B, 2026-10-06, docs/owner-rulings-2026-10-06.md Q3): once the last arrow's exit has left the board
+ * and the 250 ms empty-board hold is over, the cleared shape's outline (silhouette.ts `maskOutlinePath`, the level's
+ * real mask in board space) is drawn once on the empty board in `accent`, fading in over CLEAR_REVEAL_FADE_IN_MS and
+ * then held; the win panel arrives CLEAR_REVEAL_MS (400) after the hold began. The outline is not removed when the
+ * panel arrives: it stays under the panel's scrim until the board is replaced (Next / Retry), so it never pops off.
+ * Reduced motion: nothing is mounted and the panel does not wait for it. Tutorial boards (empty mask): nothing. Turning
+ * it on also applies W2-06's timeline (exit + hold + reveal) whatever META_POST_CLEAR_TIMELINE says. OFF: exactly as
+ * before.
+ */
+export const ART_CLEAR_REVEAL_ENABLED = process.env.EXPO_PUBLIC_ART_CLEAR_REVEAL === '1';
+
+/** The outline's fade-in inside its 400 ms slot (owner set B). */
+export const CLEAR_REVEAL_FADE_IN_MS = 150; // OWNER-PICKED 2026-10-06 (set B)
+
+/** The outline's minimum stroke on screen, in points (the rulings mock-up's 2 dp); never thinner than an arrow. */
+export const CLEAR_REVEAL_MIN_STROKE_PT = 2; // OWNER-PICKED STARTING VALUE (the owner saw it in the q3 mock-up)

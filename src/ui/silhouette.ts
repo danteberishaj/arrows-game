@@ -83,17 +83,12 @@ function traceLoops(edges: readonly BoundaryEdge[]): GridPoint[][] {
   return loops;
 }
 
-/**
- * Converts filled mask cells into centred SVG boundary loops. Consumers must
- * render the returned path with the even-odd fill rule so holes stay open.
- */
-export function silhouettePath(
-  mask: readonly (readonly boolean[])[],
-  size: number,
-): string {
+/** The cell-boundary edges of a mask's filled cells, in cell units, and the mask's size. */
+function maskEdges(mask: readonly (readonly boolean[])[]): { edges: BoundaryEdge[]; rows: number; cols: number } {
   const rows = mask.length;
   const cols = mask.reduce((maximum, row) => Math.max(maximum, row.length), 0);
-  if (rows === 0 || cols === 0) return '';
+  const edges: BoundaryEdge[] = [];
+  if (rows === 0 || cols === 0) return { edges, rows, cols };
 
   const filled = (row: number, col: number): boolean => (
     row >= 0
@@ -103,7 +98,6 @@ export function silhouettePath(
     && (mask[row]?.[col] ?? false)
   );
 
-  const edges: BoundaryEdge[] = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       if (!filled(row, col)) continue;
@@ -113,17 +107,40 @@ export function silhouettePath(
       if (!filled(row, col - 1)) edges.push({ start: [col, row + 1], end: [col, row] });
     }
   }
+  return { edges, rows, cols };
+}
+
+function loopsPath(edges: readonly BoundaryEdge[], coordinate: (point: GridPoint) => string): string {
+  return traceLoops(edges)
+    .map((loop) => `M ${coordinate(loop[0])} ${loop.slice(1).map((point) => `L ${coordinate(point)}`).join(' ')} Z`)
+    .join(' ');
+}
+
+/**
+ * Converts filled mask cells into centred SVG boundary loops. Consumers must
+ * render the returned path with the even-odd fill rule so holes stay open.
+ */
+export function silhouettePath(
+  mask: readonly (readonly boolean[])[],
+  size: number,
+): string {
+  const { edges, rows, cols } = maskEdges(mask);
   if (edges.length === 0) return '';
 
   const cell = size / Math.max(rows, cols);
   const offsetX = (size - cols * cell) / 2;
   const offsetY = (size - rows * cell) / 2;
   const insideBox = (value: number): number => Math.min(size, Math.max(0, value));
-  const coordinate = ([x, y]: GridPoint): string => (
-    `${insideBox(offsetX + x * cell)} ${insideBox(offsetY + y * cell)}`
-  );
+  return loopsPath(edges, ([x, y]) => `${insideBox(offsetX + x * cell)} ${insideBox(offsetY + y * cell)}`);
+}
 
-  return traceLoops(edges)
-    .map((loop) => `M ${coordinate(loop[0])} ${loop.slice(1).map((point) => `L ${coordinate(point)}`).join(' ')} Z`)
-    .join(' ');
+/**
+ * W5-17: the same boundary loops in BOARD space, not centred: grid point (x, y) maps to (x * cell, y * cell), so cell
+ * (r, c) spans c..c+1 by r..r+1 cells, exactly where the board draws that cell's arrow (arrowGeometry.ts centres a cell
+ * at (c + 0.5, r + 0.5) cells). A mask with no filled cell (tutorial boards) returns ''.
+ */
+export function maskOutlinePath(mask: readonly (readonly boolean[])[], cell: number): string {
+  const { edges } = maskEdges(mask);
+  if (edges.length === 0) return '';
+  return loopsPath(edges, ([x, y]) => `${x * cell} ${y * cell}`);
 }

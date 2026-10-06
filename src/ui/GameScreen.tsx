@@ -48,6 +48,7 @@ import {
   type TapOutcome,
 } from '../telemetry/levelAggregator';
 import { reviewDeclineReason } from '../core/reviewPolicy';
+import { CAPTURE_DIAG } from '../perfMode';
 import {
   META_HEART_REFILL_POP,
   META_LEVEL_TRANSITION,
@@ -60,6 +61,7 @@ import {
   ART_HEADER_SILHOUETTE_ENABLED,
   ART_ICONS_ENABLED,
   ART_PANEL_DEPTH_ENABLED,
+  ART_CLEAR_REVEAL_ENABLED,
   ART_WIN_SILHOUETTE_DP,
   ART_WIN_SILHOUETTE_ENABLED,
 } from './artConfig';
@@ -83,7 +85,7 @@ import {
 } from './heartPip';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
-  CLEAR_REVEAL_MS, createDailySession, createLevelSession, createTutorialSession, EMPTY_BOARD_HOLD_MS,
+  clearRevealSlotMs, createDailySession, createLevelSession, createTutorialSession, EMPTY_BOARD_HOLD_MS,
   levelGenVersion, LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS, wonPanelDelayMs,
   TerminalTransitionGuard,
   type GamePhase,
@@ -386,6 +388,10 @@ export function GameScreen({
     ));
   }, [session]);
   useEffect(() => () => terminalTransition.dispose(), [terminalTransition]);
+  // Capture builds only (EXPO_PUBLIC_CAPTURE_DIAG): the terminal phase's commit, for last tap -> panel timing (W5-17).
+  useEffect(() => {
+    if (CAPTURE_DIAG && phase !== 'playing') console.log(`[capture-diag] phase=${phase}`);
+  }, [phase]);
   useEffect(() => () => levelScrim?.dispose(), [levelScrim]);
   useEffect(() => () => panelPresence?.dispose(), [panelPresence]);
   // The new session is committed: the scrim may uncover one frame later.
@@ -547,11 +553,18 @@ export function GameScreen({
       assistedAtClearRef.current = ftueStageAtClear === ASSIST_STAGE;
       const perfect = heartsRef.current === level.hearts;
       perfectAtClearRef.current = perfect;
-      // W2-06 (META_POST_CLEAR_TIMELINE): the final exit's last pixel, then the same empty-board hold (and W5's
-      // reveal slot) whatever that exit did. OFF: the flat 450 ms from the tap, as before.
-      const wonDelayMs = META_POST_CLEAR_TIMELINE
-        ? wonPanelDelayMs(exitVisibleMs, EMPTY_BOARD_HOLD_MS, CLEAR_REVEAL_MS)
+      // W2-06 (META_POST_CLEAR_TIMELINE): the final exit's last pixel, then the same empty-board hold (and W5-17's
+      // reveal slot, only when the outline is drawn) whatever that exit did. OFF: the flat 450 ms from the tap.
+      const revealMs = clearRevealSlotMs({
+        enabled: ART_CLEAR_REVEAL_ENABLED, reducedMotion, mask: level.mask,
+      });
+      const wonDelayMs = META_POST_CLEAR_TIMELINE || ART_CLEAR_REVEAL_ENABLED
+        ? wonPanelDelayMs(exitVisibleMs, EMPTY_BOARD_HOLD_MS, revealMs)
         : WON_PANEL_DELAY_MS;
+      if (CAPTURE_DIAG) {
+        console.log(`[capture-diag] clear wonDelayMs=${Math.round(wonDelayMs)} exitVisibleMs=${Math.round(exitVisibleMs)}`
+          + ` holdMs=${EMPTY_BOARD_HOLD_MS} revealMs=${revealMs}`);
+      }
       if (activeTutorialId) {
         const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
         if (!beginTerminalTransition('won', wonDelayMs, () => {
@@ -603,6 +616,7 @@ export function GameScreen({
       loadLevel,
       loadTutorial,
       logFtueEvent,
+      reducedMotion,
       scheduleStallHint,
       stallHintTimer,
       terminalTransition,
@@ -1155,6 +1169,7 @@ export function GameScreen({
         palette={boardPalette}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
+        clearRevealMask={ART_CLEAR_REVEAL_ENABLED ? level.mask : undefined}
         onTapOutcome={onTapOutcome}
         locked={phase !== 'playing' || terminalPending || adBusy || panelExiting}
         hint={hint}

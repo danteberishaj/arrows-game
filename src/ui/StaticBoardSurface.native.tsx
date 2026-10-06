@@ -13,13 +13,17 @@ import {
 } from '@shopify/react-native-skia';
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import { ArrowsBoardView } from '../../modules/arrows-board';
+import { ART_CLEAR_REVEAL_ENABLED, CLEAR_REVEAL_FADE_IN_MS, CLEAR_REVEAL_MIN_STROKE_PT } from './artConfig';
+import { clearRevealRemainingMs } from './clearRevealTiming';
 import { PERF_GRID_POINTS, PERF_MODE } from '../perfMode';
 import { grownTriangleD } from './arrowGeometry';
 import { nativeGridProps } from './boardGrid';
@@ -41,6 +45,7 @@ import { serializeNativeExitAnimation } from './nativeExitAnimation';
 import type {
   AnimatedArrowArt,
   BumpingArrowArt,
+  ClearRevealArt,
   StaticBoardSurfaceProps,
 } from './StaticBoardSurface.types';
 
@@ -108,6 +113,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   grid,
   nativeMarkMask,
   markColor,
+  clearReveal = null,
 }: StaticBoardSurfaceProps) {
   const style = useArrowStyle();
   const selectedSkin = style.spec !== null;
@@ -182,7 +188,9 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
           />
         )}
       </Animated.View>
-      {!selectedSkin && <DynamicFeedbackSurface
+      {/* A selected skin draws its feedback natively, so its slots stay null here; W5-17's outline still needs this
+          canvas on every board (flag ON only), skinned or not. */}
+      {(!selectedSkin || ART_CLEAR_REVEAL_ENABLED) && <DynamicFeedbackSurface
         scale={scale}
         tx={tx}
         ty={ty}
@@ -193,11 +201,12 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
         heart={heart}
         cellSize={cellSize}
         strokeWidth={strokeWidth}
-        shaking={shaking}
-        blocker={blocker}
-        pressed={pressed}
-        hint={hint}
+        shaking={selectedSkin ? null : shaking}
+        blocker={selectedSkin ? null : blocker}
+        pressed={selectedSkin ? null : pressed}
+        hint={selectedSkin ? null : hint}
         reducedMotion={reducedMotion}
+        clearReveal={clearReveal}
       />}
     </>
   );
@@ -219,6 +228,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   pressed,
   hint,
   reducedMotion,
+  clearReveal,
 }: FeedbackLayerProps) {
   // POLISH-T7 (audit #2): the camera transform group lives in a child that
   // is mounted only while some feedback is up. With every slot null the Skia
@@ -227,7 +237,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
   // The Canvas stays mounted: its TextureView is never recreated.
   const anyFeedback =
     !PERF_EMPTY_BOARD &&
-    (pressed !== null || blocker !== null || shaking !== null || hint !== null);
+    (pressed !== null || blocker !== null || shaking !== null || hint !== null || clearReveal !== null);
 
   return (
     <Canvas
@@ -253,6 +263,7 @@ const DynamicFeedbackSurface = React.memo(function DynamicFeedbackSurface({
           pressed={pressed}
           hint={hint}
           reducedMotion={reducedMotion}
+          clearReveal={clearReveal}
         />
       )}
     </Canvas>
@@ -276,7 +287,7 @@ type FeedbackLayerProps = Pick<
   | 'pressed'
   | 'hint'
   | 'reducedMotion'
->;
+> & { clearReveal: ClearRevealArt | null };
 
 /** The feedback arrows in board space, under the camera transform. Mounted
  * only while at least one feedback slot is non-null (POLISH-T7). */
@@ -296,6 +307,7 @@ function FeedbackLayer({
   pressed,
   hint,
   reducedMotion,
+  clearReveal,
 }: FeedbackLayerProps) {
   const boardTransform = useDerivedValue((): Transforms3d => [
     { translateX: tx.value },
@@ -348,6 +360,38 @@ function FeedbackLayer({
           />
         )}
       </Group>
+      {/* W5-17: outside the board clip, so the stroke on the board's outer edge is drawn whole. */}
+      {clearReveal !== null && <ClearRevealOutline key={`r${clearReveal.id}`} art={clearReveal} scale={scale} />}
+    </Group>
+  );
+}
+
+/** W5-17: the cleared shape's outline fades in after its delay and then stays, under the win panel's scrim, until the
+ * board is replaced (see artConfig.ts). BoardView never mounts it under reduced motion. One stroked path: the same
+ * draw type as every arrow shaft. */
+function ClearRevealOutline({ art, scale }: { art: ClearRevealArt; scale: StaticBoardSurfaceProps['scale'] }) {
+  const opacity = useSharedValue(0);
+  // At least CLEAR_REVEAL_MIN_STROKE_PT on screen at the zoom the board was cleared at, read once on the JS thread.
+  const [strokeWidth] = React.useState(
+    () => Math.max(art.strokeWidth, CLEAR_REVEAL_MIN_STROKE_PT / Math.max(scale.value, 1e-3)),
+  );
+  React.useEffect(() => {
+    opacity.value = withDelay(
+      clearRevealRemainingMs(art),
+      withTiming(1, { duration: CLEAR_REVEAL_FADE_IN_MS, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }),
+      ReduceMotion.System,
+    );
+  }, [art.id]);
+  return (
+    <Group opacity={opacity}>
+      <Path
+        path={art.pathD}
+        color={art.color}
+        style="stroke"
+        strokeWidth={strokeWidth}
+        strokeCap="round"
+        strokeJoin="round"
+      />
     </Group>
   );
 }

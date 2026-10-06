@@ -231,7 +231,7 @@ const GAL = 'src/ui/GalleryScreen.tsx';
 const SS = 'src/ui/SettingsSheet.tsx';
 
 export const USAGES: ReadonlyArray<Usage> = [
-  // Header buttons (menu theme + sound toggles and W7-04's Settings button HomeScreen.tsx:269-300, game back GameScreen.tsx:546).
+  // Header buttons (menu theme + sound toggles and W7-04's Settings button HomeScreen.tsx:269-300, game back GameScreen.tsx:552).
   // The Ink Night theme toggle ☀ and the 💡 hint are emoji: no token reaches them.
   { id: 'header-glyph', fgRole: 'accentCore', bgRole: 'surface', kind: 'graphic', site: `${HB}:66` },
   { id: 'header-glyph-pressed', fgRole: 'accentCore', bgRole: 'heartLost', kind: 'graphic', site: `${HB}:66`, note: 'pressed fill is `heartLost` (HeaderButton.tsx:71)' },
@@ -258,47 +258,47 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:35', sizeSite: `${HS}:194` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
-  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1084`, sizeSite: `${GS}:1533` },
-  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1070`, sizeSite: `${GS}:1541` },
-  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:902`, sizeSite: `${GS}:1545` },
-  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:901`, sizeSite: `${GS}:1545` },
-  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:900`, sizeSite: `${GS}:1545` },
-  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1392` },
-  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1397`, note: 'outline stroke, no fill' },
+  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1098`, sizeSite: `${GS}:1548` },
+  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1084`, sizeSite: `${GS}:1556` },
+  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:916`, sizeSite: `${GS}:1560` },
+  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:915`, sizeSite: `${GS}:1560` },
+  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:914`, sizeSite: `${GS}:1560` },
+  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1407` },
+  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1412`, note: 'outline stroke, no fill' },
 
   // Win / lose panel (on `surface`)
-  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:942`, sizeSite: `${GS}:1596` },
-  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:942`, sizeSite: `${GS}:1596` },
-  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1474` },
-  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1474` },
-  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1474`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1474`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:954`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
-  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:968`, sizeSite: `${GS}:1615` },
-  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1007`, sizeSite: `${GS}:1629` },
-  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1007`, sizeSite: `${GS}:1629` },
-  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1007`, sizeSite: `${GS}:1629`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:678)' },
-  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:1001`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
-  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:1001`, note: 'W5-02 heart icon on the pressed fill' },
-  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:1001`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
-  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1027`, sizeSite: `${GS}:1629`, note: 'also the daily "Done" label (W4-06)' },
-  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1027`, sizeSite: `${GS}:1629` },
-  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1027`, sizeSite: `${GS}:1629` },
-  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1020` },
-  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1184` },
-  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:1035`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
-  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:1042`, sizeSite: `${GS}:1632` },
+  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:956`, sizeSite: `${GS}:1611` },
+  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:956`, sizeSite: `${GS}:1611` },
+  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1489` },
+  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1489` },
+  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1489`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1489`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:968`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
+  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:982`, sizeSite: `${GS}:1630` },
+  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1021`, sizeSite: `${GS}:1644` },
+  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1021`, sizeSite: `${GS}:1644` },
+  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1021`, sizeSite: `${GS}:1644`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:692)' },
+  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:1015`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
+  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:1015`, note: 'W5-02 heart icon on the pressed fill' },
+  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:1015`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
+  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1041`, sizeSite: `${GS}:1644`, note: 'also the daily "Done" label (W4-06)' },
+  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1041`, sizeSite: `${GS}:1644` },
+  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1041`, sizeSite: `${GS}:1644` },
+  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1034` },
+  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1199` },
+  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:1049`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
+  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:1056`, sizeSite: `${GS}:1647` },
 
   // W5-05 (ART_PANEL_DEPTH_ENABLED): the panel's EDGE against its composited scrim, gated at 3:1 (WCAG 2.1
   // SC 1.4.11's non-text threshold, applied by analogy to a panel edge). Fill = `surfaceRaised`, scrim =
   // `scrimWon` / `scrimLost` composited over `bg` exactly as rendered (the board under the scrim is not modelled).
   // Per edge: via 'fill' (the fill against the scrim) OR via 'hairline' (`border` against the scrim AND the fill).
-  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:890`, edge: { id: 'panel-edge-won', via: 'fill' } },
-  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1184`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1184`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:890`, edge: { id: 'panel-edge-lost', via: 'fill' } },
-  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1184`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
-  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1184`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:904`, edge: { id: 'panel-edge-won', via: 'fill' } },
+  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1199`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1199`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:904`, edge: { id: 'panel-edge-lost', via: 'fill' } },
+  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1199`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1199`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
 
   // Shape gallery (W4-09, META_GALLERY), on `bg`. Filled versus outlined carries
   // collected versus not, so the colours only have to be legible (PRODUCT.md:63).
@@ -364,9 +364,10 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'petal-ad-icon-disabled', fgRole: 'inkDim', bgRole: 'surface', kind: 'graphic', site: 'src/ui/PetalAdButton.tsx:54' },
 
   // Board and splash (on `bg`); the board is not touched by W0-06, these rows only watch it
-  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1115' },
-  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1116' },
-  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1117' },
+  { id: 'arrow-ink', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1154' },
+  { id: 'arrow-press-preview-and-hint', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1155' },
+  { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1156' },
+  { id: 'arrow-clear-reveal-outline', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1127', note: 'W5-17 (ART_CLEAR_REVEAL_ENABLED): the cleared shape\'s outline on the empty board; skin board tints get their own rows (skinContrastRows)' },
   { id: 'arrow-missed-mark', fgRole: 'heart', fgAlpha: 0.75, fgOver: darkerOfInkBg, bgRole: 'bg', kind: 'graphic', site: 'src/ui/missedMarks.ts:22', note: 'META_MISSED_MARK (R6): an arrow whose blocked tap cost a heart, for the rest of the level' },
   { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:161' },
   { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:171' },
@@ -425,7 +426,7 @@ export function panelEdges(): Array<{ palette: string; edge: string; pass: boole
 
 /**
  * Information only (W5-05 owns and gates these): the panel fill against its composited scrim.
- * Won: black at 0.45 over `bg` (GameScreen.tsx:648). Lost: `bg` at 0.86 over `bg` (= `bg`).
+ * Won: black at 0.45 over `bg` (GameScreen.tsx:662). Lost: `bg` at 0.86 over `bg` (= `bg`).
  */
 export function scrimInfo(): Array<{ palette: string; state: string; scrim: string; ratio: number }> {
   return PALETTES.flatMap(({ name, palette: p }) => [
