@@ -40,7 +40,8 @@ for r in hall:
 out = {'levels': levels, 'beforeArt03FitFailures': sum(r['fitFailures'] for r in before), 'candidates': candidates,
        'specs': {sid: {'candidate': sid in candidates, 'after': dict(S[sid]), 'maxDrawsWithMark': draws[sid],
                        'polish': dict(P[sid]), 'halloween': dict(H[sid])} for sid in S}}
-for sid in candidates:
+# Shipped 2026-10-07: every spec (registered and candidate) must pass, and the blush/fang clearance is gated for all.
+for sid in out['specs']:
     v = out['specs'][sid]
     assert v['after']['fitFailures'] == 0 and v['after']['headFailures'] == 0 and v['maxDrawsWithMark'] <= 8, sid
     assert v['after']['flatLodLevels'] == 21 and v['after']['reducedMotionLevels'] == 21, sid

@@ -17,7 +17,8 @@ for mode in before after polish halloween; do
 done
 N=$ART_SKINS_DIR/screens/native
 mkdir -p "$N"
-for id in mummy-a mummy-b potion-slime-a potion-slime-b potion-slime-c little-bat-a little-bat-b pumpkin ghost candy-corn classic; do
+# Shipped 2026-10-07: Mummy and Potion Slime are registered; the deferred Little Bat variants stay candidates.
+for id in mummy potion-slime little-bat-a little-bat-b pumpkin ghost candy-corn classic; do
   for theme in light dark; do
     for kind in board fixture; do
       "$ADB" -s emulator-5556 pull "/sdcard/Android/data/com.danteb.arrows/files/art07-after-$id-$theme-$kind.png" "$N/" > /dev/null

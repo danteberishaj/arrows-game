@@ -71,8 +71,9 @@ object SkinPolishContract {
           check(fitsFace(spec,renderer,art,g)) { "$id eye/mouth clearance < .03 arrow=$index direction=${g.direction}" }
           faceChecks++; if(g.length==1) headFaces++
           if(spec.blush && spec.faceAnchor=="head") {
-            // Gated for candidates; registered specs (approved before this check existed) are reported, not failed.
-            if(!fitsBlush(spec,art,g)) { check(!candidate) { "$id blush/fang clearance < .03 arrow=$index direction=${g.direction}" }; blushOutside++ }
+            // HALLOWEEN-PLUS shipped (2026-10-07): gated for EVERY spec. The concept run found 0 outside for the
+            // registered Critter and Ghost too, so the earlier report-only exemption for registered specs is dropped.
+            if(!fitsBlush(spec,art,g)) { blushOutside++; check(false) { "$id blush/fang clearance < .03 arrow=$index direction=${g.direction} candidate=$candidate" } }
             blushChecks++
           }
         }

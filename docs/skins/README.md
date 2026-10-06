@@ -354,7 +354,7 @@ seasons off. Counts ("Book · N", "N of M styles collected") use `visibleStyleCo
 Seasons off (or book/path/picker off): no seasonal style appears in any picker, and a saved seasonal id renders as
 Classic without a repair write. No new save key: ownership uses `arrows_rewards_owned_*`.
 
-**Pack.** Pumpkin **18**, Ghost **19**, Candy Corn **20** (append-only). Launch proportions (.48 rim / .425 body,
+**Pack.** Pumpkin **18**, Ghost **19**, Candy Corn **20** (append-only); HALLOWEEN-PLUS added Mummy **21** and Potion Slime **22**. Launch proportions (.48 rim / .425 body,
 .44 rounded head with .10 fillets). Light board tint `#F3EEFA`; dark `#221A36` (owner ruling HALLOWEEN-01b; the concept's `#2A2140` fails the
 required missed-mark tint row at 2.992:1).
 
@@ -392,4 +392,12 @@ names absent from the bundle). `ART_SKINS_CANDIDATES=1 node scripts/art/skin-con
 fixture so the whole K1-K8 matrix runs on them; real-viewport captures use the existing `-e artSkinSpec '<json>'` override
 with a save that selects a registered skin of the same `board` tint (`scripts/art/halloween-plus/capture.py`). Polish mode
 now also checks that a head face's blush ovals stay inside the head (.03), gated for candidates. See
-[HALLOWEEN-PLUS](../next-level/reports/HALLOWEEN-PLUS-concepts.md); owner pick pending.
+[HALLOWEEN-PLUS](../next-level/reports/HALLOWEEN-PLUS-concepts.md).
+
+**Shipped 2026-10-07 (owner pick 2026-10-06).** Concept Mummy A and Potion Slime B are registered as **Mummy 21** and
+**Potion Slime 22** (append-only, after Candy Corn), with their concept data unchanged (only id, numericId and name), as
+Halloween seasonal book styles at 20 petals like Pumpkin, Ghost and Candy Corn. Mummy's wraps reuse `seam.cap: 'butt'`,
+so `SkinHalloweenContract` now lists the registered specs allowed a HALLOWEEN-01b field (`pumpkin`, `mummy`); every other
+registered spec must still keep the frozen cd10d12 paths. The blush clearance check is now gated for **every** spec, not
+only candidates. Little Bat stays an unregistered candidate: deferred until a general head-ears field exists (owner
+2026-10-06); its proposed id is 23.

@@ -10,7 +10,8 @@ const slots = (s: SkinSpec) => s.layers.reduce((n, l) => n + (l.kind === 'bands'
 
 test('append-only ids 18/19/20 after Strawberry Glazed; the 18 existing identities are untouched', () => {
   expect(pack.map(id => [spec(id).numericId, spec(id).name])).toEqual([[18, 'Pumpkin'], [19, 'Ghost'], [20, 'Candy Corn']]);
-  expect(ARROW_STYLES.slice(-3).map(s => s.id)).toEqual(pack);
+  // HALLOWEEN-PLUS appended Mummy 21 and Potion Slime 22 after the pack (halloweenPlusShipped.test.ts).
+  expect(ARROW_STYLES.slice(-5, -2).map(s => s.id)).toEqual(pack);
   expect(new Set(ARROW_STYLES.map(s => s.numericId)).size).toBe(ARROW_STYLES.length);
 });
 
@@ -96,7 +97,8 @@ describe('HALLOWEEN-01b owner rulings', () => {
     expect(ribs.width).toBeLessThanOrEqual(layer('pumpkin', 'body').width - .06); // within the accent inset
     expect(ribs.offset ?? [0, 0]).toEqual([0, 0]);
     expect(spec('pumpkin').layers.some(l => l.kind === 'spots' || l.kind === 'headFill')).toBe(false);
-    for (const s of Object.values(SKIN_SPECS).filter(s => s.id !== 'pumpkin')) expect(s.layers.some(l => l.cap !== undefined)).toBe(false);
+    // HALLOWEEN-PLUS: Mummy's wraps reuse the same general field (owner pick 2026-10-06); every other spec keeps round caps.
+    for (const s of Object.values(SKIN_SPECS).filter(s => s.id !== 'pumpkin' && s.id !== 'mummy')) expect(s.layers.some(l => l.cap !== undefined)).toBe(false);
   });
   test('Pumpkin stem only on arrows of 4+ cells (one general field: tail.minCells); others keep the default', () => {
     expect(spec('pumpkin').tail).toEqual(expect.objectContaining({ kind: 'dot', minCells: 4, oneCell: 'none' }));

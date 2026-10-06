@@ -28,6 +28,8 @@ object SkinHalloweenContract {
   private fun containsPoint(path: Path,x: Float,y: Float): Boolean = region(path).contains((x*10).toInt(),(y*10).toInt())
   private fun usesNewField(spec: SkinSpec) = spec.eyeShape != "dot" || spec.layers.any { it.kind == "lengthBands" } ||
     spec.source.getJSONObject("face").has("eyeShape") || usesNew01bField(spec)
+  /** Registered specs allowed to use a HALLOWEEN-01b field (`seam.cap`, `tail.minCells`); append-only. */
+  private val NEW_01B_FIELD_SPECS=setOf("pumpkin","mummy")
   /** HALLOWEEN-01b fields: seam `cap` and `tail.minCells`. */
   private fun usesNew01bField(spec: SkinSpec) = spec.layers.any { it.cap != "round" } || spec.source.getJSONObject("tail").has("minCells")
   private fun parseFlat(record: String): Pair<Path,Path> {
@@ -112,11 +114,12 @@ object SkinHalloweenContract {
     for(id in specs.keys()) {
       val json=specs.getJSONObject(id); val spec=SkinSpec(json.toString())
       val entry=JSONObject().put("spec",id).put("eyeShape",spec.eyeShape).put("lengthBands",spec.layers.count { it.kind=="lengthBands" })
-      // HALLOWEEN-PLUS: unregistered concept candidates (data.candidates) may use a 01b field; registered specs other
-      // than Pumpkin still may not.
+      // HALLOWEEN-PLUS: unregistered concept candidates (data.candidates) may use a 01b field, and so may the registered
+      // specs added after HALLOWEEN-01b (Pumpkin, and Mummy's butt-capped wraps, owner pick 2026-10-06). Every older
+      // registered spec still may not: it must keep the exact cd10d12 paths below.
       val candidate=data.optJSONArray("candidates")?.let { a -> (0 until a.length()).any { a.getString(it)==id } } ?: false
       entry.put("candidate",candidate)
-      if(usesNew01bField(spec)) check(spec.id == "pumpkin" || candidate) { "$id uses a HALLOWEEN-01b field" }
+      if(usesNew01bField(spec)) check(spec.id in NEW_01B_FIELD_SPECS || candidate) { "$id uses a HALLOWEEN-01b field" }
       else {
         // HALLOWEEN-01b: every spec without a 01b field keeps the exact cd10d12 paths (Ghost and Candy Corn included).
         val now=SkinPaths(CELL,spec,true); val old=Halloween01bBeforePaths(CELL,spec,true)

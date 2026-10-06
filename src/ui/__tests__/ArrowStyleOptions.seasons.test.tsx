@@ -30,7 +30,7 @@ beforeEach(() => { mockOwned.clear(); [0, 2, 4, 6].forEach(id => mockOwned.add(i
 test('in season: "Book · N" counts the visible seasonal styles too', () => {
   mockState.current = state({});
   const { getByText } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} now={OCT} />);
-  getByText('Your styles · 4'); getByText('Book · 17'); // 14 path + 3 Halloween
+  getByText('Your styles · 4'); getByText('Book · 19'); // 14 path + 5 Halloween (HALLOWEEN-PLUS added Mummy and Potion Slime)
 });
 
 test('out of season: an owned seasonal style stays in "Your styles"; unowned ones leave the count', () => {

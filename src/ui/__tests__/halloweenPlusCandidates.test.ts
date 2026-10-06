@@ -1,10 +1,11 @@
-// HALLOWEEN-PLUS concept candidates: unregistered data, existing fields only, the TS side of the skin contract.
+// HALLOWEEN-PLUS concept candidates still unregistered after the owner pick (2026-10-06): the deferred Little Bat.
+// Unregistered data, existing fields only, the TS side of the skin contract. Mummy and Potion Slime shipped (halloweenPlusShipped.test.ts).
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ARROW_STYLES, HALLOWEEN_BOARD, SKIN_SPECS, type SkinLayer, type SkinSpec } from '../skinSpecs';
 import { REWARD_CATALOGUE } from '../rewardCatalogue';
-import { composite, contrastRatio, skinContrastRows } from '../contrastAudit';
-import { BAT, CANDIDATE_SPEC_JSON, HALLOWEEN_PLUS_CANDIDATES, MUMMY, SLIME } from '../skinCandidates';
+import { contrastRatio, skinContrastRows } from '../contrastAudit';
+import { BAT, CANDIDATE_SPEC_JSON, HALLOWEEN_PLUS_CANDIDATES } from '../skinCandidates';
 
 const specs = HALLOWEEN_PLUS_CANDIDATES.map(c => c.spec);
 const layer = (s: SkinSpec, kind: SkinLayer['kind']) => s.layers.filter(l => l.kind === kind);
@@ -26,7 +27,9 @@ describe('not wired: candidates never reach players', () => {
       expect(ARROW_STYLES.some(style => style.id === s.id || style.name === s.name || style.numericId === s.numericId)).toBe(false);
       expect(REWARD_CATALOGUE.some(e => e.refId === s.id || e.name === s.name)).toBe(false);
     }
-    expect(Math.max(...ARROW_STYLES.map(s => s.numericId))).toBe(20);
+    // Mummy 21 and Potion Slime 22 shipped (owner pick 2026-10-06); the bat's proposed 23 is still unclaimed.
+    expect(Math.max(...ARROW_STYLES.map(s => s.numericId))).toBe(22);
+    expect(HALLOWEEN_PLUS_CANDIDATES.map(c => c.candidate)).toEqual(['little-bat', 'little-bat']);
   });
   test('no app source imports the candidates module (Metro never bundles it)', () => {
     const root = path.resolve(__dirname, '../../..');
@@ -91,20 +94,9 @@ describe.each(HALLOWEEN_PLUS_CANDIDATES.map(c => [c.key, c.spec] as const))('%s 
   });
 });
 
-test('K4 numbers quoted in the HALLOWEEN-PLUS report', () => {
+test('K4 numbers quoted in the HALLOWEEN-PLUS report (the shipped Mummy/Slime pins moved to halloweenPlusShipped.test.ts)', () => {
   const pair = (rim: string) => [r2(contrastRatio(rim, '#F3EEFA')), r2(contrastRatio(rim, '#221A36'))];
-  expect(pair(MUMMY.rim)).toEqual([3.9, 3.72]);
-  expect(pair(SLIME.limeRim)).toEqual([3.72, 3.9]);
-  expect(pair(SLIME.mintRim)).toEqual([3.5, 4.14]);
   expect(pair(BAT.rim)).toEqual([4.01, 3.62]);
-});
-
-test('honest halo note: the rim against its own translucent halo (not the audited board) on each theme', () => {
-  const halo = (rim: string, glow: string) => ['#F3EEFA', '#221A36'].map(bg => r2(contrastRatio(rim, composite(glow, .30, bg))));
-  // Light board: the halo is lighter than the rim, so the outline still clears 3:1.
-  // Dark board: a lit halo next to the rim lowers the local ratio below 3:1 (the K4 audit itself checks rim vs board).
-  expect(halo(SLIME.limeRim, SLIME.limeGlow)).toEqual([3.55, 1.68]);
-  expect(halo(SLIME.mintRim, SLIME.mintGlow)).toEqual([3.38, 1.74]);
 });
 
 test('Little Bat A fangs are the existing blush field: two small ovals hanging from the smile, inside the face', () => {

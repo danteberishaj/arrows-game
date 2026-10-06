@@ -862,3 +862,16 @@ flattened pieces < 20°) has the staircase (90°) as its positive control.
 
 **Verified:** 60 static captures, 10 blocked-tap frames (peak change 49-82 in the head box) and 10 mid-exit frames, all
 viewed. Report: [HALLOWEEN-PLUS](next-level/reports/HALLOWEEN-PLUS-concepts.md).
+
+**Shipped follow-up (2026-10-07, Mummy 21 / Potion Slime 22 registered):**
+- **Observed:** after `device.py cleanup` had removed `/sdcard/Android/data/com.danteb.arrows`, every `run-skin-contract.mjs`
+  mode failed at its first `adb push` with `remote secure_mkdirs failed: Operation not permitted` (log kept as
+  `logs/contract-all-attempt1-push-failed.txt`). One `am start` of the installed contract APK, then a probe push, made the
+  rerun pass. **Cause:** hypothesis only (the app/media provider has to set up its external-files dir first).
+  **Rule:** after installing a contract APK on a cleaned device, launch it once and prove a probe push before the modes.
+- **Observed:** on the loaded host a tap sent while the hierarchy dump was slow landed late and opened a different book
+  tile (a Candy Corn confirm screen appeared where the Mummy flow was expected). **Rule:** read the live hierarchy
+  (expected title text) before every purchase input; never chain a coordinate tap after a timed-out dump.
+- **Observed:** the first test-ads build died with "Gradle build daemon disappeared unexpectedly" mid-task (no OOM or
+  error line in `build.log`); an identical retry passed. Cause unknown; keep the failed attempt's logs and retry once
+  before changing anything. Report: [HALLOWEEN-PLUS, Shipped 2026-10-07](next-level/reports/HALLOWEEN-PLUS-concepts.md).

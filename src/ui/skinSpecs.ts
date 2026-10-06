@@ -146,7 +146,8 @@ const strawberryGlazed = canvasSpec('strawberry-glazed', 17, 'Strawberry Glazed'
 // The concept's dark tint #2A2140 fails the REQUIRED missed-mark tint row (2.992:1, pinned in seasons.test.ts).
 // OWNER RULING 2026-10-04 (HALLOWEEN-01b): dark tint #221A36 for all three.
 export const HALLOWEEN_BRIEF_DARK_TINT = '#2A2140';
-// Exported (HALLOWEEN-PLUS) only so the unregistered concept candidates in skinCandidates.ts share the pack's recipe.
+// Exported (HALLOWEEN-PLUS) only so the unregistered concept candidates in skinCandidates.ts (the deferred Little Bat)
+// share the pack's recipe.
 export const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#221A36' };
 export const polishedHead: SkinSpec['head'] = { ...sherbet.head, shape: 'rounded', halfWidth: .44, tipPastCentre: .46, cornerRadius: .10, shine: false };
 const headFace = (ink: string, eyeShape: 'arc' | 'triangle', blushColour?: string): SkinSpec['face'] => ({ eyes: true, blush: blushColour !== undefined, eyeShape,
@@ -172,6 +173,27 @@ const candyCorn = canvasSpec('candy-corn', 20, 'Candy Corn', one('#FFD24A'), [
   // Thirds of the visible shaft, tail → head; the head repeats them as nested caps with the white innermost.
   { kind: 'lengthBands', colour: 'palette', width: .425, bands: ['#FFD24A', '#FF8A2A', '#FFF8E8'], bandWidths: [.425, .29, .155] },
 ], { board: HALLOWEEN_BOARD, head: polishedHead, motion: particles(['#FFD24A', '#FF8A2A', '#FFF8E8']) });
+// HALLOWEEN-PLUS, OWNER PICK 2026-10-06: concept "Mummy A" and "Potion Slime B" ship as Mummy 21 and Potion Slime 22.
+// The data is the contract-tested concept recipe unchanged (only id, numericId and name differ); see
+// docs/next-level/reports/HALLOWEEN-PLUS-concepts.md. Existing fields only.
+/** Mummy: off-white bandage, a butt-capped wrap bar every .20 cell (the Pumpkin rib field), dot eyes peeking out. */
+export const MUMMY = { body: '#F2EBDC', rim: '#857563', wrap: '#D5C7AE', ink: '#3B2F33', blush: '#EDBDAE' };
+const mummy = canvasSpec('mummy', 21, 'Mummy', one(MUMMY.body), [
+  rim(MUMMY.rim, .48), body(.425),
+  { kind: 'seam', colour: MUMMY.wrap, width: .36, dash: [.03, .17], offset: [0, 0], cap: 'butt' },
+], { board: HALLOWEEN_BOARD, head: polishedHead,
+  // Dot eyes (eyeShape omitted = the native default) and a peach blush; the pack's sized head face otherwise.
+  face: { eyes: true, blush: true, closedOnBlocked: true, ink: MUMMY.ink, blushColour: MUMMY.blush, anchor: 'head', eyeRadius: .042,
+    eyeHalfGap: .13, mouthWidth: .07, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 },
+  motion: particles([MUMMY.body, MUMMY.wrap, MUMMY.rim]) });
+/** Potion Slime: lime body with a glowing inner core (no outer halo, so the rim sits on the board) and bubble spots. No face. */
+export const POTION_SLIME = { lime: '#8EDB6A', glow: '#B6F28F', rim: '#3F8A4A', core: '#F1FFD9', bubble: '#EFFFE0', fizz: '#FFFFFF' };
+const potionSlime = canvasSpec('potion-slime', 22, 'Potion Slime', one(POTION_SLIME.lime), [
+  rim(POTION_SLIME.rim, .48), body(.425),
+  { kind: 'shine', colour: POTION_SLIME.core, width: .20, offset: [0, 0], opacity: .55, fadeCells: .7 },
+  { kind: 'spots', colour: POTION_SLIME.bubble, width: .10, period: .62, sideOffset: .06, opacity: .9 },
+  { kind: 'spots', colour: POTION_SLIME.fizz, width: .05, period: .41, sideOffset: -.09, opacity: .85 },
+], { board: HALLOWEEN_BOARD, head: polishedHead, motion: particles([POTION_SLIME.lime, POTION_SLIME.glow, POTION_SLIME.fizz]) });
 /** One shared data recipe; untouched specs keep their original JSON and native defaults. */
 function launchPolish(spec: SkinSpec, light: string, dark: string): SkinSpec {
   const oldBody = spec.layers.find(layer => layer.kind === 'body')!.width;
@@ -197,7 +219,7 @@ export const SKIN_SPECS: Readonly<Record<string, SkinSpec>> = {
   archery, pixel, 'neon-glass': neonGlass, 'rainbow-ribbon': launchPolish(rainbowRibbon,'#F7F5FF','#13111C'), 'clear-glass': clearGlass,
   'stained-glass': stainedGlass, campfire: launchPolish(campfire,'#FFF6EC','#17110D'), 'lava-rock': lavaRock,
   'strawberry-glazed': launchPolish(strawberryGlazed,'#FFF7EA','#1A1410'),
-  pumpkin, ghost, 'candy-corn': candyCorn,
+  pumpkin, ghost, 'candy-corn': candyCorn, mummy, 'potion-slime': potionSlime,
 };
 export function skinSpecFor(id: string | undefined): SkinSpec | null { return id ? SKIN_SPECS[id] ?? null : null; }
 /** Stable selection payload; size/motion are separate props and never cause JSON re-parsing. */

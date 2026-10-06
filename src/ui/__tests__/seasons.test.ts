@@ -14,7 +14,7 @@ class Mem implements IntStore {
   deleteKey(k: string) { this.m.delete(k); }
 }
 const day = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h, 0, 0);
-const PUMPKIN = 18, GHOST = 19, CANDY = 20;
+const PUMPKIN = 18, GHOST = 19, CANDY = 20, MUMMY = 21, SLIME = 22;
 const OCT = day(2026, 10, 15), DEC = day(2026, 12, 10);
 
 describe('season window (local time, inclusive, may wrap the year)', () => {
@@ -43,9 +43,9 @@ describe('season window (local time, inclusive, may wrap the year)', () => {
 });
 
 describe('catalogue: seasonal styles are book-only', () => {
-  test('Halloween is 10-01..11-07 and covers Pumpkin, Ghost and Candy Corn at 20 petals', () => {
+  test('Halloween is 10-01..11-07 and covers Pumpkin, Ghost, Candy Corn, Mummy and Potion Slime at 20 petals', () => {
     expect(HALLOWEEN).toEqual({ id: 'halloween', name: 'Halloween', start: '10-01', end: '11-07' });
-    expect([...SEASONAL_REWARD_IDS]).toEqual([PUMPKIN, GHOST, CANDY]);
+    expect([...SEASONAL_REWARD_IDS]).toEqual([PUMPKIN, GHOST, CANDY, MUMMY, SLIME]); // HALLOWEEN-PLUS appended 21, 22
     for (const id of SEASONAL_REWARD_IDS) {
       const entry = REWARD_CATALOGUE.find(e => e.rewardId === id)!;
       expect(entry.season).toBe(HALLOWEEN);
@@ -55,7 +55,7 @@ describe('catalogue: seasonal styles are book-only', () => {
       expect(REWARD_PATH_IDS).not.toContain(id);
       expect(FREE_REWARD_IDS).not.toContain(id);
     }
-    expect(REWARD_CATALOGUE.filter(e => e.season).map(e => e.refId)).toEqual(['pumpkin', 'ghost', 'candy-corn']);
+    expect(REWARD_CATALOGUE.filter(e => e.season).map(e => e.refId)).toEqual(['pumpkin', 'ghost', 'candy-corn', 'mummy', 'potion-slime']);
   });
   test('visibility: off hides every seasonal style; on shows owned all year, unowned only in season', () => {
     const none = () => false;
@@ -72,7 +72,7 @@ describe('catalogue: seasonal styles are book-only', () => {
     const ordinary = ARROW_STYLES.filter(s => !SEASONAL_REWARD_IDS.includes(s.numericId)).length;
     const owned = (id: number) => [0, 2, 4, PUMPKIN].includes(id);
     expect(visibleStyleCounts(owned, false, OCT)).toEqual({ owned: 3, total: ordinary });
-    expect(visibleStyleCounts(owned, true, OCT)).toEqual({ owned: 4, total: ordinary + 3 });
+    expect(visibleStyleCounts(owned, true, OCT)).toEqual({ owned: 4, total: ordinary + SEASONAL_REWARD_IDS.length });
     expect(visibleStyleCounts(owned, true, DEC)).toEqual({ owned: 4, total: ordinary + 1 });
   });
 });
@@ -146,7 +146,7 @@ describe('selection: a saved seasonal id renders as Classic unless seasons are o
     jest.resetModules();
     return require('../arrowStyleSelection') as typeof import('../arrowStyleSelection');
   }
-  test.each([[PUMPKIN, 'pumpkin'], [GHOST, 'ghost'], [CANDY, 'candy-corn']])('saved %i', (id, name) => {
+  test.each([[PUMPKIN, 'pumpkin'], [GHOST, 'ghost'], [CANDY, 'candy-corn'], [MUMMY, 'mummy'], [SLIME, 'potion-slime']])('saved %i', (id, name) => {
     const s = new Mem(); s.m.set('arrows_skin', id);
     const off = load(); off.initializeArrowStyle(s, true);
     expect(off.getArrowStyle().id).toBe('classic');

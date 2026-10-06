@@ -57,6 +57,9 @@ const SEASONAL: readonly (readonly [string, Season, readonly string[]])[] = [
   ['pumpkin', HALLOWEEN, ['Carved face', 'Soft ribs', 'Halloween']],
   ['ghost', HALLOWEEN, ['Sleepy face', 'Wavy edges', 'Halloween']],
   ['candy-corn', HALLOWEEN, ['Three bands', 'Sweet', 'Halloween']],
+  // HALLOWEEN-PLUS (owner pick 2026-10-06): same window, price and book-only rules as the pack above.
+  ['mummy', HALLOWEEN, ['Bandage wraps', 'Peeking eyes', 'Halloween']],
+  ['potion-slime', HALLOWEEN, ['Glowing core', 'Bubbles', 'Halloween']],
 ];
 export const SEASONAL_REWARDS: readonly RewardEntry[] = SEASONAL.map(([id, season, chips]) =>
   ({ ...skinEntry(id, null, chips), price: SEASONAL_PRICE, season }));

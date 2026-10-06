@@ -26,7 +26,8 @@ test('in season: a Halloween section at the TOP with a drawn pumpkin and the uno
   getByText('Halloween · until 7 Nov');
   within(section).getByTestId('pumpkin-icon');
   const labels = within(section).getAllByRole('button').map(b => b.props.accessibilityLabel);
-  expect(labels).toEqual(['Pumpkin, 20 petals', 'Ghost, 20 petals', 'Candy Corn, 20 petals']);
+  // HALLOWEEN-PLUS (owner pick 2026-10-06): Mummy and Potion Slime join the section, in catalogue order.
+  expect(labels).toEqual(['Pumpkin, 20 petals', 'Ghost, 20 petals', 'Candy Corn, 20 petals', 'Mummy, 20 petals', 'Potion Slime, 20 petals']);
   // The season section comes before the path grid.
   const tree = JSON.stringify(render(<CollectionBook palette={Daylight} state={base} onUse={() => {}} now={OCT} />).toJSON());
   expect(tree.indexOf('book-season-halloween')).toBeLessThan(tree.indexOf('book-tile-cinnamon'));
@@ -41,8 +42,8 @@ test('an owned seasonal style leaves the book; buying passes the date and shows 
   getByText('Buy for 20 petals');
   fireEvent.press(getByTestId('book-buy'));
   expect(mockBuy).toHaveBeenCalledWith(19, OCT);
-  // Visible: 18 ordinary + Pumpkin/Ghost (owned) + Candy Corn (in season) = 21; owned 4 + 2.
-  getByText('6 of 21 styles collected');
+  // Visible: 18 ordinary + Pumpkin/Ghost (owned) + Candy Corn, Mummy, Potion Slime (in season) = 23; owned 4 + 2.
+  getByText('6 of 23 styles collected');
 });
 
 test('out of season: unowned seasonal styles are hidden and no section is drawn', () => {

@@ -1,5 +1,9 @@
 # HALLOWEEN-PLUS: three new Halloween concept skins (Mummy, Potion Slime, Little Bat)
 
+> **Update 2026-10-07: shipped.** The owner picked Mummy A and Potion Slime B (2026-10-06). They are registered as
+> Mummy 21 and Potion Slime 22, Halloween seasonal book styles at 20 petals; Little Bat is deferred. See
+> [Shipped 2026-10-07](#shipped-2026-10-07) at the end. The concept text below is the record of 2026-10-06/07.
+
 2026-10-06/07. **Concept only, owner pick pending. Nothing is registered**: no catalogue, book, price, picker, save or
 native change. Worktree branch `worktree-agent-aab8b35454d2def7e`, cut at next-level `d7f8f62`. Not pushed, not merged,
 no PR, no EAS. Node v20.19.4. Only `emulator-5556 / fleet_floor_api31` was used.
@@ -252,3 +256,144 @@ this task's commands); I cold-booted the same AVD on 5556 and left it running.
 - **Slime C's exit evidence** is only the start of the exit.
 - **Halo legibility on dense dark boards:** only the composite ratio was computed; no user test.
 - **iOS:** no renderer; not applicable.
+
+## Shipped 2026-10-07
+
+**OWNER RULING 2026-10-06:** ship **Mummy A** and **Potion Slime B** now, as Halloween seasonal skins in the collection
+book. The bat comes later, with ears. Branch `next-level` (main checkout), local commits only: no push, merge, PR or EAS.
+Node v20.19.4. Only `emulator-5556 / fleet_floor_api31` was used. Evidence is under `artifacts/HALLOWEEN-PLUS/` in the
+main checkout (gitignored); the concept-era artifacts above stay in the concept worktree's own `artifacts/HALLOWEEN-PLUS/`.
+
+### What changed
+
+| Item | Value |
+| --- | --- |
+| Registry (`src/ui/skinSpecs.ts`) | `mummy` **21** "Mummy" and `potion-slime` **22** "Potion Slime", appended after Candy Corn 20. The data is the concept recipe **unchanged**: the registered JSON equals the concept `mummy-a` / `potion-slime-b` JSON with only `id` and `name` replaced (same key order; checked with `assert.deepStrictEqual` against a dump taken before the edit). |
+| Catalogue (`src/ui/rewardCatalogue.ts`) | Two `SEASONAL` entries with `HALLOWEEN` (10-01..11-07), `pathCost: null`, price **20**, never on the path, never free; chips "Bandage wraps · Peeking eyes · Halloween" and "Glowing core · Bubbles · Halloween". The book, counts and season visibility are the existing data-driven HALLOWEEN-01 code; no UI file changed. |
+| Save bits | `arrows_rewards_owned_lo` holds reward ids 0-29 (`MASK_BITS = 30`, `src/core/collection.ts`), so ids 21 and 22 are bits of the existing `_lo` key. **No new bit range, no new key, no schema change.** Device: after the purchase `owned_lo` went 21 → 2097173 (bit 21 added), `owned_hi` stayed 0. |
+| `src/ui/skinCandidates.ts` | Only the two Little Bat variants remain, marked "deferred: needs a general head-ears field (owner 2026-10-06)"; proposed id 23. Mummy B and Potion Slime A/C were removed (RULING 1). |
+| Contract tooling | `SkinHalloweenContract.kt`: registered specs allowed a HALLOWEEN-01b field are now the list `pumpkin`, `mummy` (Mummy's wraps use `seam.cap: 'butt'`); every older registered spec still must match the frozen cd10d12 paths. `SkinPolishContract.kt`: the blush clearance check is now **gated for every spec** (RULING 2). `halloween-plus/` scripts: render list, summary (asserts every spec), APK proof (shipped names present, unpicked/bat names absent), `plan.cjs`; new `shipped.py` (device flow) and `shipped-sheet.py`. |
+| Docs | `docs/skins/README.md` (ids 21/22, the 01b-field list, the blush gate); one lesson paragraph appended to the HALLOWEEN-PLUS entry in `docs/engineering-lessons.md`. |
+
+### Native contract (all registered specs + the two bat candidates)
+
+Commands: `sh scripts/art/halloween-plus/build-contract-apk.sh` (`ART_SKINS_CANDIDATES=1`, `build-skin-catalogue.py
+contract`, proof `build/contract/proof.txt`: test id [9,0], production ids [0,0], same cert `24f7fa0b…`, instrumentation
+present; APK sha256 `15a58e56…`); `adb -s emulator-5556 install -r -d perf/catalogue-contract.apk`;
+`sh scripts/art/halloween-plus/run-contract.sh` (`logs/contract-all.txt`, exit 0); `python3
+scripts/art/halloween-plus/summarize-contract.py` (exit 0, `checks/contract-summary.json`). The first run's pushes failed
+(`logs/contract-all-attempt1-push-failed.txt`, see the lesson); the rerun after one app launch passed.
+
+- **Red control:** frozen ART03 Cinnamon still fails K1 (17,191), `EXPECTED_K1_FAIL` on 21 of 21 levels.
+- **after / polish / halloween:** PASS on 21 of 21 levels (v1 0-19 + dense 3827) for all **24** specs (22 registered + 2 bats).
+- **Product module:** exactly its 6 files after the build (`build/contract/module-after.txt`) and at the end of the task.
+
+| Spec | K1 fit fail | K2 max draws incl. mark | K3 head fail | K5 flat / K6 reduced motion | K8 one-cell | Face clearance (.03) | Blush clearance (gated) | HALLOWEEN mode |
+| --- | ---: | ---: | ---: | --- | ---: | --- | --- | --- |
+| Mummy 21 | 0 | 6 | 0 | 21/21, 21/21 | 449 | 2,118 incl. 449 one-cell heads | 2,118 / 0 outside; displaced-blush control rejected | butt wrap bars 420, round-cap control rejected 21/21; eyes classified `dot` 168, swap rejected 21/21 |
+| Potion Slime 22 | 0 | 6 | 0 | 21/21, 21/21 | 449 | no face | - | 33,888 path arrays byte-identical to the cd10d12 renderer; displacement control rejected 21/21 |
+| Critter / Ghost (head blush, now gated) | 0 | 6 / 7 | 0 | 21/21 | 449 | 2,118 each | 2,118 / 0 each | unchanged |
+| Pumpkin / Candy Corn | 0 | 6 / 6 | 0 | 21/21 | 449 | 2,118 / - | - | unchanged from 01b (Pumpkin bars 168, minCells 1,669; Candy Corn bands) |
+| 17 earlier specs | 0 | ≤ 8 | 0 | 21/21 | 449 each | as before | - | byte-identical to cd10d12 |
+| Little Bat A / B (candidates) | 0 | 5 / 5 | 0 | 21/21 | 449 | 2,118 each | 2,118 / 0 each | 29,652 byte-identical; `arc` eyes 168 |
+
+The Mummy and Potion Slime rows match the concept run's Mummy A and Slime B numbers, as expected for identical data.
+
+### K4 contrast (real audit `skinContrastRows`; pinned in `src/ui/__tests__/halloweenPlusShipped.test.ts`)
+
+| Spec | Outline Daylight `#F3EEFA` | Outline Ink Night `#221A36` | Missed mark (L / D) | Blocked (L / D) | Picker thumbnail |
+| --- | ---: | ---: | --- | --- | --- |
+| Mummy (rim `#857563`) | 3.901 | 3.721 | 5.401 / 3.196 | 3.647 / 4.696 | passes on `surface`, both themes |
+| Potion Slime (rim `#3F8A4A`) | 3.725 | 3.897 | 5.401 / 3.196 | 3.647 / 4.696 | passes on `surface`, both themes |
+
+Every required row passes on both themes (outline, blocked, the 5 `arrow-*` tint rows, the 2 overlay-text rows). Grid
+dots keep the R4 decorative exemption (raw 1.487 / 1.513, non-gating), as for the rest of the pack. The rows come from
+the registry automatically (`skinContrastRows()` iterates `SKIN_SPECS`), so "adding rows" meant registering the specs;
+the pins moved from the candidate test to the shipped test. No site line in `contrastAudit.ts` moved (no UI file changed).
+
+### Device check (emulator-5556; Book flow and boards through the real app, no `artSkinSpec` override)
+
+**Build** `build/on/test-ads.apk`, sha256 `f5778cee…` (`build/on/proof.txt`), from HEAD `ace959b` plus this task's
+uncommitted tree (`build/on/status.txt`):
+- Flags: `EXPO_PUBLIC_META_SKIN_PICKER=1`, `_REWARD_PATH=1`, `_REWARD_BOOK=1`, `_META_SEASONS=1`, `EXPO_PUBLIC_ADMOB_TEST_ADS=1`,
+  plus the other META flags and `EXPO_PUBLIC_LOG_BOARD_VIEWPORT=1` (the board-camera log line; `build/on/env.txt`).
+- Prebuild `--clean`, Metro `--reset-cache` (`extraPackagerArgs`), `:app:createBundleReleaseJsAndAssets --rerun`, df 26 GB
+  free before. The first attempt died with "Gradle build daemon disappeared" (`build/attempt1/`); the retry passed.
+- **Proof before install:** `3940256099942544` UTF-8 9 / UTF-16LE 0; `6706292920`, `7549521178`, `3505414519`,
+  `5508761320`, `5754923896` all [0, 0]; same cert as the installed APK (`24f7fa0b…`); no instrumentation, no diagnostic
+  class; "Mummy", "Potion Slime", "potion-slime" present; "Little Bat", "little-bat", `mummy-a/-b`, `potion-slime-a/-b/-c`,
+  "Mummy A", "Potion Slime B" absent. Installed with `install -r -d`.
+
+**Captures** (`screens/shipped/`, ledger `device/shipped-captures.jsonl`, hierarchy dumps `device/shipped-*.json`).
+Device date 2026-10-07, inside the 10-01..11-07 window. Seeded save: 30 petals, only the free styles owned (`owned_lo`
+21), Classic selected, light theme.
+
+| File | Shows |
+| --- | --- |
+| `01-book-halloween-section.png` | "Book · 20", "Halloween · until 7 Nov" with the pumpkin icon; five tiles Pumpkin, Ghost, Candy Corn, Mummy, Potion Slime, each "20" petals, above the path grid. |
+| `02-mummy-confirm.png` | Mummy preview, "Not on the path", "Buy for 20 petals", "You'll have 10 left". |
+| `03-mummy-bought.png` | "ADDED TO YOUR STYLES", "4 of 23 styles collected", "Use it now"; header "10 petals", "Your styles · 4", "Book · 19". |
+| `04-use-it-now.png` | "Your styles" with Mummy checked. Save rows right after (`device/shipped-rows-after-use-it-now.txt`): `arrows_skin 21`, `arrows_petals 10`, `arrows_rewards_owned_lo 2097173`. |
+| `05-after-use-level1-mummy.png` | Back to the menu, Play: level 1 renders in Mummy on the `#F3EEFA` tint. |
+| `board-mummy-{light,dark}.png`, `board-potion-slime-{light,dark}.png` | Level 13 (index 12) opened zoomed at 29.39 dp cells (logged camera scale 0.7347), owned and selected through the save. Exact-colour pixel counts in the play area (`device/shipped-board-pixels.jsonl`): tint `#F3EEFA` 2,674,877 / `#221A36` 2,674,841; Mummy body 798,636, rim 93,609, wraps 79,323; Potion Slime body 553,230, rim 93,609 (its core and bubbles are translucent, so they never hit an exact colour). |
+
+**Owner sheet:** `artifacts/HALLOWEEN-PLUS/shipped-sheet.png` (book flow; four boards at half size; four unresized 640 px
+crops). Inputs and hashes: `screens/shipped/sheet-manifest.json`. No ad was tapped; no test ad was opened.
+
+**Restore proof** (`device/restore-proof.json`): the backed-up APK (sha256 `c2967710…`, cert `24f7fa0b…`, versionCode 6)
+was reinstalled with `install -r -d`, the app data dir was replaced from the byte-exact tar, and the checks all came back
+true: APK bytes equal, data manifest equal (65 files, sha256 + owner/mode), save rows equal (empty 0-byte save), settings
+and display equal. `device.py cleanup` removed the external-files dir this task's contract run created. Not restorable:
+the package `lastUpdateTime`. The emulator was already running (left by the concept task) and is left running.
+
+### Tests
+
+The gates are `npx tsc --noEmit -p .` (exit 0) and `npx jest "$PWD/(src|scripts)/"` (**151 suites / 2,598 tests / 12 snapshots, all pass**, exit 0). After the
+three cherry-picks, before any change, the same gates gave tsc 0 and 150 suites / 2,603 tests / 12 snapshots
+(run in a clean detached worktree at `ace959b`). Count reconciliation, 2,603 → 2,598 (−5): the candidate suite went
+40 → 14 (−26), the new shipped suite adds 11, `seasons.test.ts` +2, and the per-spec `it.each` blocks grow by two specs
+(`skinSpecs.test.ts` 3 × 2 = +6, `arrowStylePersistence.test.ts` seasonal +2).
+
+New: `src/ui/__tests__/halloweenPlusShipped.test.ts` (11 tests): ids, names and order; the save-bit range; the exact
+concept data; pack bounds; the catalogue entries; a ledger purchase in season (bit 21 in `_lo`, only the existing keys
+written) and out of season (`unavailable`, no write); K4 pins; picker thumbnails. Red control: with Mummy's catalogue
+line removed, 2 of its tests fail; restored byte-identical (sha1 `ef92e800…` before and after).
+
+Changed (each because the Halloween set grew from 3 to 5, or because Mummy reuses the 01b `cap` field):
+- `halloweenPlusCandidates.test.ts`: only the bats remain; the max registered id is now 22; the Mummy/Slime K4 pins
+  moved to the shipped test; the Slime A/C halo-note test was dropped (variants not shipped; numbers stay in this report).
+- `seasons.test.ts`: the seasonal id list and refIds include 21/22; the in-season visible total uses
+  `SEASONAL_REWARD_IDS.length` instead of `+ 3`; the saved-id selection cases include Mummy and Potion Slime.
+- `CollectionBook.seasons.test.tsx`: the Halloween section lists five tiles; "6 of 23 styles collected" (was 21).
+- `ArrowStyleOptions.seasons.test.tsx`: "Book · 19" (14 path + 5 Halloween; was 17).
+- `skinCatalogue.test.ts`: the registry names list ends with Mummy, Potion Slime.
+- `halloweenSkins.test.ts`: the pack is found at `slice(-5, -2)`; the "only Pumpkin uses `cap`" guard now also allows Mummy.
+
+### RULINGs (mine; reversible)
+
+1. **Unpicked variants removed.** Mummy B and Potion Slime A/C were deleted from `skinCandidates.ts`, not kept as
+   concepts: the owner picked between them, and keeping them would collide with the now-claimed ids 21/22. Their recipes
+   are in commit "feat(HALLOWEEN-PLUS): three unregistered Halloween concept skins" and in this report.
+2. **Blush clearance is gated for every spec.** The concept made it report-only for registered specs; with Mummy
+   registered (head blush), the check now fails any spec. Critter, Ghost, Mummy and both bats pass with 0 outside.
+3. **Chip copy** for the two entries (not shown in the book UI today) is mine: "Bandage wraps · Peeking eyes ·
+   Halloween" and "Glowing core · Bubbles · Halloween".
+4. **No book layout change.** The Halloween grid now has 5 tiles, and the book grid uses `justifyContent:
+   'space-between'`, so the second row shows Mummy at the left and Potion Slime at the right with a gap in the middle
+   (`01-book-halloween-section.png`). This is the existing grid behaviour (the path grid shows the same gap whenever its
+   count is 2 mod 3). I did not change it because the brief asked for the same book behaviour and one build.
+   **Recommended follow-up:** pad the last row with empty tile-width spacers (or `flex-start`), with an owner look.
+5. **Extra build flag:** `EXPO_PUBLIC_LOG_BOARD_VIEWPORT=1` (a log line only) was on, so the board-camera line proved each
+   board opened. The thumbnails (`StylePreview`) are unchanged: Mummy's wraps show as a dashed line, as Pumpkin's ribs
+   do, and the Slime's bubbles are not drawn in the thumbnail.
+
+### UNVERIFIED
+
+- **Physical phone:** look, legibility at real pixel density, and performance. Everything here is emulator-5556.
+- **First-draw / K7 timing:** not measured for either skin (the host load was 8-28 during this task). The work counters
+  match the concept: Mummy = Pumpkin's recipe plus blush; Potion Slime = two spot passes plus the core shine.
+- **Owner look** of the shipped pair in the real book and on boards (`shipped-sheet.png`), and of the RULING 4 gap.
+- **Out-of-season and seasons-off behaviour on device** for the new entries: covered by unit tests only (the
+  HALLOWEEN-01 device run proved the mechanism for Pumpkin).
+- **Dark mode book screens** were not captured (the dark boards were).
+- iOS: no renderer; not applicable.

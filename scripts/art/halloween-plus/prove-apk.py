@@ -3,7 +3,8 @@
 - Hermes bundle; Google's test app id 3940256099942544 present; production ids absent (UTF-8 and UTF-16LE).
 - Same signing certificate as the APK backed up from emulator-5556 (artifacts/HALLOWEEN-PLUS/device/backup.json).
 - seasons: no instrumentation in the manifest and no diagnostic class names in any dex; contract: instrumentation present.
-- The unregistered candidates are NOT in the bundle (positive control: the registered 'Candy Corn' name is).
+- The shipped Mummy / Potion Slime names ARE in the bundle (with 'Candy Corn' as before); the still-unregistered
+  candidates (Little Bat) and the unpicked concept variant ids are NOT.
 Exits non-zero on any failure."""
 import hashlib
 import json
@@ -53,6 +54,8 @@ else:
     assert instrumentation > 0
     hits = sum(d.count(b'SkinContractInstrumentation') for d in dexes.values()); print('instrumentation class dex hits', hits); assert hits > 0
 c = counts(bundle, 'Candy Corn'); print("positive control 'Candy Corn'", c); assert sum(c) > 0
-for phrase in ['Potion Slime', 'Little Bat', 'mummy-a', 'little-bat', 'potion-slime', 'Mummy A']:
+for phrase in ['Mummy', 'Potion Slime', 'potion-slime']:  # shipped 2026-10-07 (registered names and id)
+    c = counts(bundle, phrase); print('shipped', repr(phrase), c); assert sum(c) > 0, phrase
+for phrase in ['Little Bat', 'little-bat', 'mummy-a', 'mummy-b', 'potion-slime-a', 'potion-slime-b', 'potion-slime-c', 'Mummy A', 'Potion Slime B']:
     c = counts(bundle, phrase); print('candidate', repr(phrase), c); assert sum(c) == 0, phrase
 print('PROOF OK', mode)
