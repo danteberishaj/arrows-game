@@ -366,7 +366,7 @@ function serializeLevel(lvl: { shapeName: string; board: BoardLogic }): string {
   return [lvl.shapeName, lvl.board.rows, lvl.board.cols, ...lvl.board.arrows().map((a) => a.toLine())].join('\n');
 }
 
-test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by RE-CEILING: the owner-picked 354 ceiling)', () => {
+test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by RE-CEILING: the owner-picked 354 ceiling; then by W3-19\'s admission)', () => {
   // W3-10/W3-11 pinned 04d0ec7e (v1 tier bands, 46x46 clamp). W3-14 changed
   // v2 content on purpose (targets and bias from V2_CURVE, at most 37
   // columns): ec15f0f7. V2-FINISH part 1 (S400 as the owner's pick, the v1
@@ -380,10 +380,12 @@ test('v2 corpus pin: generate(i, 2) for 0-299 (re-pinned by RE-CEILING: the owne
   // committed), then the owner's option B, 354: 71dc3369 (EXECUTED twice:
   // this test and RE-CEILING's scratch fp.ts; docs/next-level/reports/
   // RE-CEILING.md, "Fix round 1"). Unlike v1's
-  // d01abbd8 this is not frozen forever: a later task that changes v2 content
-  // on purpose (W3-18's shapes) re-pins it with its own evidence (W3-21
-  // freezes it).
-  expect(v2CorpusFingerprint()).toBe('71dc3369');
+  // d01abbd8 this was not frozen: W3-19's admission of W3-18's House, Teacup,
+  // Bell and Umbrella (owner ruling 2026-10-06) re-dealt the bag's windows:
+  // 1c4cd1f4 (EXECUTED twice: this test and W3-21's artifacts/W3-21/step1/
+  // fp.ts; docs/next-level/reports/W3-21.md). W3-21 then froze v2 with its
+  // own tests below ("v2 frozen at ..."); this pin must agree with them.
+  expect(v2CorpusFingerprint()).toBe('1c4cd1f4');
 });
 
 /** V2_CURVE with every bias removed: the same targets and windows, the neutral fill. */
@@ -721,4 +723,45 @@ test('W3-14 v2 boards stay inside the owner\'s W3-09 clamp: at most 37 columns a
     if (board.cols > 37 || board.rows > 46) bad.push(`${i}:${board.rows}x${board.cols}`);
   }
   expect(bad).toEqual([]);
+});
+
+// ---- W3-21: generator v2 is frozen ------------------------------------------
+//
+// Once a v2 build ships, v2 is a contract like v1: any change to its output
+// re-deals boards under v2 players. These pins are NEW tests, separate from the
+// re-pinnable v2 pins above (which must keep agreeing with them). New content
+// is a new generator version (generatorVersion.ts), never an edit here.
+// Values computed EXECUTED twice: by these tests and independently by
+// artifacts/W3-21/step1/fp.ts and goldens.ts (docs/next-level/reports/W3-21.md).
+
+test('W3-21 v2 frozen corpus fingerprint: generate(i, 2) for 0-299 (a fresh install)', () => {
+  // v2 frozen at 71592e3 + W3-21 (the commit that adds this test, after W3-19's admission); never re-pin.
+  expect(v2CorpusFingerprint()).toBe('1c4cd1f4');
+});
+
+test('W3-21 v2 frozen corpus fingerprint: generate(i, 2, { switchLevel: 1 }) for 0-299 (an existing player, v1 floor)', () => {
+  // v2 frozen at 71592e3 + W3-21 (the commit that adds this test, after W3-19's admission); never re-pin.
+  const lines: string[] = [];
+  for (let i = 0; i < V1_CORPUS_SIZE; i++) {
+    const lvl = LevelGenerator.generate(i, 2, { switchLevel: 1 });
+    lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
+    for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
+  }
+  expect(checksumLines(lines)).toBe('849961f1');
+});
+
+// v2 frozen at 71592e3 + W3-21 (the commit that adds this test, after W3-19's admission); never re-pin.
+// Rows: level 1 of a fresh install (W3-13's row), Teacup's first fresh board (a W3-19 shape at 12
+// rows), level 13 of the W3-21 over-install (switch level 12), a saturated fresh board, and a deep
+// existing-player board. Each hashes shapeName, rows, cols and every arrow line.
+test.each([
+  [0, 0, 'Diamond', 24, 'b58b2291'],
+  [1, 0, 'Teacup', 23, 'c833d047'],
+  [12, 12, 'Heart', 96, '307ef328'],
+  [917, 0, 'Circle', 156, '7eb15e87'],
+  [3827, 1, 'X', 157, '6d68fef5'],
+] as const)('W3-21 v2 frozen golden: index %i at switch level %i is %s, %i arrows, checksum %s', (index, switchLevel, shapeName, arrows, expected) => {
+  const level = LevelGenerator.generate(index, 2, { switchLevel });
+  const lines = [level.shapeName, String(level.board.rows), String(level.board.cols), ...level.board.arrows().map((a) => a.toLine())];
+  expect([level.shapeName, level.arrowCount, checksumLines(lines)]).toEqual([shapeName, arrows, expected]);
 });

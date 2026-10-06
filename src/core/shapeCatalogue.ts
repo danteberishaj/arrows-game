@@ -48,8 +48,8 @@ export const SHAPE_CATALOGUE: readonly string[] = Object.freeze([
   'Cat',
   'Mushroom',
   'Fish',
-  // W3-18: authored after v1; awaiting the owner's recognition test (W3-19), so not in
-  // V2_ADMITTED_SHAPE_IDS and dealt by nothing yet.
+  // W3-18: authored after v1. W3-19 (owner ruling 2026-10-06) admitted all four to v2 only;
+  // v1's pools and the daily pool never deal them.
   'House',
   'Teacup',
   'Bell',
@@ -94,6 +94,12 @@ export const V2_ADMITTED_SHAPE_IDS: ReadonlySet<string> = new Set<string>([
   'Cat',
   'Mushroom',
   'Fish',
+  // W3-19 owner ruling 2026-10-06 (docs/silhouette-naming-2026-10-06.md): an owner judgement, not
+  // a blind test. Admitted before the W3-21 freeze, which re-pinned both v2 corpus fingerprints.
+  'House',
+  'Teacup',
+  'Bell',
+  'Umbrella',
 ]);
 
 // OWNER-PICKED STARTING VALUE: two 30-bit persistence keys.

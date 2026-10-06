@@ -4,9 +4,18 @@
  * (same stroke fractions, same arrowhead). Nothing staged, nothing fake:
  * what the store shows is what the player gets.
  *
- * Run: npx tsx scripts/generate-promo-art.ts
+ * Run: npx tsx scripts/generate-promo-art.ts [--gen-version 1|2] [--out <dir>]
  *
- * Outputs (store/marketing/):
+ * --gen-version (W3-21): the generator whose boards are drawn. Default 1, the
+ * generator shipped players are dealt today (the output is unchanged). 2 draws
+ * generator v2 as a fresh install deals it (switch level 0: the players the
+ * store page is for once v2 is on). A shape v2 never deals as Super Hard
+ * (Crescent: its capacity, 450 cells, is under every v2 Super Hard target it
+ * meets in the search window) is drawn from its first v2 board at any tier,
+ * and the console line says so. --out (W3-21): the output directory, default
+ * store/marketing/. Store-facing PNGs change only with the owner's approval.
+ *
+ * Outputs (store/marketing/ by default):
  *   board-heart.png     1080x1920  a real SuperHard Heart level, Ink Night
  *   board-crescent.png  1080x1920  a real SuperHard Crescent level, Ink Night
  *   board-flower.png    1080x1920  a real SuperHard Flower level, Daylight
@@ -20,7 +29,19 @@ import { arrowArt, STROKE } from '../src/ui/arrowGeometry';
 import { Daylight, InkNight, Palette } from '../src/ui/theme';
 
 const CELL = 40;
-const OUT = path.join(__dirname, '..', 'store', 'marketing');
+
+function argValue(flag: string): string | undefined {
+  const i = process.argv.indexOf(flag);
+  if (i < 0) return undefined;
+  const v = process.argv[i + 1];
+  if (v === undefined || v.startsWith('--')) throw new Error(`${flag} needs a value`);
+  return v;
+}
+
+const GEN_VERSION_ARG = argValue('--gen-version') ?? '1';
+if (GEN_VERSION_ARG !== '1' && GEN_VERSION_ARG !== '2') throw new Error(`--gen-version must be 1 or 2; got ${GEN_VERSION_ARG}`);
+const GEN_VERSION: GenVersion = GEN_VERSION_ARG === '2' ? 2 : 1;
+const OUT = path.resolve(argValue('--out') ?? path.join(__dirname, '..', 'store', 'marketing'));
 
 /**
  * First SuperHard level whose silhouette is the named shape, at generator
@@ -30,10 +51,26 @@ function findLevel(shapeName: string, version: GenVersion = 1): GeneratedLevel {
   for (let i = 5; i < 6 * 400; i += 6) {
     if (Difficulties.forLevel(i) !== Difficulty.SuperHard) continue;
     const lvl = LevelGenerator.generate(i, version);
-    if (lvl.shapeName === shapeName) return lvl;
+    if (lvl.shapeName === shapeName) {
+      levelIndexOf.set(lvl, i);
+      return lvl;
+    }
+  }
+  if (version === 2) {
+    // W3-21: v2 may never deal this shape as Super Hard; draw its first v2 board at any tier.
+    for (let i = 0; i < 6 * 400; i++) {
+      const lvl = LevelGenerator.generate(i, version);
+      if (lvl.shapeName === shapeName) {
+        levelIndexOf.set(lvl, i);
+        return lvl;
+      }
+    }
   }
   throw new Error(`no ${shapeName} level found`);
 }
+
+/** The level index each drawn board came from (for the console line). */
+const levelIndexOf = new Map<GeneratedLevel, number>();
 
 /** The board as pure SVG — identical geometry to BoardView's render. */
 function boardSvg(lvl: GeneratedLevel, p: Palette): { svg: string; w: number; h: number } {
@@ -79,14 +116,15 @@ async function renderPromo(
   </svg>`;
 
   await sharp(Buffer.from(doc)).png().toFile(path.join(OUT, file));
-  console.log(`${file}  (${lvl.shapeName}, ${lvl.arrowCount} arrows, ${lvl.board.rows}x${lvl.board.cols})`);
+  console.log(`${file}  (${lvl.shapeName}, ${lvl.arrowCount} arrows, ${lvl.board.rows}x${lvl.board.cols})`
+    + (GEN_VERSION === 2 ? `  v2 level ${(levelIndexOf.get(lvl) ?? -1) + 1}, ${Difficulty[lvl.difficulty]}` : ''));
 }
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  await renderPromo('board-heart.png', findLevel('Heart'), InkNight, true);
-  await renderPromo('board-crescent.png', findLevel('Crescent'), InkNight, true);
-  await renderPromo('board-flower.png', findLevel('Flower'), Daylight, true);
+  await renderPromo('board-heart.png', findLevel('Heart', GEN_VERSION), InkNight, true);
+  await renderPromo('board-crescent.png', findLevel('Crescent', GEN_VERSION), InkNight, true);
+  await renderPromo('board-flower.png', findLevel('Flower', GEN_VERSION), Daylight, true);
 }
 
 main().catch((e) => {

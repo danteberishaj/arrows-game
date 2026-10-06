@@ -28,11 +28,17 @@ test('the rule: an id is listed when a v1 tier pool, a daily pool version, or (v
   expect(galleryShapeIds()).toBe(galleryShapeIds(GEN_V2_ENABLED));
 });
 
-test('today: the 26 v1 shapes are listed whichever generator is on, and no id awaiting W3-19 is', () => {
+test('today: v2 off lists the 26 v1 shapes; v2 on adds the W3-19-admitted shapes; no id awaiting W3-19 is listed', () => {
+  // W3-19 (owner ruling 2026-10-06): House, Teacup, Bell and Umbrella are admitted to v2 only, so
+  // they are listed only in a build with v2 on (dealt by v2, never by v1 or the daily).
   const pending = SHAPE_CATALOGUE.filter((id) => !V2_ADMITTED_SHAPE_IDS.has(id));
+  const expected = {
+    false: SHAPE_CATALOGUE.slice(0, 26),
+    true: [...SHAPE_CATALOGUE.slice(0, 26), 'House', 'Teacup', 'Bell', 'Umbrella'],
+  };
   for (const v2 of [false, true]) {
     const ids = galleryShapeIds(v2);
-    expect([...ids].sort()).toEqual(SHAPE_CATALOGUE.slice(0, 26).sort());
+    expect([v2, [...ids].sort()]).toEqual([v2, [...expected[`${v2}`]].sort()]);
     expect(pending.filter((id) => ids.has(id))).toEqual([]);
   }
 });

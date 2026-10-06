@@ -56,22 +56,29 @@ const V1_SHAPE_IDS: readonly string[] = LOCKED_SHAPE_IDS.slice(0, 26);
  * W3-18: catalogue ids authored after v1 that no generator, pool or daily deals yet. Each waits for
  * the owner's recognition test (W3-19); a pass appends the id to V2_ADMITTED_SHAPE_IDS and removes
  * it here (and re-pins both v2 fingerprints).
+ * W3-19 (owner ruling 2026-10-06, docs/silhouette-naming-2026-10-06.md): House, Teacup, Bell and
+ * Umbrella pass and are admitted, so none is pending.
  */
-const PENDING_RECOGNITION: readonly string[] = ['House', 'Teacup', 'Bell', 'Umbrella'];
+const PENDING_RECOGNITION: readonly string[] = [];
 
-test('W3-18: generator v2 admits exactly the 26 v1 shapes; every later catalogue id awaits W3-19', () => {
-  expect([...V2_ADMITTED_SHAPE_IDS]).toEqual(V1_SHAPE_IDS);
+/** W3-19: the shapes authored after v1 that v2 deals (owner ruling 2026-10-06). */
+const ADMITTED_AFTER_V1: readonly string[] = ['House', 'Teacup', 'Bell', 'Umbrella'];
+
+test('W3-18/W3-19: generator v2 admits the 26 v1 shapes plus the owner-passed W3-18 shapes; every other catalogue id awaits W3-19', () => {
+  expect([...V2_ADMITTED_SHAPE_IDS]).toEqual([...V1_SHAPE_IDS, ...ADMITTED_AFTER_V1]);
   expect(SHAPE_CATALOGUE.filter((id) => !V2_ADMITTED_SHAPE_IDS.has(id))).toEqual(PENDING_RECOGNITION);
   for (const id of V2_ADMITTED_SHAPE_IDS) expect([id, catalogueIndexOf(id) >= 0]).toEqual([id, true]);
 });
 
-test('W3-18: a catalogue id awaiting W3-19 is in no v1 tier pool and no daily pool version', () => {
+test('W3-18: a catalogue id authored after v1 (awaiting W3-19 or v2-admitted) is in no v1 tier pool and no daily pool version', () => {
   const v1 = new Set(
     [...ShapeLibrary.SimplePool, ...ShapeLibrary.MediumPool, ...ShapeLibrary.ComplexPool].map((s) => s.name),
   );
   const daily = new Set(DAILY_VERSIONS.flatMap((v) => v.pool));
-  const pending = SHAPE_CATALOGUE.filter((id) => !V2_ADMITTED_SHAPE_IDS.has(id));
-  expect(pending.filter((id) => v1.has(id) || daily.has(id))).toEqual([]);
+  // W3-19: once admitted, a W3-18 shape is v2-only; admission never reaches v1 or the daily.
+  const afterV1 = SHAPE_CATALOGUE.filter((id) => !V1_SHAPE_IDS.includes(id));
+  expect(afterV1).toEqual([...ADMITTED_AFTER_V1, ...PENDING_RECOGNITION]);
+  expect(afterV1.filter((id) => v1.has(id) || daily.has(id))).toEqual([]);
   // v1's pools and the daily pool are exactly the v1 shapes (the daily leaves out the two fills).
   expect([...v1].sort()).toEqual([...V1_SHAPE_IDS].sort());
   expect([...daily].every((id) => V1_SHAPE_IDS.includes(id))).toBe(true);

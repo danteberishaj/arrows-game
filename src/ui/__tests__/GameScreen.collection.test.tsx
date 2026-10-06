@@ -86,8 +86,9 @@ function clearBoard() {
  * A fold pointer at `through` with the bit it always comes with. FINAL-FIX:
  * both masks empty under a pointer above 0 reads as a damaged collection (an
  * unparseable mask hydrates as absent) and is rebuilt, so a realistic fixture
- * carries a bit. Index 29 (Umbrella) is dealt by no campaign or daily board
- * yet, so it never collides with the bit a test checks.
+ * carries a bit. Index 29 (Umbrella) is dealt by no v1 campaign or daily board
+ * (W3-19 admitted it to v2 only, and these tests deal v1 and the daily), so it
+ * never collides with the bit a test checks.
  */
 const PLACEHOLDER_BIT = 1 << 29;
 function seedFold(through: number): void {

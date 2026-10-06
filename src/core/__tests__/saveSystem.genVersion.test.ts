@@ -100,7 +100,9 @@ test('flag ON, switch 41, level 50: the menu fold asks v1 for levels 0..40 and v
 test('flag ON, switch 41: the campaign-clear fast path records level 50 at v2 and level 40 at v1', () => {
   store.setInt('arrows_gen_switch_level', 41);
   // A fold pointer always comes with a bit (FINAL-FIX: empty masks under a
-  // pointer read as damage). Index 29 (Umbrella) is dealt by neither version yet.
+  // pointer read as damage). Index 29 (Umbrella) is dealt by no v1 or daily board
+  // (v2 has dealt it since W3-19, but not at the levels this test folds: 40 is v1
+  // Circle and 50 floored v2 is Plus, W3-21 EXECUTED).
   store.setInt('arrows_shapes_seen_lo', 1 << 29);
 
   store.setInt('arrows_shapes_through_level', 40);

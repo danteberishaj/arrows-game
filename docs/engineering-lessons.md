@@ -619,3 +619,27 @@ capture. **Verified** on the same ad: the resumed-activity line named AdActivity
 "24-bit PNG (no alpha)" and emulator `screencap` writes RGBA. Prove alpha is 255 everywhere, then save RGB.
 macOS Vision OCR (`artifacts/W7-09/ocr/ocr.swift`) is a working "Test Ad" detector: its positive control reads
 "Test Ad" on the quarantined capture. Report: [W7-09](next-level/reports/W7-09.md).
+
+## An over-install proof needs the old build's own save, a per-board version log line, and a teeth build
+
+**Observed (2026-10-06, W3-21):** the v2 over-install was proved on the emulator with three same-key TEST-ADS
+release APKs. A was v2 off, B was v2 on, and C was B with switch-level classification disabled. All three were
+gradle builds. A JS repack would need the upload key, because the installed app is upload-signed.
+- **Route (confirmed):** A seeded `arrows_current_level = 11` and then cold-started itself, so the save on disk was
+  A's. A `su 0` sqlite count showed no `arrows_gen_switch_level` key before B went over it.
+- **Evidence that worked:** `EXPO_PUBLIC_FTUE_LOG=1` makes every board print
+  `[ftue] board_mount <index> 0 gen=<v> arrows=<n> shape=<s>`. A perfect clear driven by the predicted
+  generator's plan proves the exact board: any mismatch aborts on the "N left" check.
+- **Results:** B kept level 12 as v1 Bolt (54 arrows), stamped 12, dealt level 13 as v2 Heart (96), and re-dealt it
+  pixel-identically after a restart.
+- **Teeth (confirmed):** C re-dealt level 12 as v2 Rocket (36) and stamped 0. Without the teeth build, a pass could
+  not be told apart from a check that cannot fail.
+- **Gotchas:**
+  1. `da93dcd` cannot be build A, because it carries the owner's live LevelPlay key and no test-ads ids.
+  2. A fresh or `pm clear`ed install has a 0-byte RKStorage, so sqlite reads fail with "no such table". Tolerate
+     that failure.
+  3. The interstitial after "Next level" again hid behind an app-package focus line. W7-09's `mResumedActivity`
+     rule (above) applies to every driver, and `w321.mjs` now checks it.
+  4. Admitting shapes to v2 changed v2 level 1, from Pine to Diamond, because the first bag window holds every
+     candidate. An admission re-deals from level 1, so it must come before a freeze.
+- Report: [W3-21](next-level/reports/W3-21.md).

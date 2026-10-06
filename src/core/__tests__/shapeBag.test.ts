@@ -48,8 +48,10 @@ const ROWS_CAP = 46;
  * --capacity` (2026-09-26, W3-14): Square 1369, Heart 1033, Circle 901,
  * Octagon 869, Rectangle 864, Hexagon 809, Pentagon 740, Plus 733; the next,
  * Ring, holds 696. (At W3-10's 46x46 clamp this set was 18 shapes.)
+ * W3-19 admitted House 758, Bell 743 and Teacup 737 to v2 (Umbrella, 702, does not reach 720;
+ * shapeCapacity, EXECUTED for W3-21, docs/next-level/reports/W3-21.md): 11 shapes.
  */
-const AT_LEAST_720 = ['Square', 'Rectangle', 'Circle', 'Plus', 'Hexagon', 'Heart', 'Pentagon', 'Octagon'];
+const AT_LEAST_720 = ['Square', 'Rectangle', 'Circle', 'Plus', 'Hexagon', 'Heart', 'Pentagon', 'Octagon', 'House', 'Teacup', 'Bell'];
 
 /**
  * W3-18: the catalogue ids v2 may deal, in catalogue order (`V2_ADMITTED_SHAPE_IDS` is data: the
@@ -218,10 +220,10 @@ describe('W3-14 the clamp (owner pick W3-09) and capacity', () => {
     for (const [id, cells] of Object.entries(measured)) expect([id, shapeCapacity(def(id), 46, 46)]).toEqual([id, cells]);
   });
 
-  test('placeholder bands at the W3-09 clamp: the admissible set is exactly the eight shapes holding 720 cells', () => {
+  test('placeholder bands at the W3-09 clamp: the admissible set is exactly the eleven shapes holding 720 cells', () => {
     const expected = SHAPE_CATALOGUE.filter((id) => AT_LEAST_720.includes(id));
     expect(windowSetAt(0, placeholderWindowMaxTarget).map((s) => s.name)).toEqual(expected);
-    expect(expected).toHaveLength(8);
+    expect(expected).toHaveLength(11);
     for (const id of ADMITTED) {
       expect([id, independentCapacity(def(id)) >= 720]).toEqual([id, AT_LEAST_720.includes(id)]);
     }
@@ -376,7 +378,7 @@ describe('W3-10 bag invariants over v2 levels 0-1999', () => {
     expect(folded).toEqual({ lo: lo >>> 0, hi: 0, through: V2_LEVELS });
   });
 
-  test('placeholder bands, levels 1-200: each admitted shape within +-1 of 200 / 8, every first appearance by level 8', () => {
+  test('placeholder bands, levels 1-200: each admitted shape within +-1 of 200 / 11, every first appearance by level 11', () => {
     const counts = new Map<string, number>();
     const first = new Map<string, number>();
     for (let i = 0; i < 200; i++) {
@@ -384,9 +386,9 @@ describe('W3-10 bag invariants over v2 levels 0-1999', () => {
       counts.set(name, (counts.get(name) ?? 0) + 1);
       if (!first.has(name)) first.set(name, i + 1);
     }
-    expect(counts.size).toBe(8);
-    for (const [name, count] of counts) expect([name, Math.abs(count - 200 / 8) <= 1]).toEqual([name, true]);
-    expect(Math.max(...first.values())).toBeLessThanOrEqual(8);
+    expect(counts.size).toBe(AT_LEAST_720.length);
+    for (const [name, count] of counts) expect([name, Math.abs(count - 200 / AT_LEAST_720.length) <= 1]).toEqual([name, true]);
+    expect(Math.max(...first.values())).toBeLessThanOrEqual(AT_LEAST_720.length);
   });
 });
 
@@ -395,7 +397,7 @@ describe('W3-10 bag construction (the brief\'s algorithm, reimplemented here)', 
     let prev: string | null = null;
     let swaps = 0;
     for (let ordinal = 0; ordinal < 2000; ordinal++) {
-      const window = bagWindowFor(ordinal * 8, placeholderWindowMaxTarget);
+      const window = bagWindowFor(ordinal * AT_LEAST_720.length, placeholderWindowMaxTarget);
       const order = SHAPE_CATALOGUE.filter((id) => AT_LEAST_720.includes(id));
       const rng = new ExactDotNetRandom(bagSeed(ordinal)); // V2-FINISH: v2's exact stream
       for (let i = order.length - 1; i > 0; i--) {
@@ -478,12 +480,14 @@ describe('W3-10 where the admissible set changes (the W3-14 seam)', () => {
   }
 
   test('a rise: the window before it ends at the rise, then windows shrink to the shapes that fit', () => {
-    // 720 admits 8 shapes (windows of 8 from 0); the rise at 44 cuts the window at 40 to 4 levels.
-    const starts = checkCurve((i) => (i < 44 ? 720 : 1000), 200);
+    // 720 admits 11 shapes (windows of 11 from 0); the rise at 40 cuts the window at 33 to 7 levels.
+    // (W3-19 grew the set from 8 to 11; the rise moved from 44, now a window boundary, to 40 so
+    // it still cuts a window short.)
+    const starts = checkCurve((i) => (i < 40 ? 720 : 1000), 200);
+    expect(starts).toContain(33);
     expect(starts).toContain(40);
-    expect(starts).toContain(44);
-    expect(bagWindowFor(40, curve((i) => (i < 44 ? 720 : 1000))).order).toHaveLength(4);
-    expect(bagWindowFor(44, curve((i) => (i < 44 ? 720 : 1000))).order.map((s) => s.name).sort())
+    expect(bagWindowFor(33, curve((i) => (i < 40 ? 720 : 1000))).order).toHaveLength(7);
+    expect(bagWindowFor(40, curve((i) => (i < 40 ? 720 : 1000))).order.map((s) => s.name).sort())
       .toEqual(['Heart', 'Square']);
   });
 

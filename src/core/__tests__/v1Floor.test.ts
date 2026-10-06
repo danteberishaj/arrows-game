@@ -74,15 +74,17 @@ describe('V2-FINISH part 1: S400 is the owner\'s curve', () => {
     }
   });
 
-  test('the saturated S400 window holds 13 shapes, a full tier cycle, so the bag\'s O(1) steady state can engage (RE-CEILING)', () => {
+  test('the saturated S400 window holds 17 shapes, a full tier cycle, so the bag\'s O(1) steady state can engage (RE-CEILING, W3-19)', () => {
     // A Super Hard target above Hexagon's 809 cells (a base above 450) leaves
     // five-shape windows, which the steady state refuses (shapeBag.ts), so a
     // deep cold pick would build ~3,950 windows again. 354's target (635)
-    // admits 13: every shape down to X (645).
+    // admitted 13 of the 26 v1 shapes: every shape down to X (645). W3-19's
+    // admission (owner ruling 2026-10-06) adds House 758, Bell 743, Teacup 737
+    // and Umbrella 702 (shapeCapacity, EXECUTED in docs/next-level/reports/W3-21.md): 17.
     const superHard = target(CEILING_BASE_CELLS, Difficulty.SuperHard);
     const holding = bagCandidates().filter((shape) => shapeCapacity(shape) >= superHard);
     expect(holding.length).toBeGreaterThanOrEqual(Difficulties.cycleLength);
-    expect(holding.length).toBe(13);
+    expect(holding.length).toBe(17);
   });
 
   test('the curve source carries the owner-pick marker (W3-16)', () => {
@@ -274,16 +276,19 @@ test('existing-player v2 corpus pin: generate(i, 2, { switchLevel: 1 }) for 0-29
   // f2fdde04 (ceiling 450, floor 335; never committed), then the owner's
   // option B, ceiling and floor both 354, so every floored target is the
   // ceiling's from the first v2 level: ea5e4bf5 (EXECUTED twice, this test
-  // and RE-CEILING's scratch fp.ts). Like the
-  // fresh v2 pin it is not frozen: a task that changes v2 content on purpose
-  // re-pins it with its own evidence (W3-21 freezes both).
+  // and RE-CEILING's scratch fp.ts). W3-19's admission of House, Teacup,
+  // Bell and Umbrella (owner ruling 2026-10-06) re-dealt the bag's windows:
+  // 849961f1 (EXECUTED twice, this test and W3-21's artifacts/W3-21/step1/
+  // fp.ts; docs/next-level/reports/W3-21.md). W3-21 then froze v2 with its
+  // own tests in levelGenerator.test.ts ("v2 frozen at ..."); this pin must
+  // agree with them.
   const lines: string[] = [];
   for (let i = 0; i < 300; i++) {
     const lvl = LevelGenerator.generate(i, 2, { switchLevel: 1 });
     lines.push(lvl.shapeName, String(lvl.board.rows), String(lvl.board.cols));
     for (const arrow of lvl.board.arrows()) lines.push(arrow.toLine());
   }
-  expect(checksumLines(lines)).toBe('ea5e4bf5');
+  expect(checksumLines(lines)).toBe('849961f1');
 });
 
 // FINAL-FIX (FINAL-REVIEW finding 16): V2-FINISH part 1's tripwire for W3-21

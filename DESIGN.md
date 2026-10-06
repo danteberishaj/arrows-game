@@ -167,8 +167,12 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   space (`shapeLibrary.ts:13-18`), so they rasterize cleanly to *any* board size (no bitmaps; sampled 3×3 per cell so
   thin features like the crescent's horns stay clean, `shapeLibrary.ts:40,50-53`).
 - **Shape selection (generator v2)** (`src/core/shapeBag.ts`; W3-10, dark behind `GEN_V2_ENABLED`):
-  v2 drops the tier pools for a **capacity-aware shuffled bag** over the whole `SHAPE_CATALOGUE`
-  (minus `RETIRED_SHAPE_IDS`). A shape's capacity is its cell count on its largest v2 board: at
+  v2 drops the tier pools for a **capacity-aware shuffled bag** over the `SHAPE_CATALOGUE` ids in
+  `V2_ADMITTED_SHAPE_IDS` (minus `RETIRED_SHAPE_IDS`): the 26 v1 shapes plus House, Teacup, Bell and
+  Umbrella, authored for v2 (W3-18) and admitted on the owner's ruling of 2026-10-06 (W3-19,
+  `docs/silhouette-naming-2026-10-06.md`; an owner judgement, not a blind test). v1's tier pools and
+  the daily pool never deal the four. A catalogue id outside the admission list is dealt by nothing.
+  A shape's capacity is its cell count on its largest v2 board: at
   most 37 columns (`V2_MAX_GRID_COLS`, the owner's W3-09 legibility floor, 9.1 pt per cell on a
   360 dp phone), rows up to 46, aspect kept (`v2MaxRows`). Levels are dealt in windows: a window
   is the top-k shapes by capacity for the largest k whose k levels all fit the k-th capacity, dealt
@@ -176,10 +180,14 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   the previous level. So no shape repeats back to back, each dealt shape appears once per window,
   and no board is capped below its target by the clamp. Since W3-14 the targets come from the
   difficulty curve (below), so windows shrink while it rises. Under the shipped curve (S400,
-  ceiling 354 since RE-CEILING) every bag candidate is dealt at first, and from level 384 on 13 of
-  26: Diamond, Triangle, Star, Trophy, Crescent, Bolt, Arrow, Crown, Rocket, Pine, Cat, Mushroom
-  and Fish cannot hold the saturated Super Hard target of 635 cells. Measured by `npm run
-  analysis:probe -- --version 2 --curve-report` (`docs/next-level/reports/RE-CEILING.md`).
+  ceiling 354 since RE-CEILING) a fresh install is dealt all 30 admitted shapes at first, and from
+  level 382 on 17 of 30: Diamond, Triangle, Star, Trophy, Crescent, Bolt, Arrow, Crown, Rocket,
+  Pine, Cat, Mushroom and Fish cannot hold the saturated Super Hard target of 635 cells (House 758,
+  Bell 743, Teacup 737 and Umbrella 702 can). An existing player's floored bag holds the same 17
+  from their first v2 level. The four admitted shapes first appear at fresh levels 2 (Teacup), 11
+  (House), 19 (Bell) and 20 (Umbrella); their smallest fresh boards are 12–17 rows, where House's
+  chimney and Umbrella's hook read weakly (W3-18). Measured by `npm run analysis:probe -- --version 2
+  --shape-report` and W3-21's scripts (`docs/next-level/reports/W3-21.md`).
 - **Tier schedule** (`src/core/difficulty.ts:47-62`): a repeating 6-level cycle Normal, Normal,
   Hard, Normal, Normal, Super Hard. The tier configs do not depend on the level index
   (`difficulty.ts:64-80`).
@@ -193,8 +201,9 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   the base whose v2 boards match v1 on the search-cost proxy over levels 1–3000 (`npm run
   analysis:probe -- --version 2 --v1-floor`). The arrow cap (no board over 250 arrows, none
   heavier than v1's worst, 262, and a saturated bag window of at least six shapes) would allow up
-  to 450 (`--ceiling`); at 354 the heaviest board over levels 1–10,000 is 190 arrows (195 for an
-  existing player; `docs/next-level/reports/RE-CEILING.md`).
+  to 450 (`--ceiling`); at 354 the heaviest board over levels 1–10,000 is 197 arrows (196 for an
+  existing player), since W3-19's admission (190 / 195 before it; `docs/next-level/reports/W3-21.md`,
+  `docs/next-level/reports/RE-CEILING.md`).
   **Existing players** (V2-FINISH): an install whose switch level is above 0 played v1 first, so its
   v2 boards carry a **v1 floor**: base cells at least 354 (Normal 354, Hard 537, Super Hard 635)
   and no bias above neutral. 354 is the smallest base whose own v2 boards reach v1's search-cost
@@ -238,11 +247,24 @@ Empty `bg` surrounds the shape (for square/rectangle the shape *is* the whole gr
   The tier bands overlap. What difficulty should mean is set in `PRODUCT.md` (legibility,
   density, clearable fraction at deal, silhouette novelty), never tap order.
 - **Determinism**: difficulty, the chosen shape, the board size and the layout are all pure
-  functions of (level index, generator version); each install has a switch level below which v1
-  is used; a shipped generator version is frozen by golden fingerprints and never edited. So
-  resume / retry reproduce the same picture. (W3-05: `src/core/generatorVersion.ts`,
-  `GEN_V2_ENABLED` off. Since W3-10, v2 deals its own boards; see "Shape selection
-  (generator v2)".)
+  functions of (level index, generator version, and for v2 whether the install has a v1 floor);
+  each install has a switch level below which v1 is used; a shipped generator version is frozen by
+  golden fingerprints and never edited. So resume / retry reproduce the same picture. (W3-05:
+  `src/core/generatorVersion.ts`, `GEN_V2_ENABLED` off. Since W3-10, v2 deals its own boards; see
+  "Shape selection (generator v2)".)
+  - **The switch level** (`arrows_gen_switch_level`) is stamped once, at the first healthy boot
+    with v2 enabled, and never rewritten: 0 for a fresh install (level 0, nothing solved), else the
+    resume level + 1, so the board a player stands on and every board behind them stay v1. Unstamped
+    or corrupt reads as v1. Proven on the emulator by an over-install (W3-21,
+    `docs/v2-acceptance-2026-10-06.md`): a save written by a v2-off build at level 12 kept level 12
+    as v1 Bolt (54 arrows), stamped 12, and dealt level 13 as the predicted v2 board, identically
+    after a restart.
+  - **v2 is frozen** (W3-21): its fresh corpus fingerprint (`1c4cd1f4`), its existing-player corpus
+    fingerprint (`849961f1`) and five golden boards are pinned by tests marked "v2 frozen …; never
+    re-pin" (`src/core/__tests__/levelGenerator.test.ts`). New shapes, curve changes or fill changes
+    after this are a generator v3, never an edit to v2. v1 stays frozen at `d01abbd8`.
+  - **Rollback** after a flip is `GEN_V2_ENABLED = false` in a new build: a player standing on a v2
+    board is re-dealt it as v1 once (W3-05).
 
 (The engine-free core — `ShapeLibrary`, `LevelGenerator`, `BoardLogic`, `ArrowPath`,
 `Difficulty`, `Direction`, `DotNetRandom`, `SaveSystem` in `src/core` — imports no React Native,
