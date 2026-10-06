@@ -393,7 +393,7 @@ and this project's own rule is that a number in a brief must name the measuremen
 
 | ID | Step | Effort |
 |---|---|---|
-| W7-01 | Consent state module + LevelPlay privacy API wiring (CMP-agnostic half) | M |
+| W7-01 | Consent state module + AdMob privacy wiring (`RequestConfiguration`, per-request options; CMP-agnostic half) | M |
 | W7-02 | Consent UI: integrate a Google-certified CMP | L |
 | W7-03 | Stop shipping the simulated TEST AD modal to real players; retry ad init *(= W0-01/05)* | S |
 | W7-04 | **Settings sheet** — the missing surface for policy, consent re-prompt and support | M |
@@ -404,7 +404,7 @@ and this project's own rule is that a number in a brief must name the measuremen
 | W7-09 | Store-account declarations: **EU DSA trader status** and the console compliance set | S |
 | W7-10 | Link the EAS project *(= W0-08)* | S |
 | W7-11 | Interstitial pacing: persist the counter, wall-clock cooldown, session cap, new-player grace | M |
-| W7-12 | Establish an ad baseline from LevelPlay's own data **before** tuning anything | S |
+| W7-12 | Establish an ad baseline from AdMob's own reporting **before** tuning anything | S |
 | W7-13 | Give the waterfall more than one demand source *(today "mediation" has exactly one)* | L |
 | W7-14 | Play listing screenshots — there are none, and Play requires at least two | S |
 | W7-15 | Two listings, two copy sets — and a title that is not the bare word "Arrows" | S |
@@ -433,7 +433,7 @@ project whose native build is already fragile.
 | W8-08 | Physical-iPhone perf run, gates re-derived per device | **BLOCKED — no device** |
 
 **Tranche 2 — deferred until Android retention lands:** W8-09 ATT/SKAdNetwork/privacy manifest ·
-W8-10 per-platform LevelPlay keys · W8-11 iPad decision · W8-12 App Store Connect + EAS pipeline ·
+W8-10 per-platform AdMob app and ad unit ids · W8-11 iPad decision · W8-12 App Store Connect + EAS pipeline ·
 W8-13 iOS inherits the consent solution (**ATT is not GDPR consent**) · W8-14 document the
 iOS/Android cloud-save asymmetry.
 

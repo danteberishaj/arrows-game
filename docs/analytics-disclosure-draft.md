@@ -145,7 +145,7 @@ Data safety form's own note if the form has room for one.
 **No row above is "Advertising ID."** The schema has no field for the
 Google Advertising ID; that identifier is already disclosed separately in
 `store/privacy-policy.md`'s existing Advertising section, as collected by
-the third-party Unity LevelPlay/ironSource SDK, not by this first-party
+the third-party Google Mobile Ads (AdMob) SDK, not by this first-party
 analytics channel. This document does not change that disclosure.
 
 ## 3. The kill-switch config request (separate from the analytics endpoint)
