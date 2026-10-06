@@ -74,7 +74,7 @@ const sherbet: SkinSpec = {
   motion: { pressScale: .96, anticipationMs: 45, particles: { count: 6, size: .035, colours: ['#EEB0CB', '#ADDAD2', '#CBB8E8', '#F3D39F'], lifeMs: 320 } },
 };
 /** New styles share the established motion/LOD and safe caps. Appearance is declared here. */
-function canvasSpec(id: string, numericId: number, name: string, palette: SkinSpec['palette'],
+export function canvasSpec(id: string, numericId: number, name: string, palette: SkinSpec['palette'],
   layers: readonly SkinLayer[], extra: Partial<SkinSpec> = {}): SkinSpec {
   return { id, numericId, name, palette, layers, head: { ...sherbet.head },
     tail: { kind: 'none', radius: 0, rim: .02, oneCell: 'none' }, bends: 'rounded',
@@ -146,12 +146,13 @@ const strawberryGlazed = canvasSpec('strawberry-glazed', 17, 'Strawberry Glazed'
 // The concept's dark tint #2A2140 fails the REQUIRED missed-mark tint row (2.992:1, pinned in seasons.test.ts).
 // OWNER RULING 2026-10-04 (HALLOWEEN-01b): dark tint #221A36 for all three.
 export const HALLOWEEN_BRIEF_DARK_TINT = '#2A2140';
-const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#221A36' };
-const polishedHead: SkinSpec['head'] = { ...sherbet.head, shape: 'rounded', halfWidth: .44, tipPastCentre: .46, cornerRadius: .10, shine: false };
+// Exported (HALLOWEEN-PLUS) only so the unregistered concept candidates in skinCandidates.ts share the pack's recipe.
+export const HALLOWEEN_BOARD = { light: '#F3EEFA', dark: '#221A36' };
+export const polishedHead: SkinSpec['head'] = { ...sherbet.head, shape: 'rounded', halfWidth: .44, tipPastCentre: .46, cornerRadius: .10, shine: false };
 const headFace = (ink: string, eyeShape: 'arc' | 'triangle', blushColour?: string): SkinSpec['face'] => ({ eyes: true, blush: blushColour !== undefined, eyeShape,
   closedOnBlocked: true, ink, blushColour: blushColour ?? '#EE9C99', anchor: 'head', eyeRadius: .045, eyeHalfGap: .13,
   mouthWidth: .12, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 });
-const particles = (colours: readonly string[]): SkinSpec['motion'] => ({ ...sherbet.motion, particles: { ...sherbet.motion.particles, colours } });
+export const particles = (colours: readonly string[]): SkinSpec['motion'] => ({ ...sherbet.motion, particles: { ...sherbet.motion.particles, colours } });
 // HALLOWEEN-01b owner rulings: smooth orange tube with deep-orange rib bars across it (butt-capped dashed seam), the
 // green stem only on 4+ cell arrows, bigger triangle eyes (.045 -> .065 radius, .13 -> .14 half-gap).
 const pumpkin = canvasSpec('pumpkin', 18, 'Pumpkin', one('#FF8A2A'), [
