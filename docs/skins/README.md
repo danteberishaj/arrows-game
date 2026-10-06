@@ -384,3 +384,12 @@ order/fractions, nested heads and shaft coverage for `lengthBands` (reversed-ord
 rejected), and classifies eye shapes in four directions (a swapped shape must be rejected). `after` adds
 `lengthBands` to the feature fit/nested-head controls; `polish` compares against frozen ART08 paths only for the 17
 specs that existed then. Owner look review is separate.
+
+## Concept candidates before registration (HALLOWEEN-PLUS)
+
+Unregistered candidates live in `src/ui/skinCandidates.ts` (no app import; a test proves it and the APK proof shows their
+names absent from the bundle). `ART_SKINS_CANDIDATES=1 node scripts/art/skin-contract-data.cjs` adds them to the native
+fixture so the whole K1-K8 matrix runs on them; real-viewport captures use the existing `-e artSkinSpec '<json>'` override
+with a save that selects a registered skin of the same `board` tint (`scripts/art/halloween-plus/capture.py`). Polish mode
+now also checks that a head face's blush ovals stay inside the head (.03), gated for candidates. See
+[HALLOWEEN-PLUS](../next-level/reports/HALLOWEEN-PLUS-concepts.md); owner pick pending.

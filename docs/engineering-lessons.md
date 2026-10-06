@@ -837,3 +837,28 @@ diagonal steps line up into one straight 45° line and long runs stay straight. 
 `CLEAR_REVEAL_OUTLINE_SMOOTHING`. **Rule:** to smooth a pixel contour, smooth the contour (a non-local cut or fit),
 not each corner. Judge the result on the 4x detail before showing the owner. Its kink detector (max turn between
 flattened pieces < 20°) has the staircase (90°) as its positive control.
+
+## Concept skins can be captured on the real board unregistered; a loaded emulator needs host-side recording
+
+**Observed (2026-10-06/07, HALLOWEEN-PLUS):**
+- An unregistered candidate renders in the ordinary app through the existing native override
+  `am start -n com.danteb.arrows/.MainActivity -e artSkinSpec '<SkinSpec JSON>'` (`ArrowsBoardView.setArtSkin`). The JS
+  gate still decides the board tint, so the save must select an owned registered skin with the same `board` (Pumpkin 18
+  for the Halloween tints). No registry, catalogue, book or price change was needed; the bundle proof shows the
+  candidates' names absent from the APK.
+- On this host (load 15-48), `adb shell screenrecord` cannot encode 1440x3120 (falls back to 720x1280), and a guest
+  `screencap` burst ran at ~1.5 s per frame. `adb emu screenrecord start --fps 30 <host path>` records full resolution,
+  but only ~6 distinct frames/s arrived; a <= 320 ms exit trail was caught on the first attempt for 8 of 10 specs.
+- A blocked tap moved the camera (the board zoomed out to show the blocker), so a second tap aimed with the opening
+  camera missed. Each recorded tap now gets a fresh launch, and the camera is asserted equal before input.
+- A first "mid-exit" detector (frame differing from both the pre-tap and the final frame) accepted 7 of 10 frames that
+  showed the untouched arrow (press feedback changes the arrow's own cells). **Correction:** score only the exit lane
+  (head edge to viewport edge, the arrow's cells excluded), which is empty before and after; every pick was then
+  checked by eye.
+- An emulator started from the agent shell inherits nice 5; `am force-stop` took 75 s right after a cold boot while
+  GMS settled, and a uiautomator hierarchy dump took ~26 s. Bound every adb call and cache observed bounds, but prove
+  each step from the app's own log line (`[board-camera] ... scale= tx= ty=` with `EXPO_PUBLIC_LOG_BOARD_VIEWPORT=1`).
+- A 0-byte `RKStorage` (no table) gets its table only after the app's first launch; seed after that.
+
+**Verified:** 60 static captures, 10 blocked-tap frames (peak change 49-82 in the head box) and 10 mid-exit frames, all
+viewed. Report: [HALLOWEEN-PLUS](next-level/reports/HALLOWEEN-PLUS-concepts.md).
