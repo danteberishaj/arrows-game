@@ -184,3 +184,10 @@ No asset was changed (W5-12, W5-13 territory). No API 33+ system image was downl
 - `npx tsc --noEmit`: see the W5-15 report's combined gate run (both new files type-checked/lint together
   since they share one `tsc` invocation for this handback) — this file itself is plain `.mjs`, outside
   `tsc`'s TS project; nothing here changes TypeScript surface.
+
+## Owner ruling (W5-12), 2026-10-06
+
+**Keep the current two-hue emblem** (`assets/images/mark.png`) as the wordmark's "A". The flat accent
+triangle is declined. DESIGN.md already describes the emblem (the "Wordmark" bullet in Typography), so no
+doc correction is needed; its "▲rrows" is notation only. Redrawing the emblem as a vector (crisper
+launcher/splash rasters, W5-13) is optional follow-up work and needs its own owner yes.
