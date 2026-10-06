@@ -10,7 +10,7 @@ for(const mode of modes) {
   const requested=process.argv[3];
   for(const level of data.levels.filter(level => requested === undefined || level.index === Number(requested))) {
     const input=`${root}/instrumentation-input.json`;
-    writeFileSync(input,JSON.stringify({specs:data.specs,level,fixture:data.fixture}));
+    writeFileSync(input,JSON.stringify({specs:data.specs,candidates:data.candidates??[],level,fixture:data.fixture}));
     execFileSync(adb,['-s','emulator-5556','push',input,'/sdcard/Android/data/com.danteb.arrows/files/art07-contract.json'],{timeout:30000});
     const text=execFileSync(adb,['-s','emulator-5556','shell','am','instrument','-w','-e','mode',mode,'-e','dataFile','true','-e','render',String(level.index===3827),
       'com.danteb.arrows/com.danteb.arrows.board.SkinContractInstrumentation'],{encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024});

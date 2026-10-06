@@ -29,6 +29,15 @@ object SkinPolishContract {
       actual.op(allowed,Region.Op.DIFFERENCE); nonempty && actual.isEmpty
     }
   }
+  /** HALLOWEEN-PLUS: a head face's blush ovals (Little Bat A uses them as fangs) must also stay inside the filled
+   *  head with .03-cell clearance; K1 alone would accept an oval that leaves the head but stays in the cell. */
+  private fun fitsBlush(spec: SkinSpec,art: SkinPaths.Layers,g: SkinGeometry): Boolean {
+    val x=g.x(0,40f); val y=g.y(0,40f)
+    val slot=spec.layers.sumOf { if(it.kind=="bands"||it.kind=="lengthBands") it.bands.size else 1 }
+    val allowed=inset(region(art.headDecoration,x,y))
+    val actual=region(art.paths[slot],x,y); val nonempty=!actual.isEmpty
+    actual.op(allowed,Region.Op.DIFFERENCE); return nonempty && actual.isEmpty
+  }
   private fun rejects(block: () -> Unit) { var rejected=false; try { block() } catch(_: Throwable) { rejected=true }; check(rejected) { "Damaged fixture was accepted" } }
   private fun components(region: Region): Int {
     val rectangles=ArrayList<Rect>(); val iterator=RegionIterator(region); val rect=Rect()
@@ -53,12 +62,24 @@ object SkinPolishContract {
       val json=specs.getJSONObject(id); val spec=SkinSpec(json.toString())
       val renderer=SkinPaths(40f,spec,true); renderer.setPalette(geometry)
       var faceChecks=0; var headFaces=0; var pathChecks=0; var changedCreases=0; var negative=0
+      var blushChecks=0; var blushOutside=0
+      val candidate=data.optJSONArray("candidates")?.let { a -> (0 until a.length()).any { a.getString(it)==id } } ?: false
       if(spec.customFace && spec.eyes) {
         for((index,g) in geometry.withIndex()) {
           if(g.length==1 && spec.faceAnchor!="head") continue
           val art=renderer.build(g,index,2)
           check(fitsFace(spec,renderer,art,g)) { "$id eye/mouth clearance < .03 arrow=$index direction=${g.direction}" }
           faceChecks++; if(g.length==1) headFaces++
+          if(spec.blush && spec.faceAnchor=="head") {
+            // Gated for candidates; registered specs (approved before this check existed) are reported, not failed.
+            if(!fitsBlush(spec,art,g)) { check(!candidate) { "$id blush/fang clearance < .03 arrow=$index direction=${g.direction}" }; blushOutside++ }
+            blushChecks++
+          }
+        }
+        if(spec.blush && spec.faceAnchor=="head") {
+          val moved=JSONObject(json.toString()); moved.getJSONObject("face").put("blushOffset",JSONArray(listOf(.4,.3)))
+          val bad=SkinSpec(moved.toString()); val r=SkinPaths(40f,bad,true); val g=SkinGeometry(0,intArrayOf(1,0,0,0))
+          check(!fitsBlush(bad,r.build(g,0,2),g)) { "$id outside blush control accepted" }; r.clear(); negative++
         }
         val damaged=JSONObject(json.toString()); damaged.getJSONObject("face").put("eyeHalfGap",.4)
         val broken=SkinSpec(damaged.toString()); val brokenRenderer=SkinPaths(40f,broken,true)
@@ -118,7 +139,8 @@ object SkinPolishContract {
         .put("centrelineBuilds",runtime.centrelineBuildCount).put("bandHeadBuilds",runtime.bandHeadBuildCount)
       check(runtime.auditPathCount==0); runtime.clear(); renderer.clear()
       entries.put(JSONObject().put("spec",id).put("faceClearanceChecks",faceChecks).put("oneCellHeadFaces",headFaces)
-        .put("unchangedPathArrays",pathChecks).put("changedCreasePaths",changedCreases).put("negativeControls",negative).put("runtimeWork",work))
+        .put("unchangedPathArrays",pathChecks).put("changedCreasePaths",changedCreases).put("negativeControls",negative).put("runtimeWork",work)
+        .put("candidate",candidate).put("blushClearanceChecks",blushChecks).put("blushOutsideReported",blushOutside))
     }
     return JSONObject().put("status","PASS").put("level",level.getInt("index")).put("screenCellDp",29.387754).put("specs",entries)
   }

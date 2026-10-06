@@ -112,9 +112,13 @@ object SkinHalloweenContract {
     for(id in specs.keys()) {
       val json=specs.getJSONObject(id); val spec=SkinSpec(json.toString())
       val entry=JSONObject().put("spec",id).put("eyeShape",spec.eyeShape).put("lengthBands",spec.layers.count { it.kind=="lengthBands" })
-      if(spec.id != "pumpkin") {
+      // HALLOWEEN-PLUS: unregistered concept candidates (data.candidates) may use a 01b field; registered specs other
+      // than Pumpkin still may not.
+      val candidate=data.optJSONArray("candidates")?.let { a -> (0 until a.length()).any { a.getString(it)==id } } ?: false
+      entry.put("candidate",candidate)
+      if(usesNew01bField(spec)) check(spec.id == "pumpkin" || candidate) { "$id uses a HALLOWEEN-01b field" }
+      else {
         // HALLOWEEN-01b: every spec without a 01b field keeps the exact cd10d12 paths (Ghost and Candy Corn included).
-        check(!usesNew01bField(spec))
         val now=SkinPaths(CELL,spec,true); val old=Halloween01bBeforePaths(CELL,spec,true)
         now.setPalette(geometry); old.setPalette(geometry); var compared=0
         for(detail in listOf(2,0)) for((index,g) in geometry.withIndex()) {
