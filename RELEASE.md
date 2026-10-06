@@ -201,6 +201,10 @@ uploaded. It is expected to match, because EAS runs the same prebuild and
 
 ## Asset regeneration
 
-- Icons / store art (from `assets/images/mark.png`): `node scripts/generate-store-assets.js`
+- Emblem rasters (from the vector `assets/images/mark.svg`: `mark.png` for the splash, `icon.png`, the
+  adaptive foreground and monochrome layers, `favicon.png`, and `src/ui/brandMark.ts`):
+  `npx tsx scripts/art/render-mark.ts`. Check them with `npx tsx scripts/art/mark-audit.ts`.
+- Adaptive background layer and fallback store art: `node scripts/generate-store-assets.js`
+  (writes `store/fallback/` only; the curated `store/` art is never overwritten)
 - Sound effects: `node scripts/generate-sfx.js`
 - Real-level promo boards: `npx tsx scripts/generate-promo-art.ts`

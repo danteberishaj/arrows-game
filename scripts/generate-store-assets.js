@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 /**
- * Generates every launcher / store image from the brand emblem
- * (assets/images/mark.png, 512px, transparent, visible mark ≈ 64% of the
- * frame). Ink Night (#13111C) is the icon background — the brand's home
- * surface. Run after changing the emblem: node scripts/generate-store-assets.js
+ * Generates the non-emblem launcher layer and the fallback store images from
+ * the brand emblem's vector source (assets/images/mark.svg, a 512-unit frame,
+ * visible mark ≈ 54% of the frame). Ink Night (#13111C) is the icon background
+ * — the brand's home surface. Run: node scripts/generate-store-assets.js
+ *
+ * W5-13: every emblem raster in assets/ (mark.png, icon.png, the adaptive
+ * foreground and monochrome layers, favicon.png) is rendered from mark.svg at
+ * its own size by `npx tsx scripts/art/render-mark.ts`. This script no longer
+ * writes them: it used to upscale the 512 px mark.png (1.72x / 1.84x), and a
+ * re-run would have put the soft rasters back.
  *
  * Outputs
- *   assets/icon.png                    1024  app icon (bg + mark)
- *   assets/android-icon-foreground.png 1024  adaptive foreground (transparent)
  *   assets/android-icon-background.png 1024  adaptive background (solid ink)
- *   assets/android-icon-monochrome.png 1024  Android 13 themed icon (white mark)
- *   assets/favicon.png                   64  web favicon
  *   store/fallback/playstore-icon-512.png   512  Play listing icon (fallback)
  *   store/fallback/feature-graphic.png 1024x500  Play feature graphic (fallback)
  *
@@ -24,13 +26,18 @@ const path = require('path');
 const sharp = require('sharp');
 
 const ROOT = path.join(__dirname, '..');
-const MARK = path.join(ROOT, 'assets', 'images', 'mark.png');
+const MARK_SVG = path.join(ROOT, 'assets', 'images', 'mark.svg');
+const MARK_FRAME = 512; // mark.svg's viewBox
 const INK_NIGHT_BG = '#13111C';
 
 const out = (...p) => path.join(ROOT, ...p);
 
+/** The emblem rendered from the vector at `size` px (density 72 = 1 unit per px at 512). */
 async function markResized(size) {
-  return sharp(MARK).resize(size, size).png().toBuffer();
+  return sharp(MARK_SVG, { density: (72 * size) / MARK_FRAME })
+    .resize(size, size) // no-op unless librsvg rounds the size
+    .png()
+    .toBuffer();
 }
 
 /** Solid bg square with the mark centered at `markSize`. */
@@ -47,19 +54,6 @@ async function iconOn(bg, canvas, markSize) {
 async function main() {
   fs.mkdirSync(out('store', 'fallback'), { recursive: true });
 
-  // App icon: visible mark ≈ 60% of the tile (mark art is ~64% of its frame).
-  fs.writeFileSync(out('assets', 'icon.png'), await iconOn(INK_NIGHT_BG, 1024, 940));
-
-  // Adaptive foreground: keep the visible mark inside the inner-2/3 safe zone.
-  const fg = await markResized(880);
-  fs.writeFileSync(
-    out('assets', 'android-icon-foreground.png'),
-    await sharp({ create: { width: 1024, height: 1024, channels: 4, background: 'rgba(0,0,0,0)' } })
-      .composite([{ input: fg, gravity: 'center' }])
-      .png()
-      .toBuffer(),
-  );
-
   // Adaptive background: solid Ink Night.
   fs.writeFileSync(
     out('assets', 'android-icon-background.png'),
@@ -68,32 +62,10 @@ async function main() {
       .toBuffer(),
   );
 
-  // Monochrome (Android 13 themed icons): the mark's silhouette in white.
-  const alpha = await sharp(MARK).resize(880, 880).ensureAlpha().extractChannel(3).png().toBuffer();
-  const whiteMark = await sharp({
-    create: { width: 880, height: 880, channels: 3, background: '#FFFFFF' },
-  })
-    .joinChannel(alpha)
-    .png()
-    .toBuffer();
-  fs.writeFileSync(
-    out('assets', 'android-icon-monochrome.png'),
-    await sharp({ create: { width: 1024, height: 1024, channels: 4, background: 'rgba(0,0,0,0)' } })
-      .composite([{ input: whiteMark, gravity: 'center' }])
-      .png()
-      .toBuffer(),
-  );
-
-  // Favicon.
-  fs.writeFileSync(
-    out('assets', 'favicon.png'),
-    await sharp(await iconOn(INK_NIGHT_BG, 1024, 940)).resize(64, 64).png().toBuffer(),
-  );
-
   // Play listing icon (512, no alpha allowed).
   fs.writeFileSync(
     out('store', 'fallback', 'playstore-icon-512.png'),
-    await sharp(await iconOn(INK_NIGHT_BG, 1024, 940)).resize(512, 512).flatten({ background: INK_NIGHT_BG }).png().toBuffer(),
+    await sharp(await iconOn(INK_NIGHT_BG, 512, 470)).flatten({ background: INK_NIGHT_BG }).png().toBuffer(),
   );
 
   // Feature graphic 1024x500: emblem + wordmark on Ink Night.
@@ -115,12 +87,12 @@ async function main() {
   );
 
   for (const f of [
-    'assets/icon.png', 'assets/android-icon-foreground.png', 'assets/android-icon-background.png',
-    'assets/android-icon-monochrome.png', 'assets/favicon.png',
+    'assets/android-icon-background.png',
     'store/fallback/playstore-icon-512.png', 'store/fallback/feature-graphic.png',
   ]) {
     console.log(`${f}  ${(fs.statSync(out(...f.split('/'))).size / 1024).toFixed(0)} KB`);
   }
+  console.log('Emblem rasters in assets/: npx tsx scripts/art/render-mark.ts');
 }
 
 main().catch((e) => {
