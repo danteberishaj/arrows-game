@@ -2,6 +2,7 @@ import {
   ArrowsFeedback,
   type FeedbackEvent,
 } from '../../modules/arrows-feedback';
+import { feedbackSoundOn } from './exitCombo';
 
 /** Preloads only while audible gameplay is mounted. */
 export function prepareFeedback(soundOn: boolean): void {
@@ -27,7 +28,7 @@ export function releaseFeedback(): void {
 export function feedback(event: FeedbackEvent, soundOn: boolean, step = 0): void {
   if (ArrowsFeedback) {
     try {
-      ArrowsFeedback.feedback(event, soundOn, step);
+      ArrowsFeedback.feedback(event, feedbackSoundOn(event, soundOn), step);
     } catch {
       // Do not fall through to a second audio stack after a native failure.
     }

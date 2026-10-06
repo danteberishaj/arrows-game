@@ -1,10 +1,11 @@
 import type { FeedbackEvent } from '../../modules/arrows-feedback';
 import { Sfx } from './audio';
+import { feedbackSoundOn } from './exitCombo';
 import { Haptic } from './haptics';
 
 /** Existing Expo feedback path for iOS, web, and Android Expo Go. */
 export function feedback(event: FeedbackEvent, soundOn: boolean, step = 0): void {
-  if (soundOn) {
+  if (feedbackSoundOn(event, soundOn)) {
     if (event === 'exit') Sfx.playSuccess(step);
     else if (event === 'blocked') Sfx.playFail();
     else if (event === 'cleared') Sfx.playWin();

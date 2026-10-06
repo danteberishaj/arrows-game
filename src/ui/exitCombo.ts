@@ -9,6 +9,16 @@ export const EXIT_COMBO_WINDOW_MS = 1200;
 export const EXIT_COMBO_STEPS = 8;
 /** Set false to play the same pitch on every exit (random variation only). */
 export const EXIT_COMBO_ESCALATES = true;
+/**
+ * Owner ruling 2026-10-06: the arrow-exit pop is not played at all (it sounded bad). The exit haptic
+ * and every other sound (blocked, cleared, star) stay. The ladder above is kept for a replacement sound.
+ */
+export const EXIT_POP_ENABLED = false;
+
+/** Whether `event` may make a sound, given the player's sound setting. */
+export function feedbackSoundOn(event: string, soundOn: boolean): boolean {
+  return soundOn && (event !== 'exit' || EXIT_POP_ENABLED);
+}
 
 export interface ExitCombo {
   /** 0..EXIT_COMBO_STEPS-1 */
