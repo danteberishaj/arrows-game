@@ -734,3 +734,20 @@ no gap. While that label shows, it holds the subline row at its measured height 
   difference outside anti-aliasing (≤ 42 RGB-sum).
 
 Report: [HEADER-FIT](next-level/reports/HEADER-FIT.md).
+
+## Under META_ZOOMED_CAMERA, "fit" is the pinched-out worst case, and W2-06's camera ty is board-relative
+
+**Observed (2026-10-06, owner-rulings packet):**
+- The W2-10 lunge table measured "fit" (fully pinched out) and max zoom. With `META_ZOOMED_CAMERA` on (every
+  test build and the vc16 internal AAB), a board opens at about 14 cells across (`boardCamera.ts:28, :94`).
+  The lunge there is about 6.5 pt (INFERRED, not captured), not the 2.2-4.1 pt of the fit rows. Boards with a fit
+  cell of at least 23.5 pt open at fit, so their lunge is at least 5.2 pt.
+- `artifacts/W2-06/scripts/plan-L0-fit-registered-camera.json` stores `ty` relative to the board view, which starts
+  below the header. The screen origin is 87.4 dp lower. Measured from the opening frame's ink bounding box: rows
+  1..18 span y 1104..2320 px, so the origin is 1036.3 px. `tx` is screen-correct.
+
+**Rules:**
+- When a motion or legibility question quotes "fit" numbers, also state the opening-zoom value players actually see.
+- Register an overlay against ink in the frame. Do not trust a stored camera.
+
+Report: [owner rulings 2026-10-06](owner-rulings-2026-10-06.md).
