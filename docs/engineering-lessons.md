@@ -829,3 +829,11 @@ before the panel in every unstalled run); the reconciliation table and builds ar
 
 **Verified:** jest (`src/ui/__tests__/clearReveal.test.ts`), the mutation run and the preview render.
 **Unverified:** the Skia rendering on device (vc17 build). Report: [W5-17](next-level/reports/W5-17.md), Follow-up 2026-10-06.
+
+**Correction (same day, coordinator review of the preview):** the scallops read as wobbly, which misses "reads as a
+smooth shape". The default is now `'contour'`. It cuts every staircase corner back to its runs' midpoints, so 1-cell
+diagonal steps line up into one straight 45° line and long runs stay straight. It then rounds the polygon's remaining
+(135° or 90°) vertices with quadratic curves. `'corners'` stays available as a fallback behind
+`CLEAR_REVEAL_OUTLINE_SMOOTHING`. **Rule:** to smooth a pixel contour, smooth the contour (a non-local cut or fit),
+not each corner. Judge the result on the 4x detail before showing the owner. Its kink detector (max turn between
+flattened pieces < 20°) has the staircase (90°) as its positive control.

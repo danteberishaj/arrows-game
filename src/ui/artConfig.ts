@@ -83,3 +83,15 @@ export const CLEAR_REVEAL_MIN_STROKE_PT = 2; // OWNER-PICKED STARTING VALUE (the
  * S-curve with no flat tread left.
  */
 export const CLEAR_REVEAL_CORNER_RADIUS_CELLS = 0.5; // OWNER-PICKED STARTING VALUE (range 0.35..0.5, 2026-10-06)
+
+/**
+ * How the outline is smoothed (silhouette.ts `maskOutlinePath`):
+ * - 'contour' (default): every staircase corner is cut to the midpoints of its runs (0.5 cell back along each), so
+ *   1-cell diagonal steps line up into one straight 45-degree line and long runs stay straight; the polygon's
+ *   remaining vertices are then rounded with quadratic curves (tangent length CLEAR_REVEAL_CORNER_RADIUS_CELLS,
+ *   clamped to half of each adjacent side).
+ * - 'corners': a circular fillet at every staircase corner (the first follow-up build). Corners are round, but a
+ *   1-cell diagonal reads as a row of S-curves (scallops). Kept as the fallback.
+ */
+export type ClearRevealOutlineSmoothing = 'contour' | 'corners';
+export const CLEAR_REVEAL_OUTLINE_SMOOTHING: ClearRevealOutlineSmoothing = 'contour'; // coordinator pick 2026-10-06 (owner look pending)

@@ -1,4 +1,8 @@
-import { CLEAR_REVEAL_CORNER_RADIUS_CELLS } from './artConfig';
+import {
+  CLEAR_REVEAL_CORNER_RADIUS_CELLS,
+  CLEAR_REVEAL_OUTLINE_SMOOTHING,
+  type ClearRevealOutlineSmoothing,
+} from './artConfig';
 
 type GridPoint = readonly [x: number, y: number];
 
@@ -189,21 +193,95 @@ function roundedLoopPath(loop: readonly GridPoint[], cell: number, radiusCells: 
   return `${parts.join(' ')} Z`;
 }
 
+/** How far each staircase corner is cut back along its runs in 'contour' mode: half a cell = the 1-cell runs' midpoints. */
+const CONTOUR_CUT_CELLS = 0.5;
+
+/** The staircase loop with every corner cut to CONTOUR_CUT_CELLS back along both runs (clamped to half of each run),
+ * repeated points dropped and collinear points merged: 1-cell steps become one 45-degree line. Each cut lies in the
+ * half-cell triangle at its corner on the turning side (a filled cell when convex, an empty one when concave), the
+ * same region a 0.5-cell fillet uses, so cuts of different corners and loops never meet. */
+function cutCorners(loop: readonly GridPoint[]): GridPoint[] {
+  const n = loop.length;
+  const at = (i: number): GridPoint => loop[((i % n) + n) % n];
+  const runLength = (i: number): number => Math.abs(at(i + 1)[0] - at(i)[0]) + Math.abs(at(i + 1)[1] - at(i)[1]);
+  const cut: GridPoint[] = [];
+  loop.forEach((corner, i) => {
+    const before = Math.min(CONTOUR_CUT_CELLS, runLength(i - 1) / 2);
+    const after = Math.min(CONTOUR_CUT_CELLS, runLength(i) / 2);
+    const inLength = runLength(i - 1);
+    const outLength = runLength(i);
+    cut.push([
+      corner[0] - (before * (corner[0] - at(i - 1)[0])) / inLength,
+      corner[1] - (before * (corner[1] - at(i - 1)[1])) / inLength,
+    ]);
+    cut.push([
+      corner[0] + (after * (at(i + 1)[0] - corner[0])) / outLength,
+      corner[1] + (after * (at(i + 1)[1] - corner[1])) / outLength,
+    ]);
+  });
+  const distinct = cut.filter((p, i) => {
+    const previous = cut[(i - 1 + cut.length) % cut.length];
+    return p[0] !== previous[0] || p[1] !== previous[1];
+  });
+  return distinct.filter((p, i) => {
+    const previous = distinct[(i - 1 + distinct.length) % distinct.length];
+    const next = distinct[(i + 1) % distinct.length];
+    const [ax, ay] = [p[0] - previous[0], p[1] - previous[1]];
+    const [bx, by] = [next[0] - p[0], next[1] - p[1]];
+    return ax * by - ay * bx !== 0 || ax * bx + ay * by <= 0; // drop only a straight-through point
+  });
+}
+
+/** A polygon with each vertex rounded by a quadratic curve (control point = the vertex) whose ends sit
+ * min(tangentCells, half of each adjacent side) back along the sides, so neighbouring curves can meet but never
+ * overlap, and the outline is tangent-continuous everywhere. */
+function roundedPolygonPath(polygon: readonly GridPoint[], cell: number, tangentCells: number): string {
+  const m = polygon.length;
+  const at = (i: number): GridPoint => polygon[((i % m) + m) % m];
+  const side = (i: number): number => Math.hypot(at(i + 1)[0] - at(i)[0], at(i + 1)[1] - at(i)[1]);
+  const point = (x: number, y: number): string => `${formatCoordinate(x * cell)} ${formatCoordinate(y * cell)}`;
+  const vertices = polygon.map((vertex, i) => {
+    const inLength = side(i - 1);
+    const outLength = side(i);
+    const t = Math.min(tangentCells, inLength / 2, outLength / 2);
+    const previous = at(i - 1);
+    const next = at(i + 1);
+    return {
+      start: point(vertex[0] - (t * (vertex[0] - previous[0])) / inLength, vertex[1] - (t * (vertex[1] - previous[1])) / inLength),
+      curve: `Q ${point(vertex[0], vertex[1])} `
+        + point(vertex[0] + (t * (next[0] - vertex[0])) / outLength, vertex[1] + (t * (next[1] - vertex[1])) / outLength),
+      end: point(vertex[0] + (t * (next[0] - vertex[0])) / outLength, vertex[1] + (t * (next[1] - vertex[1])) / outLength),
+    };
+  });
+  const parts = [`M ${vertices[0].end}`];
+  for (let k = 1; k <= m; k++) {
+    const vertex = vertices[k % m];
+    if (vertex.start !== vertices[k - 1].end) parts.push(`L ${vertex.start}`);
+    parts.push(vertex.curve);
+  }
+  return `${parts.join(' ')} Z`;
+}
+
 /**
  * W5-17: the same boundary loops in BOARD space, not centred: grid point (x, y) maps to (x * cell, y * cell), so cell
  * (r, c) spans c..c+1 by r..r+1 cells, exactly where the board draws that cell's arrow (arrowGeometry.ts centres a cell
  * at (c + 0.5, r + 0.5) cells). A mask with no filled cell (tutorial boards) returns ''.
- * Owner ruling 2026-10-06 (b): every corner, convex or concave, on the outer contours and on holes, is a circular
- * fillet of `radiusCells` (clamped to half of each adjacent run; see roundedLoopPath), drawn as M / L / C / Z. Each
- * loop ends exactly at its start point. `radiusCells` <= 0 returns the W5-17 staircase (M / L / Z on the grid).
+ * Smoothing (owner ruling 2026-10-06 (b), artConfig.ts CLEAR_REVEAL_OUTLINE_SMOOTHING), on outer contours and holes
+ * alike; each loop ends exactly at its start point, coordinates to 3 decimals:
+ * - 'contour': corners cut to the runs' midpoints (cutCorners), then the polygon's vertices rounded (M / L / Q / Z);
+ * - 'corners': a circular fillet of `radiusCells` at every staircase corner (roundedLoopPath; M / L / C / Z);
+ * - 'none' (or `radiusCells` <= 0): the W5-17 staircase (M / L / Z on the grid).
  */
 export function maskOutlinePath(
   mask: readonly (readonly boolean[])[],
   cell: number,
+  smoothing: ClearRevealOutlineSmoothing | 'none' = CLEAR_REVEAL_OUTLINE_SMOOTHING,
   radiusCells: number = CLEAR_REVEAL_CORNER_RADIUS_CELLS,
 ): string {
   const { edges } = maskEdges(mask);
   if (edges.length === 0) return '';
-  if (!(radiusCells > 0)) return loopsPath(edges, ([x, y]) => `${x * cell} ${y * cell}`);
-  return traceLoops(edges).map((loop) => roundedLoopPath(loop, cell, radiusCells)).join(' ');
+  if (smoothing === 'none' || !(radiusCells > 0)) return loopsPath(edges, ([x, y]) => `${x * cell} ${y * cell}`);
+  const loops = traceLoops(edges);
+  if (smoothing === 'corners') return loops.map((loop) => roundedLoopPath(loop, cell, radiusCells)).join(' ');
+  return loops.map((loop) => roundedPolygonPath(cutCorners(loop), cell, radiusCells)).join(' ');
 }
