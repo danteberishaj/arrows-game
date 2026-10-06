@@ -30,7 +30,7 @@ import { nativeMissedMarkProps } from './missedMarks';
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS,
-  blockedBumpAt,
+  blockedBumpDisplacementAt,
   blockedFlashMixAt,
   blockerOpacityAt,
   blockerStrokeSwellAt,
@@ -451,7 +451,8 @@ function ShakingArrow({
   }, [art.id, reducedMotion]);
 
   const transform = useDerivedValue((): Transforms3d => {
-    const d = reducedMotion ? 0 : blockedBumpAt(progress.value) * cellSize;
+    // W2-11: the live cell size in points (board units x camera scale) sets the 4 pt minimum lunge (flag ON).
+    const d = reducedMotion ? 0 : blockedBumpDisplacementAt(progress.value, cellSize * scale.value) * cellSize;
     return [{ translateX: art.x * d }, { translateY: art.y * d }];
   });
   const color = useDerivedValue(() =>

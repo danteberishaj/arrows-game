@@ -69,14 +69,18 @@ predicted, because both scale with the cell.
    were therefore chosen after registering the zoomed camera (index 0: head (10,14) down; 3827: head (18,26) up), and
    each tap is proven blocked by its log line. Registration agreement 0.88-0.99, runner-up 0.75-0.94.
 
-## Owner verdict (W2-11): recorded here when given
+## Owner verdict (W2-11): given 2026-10-06
+
+Recorded from the owner's answer to `docs/owner-rulings-2026-10-06.md` Q1 (**B: a 4 pt minimum, no pull-back**, given
+against `artifacts/OWNER-RULINGS-2026-10-06/q1-lunge-normal-then-4x-slow.mp4`). The rulings doc framed the choice as
+"A/B/D read; C = the owner's answer", and offered 6 pt "if A (4.1 pt) also looks too small"; the owner chose 4 pt.
 
 | condition | lunge on screen | owner: reads as a deliberate lunge? |
 |---|---|---|
-| index 0, fit | 4.1 pt (1.55 strokes) | _pending_ |
-| index 0, max zoom | 15.0 pt | _pending_ |
-| 3827, fit | 2.2 pt (1.55 strokes of 1.4 pt) | _pending_ |
-| 3827, max zoom | 14.2 pt | _pending_ |
+| index 0, fit | 4.1 pt (1.55 strokes) | yes (4 pt chosen over 6 pt) |
+| index 0, max zoom | 15.0 pt | yes |
+| 3827, fit | 2.2 pt (1.55 strokes of 1.4 pt) | **no**: raised to a 4 pt minimum (W2-11, `META_BLOCKED_ANTICIPATION`; measured 4.01 pt median, `docs/next-level/reports/W2-11.md`) |
+| 3827, max zoom | 14.2 pt | yes |
 
 Material: `artifacts/W2-10/owner/lunge-4-conditions-x1.mp4` (real time), `-x4.mp4` (4x slow), and
 `lunge-4-conditions-rest-vs-peak.png` (rest vs the measured peak frame, per condition). A "yes" everywhere closes

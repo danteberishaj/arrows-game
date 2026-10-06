@@ -142,6 +142,15 @@ export const META_REVIEW_PROMPT = process.env.EXPO_PUBLIC_META_REVIEW_PROMPT ===
 export const META_BLOCKED_INK_HOLD = process.env.EXPO_PUBLIC_META_BLOCKED_INK_HOLD === '1';
 
 /**
+ * W2-11 (owner 2026-10-06, Q1 B; flag name from the spec's `blockedAnticipation` and the rulings doc): the blocked
+ * tap's lunge reaches at least 4 pt on screen (BLOCKED_BUMP_MIN_PEAK_PT over the live cell size), with no pull-back.
+ * Only views whose shipped lunge is under 4 pt change (cells under 17.97 pt: pinched-out big boards); every other
+ * view is identical (src/ui/feedbackCurves.ts `blockedBumpDisplacementAt`, both JS renderers). The Kotlin skin
+ * renderer (META_SKIN_PICKER with a style selected) keeps the shipped curve. OFF: the shipped curve, value for value.
+ */
+export const META_BLOCKED_ANTICIPATION = process.env.EXPO_PUBLIC_META_BLOCKED_ANTICIPATION === '1';
+
+/**
  * W2-07: the heart an earned rewarded continue refills gets a pop of its own.
  * The pip starts below rest (1 / 1.35) and springs up to 1, the mirror of the
  * loss overshoot, once the lose panel is gone (with META_PANEL_MOTION, after

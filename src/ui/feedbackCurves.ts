@@ -4,10 +4,12 @@
  * 0..1 progress; usable from Reanimated worklets.
  */
 
-import { META_BLOCKED_INK_HOLD } from '../featureFlags';
+import { META_BLOCKED_ANTICIPATION, META_BLOCKED_INK_HOLD } from '../featureFlags';
 
 /** W2-09 flag as a plain module constant, so worklets capture a boolean. */
 const BLOCKED_INK_HOLD = META_BLOCKED_INK_HOLD;
+/** W2-11 flag (the 4 pt minimum lunge) as a plain module constant, for the same reason. */
+const BLOCKED_MIN_LUNGE = META_BLOCKED_ANTICIPATION;
 
 /** Blocked bump: the arrow lunges into its lane and springs back. */
 export const BLOCKED_BUMP_MS = 300;
@@ -32,6 +34,40 @@ export function blockedBumpAt(k: number): number {
   'worklet';
   const t = Math.min(1, Math.max(0, k));
   return BLOCKED_BUMP_AMPLITUDE_CELLS * Math.sin(Math.PI * t) * Math.exp(-2 * t);
+}
+
+/** The shipped curve's peak travel in cells, blockedBumpAt(BLOCKED_BUMP_PEAK_K) ≈ 0.2226 (derived, not picked). */
+export const BLOCKED_BUMP_PEAK_CELLS =
+  BLOCKED_BUMP_AMPLITUDE_CELLS * Math.sin(Math.PI * BLOCKED_BUMP_PEAK_K) * Math.exp(-2 * BLOCKED_BUMP_PEAK_K);
+
+/**
+ * W2-11 (owner 2026-10-06, docs/owner-rulings-2026-10-06.md Q1 B): the blocked lunge's minimum on-screen peak, in
+ * points. An absolute distance, converted with the live cell size; never a multiplier on the amplitude.
+ */
+export const BLOCKED_BUMP_MIN_PEAK_PT = 4;
+
+/**
+ * Bump displacement in cells at progress k, with an on-screen peak of at least `minPeakPt` when a cell is `cellPt`
+ * points on screen: the shipped curve scaled by max(1, (minPeakPt / cellPt) / BLOCKED_BUMP_PEAK_CELLS). Same shape:
+ * rest at both ends, never behind rest (no pull-back), the peak at BLOCKED_BUMP_PEAK_K. A view whose shipped peak
+ * already reaches `minPeakPt` (cellPt >= minPeakPt / 0.2226, 17.97 pt for 4 pt) gets the shipped value exactly. A
+ * cell size that is not a positive finite number (no camera yet) also gets the shipped curve.
+ */
+export function blockedBumpFlooredAt(k: number, cellPt: number, minPeakPt: number): number {
+  'worklet';
+  const d = blockedBumpAt(k);
+  if (!(cellPt > 0) || !Number.isFinite(cellPt) || !(minPeakPt > 0)) return d;
+  const gain = minPeakPt / cellPt / BLOCKED_BUMP_PEAK_CELLS;
+  return gain > 1 ? d * gain : d;
+}
+
+/**
+ * The blocked bump both renderers draw, in cells. META_BLOCKED_ANTICIPATION (W2-11): the 4 pt minimum peak at the
+ * live cell size `cellPt` (board units per cell x camera scale). OFF: the shipped curve, value for value.
+ */
+export function blockedBumpDisplacementAt(k: number, cellPt: number): number {
+  'worklet';
+  return BLOCKED_MIN_LUNGE ? blockedBumpFlooredAt(k, cellPt, BLOCKED_BUMP_MIN_PEAK_PT) : blockedBumpAt(k);
 }
 
 /**

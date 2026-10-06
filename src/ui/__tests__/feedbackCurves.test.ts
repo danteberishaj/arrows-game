@@ -1,5 +1,6 @@
 import {
   blockedBumpAt,
+  blockedBumpDisplacementAt as blockedBumpDisplacementAtDefault,
   blockedFlashMixAt,
   blockerOpacityAt,
   blockerStrokeSwellAt,
@@ -202,6 +203,116 @@ describe('W2-09 flag OFF: every curve value is identical to the shipped maths', 
         expect(on.blockerStrokeSwellAt(k, rm)).toBe(off.blockerStrokeSwellAt(k, rm));
         expect(on.hintStrokeSwellAt(k, rm)).toBe(off.hintStrokeSwellAt(k, rm));
       }
+    }
+  });
+});
+
+// ---- W2-11: META_BLOCKED_ANTICIPATION (default OFF) --------------------------------------------
+// Owner 2026-10-06 (docs/owner-rulings-2026-10-06.md Q1 B): the blocked lunge's on-screen peak is at least
+// 4 pt, with no pull-back. The floor is an absolute distance in points over the live cell size in points
+// (cellPt = board units per cell x camera scale), never a multiplier on the 0.5 amplitude.
+
+const LUNGE_ENV = 'EXPO_PUBLIC_META_BLOCKED_ANTICIPATION';
+
+function loadLungeCurves(on: boolean): Curves {
+  const saved = process.env[LUNGE_ENV];
+  if (on) process.env[LUNGE_ENV] = '1';
+  else delete process.env[LUNGE_ENV];
+  let curves: Curves | undefined;
+  try {
+    jest.isolateModules(() => {
+      curves = require('../feedbackCurves') as Curves;
+    });
+  } finally {
+    if (saved === undefined) delete process.env[LUNGE_ENV];
+    else process.env[LUNGE_ENV] = saved;
+  }
+  return curves as Curves;
+}
+
+/** W2-10's measured cell sizes in points: A level 1 fit, B level 1 max, C 250-arrow fit, D 250-arrow max,
+ *  plus the opening zoom (~14 cells across) and a few extremes. */
+const CELL_PTS = [4, 6.5, 9.92, 12, 17, 17.96, 17.97, 19.34, 23.5, 29.4, 64, 67.68, 200];
+const peakPt = (f: (k: number) => number, cellPt: number) => Math.max(...K101.map((k) => f(k))) * cellPt;
+
+describe('W2-11 blockedBumpFlooredAt: a 4 pt minimum on-screen peak, same shape, no pull-back', () => {
+  const c = loadLungeCurves(false);
+
+  it('exports the owner floor (4 pt) and the derived shipped peak (~0.2226 cell)', () => {
+    expect(c.BLOCKED_BUMP_MIN_PEAK_PT).toBe(4);
+    expect(c.BLOCKED_BUMP_PEAK_CELLS).toBeCloseTo(c.blockedBumpAt(c.BLOCKED_BUMP_PEAK_K), 15);
+    expect(c.BLOCKED_BUMP_PEAK_CELLS).toBeCloseTo(0.2226, 4);
+  });
+
+  it.each(CELL_PTS)('cellPt %p: endpoints at rest, never below rest, peak at the shipped k', (cellPt) => {
+    const f = (k: number) => c.blockedBumpFlooredAt(k, cellPt, 4);
+    expect(f(0)).toBe(0);
+    expect(f(1)).toBeCloseTo(0, 12);
+    let argmax = 0;
+    for (const k of K101) {
+      expect(f(k)).toBeGreaterThanOrEqual(0); // no anticipation / pull-back (owner: no)
+      if (f(k) > f(argmax)) argmax = k;
+    }
+    expect(argmax).toBeGreaterThan(0.2);
+    expect(argmax).toBeLessThan(0.4);
+    expect(argmax).toBe(K101.reduce((best, k) => (c.blockedBumpAt(k) > c.blockedBumpAt(best) ? k : best), 0));
+  });
+
+  it.each(CELL_PTS)('cellPt %p: the on-screen peak is max(4 pt, the shipped peak)', (cellPt) => {
+    const exactPeak = c.blockedBumpFlooredAt(c.BLOCKED_BUMP_PEAK_K, cellPt, 4) * cellPt;
+    expect(exactPeak).toBeCloseTo(Math.max(4, c.BLOCKED_BUMP_PEAK_CELLS * cellPt), 10);
+    expect(peakPt((k) => c.blockedBumpFlooredAt(k, cellPt, 4), cellPt)).toBeGreaterThanOrEqual(4 - 0.01);
+  });
+
+  it('views whose shipped peak already reaches 4 pt are identical at 101 samples', () => {
+    for (const cellPt of CELL_PTS.filter((x) => x * c.BLOCKED_BUMP_PEAK_CELLS >= 4)) {
+      for (const k of K101) expect([cellPt, k, c.blockedBumpFlooredAt(k, cellPt, 4)]).toEqual([cellPt, k, c.blockedBumpAt(k)]);
+    }
+    // The floor is active only below 4 / 0.2226 = 17.97 pt per cell.
+    expect(4 / c.BLOCKED_BUMP_PEAK_CELLS).toBeCloseTo(17.97, 2);
+  });
+
+  it("W2-10's pinched-out 250-arrow board (C, 9.92 pt cells): 2.2 pt becomes 4 pt", () => {
+    expect(peakPt(c.blockedBumpAt, 9.92)).toBeCloseTo(2.21, 2);
+    expect(c.blockedBumpFlooredAt(c.BLOCKED_BUMP_PEAK_K, 9.92, 4) * 9.92).toBeCloseTo(4, 10);
+    // level 1 at fit (A, 19.34 pt) stays at its shipped 4.3 pt
+    expect(c.blockedBumpFlooredAt(c.BLOCKED_BUMP_PEAK_K, 19.34, 4)).toBe(c.blockedBumpAt(c.BLOCKED_BUMP_PEAK_K));
+  });
+
+  it('a non-finite or non-positive cell size (no camera yet) falls back to the shipped curve', () => {
+    for (const cellPt of [0, -3, NaN, Infinity]) {
+      for (const k of K101) expect(c.blockedBumpFlooredAt(k, cellPt, 4)).toBe(c.blockedBumpAt(k));
+    }
+  });
+
+  it('clamps out-of-range progress like the shipped curve', () => {
+    expect(c.blockedBumpFlooredAt(-1, 9.92, 4)).toBe(0);
+    expect(c.blockedBumpFlooredAt(2, 9.92, 4)).toBeCloseTo(0, 12);
+  });
+});
+
+describe('W2-11 blockedBumpDisplacementAt: the flag', () => {
+  const off = loadLungeCurves(false);
+  const on = loadLungeCurves(true);
+
+  it('flag OFF: identical to the shipped curve at 101 samples, at every zoom', () => {
+    for (const cellPt of CELL_PTS) {
+      for (const k of K101) expect([cellPt, k, off.blockedBumpDisplacementAt(k, cellPt)]).toEqual([cellPt, k, off.blockedBumpAt(k)]);
+    }
+  });
+
+  it('the default build (variable unset) is the OFF curve', () => {
+    for (const k of K101) expect(blockedBumpDisplacementAtDefault(k, 9.92)).toBe(off.blockedBumpAt(k));
+  });
+
+  it('flag ON: the 4 pt floor; every other curve unchanged', () => {
+    for (const cellPt of CELL_PTS) {
+      for (const k of K101) expect(on.blockedBumpDisplacementAt(k, cellPt)).toBe(on.blockedBumpFlooredAt(k, cellPt, 4));
+    }
+    expect(on.BLOCKED_BUMP_MS).toBe(off.BLOCKED_BUMP_MS);
+    for (const k of K101) {
+      expect(on.blockedBumpAt(k)).toBe(off.blockedBumpAt(k));
+      expect(on.blockedFlashMixAt(k, false)).toBe(off.blockedFlashMixAt(k, false));
     }
   });
 });

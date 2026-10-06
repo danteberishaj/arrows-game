@@ -57,7 +57,7 @@ import {
 import {
   BLOCKED_BUMP_MS,
   BLOCKER_FLASH_MS, FEEDBACK_CLEANUP_MARGIN_MS,
-  blockedBumpAt,
+  blockedBumpDisplacementAt,
   blockedFlashMixAt,
   blockerOpacityAt,
   blockerStrokeSwellAt,
@@ -1257,6 +1257,7 @@ function WebDynamicBoardLayer({
               key={`s${shaking.id}`}
               arrow={shaking.arrow}
               id={shaking.id}
+              scale={scale}
               palette={palette}
               settle={shakingSettle}
               reducedMotion={reducedMotion}
@@ -1352,12 +1353,15 @@ function BlockerArrow({
 function ShakingArrow({
   arrow,
   id,
+  scale,
   palette,
   settle,
   reducedMotion,
 }: {
   arrow: ArrowPath;
   id: number;
+  /** The camera zoom (points per board unit): W2-11's minimum lunge is in points on screen. */
+  scale: SharedValue<number>;
   palette: Palette;
   /** End colour of the mix: ink, or the missed mark (POLISH-T5, R6a). */
   settle: string;
@@ -1375,7 +1379,7 @@ function ShakingArrow({
   }, [id, reducedMotion]);
 
   const gProps = useAnimatedProps(() => {
-    const d = reducedMotion ? 0 : blockedBumpAt(k.value) * CELL;
+    const d = reducedMotion ? 0 : blockedBumpDisplacementAt(k.value, CELL * scale.value) * CELL;
     // transform string, not x/y props: <g> has no x attribute on web SVG.
     return { transform: `translate(${dir.x * d}, ${dir.y * d})` } as any;
   });
