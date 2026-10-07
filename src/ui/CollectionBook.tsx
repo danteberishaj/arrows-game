@@ -67,6 +67,12 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
         </View>
       </Pressable>;
     };
+    // A short last row keeps its tiles left-aligned under space-between: invisible, tile-wide
+    // spacers fill it to the three columns (owner, 2026-10-07: Mummy | gap | Potion Slime).
+    const gridRow = (list: readonly RewardEntry[]) => [...list.map(tile),
+      ...Array.from({ length: (BOOK_COLUMNS - (list.length % BOOK_COLUMNS)) % BOOK_COLUMNS }, (_, i) =>
+        <View key={`spacer-${i}`} testID="book-spacer" style={styles.spacer} pointerEvents="none"
+          accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />)];
     return <View testID="book-grid">
       {state.petalAds === true && <View style={styles.adSlot}><PetalAdButton palette={p} state={state} now={now} /></View>}
       {seasons.map(({ season, entries: seasonal }) => <View key={season.id} testID={`book-season-${season.id}`}>
@@ -74,9 +80,9 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
           <PumpkinIcon size={16} />
           <Text style={[styles.seasonTitle, { color: p.ink }]}>{seasonTitle(season)}</Text>
         </View>
-        <View style={styles.grid}>{seasonal.map(tile)}</View>
+        <View style={styles.grid}>{gridRow(seasonal)}</View>
       </View>)}
-      {entries.length > 0 && <View style={styles.grid}>{entries.map(tile)}</View>}
+      {entries.length > 0 && <View style={styles.grid}>{gridRow(entries)}</View>}
     </View>;
   }
 
@@ -133,11 +139,14 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
   </View>;
 }
 
+const BOOK_COLUMNS = 3;
+
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, padding: 12 },
   seasonHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingTop: 12 },
   seasonTitle: { ...Type.menuStats },
   tile: { width: '31%', minHeight: 96, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 4, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  spacer: { width: '31%' },
   tileName: { ...Type.menuStats, textAlign: 'center' },
   tileCaption: { ...Type.menuStats, textAlign: 'center' },
   priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },

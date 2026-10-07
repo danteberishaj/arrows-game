@@ -67,3 +67,16 @@ test('path complete but the season is open: the season section shows, not the em
   const off = render(<CollectionBook palette={Daylight} state={{ ...base, next: null }} onUse={() => {}} now={DEC} />);
   off.getByTestId('book-empty');
 });
+
+test('a short last row keeps its tiles left-aligned: invisible spacers fill it to three columns', () => {
+  const { getByTestId } = render(<CollectionBook palette={Daylight} state={base} onUse={() => {}} now={OCT} />);
+  const section = within(getByTestId('book-season-halloween'));
+  const tiles = section.queryAllByTestId(/^book-tile-/).length;
+  const spacers = section.queryAllByTestId('book-spacer', { includeHiddenElements: true });
+  expect(tiles).toBe(5);
+  expect(spacers).toHaveLength((3 - (tiles % 3)) % 3);
+  for (const spacer of spacers) {
+    expect(spacer.props.accessibilityElementsHidden).toBe(true);
+    expect(spacer.props.importantForAccessibility).toBe('no-hide-descendants');
+  }
+});
