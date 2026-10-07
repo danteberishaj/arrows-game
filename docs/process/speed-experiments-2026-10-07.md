@@ -52,7 +52,7 @@ The whole series took 77.7 min; 6.6 min of that was the gate waiting for another
 
 | | A (2 ABIs) | B (arm64) | Shift | Null spread (larger within-arm range) | Per pair (A−B) |
 |---|---|---|---|---|---|
-| Total s | 909, 835, 480 (median 835) | 660, 598, 527 (median 598) | −237 s (−28 %) | 429 s (A) | +249, +237, **−48** |
+| Total s | 909, 835, 480 (median 835) | 660, 598, 527 (median 598) | −237 s (−28 %) | 429 s (A) | +249, +237, **−47** |
 | Gradle s | 871, 824, 467 | 642, 586, 515 | −238 s | 404 s | +228, +238, **−48** |
 
 The median shift (237 s) is smaller than the null spread (429 s), the third pair is inverted, and the ranges overlap.
@@ -124,7 +124,7 @@ quiet host. Store AABs are untouched.
 
 | | B (clean arm64) | D (gated, came out incremental 3/3) | Shift | Null spread | Per pair (B−D) |
 |---|---|---|---|---|---|
-| Total s | 660, 598, 527 (median 598) | 92, 70, 88 (median 88) | −510 s (6.8× faster) | 133 s (B range; D range 22 s) | +568, +527, +439 |
+| Total s | 660, 598, 527 (median 598) | 92, 70, 88 (median 88) | −510 s (6.8× faster) | 133 s (B range; D range 22 s) | +568, +528, +439 |
 | Gradle tasks executed | 606 | 25 | | | |
 
 Every pair is faster by more than the null spread, and the ranges are disjoint (max D 92 s < min B 527 s): a replicated
@@ -147,8 +147,9 @@ median shift (§6). D ran at load 12–60, the same conditions as B.
 ### Verdict
 
 **Recommend ADOPT (owner decision: it changes how test artifacts are built).** About 8.5 min saved per test build after
-the first, at identical bytes. Over the audit window's 31 clean test builds that is about 4.4 h [inferred from the
-measured per-build saving]. `--clean` stays available and is what evidence builds use until the owner says yes.
+the first, at identical bytes. Over the audit window's 31 clean test builds: measured −510 s per build × 31 = 4.4 h
+[inferred from the measured per-build saving]; the audit's pre-experiment estimate was 3.0 h (actual clean total minus
+31 incremental medians). `--clean` stays available and is what evidence builds use until the owner says yes.
 
 ## E4: host-load gate
 

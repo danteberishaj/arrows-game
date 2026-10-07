@@ -13,7 +13,7 @@ All timings below are under that load.
 | Measure | Result |
 |---|---|
 | Accuracy, 12 real questions | **3 correct, 9 partial, 0 wrong**. One partial answer was confidently misleading (`EXTRACTED`, points at an interface instead of the write site). |
-| Cost to a correct answer vs grep+read | **median -7.5 % (Graphify costs more)**, range -983 % to +95 %. Totals: 90.4k chars with Graphify vs 81.1k chars baseline. |
+| Cost to a correct answer vs grep+read | **median per question -7.5 % saving (Graphify costs more)**, range -983 % to +95 %; **total +11.5 %** (90.4k chars with Graphify vs 81.1k chars baseline). |
 | Best case (exact symbol name known, Graphify output only, no completion reads) | median +79.5 %, range -400 % to +98 %. This case is not reachable without first knowing the name, usually from a grep. |
 | Staleness, no rebuild | **4 of 4 edits returned the old answer**, exit 0, labelled `EXTRACTED`, with no warning. |
 | Built-in freshness check on query/explain | **none**. `built_at_commit` stores HEAD only and is never checked; per-file hashes exist but only drive `update`. |
@@ -133,7 +133,7 @@ Tokens are about chars/4. Measured by `cost.sh` in the scratch dir over saved ou
 | 10 | 1,298 | 14,061 | -983 % | 6,485 | -400 % |
 | 11 | 6,143 | 12,004 | -95 % | 1,146 | 81 % |
 | 12 | 5,624 | 7,759 | -38 % | 6,653 | -18 % |
-| **Total / median** | **81,066** | **90,393** | **median -7.5 %** (range -983 % to +95 %) | 27,185 | median +79.5 % (range -400 % to +98 %) |
+| **Total / median** | **81,066** | **90,393** (total +11.5 %) | **median per question -7.5 %** (range -983 % to +95 %) | 27,185 | median +79.5 % (range -400 % to +98 %) |
 
 The whole 12-question baseline is about 20k tokens, so even the best case saves about 13k tokens across 12 questions.
 

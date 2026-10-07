@@ -17,7 +17,7 @@ that load. Tags: **[measured]** executed and read; **[read]** from the tool's so
 1. **Nothing trialled beats our baseline enough to adopt.** Serena (LSP) answered 6/12 fully vs Graphify's 3/12 and never
    went stale, but saved no tokens (76.5k vs 81.1k chars, plus ~32k chars of fixed session overhead) and silently
    returned incomplete cross-file references in 2 of 12 sessions. **REJECT.** [measured]
-2. **ast-grep cut tokens 44 %, but so did plain grep used with the same specificity (47 %).** The saving comes from asking
+2. **ast-grep cut total chars 44 % (median per question 39 %), but so did plain grep used with the same specificity (total 47 %, median per question 34 %).** The saving comes from asking
    a narrow question, not from the tool. **REJECT as a route; fine as an ad-hoc tool.** [measured]
 3. **Context7 (docs) was right on 6/10 version-exact questions and wrong on 3, two of them for the wrong version**
    (it has no Expo SDK 57 branch and no Reanimated 4.5; it answered RN compileSdk 37 / targetSdk 35 for 0.86, truth 36/36).
@@ -114,15 +114,15 @@ Velixar...), all "review: none".
 - "Realistic" counts failed queries and the completion reads still needed. Where a tool cannot answer, the baseline grep is charged.
 - "Refined grep" is the §6 control: plain `git grep`/`sed` with the same prior knowledge and specificity as the ast-grep route.
 
-| Route | Total chars (12 Q) | Median saving vs baseline | Tool calls | Tool wall time, 12 Q (median of 3, interleaved, load 42-47) |
+| Route | Total chars (12 Q; total change vs baseline) | Median per-question saving vs baseline | Tool calls | Tool wall time, 12 Q (median of 3, interleaved, load 42-47) |
 |---|---|---|---|---|
 | Baseline grep + read | 81,066 | 0 | 35 | 0.74 s (0.62-3.0) |
-| Graphify (10-07) | 90,393 | -7.5 % | n/r | queries 0.6-1.3 s each + 23 s rebuild per change |
+| Graphify (10-07) | 90,393 (total +11.5 %) | -7.5 % | n/r | queries 0.6-1.3 s each + 23 s rebuild per change |
 | **Serena, realistic** | 76,502 **+ 32,472 per session** (21 tool schemas 23,523 + mandated `initial_instructions` 8,949) | 0.0 % (range -80 to +70) | 39 + 2 | 18.25 s (14.5-32.7) incl. start-up and the first-reference wait |
 | Serena, best case (decisive output only) | 42,920 + 32,472 | +45.5 % | | |
-| **ast-grep, realistic** | 45,786 | +39.2 % (range -16 to +92) | 31 (3 failed) | 2.48 s (2.13-4.24) |
+| **ast-grep, realistic** | 45,786 (total −43.5 %) | +39.2 % (range -16 to +92) | 31 (3 failed) | 2.48 s (2.13-4.24) |
 | ast-grep, best case | 20,887 | +77.9 % | | |
-| **Refined grep (control)** | 43,254 | +34.1 % (range -4 to +92) | 26 | not timed (same commands as baseline class) |
+| **Refined grep (control)** | 43,254 (total −46.6 %) | +34.1 % (range -4 to +92) | 26 | not timed (same commands as baseline class) |
 
 - The speed audit found model time scales with output tokens, about 10 s per request.
 - So call count and context bytes matter more than the sub-second tool times above. [inferred]

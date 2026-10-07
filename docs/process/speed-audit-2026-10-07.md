@@ -293,8 +293,10 @@ and is serialised behind any other helper.
      unzip -l; unzip -p <apk> <entry> | shasum
      ```
      Compare every entry except `META-INF/*`, and `apksigner verify --print-certs` for both.
-- **Expected saving:** (31 clean test builds × (4.5 − 1.1 min)) ≈ **3.0 h** of serial build wait per window. Under load
-  the saving is larger, because clean builds reached 12–35 min.
+- **Expected saving:** 3.56 h actual clean test-build total − 31 × 1.1 min incremental median ≈ **3.0 h** of serial
+  build wait per window. Under load the saving is larger, because clean builds reached 12–35 min. (Corrected
+  2026-10-07: the formula was written as 31 × (4.5 − 1.1 min), which is 1.8 h, not 3.0 h. Phase 2 then measured
+  −510 s per build × 31 = 4.4 h; see `speed-experiments-2026-10-07.md` E3.)
 - **Quality guard:**
   - all `lib/arm64-v8a/*.so`, `classes*.dex` and `resources.arsc` entries are byte-identical between A and B;
   - `assets/index.android.bundle` is byte-identical when the JS is the same;
