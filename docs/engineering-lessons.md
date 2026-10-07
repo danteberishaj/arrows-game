@@ -875,3 +875,26 @@ viewed. Report: [HALLOWEEN-PLUS](next-level/reports/HALLOWEEN-PLUS-concepts.md).
 - **Observed:** the first test-ads build died with "Gradle build daemon disappeared unexpectedly" mid-task (no OOM or
   error line in `build.log`); an identical retry passed. Cause unknown; keep the failed attempt's logs and retry once
   before changing anything. Report: [HALLOWEEN-PLUS, Shipped 2026-10-07](next-level/reports/HALLOWEEN-PLUS-concepts.md).
+
+## Test builds: gate the clean rebuild on a native fingerprint; a one-pair pixel null misses idle animations
+
+**Observed (2026-10-07, PROCESS-SPEED phase 2):**
+- A fingerprint-gated incremental test build (`scripts/build/build-test-apk.sh` without `--clean`) produced an APK
+  **byte-identical** to the clean build of the same tree in 3 of 3 pairs, in 88 s median against 598 s (load 12-61).
+  A Kotlin edit flipped the decision to clean; a TS edit stayed incremental, changed the bundle and contained the probe;
+  after the revert the next incremental APK was byte-identical again. Two clean builds of the same tree differ as files
+  (zip metadata) while every entry is identical, so compare entries (`scripts/process/apk-diff.py`), not APK sha.
+- Clean `arm64-v8a` vs `arm64-v8a,x86_64`: every shared entry identical, incl. every arm64 `.so`; the timing saving was
+  not separable from host noise (A3 at 480 s beat B3 at 527 s). Byte evidence, not one timing, carries that change.
+- The pre-registered pixel gate (one A/A reinstall pair) failed on the menu and on level 13 dark, but two byte-identical
+  APKs failed the same shots by the same amounts: the hint bulb's idle pulse and the rotating/late test banner. **Rule:**
+  mask the banner and the hint button, or take at least 2 null pairs, before a cross-APK pixel gate on these screens.
+- emulator-5556 was shut down from outside this task twice (graceful `emu kill`, snapshot saved) within minutes of a
+  boot, and the guest showed "System UI isn't responding" under host load 40+. After a boot, wait for
+  `service check package` (an install failed with "Can't find service: package" after `sys.boot_completed=1`), and an
+  app with a 0-byte `RKStorage` needs one launch before a fixture write.
+- The early-stop rule E2-R1 for perf series was **rejected**: 15 of 87 archived series flipped verdict (W4-09-open-fix1
+  lost a real improvement to a futility stop at 6 vs 5 runs). Do not retry without a new pre-registered rule.
+
+**Verified:** see [speed experiments](process/speed-experiments-2026-10-07.md); raw evidence in
+`artifacts/PROCESS-SPEED/phase2/`.
