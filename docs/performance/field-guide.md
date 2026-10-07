@@ -507,6 +507,8 @@ npm run perf:android -- --feedback --soak-levels 50 --memory-only
 
  **Discard or quarantine invalid evidence:** partial JSON with `status: running` or `summary: null`, a changed runtime/GPU/workload presented as direct A/B, stale Expo public flags inside a reused Gradle bundle, thermal throttling, PID restart, failed input acceptance, or a benchmark build accidentally shipped as production.
 
+ **Log host load with every run (2026-10-07, PROCESS-SPEED E4):** this Mac is shared with other sessions. Before a series, run `sh scripts/process/load-gate.sh wait --label <series> --quiet gradle,jest --timeout 1800` in the background (it returns when the 1-minute load is below 1.0 × CPU count and no other session's Gradle build or jest run is active, or reports a timeout; it never kills anything). Append `sh scripts/process/load-gate.sh record --label <arm-run>` before and after every arm run to the run log, and report the loads beside the result. The gate changes when a series starts, never its protocol, its null arm or its thresholds. Details: [speed experiments](../process/speed-experiments-2026-10-07.md#e4-host-load-gate).
+
 10 · React Native versus Godot
 
 ## Choose an engine for the remaining product, not the old bottleneck.
