@@ -12,10 +12,11 @@
 #                Default: FINGERPRINT-GATED. When scripts/build/native-fingerprint.sh equals the stamp written by the
 #                last successful build here AND android/ is byte-for-byte what that build left, prebuild is skipped and
 #                Gradle runs incrementally with the JS bundle task forced to rerun (--rerun, Metro --reset-cache).
-#                Any mismatch, a missing stamp, or a failed earlier build makes it clean. (E3: recommendation only until
-#                the owner approves; until then pass --clean for evidence builds.)
+#                Any mismatch, a missing stamp, or a failed earlier build makes it clean. (E3: owner-approved
+#                2026-10-07 on 3/3 byte-identical pairs, 598 → 88 s median; docs/process/speed-experiments-2026-10-07.md.)
 #   --abis LIST  React Native ABIs (env ABIS works too). Default arm64-v8a: both AVDs and the owner's phone are
-#                arm64-v8a, and x86_64 / armeabi-v7a never run on them (E1; recommendation only until the owner approves).
+#                arm64-v8a, and x86_64 / armeabi-v7a never run on them (E1: owner-approved 2026-10-07 on byte identity;
+#                the time saving is unproven on a loaded host).
 #   --cert SHA   expected signing-certificate SHA-256 (e.g. of the APK installed on emulator-5556); checked in the proof.
 #   --dry-run    print the clean/incremental decision and its reason, build nothing.
 # Guards kept from the October templates: Node v20.19.4, upload keystore present, product module has exactly its 6
