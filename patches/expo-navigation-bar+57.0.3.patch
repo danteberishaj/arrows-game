@@ -1,0 +1,21 @@
+diff --git a/node_modules/expo-navigation-bar/android/src/main/java/expo/modules/navigationbar/NavigationBarModule.kt b/node_modules/expo-navigation-bar/android/src/main/java/expo/modules/navigationbar/NavigationBarModule.kt
+index 699b1bb..250aabe 100644
+--- a/node_modules/expo-navigation-bar/android/src/main/java/expo/modules/navigationbar/NavigationBarModule.kt
++++ b/node_modules/expo-navigation-bar/android/src/main/java/expo/modules/navigationbar/NavigationBarModule.kt
+@@ -128,6 +128,16 @@ class NavigationBarModule : Module(), ExtraWindowEventListener {
+ 
+       currentActivity.window.setNavigationBarStyle(hasLightBackground, isContrastEnforced)
+       extraWindows.forEach { it.setNavigationBarStyle(hasLightBackground, isContrastEnforced) }
++      // arrows NAV-BAR patch: androidx.core 1.18 WindowInsetsControllerCompat(window, view) only flips the legacy
++      // SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR, which Android 11+ ignores once React Native's StatusBar has made the
++      // window appearance-controlled, so every style change after launch was lost. Mirror RN's setStatusBarStyle and
++      // set the platform appearance bit directly (API > R, as RN does).
++      if (Build.VERSION.SDK_INT > Build.VERSION_CODES.R) {
++        val bit = android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
++        val value = if (hasLightBackground) bit else 0
++        currentActivity.window.insetsController?.setSystemBarsAppearance(value, bit)
++        extraWindows.forEach { it.insetsController?.setSystemBarsAppearance(value, bit) }
++      }
+ 
+       return@AsyncFunction
+     }.runOnQueue(Queues.MAIN)

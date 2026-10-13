@@ -43,6 +43,7 @@
       ],
       "./plugins/withUploadKeystore",
       "./plugins/withPerfProfileable",
+      "./plugins/withNavBarTheme",
       [
         "expo-splash-screen",
         {

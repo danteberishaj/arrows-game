@@ -255,3 +255,19 @@ export const META_SETTINGS_RATE = process.env.EXPO_PUBLIC_META_SETTINGS_RATE ===
  * sheet's rows are exactly as before and no replay can start.
  */
 export const META_SETTINGS_HOW_TO_PLAY = process.env.EXPO_PUBLIC_META_SETTINGS_HOW_TO_PLAY === '1';
+/**
+ * NAV-BAR (owner 2026-10-13, follow-up to TF-01): the Android navigation bar follows the GAME's theme, not the phone's.
+ * Before: with 3-button navigation the bar kept the look the phone's mode gave it at app start, so Ink Night on a light
+ * phone showed a light-grey bar (bar vs content 15.25:1) and a sun/moon toggle never updated it. Gesture navigation was
+ * already fine. ON needs both halves, set by the same env flag:
+ *   - native, at PREBUILD: plugins/withNavBarTheme.js turns Android's contrast scrim off, so the edge-to-edge bar shows
+ *     the game's background (scripts/build/native-fingerprint.sh hashes this flag, so a flip forces a clean prebuild);
+ *   - JS: App mounts expo-navigation-bar's `<NavigationBar style>` from `dark`. patches/expo-navigation-bar+57.0.3.patch
+ *     makes its setStyle also set the platform appearance bit (androidx.core 1.18 only flips a legacy flag that Android
+ *     ignores after launch), and package.json autolinking `buildFromSource` makes Gradle compile that patched source
+ *     instead of the module's prebuilt AAR.
+ * Measured on emulator-5556 (API 31, 3-button), 6 scenarios: bar vs content 1.00 everywhere, buttons >= 5.74:1
+ * (docs/next-level/reports/NAV-BAR.md). OFF: the component never mounts and no plugin change is made; the OFF build
+ * measured identical to the build without the module in all 6 scenarios.
+ */
+export const META_NAV_BAR_THEME = process.env.EXPO_PUBLIC_META_NAV_BAR_THEME === '1';
