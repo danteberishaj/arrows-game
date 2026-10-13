@@ -69,6 +69,8 @@ export function panRange(size: number, viewport: number): [number, number] {
  *   centre and clamped with `panRange`. Boards whose fit cell is already at
  *   least ZOOM_SKIP_FIT_CELL_PT open at fit. minScale / maxScale are the same
  *   either way, so a pinch-out still shows the whole board.
+ * - `shortSide` true (TF-03, META_LARGE_SCREENS): the 14 cells span the viewport's
+ *   shorter side, so a landscape window zooms like a portrait one.
  */
 export function initialCamera(
   vw: number,
@@ -77,6 +79,7 @@ export function initialCamera(
   boardH: number,
   cell: number,
   zoomed: boolean,
+  shortSide = false,
 ): BoardCamera | null {
   if (vw < 1 || vh < 1) return null;
   // Fully zoomed out shows the whole board / shape; the player pinches in.
@@ -91,7 +94,11 @@ export function initialCamera(
       ty: (vh - boardH * fit) / 2,
     };
   }
-  const target = vw / TARGET_CELLS_ACROSS / cell;
+  // TF-03 (META_LARGE_SCREENS, `shortSide`): "14 cells across" was ruled for a portrait phone, where the width is
+  // the short side. In landscape the width rule asks for 1280 / 14 = 91 dp cells (capped at maxScale), far more zoom
+  // than any phone gets, so the target counts across the SHORT side. Portrait viewports are unchanged either way.
+  const span = shortSide ? Math.min(vw, vh) : vw;
+  const target = span / TARGET_CELLS_ACROSS / cell;
   const scale = Math.min(maxScale, Math.max(fit, target));
   const [xlo, xhi] = panRange(boardW * scale, vw);
   const [ylo, yhi] = panRange(boardH * scale, vh);

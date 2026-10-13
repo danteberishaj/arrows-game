@@ -965,3 +965,24 @@ a zero count needs a case that can fail.
 **High-contrast tokens** were solved by `solveLightness` to text >= 7:1 (large >= 4.5:1) and graphics/boundaries >=
 4.5:1 (`npx tsx scripts/contrast-audit-hc.ts`). Ink Night cannot keep white button labels at 7:1 (max 3.65:1 on
 any accent that reaches 4.5:1 on its surface), so its high-contrast buttons are light violet with dark labels.
+
+## Play Console "deprecated edge-to-edge APIs" and "orientation restrictions" (vc18, 2026-10-14)
+
+**Deprecated APIs: trace the callers before promising a fix.** Recipe (EXECUTED on the vc18 AAB):
+`dexdump -d base/dex/*.dex`, list the methods that invoke `Window.setStatusBarColor/setNavigationBarColor/...`, then
+resolve obfuscated names with the AAB's own `BUNDLE-METADATA/.../proguard.map`. Every vc18 caller was library code:
+React Native core (`WindowUtilKt.enableEdgeToEdge`, `StatusBarModule`), androidx.core.splashscreen 1.2.0
+(`SplashScreen$Impl31`, via expo-splash-screen), Material `EdgeToEdgeUtils`, and expo-navigation-bar's API < 29 path.
+No `com.danteb` code. RN 0.86.3 is the newest 0.86 patch, so no upgrade clears it today. Patching RN would mean
+building it from source. **Decision:** leave it (a Play recommendation, not a block); re-check at the next SDK upgrade.
+**Orientation:** `app.json` `"orientation": "portrait"` writes `screenOrientation` portrait, and Android 16 ignores it
+on displays with sw ≥ 600 dp when the app targets 36. `META_LARGE_SCREENS` (`plugins/withLargeScreens.js`, read at
+prebuild) removes the manifest lock and keeps PHONES portrait at runtime (`smallestScreenWidthDp < 600` in
+`MainActivity.onCreate`). In landscape the zoomed camera counts its 14 cells across the short side (it opened at 91 dp
+cells, capped to 64). Verified on emulator-5556 with `wm size/density` geometries (report: TF-03.md).
+**Harness:** after `wm size`, read the geometry back with `am get-config` (the first line of `dumpsys window`'s
+`mGlobalConfiguration` was stale). A "stays portrait" rotation test needs a positive control: Android Settings rotated
+under the same settings. uiautomator bounds exclude `hitSlop`. Prove a runtime lock in the APK's dex, not only in the
+prebuild output.
+**Known limit:** on Android 12–15 the lock is evaluated only in `onCreate`, so a foldable opened mid-session stays
+portrait until the next launch (UNVERIFIED-DEVICE).

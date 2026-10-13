@@ -20,7 +20,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
-import { META_EXIT_TO_SCREEN_EDGE, META_POST_CLEAR_TIMELINE, META_ZOOMED_CAMERA } from '../featureFlags';
+import { META_EXIT_TO_SCREEN_EDGE, META_LARGE_SCREENS, META_POST_CLEAR_TIMELINE, META_ZOOMED_CAMERA } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
@@ -482,7 +482,7 @@ export function BoardView({
     measuredLayout.current = { w: vw, h: vh };
     const visible = cameraViewport(vw, vh, cameraBottomInsetRef.current);
     const camera = initialCamera(
-      visible.w, visible.h, boardW, boardH, CELL, META_ZOOMED_CAMERA,
+      visible.w, visible.h, boardW, boardH, CELL, META_ZOOMED_CAMERA, META_LARGE_SCREENS,
     );
     if (camera === null) return;
     const step: ViewportCameraStep = newBoard
@@ -948,7 +948,7 @@ export function BoardView({
         <BoardContent
           initialCameraScale={skinPickerEnabled() ? initialCamera(
             viewportSize.w, cameraViewport(viewportSize.w, viewportSize.h, cameraBottomInset).h,
-            boardW, boardH, CELL, META_ZOOMED_CAMERA,
+            boardW, boardH, CELL, META_ZOOMED_CAMERA, META_LARGE_SCREENS,
           )?.scale : undefined}
           scale={scale}
           tx={tx}
