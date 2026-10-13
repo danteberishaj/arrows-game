@@ -27,13 +27,13 @@ const boot = async (enabled: boolean) => {
   await (initSaveSystem as (enabled?: boolean) => Promise<void>)(enabled);
   await settle();
 };
-it.each([false, true])('all 29 existing keys round-trip byte-for-byte with picker %s', async enabled => {
+it.each([false, true])('all 30 existing keys round-trip byte-for-byte with picker %s', async enabled => {
   const disk = seed(); const before = new Map(disk);
   await boot(enabled);
   if (enabled) { selection.chooseArrowStyle('cinnamon'); await settle(); }
   await boot(enabled);
   for (const [key,value] of before) expect([key,disk.get(key)]).toEqual([key,value]);
-  expect(before.size).toBe(29);
+  expect(before.size).toBe(30); // TF-01: P-01 row 30 (arrows_theme_follows_system) joined the registry
   expect(diskApi.multiRemove).not.toHaveBeenCalled();
   if (enabled) expect(diskApi.multiSet.mock.calls).toEqual([[[['arrows_skin','1']]]]);
   else expect(diskApi.multiSet).not.toHaveBeenCalled();

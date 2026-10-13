@@ -68,6 +68,7 @@ test('hydrates exactly the save-system keys with one native read', () => {
     'arrows_tel_fatal_pending',
     'arrows_tel_fatal_hash',
     'arrows_tel_fatal_screen',
+    'arrows_theme_follows_system',
   ]);
   expect(storage.getAllKeys).not.toHaveBeenCalled();
 });
@@ -287,7 +288,7 @@ test('P-01 A3: every registered key survives a cold start; an unregistered key d
   for (const [key, value] of expected) {
     expect([key, second.getInt(key, -1)]).toEqual([key, value]);
   }
-  expect(expected.size).toBe(29);
+  expect(expected.size).toBe(30);
   // Control: the hazard the registry prevents. Written, flushed, but never hydrated.
   expect(second.getInt('arrows_unregistered_probe', 0)).toBe(0);
 });

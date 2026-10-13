@@ -233,3 +233,25 @@ export const META_PETAL_ADS = process.env.EXPO_PUBLIC_META_PETAL_ADS === '1';
  * config and the collection keep their sources. OFF: the cycle's word and colour, exactly as before.
  */
 export const TIER_LABEL_V2_ENABLED = process.env.EXPO_PUBLIC_TIER_LABEL_V2 === '1';
+/**
+ * TF-01 A (tester feedback, owner 2026-10-13): "Follow phone" theme. The first healthy boot with the flag on stamps
+ * `arrows_theme_follows_system` once (1 only for a brand-new player, else 0, so an existing player keeps their
+ * theme; src/ui/themeFollow.ts). While it is 1 the theme is the phone's and swaps live, without the scrim, when the
+ * phone's setting changes. The menu's sun/moon toggle still flips the theme and sets it to 0 (a manual tap wins); the
+ * Settings sheet gets a "Match phone theme" switch. OFF: the key is never written and the theme is
+ * `arrows_dark_mode`, exactly as before.
+ */
+export const META_THEME_SYSTEM = process.env.EXPO_PUBLIC_META_THEME_SYSTEM === '1';
+/**
+ * TF-01 B: a "Rate Arrows" row above Support in the Settings sheet (Android only) opens the Play listing of the
+ * installed package (market:// first, then the https page). It never calls the in-app review API (that is
+ * META_REVIEW_PROMPT's, quota-limited). OFF: the sheet's rows are exactly as before.
+ */
+export const META_SETTINGS_RATE = process.env.EXPO_PUBLIC_META_SETTINGS_RATE === '1';
+/**
+ * TF-01 C: a "How to play" row, first in the Settings sheet, replays the two tutorial boards (T1 then T2) and returns
+ * to the menu. A replay writes no key (FTUE stage, progress, streaks, totals, collection, rewards, ad counters,
+ * review keys) and emits no level telemetry or FTUE log line (src/ui/GameScreen.tsx `tutorialReplay`). OFF: the
+ * sheet's rows are exactly as before and no replay can start.
+ */
+export const META_SETTINGS_HOW_TO_PLAY = process.env.EXPO_PUBLIC_META_SETTINGS_HOW_TO_PLAY === '1';

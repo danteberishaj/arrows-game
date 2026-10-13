@@ -72,6 +72,7 @@ Other facts that bound the design:
    | 27 | `arrows_tel_fatal_pending` | JS fatals recorded and not yet emitted | `0` | W6-07 | bookkeeping | sanitise to a non-negative int |
    | 28 | `arrows_tel_fatal_hash` | 32-bit unsigned FNV-1a of the last fatal's `name:message` | `0` | W6-07 | bookkeeping | none |
    | 29 | `arrows_tel_fatal_screen` | screen at the last fatal (1 splash, 2 menu, 3 game) | `0` | W6-07 | bookkeeping | out of range → 0 |
+   | 30 | `arrows_theme_follows_system` | 1 = the theme follows the phone, 0 = the theme is `arrows_dark_mode` (P-01 amendment, TF-01, 2026-10-13) | **`-1` via `getInt(key, -1)`**, meaning "not stamped"; the getter reads absent / 0 / corrupt as "not following" | TF-01 (`META_THEME_SYSTEM`) | preference (never deleted by a progress reset) | stamp once, only while `persistenceHealthy`: 1 for a brand-new player, else 0 (`src/ui/themeFollow.ts`); a restore onto another phone keeps following, now that phone's scheme |
 
    Put a comment block above the shape keys:
    - bit *i* ↔ the shape catalogue index *i*;
