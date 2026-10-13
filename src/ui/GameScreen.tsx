@@ -46,6 +46,7 @@ import {
 } from '../core';
 import {
   appLevelAggregator,
+  type LevelAggregator,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
 import { reviewDeclineReason } from '../core/reviewPolicy';
@@ -105,7 +106,7 @@ import {
   assistActive,
   ASSIST_STAGE,
   DONE_STAGE,
-  T1_CLEARED_STAGE,
+  tutorialClearStep,
 } from './ftueRoute';
 import { FtueStallTimer } from './ftueStallTimer';
 import {
@@ -198,6 +199,22 @@ export function tutorialLineBoxHeight(fontScale: number, pixelRatio: number): nu
 // calls in application code are removed by the production transform.
 const writeFtueSessionLog = console.log.bind(console);
 
+/** The level tally GameScreen drives (start, taps, hearts, hints, continues, end). */
+type LevelTally = Pick<LevelAggregator, 'start' | 'tap' | 'heartLost' | 'hintUsed' | 'resume' | 'end'>;
+
+/**
+ * TF-01 C: a "How to play" replay emits no level telemetry (no level_start / level_end, and it is not counted in
+ * session_end), so a replay can never be read as a first-run tutorial. Its FTUE session log lines are skipped too.
+ */
+const SILENT_LEVEL_TALLY: LevelTally = {
+  start: () => undefined,
+  tap: () => undefined,
+  heartLost: () => undefined,
+  hintUsed: () => undefined,
+  resume: () => undefined,
+  end: () => undefined,
+};
+
 /**
  * One play session: header (home, level, difficulty, hearts), the pan/zoom
  * board, and the win / lose overlays. Progress lives in SaveSystem; the level
@@ -208,6 +225,7 @@ export function GameScreen({
   darkMode = false,
   onHome,
   tutorialId,
+  tutorialReplay = false,
   initialLevelIndex,
   daily,
   benchmarkMode = false,
@@ -218,6 +236,13 @@ export function GameScreen({
   darkMode?: boolean;
   onHome: () => void;
   tutorialId?: TutorialId;
+  /**
+   * TF-01 C (META_SETTINGS_HOW_TO_PLAY): `tutorialId` is a "How to play" replay. A cleared board writes no key at all
+   * (no FTUE stage, progress, totals, streaks, collection, rewards, ad counters or review keys), T1 still hands off to
+   * T2, the cleared T2 returns to the menu (onHome), hearts and lines behave as in the first-run tutorial (no assist),
+   * and no level telemetry or FTUE log line is emitted. Read at mount, like `tutorialId`.
+   */
+  tutorialReplay?: boolean;
   initialLevelIndex?: number;
   /**
    * W4-06: play the shared board of `day` (fixed by the caller when the screen
@@ -236,7 +261,9 @@ export function GameScreen({
   const { fontScale } = useWindowDimensions(); // POLISH-T9: tutorial line box height
 
   const revisionRef = useRef(0);
-  const levelAggregatorRef = useRef(appLevelAggregator);
+  const levelAggregatorRef = useRef<LevelTally>(tutorialReplay ? SILENT_LEVEL_TALLY : appLevelAggregator);
+  // TF-01 C: fixed for the screen's life (a replay never turns into a first run, or back).
+  const replayRef = useRef(tutorialReplay);
   const [session, setSession] = useState(() => {
     const index = initialLevelIndex ?? SaveSystem.currentLevel;
     const initial = daily
@@ -345,7 +372,7 @@ export function GameScreen({
   const clearHint = useCallback(() => setHint(null), []);
 
   const logFtueEvent = useCallback((event: FtueSessionLogEvent) => {
-    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1' || replayRef.current) return;
     writeFtueSessionLog(formatFtueSessionLog(
       event,
       Date.now() - ftueBoardMountedAtRef.current,
@@ -386,7 +413,7 @@ export function GameScreen({
     if (ftueMountedSessionRef.current === session) return;
     ftueMountedSessionRef.current = session;
     ftueBoardMountedAtRef.current = Date.now();
-    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1' || replayRef.current) return;
     writeFtueSessionLog(formatFtueSessionLog(
       { type: 'board_mount', board: session.tutorialId ?? session.index, gen: session.genVersion, arrows: session.level.arrowCount, shape: session.level.shapeName },
       0,
@@ -571,18 +598,19 @@ export function GameScreen({
           + ` holdMs=${holdMs} revealMs=${revealMs}`);
       }
       if (activeTutorialId) {
-        const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
+        // TF-01 C: a replay writes no stage and its T2 returns to the menu (tutorialClearStep).
+        const step = tutorialClearStep(activeTutorialId, replayRef.current);
         if (!beginTerminalTransition('won', wonDelayMs, () => {
-          if (nextTutorialId) {
-            loadTutorial(nextTutorialId);
+          if (step.next === 'T2') {
+            loadTutorial('T2');
+          } else if (step.next === 'menu') {
+            onHome();
           } else {
             loadLevel(SaveSystem.currentLevel);
           }
         })) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
-        SaveSystem.setFtueStage(
-          activeTutorialId === 'T1' ? T1_CLEARED_STAGE : ASSIST_STAGE,
-        );
+        if (step.stage !== null) SaveSystem.setFtueStage(step.stage);
       } else {
         if (!beginTerminalTransition('won', wonDelayMs)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
@@ -621,6 +649,7 @@ export function GameScreen({
       loadLevel,
       loadTutorial,
       logFtueEvent,
+      onHome,
       reducedMotion,
       scheduleStallHint,
       stallHintTimer,
@@ -635,9 +664,10 @@ export function GameScreen({
     if (terminalTransition.isPending) return false;
     exitCombo.current = null;
 
+    // TF-01 C: a replayed T1 is charged as the first run's (played at stage 0, where assist never applies).
     const mode = activeTutorialId === 'T2'
       ? 'tutorialGrace'
-      : assistActive({
+      : !(activeTutorialId && replayRef.current) && assistActive({
         enabled: FTUE_ENABLED,
         assistEnabled: FTUE_ASSIST_ENABLED,
         stage: SaveSystem.ftueStage,

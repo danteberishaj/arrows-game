@@ -91,3 +91,18 @@ test.each([0, 1])('assist is inactive at stage %i', (stage) => {
 test('assist is inactive at stage 3 even with both flags on', () => {
   expect(assistActive({ enabled: true, assistEnabled: true, stage: 3 })).toBe(false);
 });
+
+describe('TF-01 C tutorialClearStep', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { tutorialClearStep } = require('../ftueRoute') as typeof import('../ftueRoute');
+
+  test('first run: T1 writes stage 1 and hands off to T2; T2 writes stage 2 and deals the campaign (as before)', () => {
+    expect(tutorialClearStep('T1', false)).toEqual({ stage: 1, next: 'T2' });
+    expect(tutorialClearStep('T2', false)).toEqual({ stage: 2, next: 'campaign' });
+  });
+
+  test('replay: no stage write; T1 hands off to T2, T2 returns to the menu', () => {
+    expect(tutorialClearStep('T1', true)).toEqual({ stage: null, next: 'T2' });
+    expect(tutorialClearStep('T2', true)).toEqual({ stage: null, next: 'menu' });
+  });
+});

@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, View } from 'react-native';
+import { Appearance, AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useReducedMotion, useSharedValue } from 'react-native-reanimated';
@@ -12,7 +12,14 @@ import { initRemoteConfig, RemoteConfig } from './src/config/remoteConfig';
 import type { TutorialId } from './src/core';
 import { stampGenSwitchLevel } from './src/core/generatorVersion';
 import { SaveSystem } from './src/core/saveSystem';
-import { CONSENT_GATE, META_GALLERY, META_THEME_TRANSITION, TELEMETRY_TRANSPORT } from './src/featureFlags';
+import {
+  CONSENT_GATE,
+  META_GALLERY,
+  META_SETTINGS_HOW_TO_PLAY,
+  META_THEME_SYSTEM,
+  META_THEME_TRANSITION,
+  TELEMETRY_TRANSPORT,
+} from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
   DEV_LEVEL_INDEX,
@@ -45,6 +52,12 @@ import { petalAdsEnabled, rewardBookEnabled, rewardPathEnabled, seasonsEnabled }
 import { initSaveSystem, initSkinPickerCapture } from './src/ui/storage';
 import { createThemeScrimTransition, useThemeToggle } from './src/ui/themeTransition';
 import { paletteFor } from './src/ui/theme';
+import {
+  applyFollowSwitch,
+  bootTheme,
+  stopFollowingForManualToggle,
+  systemSchemeIsDark,
+} from './src/ui/themeFollow';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
 import { ftueRoute } from './src/ui/ftueRoute';
 
@@ -113,9 +126,13 @@ export default function App() {
   // A PERF build opens on EXPO_PUBLIC_PERF_SCREEN (default game, P-02 Stage A).
   const [screen, setScreen] = useState<Screen>(PERF_MODE ? PERF_SCREEN : 'splash');
   const [tutorialId, setTutorialId] = useState<TutorialId | undefined>();
+  // TF-01 C (META_SETTINGS_HOW_TO_PLAY): the game screen's tutorial is a "How to play" replay.
+  const [tutorialReplay, setTutorialReplay] = useState(false);
   // W4-06: the daily board's day, fixed when the player enters it.
   const [dailyDay, setDailyDay] = useState<number | null>(null);
   const [dark, setDark] = useState(false);
+  // TF-01 A (META_THEME_SYSTEM): the theme is the phone's (arrows_theme_follows_system = 1). Always false when OFF.
+  const [followsSystem, setFollowsSystem] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   // Reanimated reads the system reduce-motion setting once at app start.
   const reducedMotion = useReducedMotion();
@@ -157,7 +174,12 @@ export default function App() {
         // while GEN_V2_ENABLED is false, after a failed hydrate
         // (persistenceHealthy false) and when the key is already present.
         stampGenSwitchLevel(SaveSystem);
-        setDark(SaveSystem.darkMode);
+        // TF-01 A: OFF, exactly `SaveSystem.darkMode` (no other read or write). ON: stamp the follow key once from
+        // the hydrated save (brand-new player 1, else 0), then the phone's scheme while following. Both land before
+        // setReady, so the first themed frame is already right.
+        const theme = bootTheme(SaveSystem, META_THEME_SYSTEM, META_THEME_SYSTEM ? Appearance.getColorScheme() : null);
+        setDark(theme.dark);
+        if (META_THEME_SYSTEM) setFollowsSystem(theme.followsSystem);
         setSoundOn(SaveSystem.soundOn);
         // Install id + session count (W6-05). This whole effect returns above
         // under PERF_MODE, so a benchmark run never writes them.
@@ -219,6 +241,7 @@ export default function App() {
   }, []);
 
   const onPlay = useCallback(() => {
+    setTutorialReplay(false);
     if (DEV_LEVEL_INDEX !== null) {
       // W3-06 (ruling F28): a dev-only level jump always opens the requested
       // index, bypassing ftueRoute instead of routing into a tutorial board.
@@ -234,6 +257,15 @@ export default function App() {
       totalSolved: SaveSystem.totalSolved,
     });
     setTutorialId(route === 'real' ? undefined : route);
+    showScreen('game');
+  }, [showScreen]);
+
+  // TF-01 C (META_SETTINGS_HOW_TO_PLAY): Settings' "How to play" replays T1 then T2 and comes back to the menu. The
+  // replay never writes a key (GameScreen `tutorialReplay`), whatever the FTUE stage or progress.
+  const onHowToPlay = useCallback(() => {
+    if (!META_SETTINGS_HOW_TO_PLAY) return;
+    setTutorialReplay(true);
+    setTutorialId('T1');
     showScreen('game');
   }, [showScreen]);
 
@@ -272,6 +304,38 @@ export default function App() {
     createScrim: createThemeScrim,
   });
 
+  // TF-01 A (META_THEME_SYSTEM): while following, the theme is the phone's and swaps live, as a plain cut (the OS has
+  // already animated its own change, so no scrim). The listener covers a change while the app is open; the read on
+  // 'active' covers one made while it was in the background. Null / unknown = light.
+  useEffect(() => {
+    if (!META_THEME_SYSTEM || !followsSystem) return undefined;
+    const apply = () => setDark(systemSchemeIsDark(Appearance.getColorScheme()));
+    apply();
+    const appearance = Appearance.addChangeListener(({ colorScheme }) => setDark(systemSchemeIsDark(colorScheme)));
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') apply();
+    });
+    return () => {
+      appearance.remove();
+      appState.remove();
+    };
+  }, [followsSystem]);
+
+  // TF-01 A: the menu toggle still flips to the opposite theme (with W2-08's scrim and reduced motion as before) and
+  // writes arrows_dark_mode; it also stops following the phone. A manual tap always wins. OFF: toggleTheme itself.
+  const toggleThemeManual = useCallback(() => {
+    if (followsSystem) setFollowsSystem(stopFollowingForManualToggle(SaveSystem, true));
+    toggleTheme();
+  }, [followsSystem, toggleTheme]);
+  const onToggleTheme = META_THEME_SYSTEM ? toggleThemeManual : toggleTheme;
+
+  // TF-01 A: Settings' "Match phone theme" switch. ON: follow the phone at once (the effect above). OFF: keep the
+  // theme on screen and store it in arrows_dark_mode, so nothing flips under the player's finger.
+  const onThemeFollowsSystemChange = useCallback((on: boolean) => {
+    if (!META_THEME_SYSTEM) return;
+    setFollowsSystem(applyFollowSwitch(SaveSystem, on, dark));
+  }, [dark]);
+
   const p = paletteFor(dark);
 
   // PERF-DEADTAG: the screen being left stays mounted, invisible and untouchable,
@@ -295,11 +359,15 @@ export default function App() {
         onDaily={onDaily}
         onGallery={onGallery}
         onToggleSound={toggleSound}
-        onToggleTheme={toggleTheme}
+        onToggleTheme={onToggleTheme}
         isThemeChanging={themeChanging}
+        onHowToPlay={onHowToPlay}
+        themeFollowsSystem={followsSystem}
+        onThemeFollowsSystemChange={onThemeFollowsSystemChange}
       />
     ),
-    [p, dark, soundOn, onPlay, onDaily, onGallery, toggleSound, toggleTheme, themeChanging],
+    [p, dark, soundOn, onPlay, onDaily, onGallery, toggleSound, onToggleTheme, themeChanging, onHowToPlay, followsSystem,
+      onThemeFollowsSystemChange],
   );
   const gameScreen = useMemo(
     () => (
@@ -307,6 +375,7 @@ export default function App() {
         palette={p}
         darkMode={dark}
         tutorialId={tutorialId}
+        tutorialReplay={META_SETTINGS_HOW_TO_PLAY && tutorialReplay}
         initialLevelIndex={DEV_LEVEL_INDEX ?? PERF_LEVEL_INDEX ?? undefined}
         benchmarkMode={PERF_MODE}
         feedbackEnabled={!PERF_MODE || PERF_FEEDBACK}
@@ -314,7 +383,7 @@ export default function App() {
         onHome={onGameHome}
       />
     ),
-    [p, dark, tutorialId, onGameHome],
+    [p, dark, tutorialId, tutorialReplay, onGameHome],
   );
   const dailyScreen = useMemo(
     () =>

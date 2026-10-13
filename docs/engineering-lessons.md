@@ -898,3 +898,28 @@ viewed. Report: [HALLOWEEN-PLUS](next-level/reports/HALLOWEEN-PLUS-concepts.md).
 
 **Verified:** see [speed experiments](process/speed-experiments-2026-10-07.md); raw evidence in
 `artifacts/PROCESS-SPEED/phase2/`.
+
+## A tutorial replay must not reuse the first-run clear path; a switch thumb needs contrast against its panel
+
+**Observed, 2026-10-13 (TF-01, tester-feedback builds):** the first-run tutorial clear writes
+`setFtueStage(T1_CLEARED_STAGE | ASSIST_STAGE)`. A "How to play" replay that reused it moved a finished player
+(stage 3) back to stage 2, and dealt the campaign level instead of returning to the menu. This was reproduced by
+running `GameScreen.tutorialReplay.test.tsx` against HEAD's `GameScreen.tsx`: 3 tests RED ("Expected: 3, Received: 2",
+`onHome` never called), with the first-run control test green.
+**Correction:** every tutorial-clear write goes through `tutorialClearStep(id, replay)` (`src/ui/ftueRoute.ts`), which
+returns no stage for a replay. A replay also gets a silent level tally and no FTUE log lines.
+**Verified:** unit tests, plus emulator-5556: a full-save sqlite dump before and after a T1→T2 replay was identical,
+and the replay ended on the menu ([report](next-level/reports/TF-01.md)).
+
+**Observed, same task:** in Ink Night, the Settings switch's ON thumb (`surface`) was nearly invisible
+(`artifacts/TF-01/settings-dark.png`). The contrast audit listed the track colours, not the thumb. Thumb vs track was
+3.64:1 and passed, but the thumb's outer edge sits on the panel, which is also `surface`, so that edge was 1:1.
+**Correction:** the thumb is `inkOnAccent` (white; 4.51:1 on Ink Night's track, 3.48:1 on Daylight's off track), and
+`contrastAudit.ts` now has `settings-switch-thumb-on/off` rows. Audit any control part that can share its container's
+colour, not only the part that carries the state.
+
+**Also:** following the phone's theme means a theme change can now arrive mid-board. Before this, it could only
+happen on the menu. On emulator-5556 the native board, header and hearts recoloured fully, with the same PID and an
+empty `logcat -b crash` (`midboard-*.png`). Phone and tablet devices beyond the emulator are UNVERIFIED-DEVICE.
+`npx expo export:embed --clear` is rejected in this Expo version; use `--reset-cache`. The emulator's Bluetooth stack
+crash-loops into `logcat -b crash`, so filter that buffer by our process before calling a run crash-free.

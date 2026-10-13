@@ -54,6 +54,9 @@ export function HomeScreen({
   onToggleSound,
   onToggleTheme,
   isThemeChanging,
+  onHowToPlay,
+  themeFollowsSystem = false,
+  onThemeFollowsSystemChange,
 }: {
   palette: Palette;
   dark: boolean;
@@ -72,6 +75,12 @@ export function HomeScreen({
    * visible frame.
    */
   isThemeChanging?: () => boolean;
+  /** TF-01 C (META_SETTINGS_HOW_TO_PLAY): Settings' "How to play" was pressed (the sheet has closed itself). */
+  onHowToPlay?: () => void;
+  /** TF-01 A (META_THEME_SYSTEM): the Settings switch's state, arrows_theme_follows_system. */
+  themeFollowsSystem?: boolean;
+  /** TF-01 A: the Settings switch was flipped. */
+  onThemeFollowsSystemChange?: (on: boolean) => void;
 }) {
   const p = palette;
   const insets = useSafeAreaInsets(); // keep the corners clear of notches (SafeArea.cs)
@@ -339,7 +348,16 @@ export function HomeScreen({
 
       {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
 
-      {META_SETTINGS_SHEET && settingsOpen && <SettingsSheet palette={p} dark={dark} onClose={closeSettings} />}
+      {META_SETTINGS_SHEET && settingsOpen && (
+        <SettingsSheet
+          palette={p}
+          dark={dark}
+          onClose={closeSettings}
+          onHowToPlay={onHowToPlay}
+          themeFollowsSystem={themeFollowsSystem}
+          onThemeFollowsSystemChange={onThemeFollowsSystemChange}
+        />
+      )}
     </View>
   );
 }
