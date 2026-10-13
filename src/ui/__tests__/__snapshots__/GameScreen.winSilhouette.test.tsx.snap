@@ -20,6 +20,7 @@ exports[`flag OFF (default): the won panel is BASE f8125de campaign win 1`] = `
   }
 >
   <Text
+    accessibilityRole="header"
     style={
       [
         {
@@ -35,6 +36,8 @@ exports[`flag OFF (default): the won panel is BASE f8125de campaign win 1`] = `
     Cleared!
   </Text>
   <View
+    accessibilityLabel="3 of 3 stars"
+    accessible={true}
     style={
       {
         "alignItems": "flex-end",
@@ -148,6 +151,8 @@ exports[`flag OFF (default): the won panel is BASE f8125de campaign win 1`] = `
     Level 8 · Diamond · 89 arrows
   </Text>
   <View
+    accessibilityLabel="Next level"
+    accessibilityRole="button"
     accessibilityState={
       {
         "busy": undefined,
@@ -255,6 +260,7 @@ exports[`flag OFF (default): the won panel is BASE f8125de daily win 1`] = `
   }
 >
   <Text
+    accessibilityRole="header"
     style={
       [
         {
@@ -270,6 +276,8 @@ exports[`flag OFF (default): the won panel is BASE f8125de daily win 1`] = `
     Cleared!
   </Text>
   <View
+    accessibilityLabel="3 of 3 stars"
+    accessible={true}
     style={
       {
         "alignItems": "flex-end",
@@ -383,6 +391,8 @@ exports[`flag OFF (default): the won panel is BASE f8125de daily win 1`] = `
     Today · Plus · 63 arrows
   </Text>
   <View
+    accessibilityLabel="Done"
+    accessibilityRole="button"
     accessibilityState={
       {
         "busy": undefined,

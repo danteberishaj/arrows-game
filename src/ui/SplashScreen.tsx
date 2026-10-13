@@ -18,6 +18,8 @@ import { Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+/** TF-02 C: the splash's tap-to-skip surface, spoken. */
+const SKIP_A11Y_LABEL = 'Skip intro'; // OWNER-PICKED STARTING VALUE
 
 /**
  * Longest the splash may stay up before the backstop hands over to the menu,
@@ -147,13 +149,23 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
   }));
 
   return (
-    <Pressable style={[styles.root, { backgroundColor: palette.bg }]} onPress={skip}>
+    // TF-02 C: the whole splash is a tap-to-skip button; the drawn arrow is decoration (hidden from screen readers).
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={SKIP_A11Y_LABEL}
+      style={[styles.root, { backgroundColor: palette.bg }]}
+      onPress={skip}
+    >
       <Animated.View style={[styles.center, rootStyle]}>
         <Animated.View style={markStyle}>
           <Wordmark size={56} palette={palette} />
         </Animated.View>
 
-        <Animated.View style={{ marginTop: 26 }}>
+        <Animated.View
+          style={{ marginTop: 26 }}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           <Svg width={w} height={H} viewBox={`0 0 ${w} ${H}`}>
             <AnimatedPath
               d={d}

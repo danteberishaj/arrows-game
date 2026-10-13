@@ -36,6 +36,8 @@ const NAMED_META_FLAGS = [
   'META_SETTINGS_RATE', // TF-01
   'META_SETTINGS_HOW_TO_PLAY', // TF-01
   'META_NAV_BAR_THEME', // NAV-BAR
+  'META_HIGH_CONTRAST', // TF-02 A
+  'META_SHARE_CARD_LEVEL', // TF-02 B
 ];
 
 const savedEnv = { ...process.env };

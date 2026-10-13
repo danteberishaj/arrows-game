@@ -166,6 +166,9 @@ exports[`all menu flags OFF: the BASE menu composite (dark false): tree identica
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -419,6 +422,8 @@ exports[`all menu flags OFF: the BASE menu composite (dark false): tree identica
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -672,6 +677,9 @@ exports[`all menu flags OFF: the BASE menu composite (dark true): tree identical
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -925,6 +933,8 @@ exports[`all menu flags OFF: the BASE menu composite (dark true): tree identical
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -1178,6 +1188,9 @@ exports[`all menu flags OFF: the BASE menu compositeDone (dark false): tree iden
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -1431,6 +1444,8 @@ exports[`all menu flags OFF: the BASE menu compositeDone (dark false): tree iden
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -1684,6 +1699,9 @@ exports[`all menu flags OFF: the BASE menu fresh (dark false): tree identical to
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -1937,6 +1955,8 @@ exports[`all menu flags OFF: the BASE menu fresh (dark false): tree identical to
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -2188,6 +2208,9 @@ exports[`all menu flags OFF: the BASE menu fresh (dark true): tree identical to 
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -2441,6 +2464,8 @@ exports[`all menu flags OFF: the BASE menu fresh (dark true): tree identical to 
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -2692,6 +2717,9 @@ exports[`all menu flags OFF: the BASE menu oneSolve (dark false): tree identical
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -2945,6 +2973,8 @@ exports[`all menu flags OFF: the BASE menu oneSolve (dark false): tree identical
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,

@@ -214,6 +214,8 @@ export function HomeScreen({
           nested view when META_PRESS_SPRING is on) multiply. */}
       <Animated.View style={pulseStyle}>
         <PressScale
+          accessibilityRole="button"
+          accessibilityLabel={PLAY_LABEL}
           onPress={onPlay}
           style={({ pressed }) => [
             styles.play,
@@ -223,7 +225,7 @@ export function HomeScreen({
             },
           ]}
         >
-          <Text style={[styles.playText, { color: p.inkOnAccent }]}>Play</Text>
+          <Text style={[styles.playText, { color: p.inkOnAccent }]}>{PLAY_LABEL}</Text>
         </PressScale>
       </Animated.View>
 
@@ -442,6 +444,8 @@ function GalleryEntry({
 const SETTINGS_GLYPH = '\u2699\uFE0E'; // OWNER-PICKED STARTING VALUE
 /** W7-04: the Settings button's accessible name. OWNER-PICKED STARTING VALUE (copy). */
 const SETTINGS_LABEL = 'Settings'; // OWNER-PICKED STARTING VALUE
+/** TF-02 C: the Play pill's role and spoken name (its visible word). */
+const PLAY_LABEL = 'Play';
 /** A11Y-LABELS: the theme toggle is the switch "Dark mode" (checked = Ink Night); the sound toggle is "Sound". */
 const THEME_SWITCH_LABEL = 'Dark mode'; // OWNER-PICKED STARTING VALUE
 const SOUND_SWITCH_LABEL = 'Sound'; // OWNER-PICKED STARTING VALUE

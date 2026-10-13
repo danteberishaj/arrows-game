@@ -92,3 +92,33 @@ export function buildDailyShareText({ day, mask, shapeName, heartsLeft, maxHeart
   const rows = shareGrid(mask).map((row) => row.map((filled) => (filled ? SHARE_GLYPH_ON : SHARE_GLYPH_OFF)).join(''));
   return rows.length === 0 ? header : `${header}\n\n${rows.join('\n')}`;
 }
+
+/**
+ * TF-02 B (META_SHARE_CARD_LEVEL, owner-approved shape 2026-10-13): the CAMPAIGN win panel's card.
+ *
+ *   Arrows · Level 7
+ *   Diamond
+ *   Hearts left: 3/3
+ *
+ *   ⬜⬜🟪⬜⬜
+ *   …
+ *
+ * `levelNumber` is the number the game header shows (`LEVEL ${levelIndex + 1}`). The grid is the daily card's
+ * (shareGrid). No link, no device or personal data. Length: SHARE_CARD_MAX_LENGTH holds; measured worst case 258 UTF-16
+ * units over levels 0..9999 on both generators with a full 10 x 10 grid (shareCard.test.ts).
+ */
+export function buildLevelShareText({ levelNumber, mask, shapeName, heartsLeft, maxHearts }: {
+  levelNumber: number;
+  mask: readonly (readonly boolean[])[];
+  shapeName: string;
+  heartsLeft: number;
+  maxHearts: number;
+}): string {
+  const header = [
+    `Arrows · Level ${count(levelNumber)}`,
+    shapeName,
+    `Hearts left: ${count(heartsLeft)}/${count(maxHearts)}`,
+  ].join('\n');
+  const rows = shareGrid(mask).map((row) => row.map((filled) => (filled ? SHARE_GLYPH_ON : SHARE_GLYPH_OFF)).join(''));
+  return rows.length === 0 ? header : `${header}\n\n${rows.join('\n')}`;
+}

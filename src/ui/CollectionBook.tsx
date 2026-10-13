@@ -106,7 +106,8 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
       <PurchasePreview key="confirm" entry={entry} palette={p} />
       <Text style={[styles.name, { color: p.ink }]}>{entry.name}</Text>
       <Text style={[styles.caption, { color: p.inkDim }]}>{k === null ? 'Not on the path' : `On the path in ${k} ${k === 1 ? 'level' : 'levels'} · or get it now`}</Text>
-      <PressScale testID="book-buy" accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
+      <PressScale testID="book-buy" accessibilityRole="button" accessibilityLabel={`Buy for ${price} petals`}
+        accessibilityState={{ disabled }} disabled={disabled}
         onPress={buy} style={({ pressed }) => [styles.primary, disabled
           // UX: clearly unavailable — no fill, a dashed outline, dimmed label (not a pale look-alike of the CTA).
           ? { backgroundColor: 'transparent', borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.border }
@@ -115,7 +116,7 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
       </PressScale>
       <Text style={[styles.caption, { color: p.inkDim }]}>{balanceLine}</Text>
       {state.petalAds === true && state.canBuy && petals < price && <PetalAdButton palette={p} state={state} now={now} />}
-      <Pressable testID="book-not-now" accessibilityRole="button" onPress={() => setScreen({ kind: 'grid' })} style={styles.secondary}>
+      <Pressable testID="book-not-now" accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setScreen({ kind: 'grid' })} style={styles.secondary}>
         <Text style={[styles.caption, { color: p.inkDim }]}>Not now</Text>
       </Pressable>
     </View>;
@@ -129,11 +130,11 @@ export function CollectionBook({ palette: p, state, onUse, now = new Date() }:
     <PurchasePreview key="bought" entry={entry} palette={p} />
     <Text style={[styles.name, { color: p.ink }]}>{entry.name}</Text>
     <Text style={[styles.caption, { color: p.inkDim }]}>{`${counts.owned} of ${counts.total} styles collected`}</Text>
-    <PressScale testID="book-use" accessibilityRole="button" onPress={() => onUse(entry.refId)}
+    <PressScale testID="book-use" accessibilityRole="button" accessibilityLabel="Use it now" onPress={() => onUse(entry.refId)}
       style={({ pressed }) => [styles.primary, { backgroundColor: pressed ? p.accentDeep : p.accent, transform: pressSnapTransform(pressed) }]}>
       <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>Use it now</Text>
     </PressScale>
-    <Pressable testID="book-back" accessibilityRole="button" onPress={() => setScreen({ kind: 'grid' })} style={styles.secondary}>
+    <Pressable testID="book-back" accessibilityRole="button" accessibilityLabel="Back to the book" onPress={() => setScreen({ kind: 'grid' })} style={styles.secondary}>
       <Text style={[styles.caption, { color: p.inkDim }]}>Back to the book</Text>
     </Pressable>
   </View>;

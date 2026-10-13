@@ -271,3 +271,21 @@ export const META_SETTINGS_HOW_TO_PLAY = process.env.EXPO_PUBLIC_META_SETTINGS_H
  * measured identical to the build without the module in all 6 scenarios.
  */
 export const META_NAV_BAR_THEME = process.env.EXPO_PUBLIC_META_NAV_BAR_THEME === '1';
+/**
+ * TF-02 A (tester feedback, owner 2026-10-13): high contrast FOLLOWS THE PHONE's own accessibility setting; there is no
+ * Settings row. Android: "High contrast text" (`AccessibilityInfo.isHighTextContrastEnabled` + `highTextContrastChanged`);
+ * iOS: "Increase Contrast" (`isDarkerSystemColorsEnabled` + `darkerSystemColorsChanged`). While it is on, both themes
+ * draw their high-contrast palettes (src/ui/theme.ts `DaylightHighContrast` / `InkNightHighContrast`, picked by
+ * `paletteFor(dark, highContrast)`) and the swap is live, with no restart. The theme choice and TF-01's "follow phone"
+ * are unchanged. Measured target (scripts/contrast-audit-hc.ts): every audit text row >= 7:1 (large text >= 4.5:1),
+ * every graphic / boundary row >= 4.5:1. OFF: the setting is never read and the palettes are exactly as before.
+ */
+export const META_HIGH_CONTRAST = process.env.EXPO_PUBLIC_META_HIGH_CONTRAST === '1';
+/**
+ * TF-02 B (tester feedback, owner 2026-10-13): the CAMPAIGN win panel gets the daily panel's Share control (same look,
+ * under Next level). The card (src/ui/shareCard.ts `buildLevelShareText`): `Arrows · Level <N>` (N as the header shows
+ * it), the shape name, `Hearts left: h/H`, a blank line and the daily card's emoji grid. No link, no device or personal
+ * data. Tutorial boards and "How to play" replays have no panel, so no Share. OFF: the campaign panel is exactly as
+ * before (META_SHARE_CARD still governs the daily panel alone).
+ */
+export const META_SHARE_CARD_LEVEL = process.env.EXPO_PUBLIC_META_SHARE_CARD_LEVEL === '1';

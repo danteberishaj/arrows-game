@@ -17,7 +17,8 @@ export function Wordmark({ size, palette }: { size: number; palette: Palette }) 
   // box so the VISIBLE mark matches the triangle footprint.
   const rectW = triW / 0.64;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    // TF-02 C: one spoken heading, "Arrows" (the emblem A and the text "rrows" were read apart, as "rrows").
+    <View style={{ flexDirection: 'row', alignItems: 'center' }} accessible accessibilityRole="header" accessibilityLabel="Arrows">
       <View
         style={{
           width: triW,

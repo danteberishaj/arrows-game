@@ -89,7 +89,58 @@ export const InkNight: Palette = {
   scrimLost: '#13111CDB', // OWNER-PICKED STARTING VALUE: today's bg at 0.86
 };
 
-export const paletteFor = (dark: boolean): Palette => (dark ? InkNight : Daylight);
+/**
+ * TF-02 A (META_HIGH_CONTRAST): the high-contrast variants, drawn while the phone's own high-contrast setting is on.
+ * Colour tokens only; `bg`, `surface`, `ink`, `accentCore`, `heartLost` and `surfaceRaised` keep their values. Every
+ * changed token was solved by `solveLightness` (contrastAudit.ts: its own hue and saturation, lightness only) to the
+ * TF-02 target over the audit's rows: text >= 7:1 (large >= 4.5:1), graphics and boundaries >= 4.5:1
+ * (`npx tsx scripts/contrast-audit-hc.ts` prints the before/after table; contrast.test.ts and
+ * highContrastPalette.test.ts gate it). The few values that needed a choice beyond "the nearest passing lightness"
+ * are marked OWNER-PICKED STARTING VALUE; the owner judges the look from artifacts/TF-02/hc-on-*.png.
+ */
+export const DaylightHighContrast: Palette = {
+  ...Daylight,
+  border: '#715FB6', // solver: L 63.7 -> 54.3 (>= 4.5:1 on surface, bg, surfaceRaised and the Settings scrims)
+  accent: '#4518EB', // solver: L 61.4 -> 50.8, white 16 bold labels >= 7:1 (the brand violet is darker: owner look check)
+  accentLight: '#7B5EED', // solver: L 70.2 -> 64.9 (24 bold level label, >= 4.5:1 on bg)
+  // OWNER-PICKED STARTING VALUE: pressed = accentDeep's hue/sat at L -15, so pressed/rest keep today's 1.37 step.
+  accentDeep: '#3A209F',
+  heart: '#CF1B67', // solver: L 54.5 -> 45.9 (>= 4.5:1 on bg and surface)
+  glyphOff: '#705FB7', // solver: L 63.9 -> 54.5 (>= 4.5:1 on surface; the white Switch thumb >= 4.5:1 on it)
+  pipSpent: '#7A6BBC', // solver: L 67.3 -> 57.8
+  starUnearned: '#705FB7', // solver: L 63.9 -> 54.5
+  accentText: '#4518EB', // solver: L 61.4 -> 50.8 (>= 7:1 on bg and surface)
+  heartText: '#AB1756', // solver: L 50.2 -> 38.0 (>= 7:1 on bg)
+  inkDim: '#504D64', // solver: L 47.3 -> 34.7 (>= 7:1 on bg and surface)
+  // OWNER-PICKED STARTING VALUE: the won scrim's black at 0.549 (140/255, was 0.45), the lightest alpha at which the
+  // W5-05 panel fill reaches 4.5:1 against it (the hairline cannot: it would need to be near-black or white).
+  scrimWon: '#0000008C',
+};
+
+export const InkNightHighContrast: Palette = {
+  ...InkNight,
+  border: '#8681B1', // solver: L 50.2 -> 60.0 (>= 4.5:1 on surface, bg, both scrims and the Settings scrims)
+  // OWNER-PICKED STARTING VALUE: a light violet with DARK labels. White on any colour that reaches 4.5:1 on Ink Night's
+  // surface tops out at 3.65:1, so white labels cannot reach 7:1 there; the label ink becomes `bg` (scripts/contrast-audit-hc.ts).
+  accent: '#A58FF8', // solver: L 65.9 -> 76.7 (>= 7:1 under `inkOnAccent`)
+  // OWNER-PICKED STARTING VALUE: pressed is LIGHTER here (dark label): accentDeep's hue/sat solved to 10:1 (L 55.9 -> 82.7), a 1.43 step against accent.
+  accentDeep: '#C1B7EF',
+  heart: '#F477AA', // solver: L 60.8 -> 71.2 (the missed mark, heart at 0.75 over bg, >= 4.5:1)
+  glyphOff: '#8881AD', // solver: L 49.2 -> 59.2 (>= 4.5:1 on surface; the dark Switch thumb >= 4.5:1 on it)
+  pipSpent: '#7F77A6', // solver: L 45.1 -> 55.9
+  starUnearned: '#8881AD', // solver: L 49.2 -> 59.2
+  accentText: '#B09DF9', // solver: L 70.2 -> 79.6 (>= 7:1 on bg and surface)
+  heartText: '#F474A8', // solver: L 60.8 -> 70.6 (>= 7:1 on bg)
+  inkDim: '#AAA6C7', // solver: L 68.6 -> 71.6 (>= 7:1 on bg and surface)
+  inkOnAccent: '#13111C', // OWNER-PICKED STARTING VALUE: = bg (see `accent`)
+};
+
+/**
+ * THE palette choice (TF-02 A). `highContrast` is the phone's high-contrast setting AND META_HIGH_CONTRAST (App.tsx);
+ * it defaults to false, so `paletteFor(dark)` returns exactly the objects it always did.
+ */
+export const paletteFor = (dark: boolean, highContrast = false): Palette =>
+  highContrast ? (dark ? InkNightHighContrast : DaylightHighContrast) : dark ? InkNight : Daylight;
 
 /**
  * The brand type: Fredoka, the rounded bold geometric sans the Unity build

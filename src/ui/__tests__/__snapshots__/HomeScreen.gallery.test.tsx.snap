@@ -166,6 +166,9 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -419,6 +422,8 @@ exports[`flag OFF: the BASE menu fresh, daily off: no gallery control, tree iden
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,
@@ -685,6 +690,9 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       }
     >
       <View
+        accessibilityLabel="Arrows"
+        accessibilityRole="header"
+        accessible={true}
         style={
           {
             "alignItems": "center",
@@ -938,6 +946,8 @@ exports[`flag OFF: the BASE menu solved, daily available: no gallery control, tr
       }
     >
       <View
+        accessibilityLabel="Play"
+        accessibilityRole="button"
         accessibilityState={
           {
             "busy": undefined,
@@ -1292,6 +1302,9 @@ exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree id
       }
     >
       <View
+        accessibilityLabel="Arrows"
+        accessibilityRole="header"
+        accessible={true}
         style={
           {
             "alignItems": "center",
@@ -1545,6 +1558,8 @@ exports[`flag OFF: the BASE menu solved, daily done: no gallery control, tree id
       }
     >
       <View
+        accessibilityLabel="Play"
+        accessibilityRole="button"
         accessibilityState={
           {
             "busy": undefined,
@@ -1846,6 +1861,9 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
     }
   >
     <View
+      accessibilityLabel="Arrows"
+      accessibilityRole="header"
+      accessible={true}
       style={
         {
           "alignItems": "center",
@@ -2099,6 +2117,8 @@ exports[`flag OFF: the BASE menu solved, daily off: no gallery control, tree ide
     }
   >
     <View
+      accessibilityLabel="Play"
+      accessibilityRole="button"
       accessibilityState={
         {
           "busy": undefined,

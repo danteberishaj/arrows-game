@@ -16,6 +16,7 @@ import { SaveSystem } from './src/core/saveSystem';
 import {
   CONSENT_GATE,
   META_GALLERY,
+  META_HIGH_CONTRAST,
   META_NAV_BAR_THEME,
   META_SETTINGS_HOW_TO_PLAY,
   META_THEME_SYSTEM,
@@ -54,6 +55,7 @@ import { petalAdsEnabled, rewardBookEnabled, rewardPathEnabled, seasonsEnabled }
 import { initSaveSystem, initSkinPickerCapture } from './src/ui/storage';
 import { createThemeScrimTransition, useThemeToggle } from './src/ui/themeTransition';
 import { paletteFor } from './src/ui/theme';
+import { useSystemHighContrast } from './src/ui/highContrast';
 import {
   applyFollowSwitch,
   bootTheme,
@@ -338,7 +340,9 @@ export default function App() {
     setFollowsSystem(applyFollowSwitch(SaveSystem, on, dark));
   }, [dark]);
 
-  const p = paletteFor(dark);
+  // TF-02 A (META_HIGH_CONTRAST): the phone's high-contrast setting, live; OFF it is never read and is always false.
+  const highContrast = useSystemHighContrast(META_HIGH_CONTRAST);
+  const p = paletteFor(dark, highContrast);
 
   // PERF-DEADTAG: the screen being left stays mounted, invisible and untouchable,
   // until the UI thread has drawn its successor's first frame (screenHandoff.tsx).
@@ -441,7 +445,7 @@ export default function App() {
         <ScreenSlot key={slotKey('gallery')} leaving={leaving === 'gallery'}>{galleryScreen}</ScreenSlot>
       )}
       {/* W2-08: above every screen branch; opacity 0 and untouchable at rest. */}
-      {themeScrim && <ScreenScrim color={paletteFor(scrimDark).bg} opacity={themeScrimOpacity} />}
+      {themeScrim && <ScreenScrim color={paletteFor(scrimDark, highContrast).bg} opacity={themeScrimOpacity} />}
       {!PERF_MODE && __DEV__ && <AdHost palette={p} />}
     </GestureHandlerRootView>
     </SafeAreaProvider>

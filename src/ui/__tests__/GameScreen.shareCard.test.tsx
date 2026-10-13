@@ -14,7 +14,7 @@ import type { ScrimDriver } from '../scrimTransition';
 import { Daylight } from '../theme';
 
 let mockBoardViewProps: BoardViewProps | null = null;
-const mockFlags = { META_LEVEL_TRANSITION: false, META_SHARE_CARD: false };
+const mockFlags = { META_LEVEL_TRANSITION: false, META_SHARE_CARD: false, META_SHARE_CARD_LEVEL: false };
 const mockDriver: ScrimDriver & { calls: string[]; coverDone: (() => void) | null } = {
   calls: [],
   coverDone: null,
@@ -53,6 +53,7 @@ jest.mock('../../featureFlags', () =>
     {
       META_LEVEL_TRANSITION: { get: () => mockFlags.META_LEVEL_TRANSITION, enumerable: true },
       META_SHARE_CARD: { get: () => mockFlags.META_SHARE_CARD, enumerable: true },
+      META_SHARE_CARD_LEVEL: { get: () => mockFlags.META_SHARE_CARD_LEVEL, enumerable: true },
     },
   ));
 
@@ -117,12 +118,14 @@ let previousClock: () => Date;
 let clockNow: Date;
 let sink: ReturnType<typeof createMemorySink>;
 
-const renderGame = (props: { daily?: { day: number }; onHome?: () => void } = {}) =>
+const renderGame = (props: { daily?: { day: number }; onHome?: () => void; tutorialId?: 'T1' | 'T2'; tutorialReplay?: boolean } = {}) =>
   render(
     <GameScreen
       palette={Daylight}
       onHome={props.onHome ?? jest.fn()}
       daily={props.daily}
+      tutorialId={props.tutorialId}
+      tutorialReplay={props.tutorialReplay}
       feedbackEnabled={false}
     />,
   );
@@ -157,6 +160,7 @@ beforeEach(() => {
   mockBoardViewProps = null;
   mockFlags.META_LEVEL_TRANSITION = false;
   mockFlags.META_SHARE_CARD = false;
+  mockFlags.META_SHARE_CARD_LEVEL = false;
   store = new MapStore();
   previousStore = SaveSystem.useStore(store);
   clockNow = dayDate(DAY);
@@ -181,7 +185,7 @@ afterEach(() => {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Share } = require('react-native') as typeof import('react-native');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { buildDailyShareText } = require('../shareCard') as typeof import('../shareCard');
+const { buildDailyShareText, buildLevelShareText } = require('../shareCard') as typeof import('../shareCard');
 
 test('flag OFF: the daily win panel has no Share control', () => {
   const screen = renderGame({ daily: { day: DAY } });
@@ -225,4 +229,87 @@ test('flag ON: the campaign win panel and the daily lose panel have no Share con
   const daily = renderGame({ daily: { day: DAY } });
   loseBoard(daily);
   expect(daily.queryByText('Share')).toBeNull();
+});
+
+/**
+ * TF-02 B (META_SHARE_CARD_LEVEL): the CAMPAIGN win panel's Share. Only a campaign clear with the flag on shows it;
+ * tutorial boards (and "How to play" replays, which are tutorial boards) have no panel at all.
+ */
+describe('TF-02 B: the campaign win panel Share (META_SHARE_CARD_LEVEL)', () => {
+  test('flag OFF (default): the campaign win panel has no Share control', () => {
+    const screen = renderGame();
+    winBoard(screen, 'Next level');
+    expect(screen.queryByText('Share')).toBeNull();
+  });
+
+  test('flag ON: the campaign win panel shares "Arrows · Level N" with N as the header shows it', () => {
+    mockFlags.META_SHARE_CARD_LEVEL = true;
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'dismissedAction' } as never);
+    const screen = renderGame();
+    expect(screen.getByText('LEVEL 8')).toBeTruthy(); // arrows_current_level 7 = the header's "LEVEL 8"
+    const level = mockBoardViewProps!.board;
+    expect(level).toBeTruthy();
+    winBoard(screen, 'Next level');
+    const button = screen.getByRole('button', { name: 'Share' });
+    expect(button).toBeTruthy();
+    fireEvent.press(screen.getByText('Share'));
+    expect(share).toHaveBeenCalledTimes(1);
+    const { message } = share.mock.calls[0][0] as { message: string };
+    expect(share.mock.calls[0][0]).not.toHaveProperty('url');
+    const [title, shapeName, hearts, blank] = message.split('\n');
+    expect(title).toBe('Arrows · Level 8');
+    expect(screen.getByText(new RegExp(`^Level 8 · ${shapeName} · `))).toBeTruthy(); // the panel's own subline
+    expect(hearts).toBe('Hearts left: 3/3');
+    expect(blank).toBe('');
+  });
+
+  test('flag ON: the card is buildLevelShareText of the cleared level (mask, shape, hearts left after a miss)', () => {
+    mockFlags.META_SHARE_CARD_LEVEL = true;
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'dismissedAction' } as never);
+    const screen = renderGame();
+    act(() => { mockBoardViewProps!.onBlocked(true); }); // one heart lost
+    winBoard(screen, 'Next level');
+    fireEvent.press(screen.getByText('Share'));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const lifecycle = require('../gameSessionLifecycle') as typeof import('../gameSessionLifecycle');
+    const level = lifecycle.generateCampaignLevel(7, lifecycle.levelGenVersion(7));
+    expect((share.mock.calls[0][0] as { message: string }).message).toBe(
+      buildLevelShareText({ levelNumber: 8, mask: level.mask, shapeName: level.shapeName, heartsLeft: level.hearts - 1, maxHearts: level.hearts }),
+    );
+  });
+
+  test('flag ON: the campaign lose panel, the daily win panel (META_SHARE_CARD off) and tutorial boards have none', () => {
+    mockFlags.META_SHARE_CARD_LEVEL = true;
+    const lost = renderGame();
+    loseBoard(lost);
+    expect(lost.queryByText('Share')).toBeNull();
+    lost.unmount();
+    const daily = renderGame({ daily: { day: DAY } });
+    winBoard(daily, 'Done');
+    expect(daily.queryByText('Share')).toBeNull();
+    daily.unmount();
+    for (const props of [{ tutorialId: 'T1' as const }, { tutorialId: 'T1' as const, tutorialReplay: true }]) {
+      const tutorial = renderGame(props);
+      const board = mockBoardViewProps!.board;
+      act(() => {
+        for (const arrow of [...board.arrows()]) board.tryRemove(arrow);
+        mockBoardViewProps!.onRemoved(true, 0);
+      });
+      act(() => { jest.advanceTimersByTime(WON_PANEL_DELAY_MS * 4); });
+      expect(tutorial.queryByText('Share')).toBeNull();
+      expect(tutorial.queryByText('Next level')).toBeNull();
+      tutorial.unmount();
+    }
+  });
+
+  test('both flags ON: the daily panel keeps its own daily card (one Share), the campaign panel gets the level card', () => {
+    mockFlags.META_SHARE_CARD = true;
+    mockFlags.META_SHARE_CARD_LEVEL = true;
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'dismissedAction' } as never);
+    const daily = renderGame({ daily: { day: DAY } });
+    winBoard(daily, 'Done');
+    expect(daily.getAllByText('Share')).toHaveLength(1);
+    fireEvent.press(daily.getByText('Share'));
+    expect((share.mock.calls[0][0] as { message: string }).message).toMatch(/^Arrows · \d{4}-\d{2}-\d{2}\n/);
+  });
 });
