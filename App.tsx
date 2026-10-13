@@ -3,6 +3,7 @@ import { Fredoka_700Bold } from '@expo-google-fonts/fredoka/700Bold';
 import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Appearance, AppState, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,6 +16,7 @@ import { SaveSystem } from './src/core/saveSystem';
 import {
   CONSENT_GATE,
   META_GALLERY,
+  META_NAV_BAR_THEME,
   META_SETTINGS_HOW_TO_PLAY,
   META_THEME_SYSTEM,
   META_THEME_TRANSITION,
@@ -414,6 +416,9 @@ export default function App() {
     <SafeAreaProvider>
     <GestureHandlerRootView accessibilityLabel={diagLabel} style={{ flex: 1 }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
+      {/* NAV-BAR (META_NAV_BAR_THEME): the Android nav bar's buttons and scrim follow the game's theme. Same
+          convention as StatusBar: `style` names the CONTENT colour ('light' buttons on Ink Night). */}
+      {META_NAV_BAR_THEME && <NavigationBar style={dark ? 'light' : 'dark'} />}
       {inSlot('splash') && (
         <ScreenSlot key={slotKey('splash')} leaving={leaving === 'splash'} fadeIn={false}>
           {splashScreen}

@@ -923,3 +923,30 @@ happen on the menu. On emulator-5556 the native board, header and hearts recolou
 empty `logcat -b crash` (`midboard-*.png`). Phone and tablet devices beyond the emulator are UNVERIFIED-DEVICE.
 `npx expo export:embed --clear` is rejected in this Expo version; use `--reset-cache`. The emulator's Bluetooth stack
 crash-loops into `logcat -b crash`, so filter that buffer by our process before calling a run crash-free.
+
+## Android nav bar: the scrim, AndroidX's compat controller and Expo's prebuilt AARs each hid the fix
+
+**Observed, 2026-10-13 (NAV-BAR, emulator-5556 API 31, 3-button):** under Ink Night the navigation bar stayed light
+grey (bar vs content 15.25:1, measured by `artifacts/NAV-BAR/scripts/navbar_measure.py`). The bar's look was fixed by
+the phone's mode at app start, so a sun/moon toggle or a live phone change never updated it. Gesture navigation was
+fine (the handle adapts by itself).
+**Confirmed causes (three layers):**
+1. The default contrast scrim. `setStyle` alone fixed only the launch case.
+2. androidx.core 1.18 `WindowInsetsControllerCompat(window, view)` only flips the legacy
+   `SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR` (`javap`: `Impl30.setAppearanceLight` never calls `setSystemBarsAppearance`
+   when built from a Window). Android 11+ ignores legacy flags once React Native's StatusBar has made the window
+   appearance-controlled. `dumpsys window` showed `vsysui` toggling while `apr=LIGHT_NAVIGATION_BARS` stayed stuck.
+3. **A patch to an Expo module's Kotlin source was silently ignored**: Expo modules ship a prebuilt AAR
+   (`local-maven-repo`), and Gradle used it (📦 in the autolinking list, no `:<module>:compileReleaseKotlin` task).
+   One whole clean build (D2) tested unpatched code.
+**Correction:** `plugins/withNavBarTheme.js` (scrim off only when `EXPO_PUBLIC_META_NAV_BAR_THEME=1` at prebuild),
+`patches/expo-navigation-bar+57.0.3.patch` (platform `setSystemBarsAppearance`, as RN does for the status bar), and
+`package.json` `expo.autolinking.android.buildFromSource: ["expo-navigation-bar"]`.
+**Verified (emulator only):** D3 measured 1.00 bar vs content and ≥ 5.74:1 buttons in all 6 scenarios. The flag-OFF
+build equalled the pre-change build in all 6. Phone and Android 15/16 are UNVERIFIED-DEVICE
+([report](next-level/reports/NAV-BAR.md)).
+**Rules for next time:** (a) after patching an Expo module's native code, prove `:<module>:compileReleaseKotlin` ran
+before testing the APK. (b) A config plugin that reads an `EXPO_PUBLIC_*` flag makes that flag a NATIVE input;
+`native-fingerprint.sh` now hashes every such name found in `plugins/`. (c) On API 30+, judge bar styling from `apr=`
+in `dumpsys window`, not `vsysui=`. (d) The API 31 emulator's system_server crashed with "Lost network stack" after a
+quick-boot from an old snapshot under host load; a cold boot (`-no-snapshot-load`) fixed it.
