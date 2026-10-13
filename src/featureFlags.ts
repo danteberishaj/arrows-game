@@ -289,3 +289,17 @@ export const META_HIGH_CONTRAST = process.env.EXPO_PUBLIC_META_HIGH_CONTRAST ===
  * before (META_SHARE_CARD still governs the daily panel alone).
  */
 export const META_SHARE_CARD_LEVEL = process.env.EXPO_PUBLIC_META_SHARE_CARD_LEVEL === '1';
+/**
+ * TF-03 (Play Console large-screen warning on 1.0.0 (18), owner 2026-10-13): lift the manifest's portrait lock so
+ * tablets, foldables and Chromebooks can rotate and resize, while PHONES stay portrait. ON needs both halves, set by
+ * the same env flag:
+ *   - native, at PREBUILD: plugins/withLargeScreens.js removes `android:screenOrientation` from MainActivity and makes
+ *     `MainActivity.onCreate` request portrait only when the smallest width is < 600 dp (Android's phone/tablet line),
+ *     before `super.onCreate` (scripts/build/native-fingerprint.sh hashes this flag, so a flip forces a clean prebuild);
+ *   - JS: layouts that only worked in phone portrait adapt to landscape / large portrait windows (see the TF-03 report
+ *     for which screens changed and which already worked unchanged).
+ * Android 16 already ignores the lock on displays >= 600 dp for apps targeting 36, so tablets there show the game in
+ * landscape today. OFF: the manifest keeps portrait, MainActivity has no orientation code and every layout is exactly
+ * as before (docs/next-level/reports/TF-03.md).
+ */
+export const META_LARGE_SCREENS = process.env.EXPO_PUBLIC_META_LARGE_SCREENS === '1';
