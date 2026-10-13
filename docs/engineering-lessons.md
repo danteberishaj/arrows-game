@@ -950,3 +950,18 @@ before testing the APK. (b) A config plugin that reads an `EXPO_PUBLIC_*` flag m
 `native-fingerprint.sh` now hashes every such name found in `plugins/`. (c) On API 30+, judge bar styling from `apr=`
 in `dumpsys window`, not `vsysui=`. (d) The API 31 emulator's system_server crashed with "Lost network stack" after a
 quick-boot from an old snapshot under host load; a cold boot (`-no-snapshot-load`) fixed it.
+
+## High contrast follows the system; a uiautomator label check is a blind detector here
+
+**Observed, 2026-10-13 (TF-02, emulator-5556 API 31):** with Android's "High contrast text" on, the system draws
+every text run black or white with an outline, whatever colour the app asked for. `META_HIGH_CONTRAST`'s palettes
+therefore show on Android as fills, borders, hearts and icons, not text (`artifacts/TF-02/hc-on-*.png`). The arrow ink
+was already >= 15:1 and stays identical. Judge the look from screenshots; do not expect text colours to change.
+**Detector lesson:** "no clickable node without content-desc or text" in `uiautomator dump` passed on the pre-change
+build too, because Android merges a button's child text into the node. The real gate is the jest sweep
+(`src/ui/__tests__/a11ySweep*.test.tsx`: role + label + toggle state), which failed RED on the HEAD tree. On device, the
+visible fix was the role: Play and Retry went from ViewGroup to Button. As [detector-needs-positive-control] says,
+a zero count needs a case that can fail.
+**High-contrast tokens** were solved by `solveLightness` to text >= 7:1 (large >= 4.5:1) and graphics/boundaries >=
+4.5:1 (`npx tsx scripts/contrast-audit-hc.ts`). Ink Night cannot keep white button labels at 7:1 (max 3.65:1 on
+any accent that reaches 4.5:1 on its surface), so its high-contrast buttons are light violet with dark labels.

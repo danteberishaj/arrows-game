@@ -33,7 +33,7 @@
 import { SKIN_SPECS, type SkinSpec } from './skinSpecs';
 import { skinBoardPalette } from './skinBoardPalette';
 import { SETTINGS_SCRIM_OPACITY } from './settingsRows';
-import { Daylight, InkNight, Palette } from './theme';
+import { Daylight, DaylightHighContrast, InkNight, InkNightHighContrast, Palette } from './theme';
 
 export type Role = keyof Palette;
 export type Kind = 'text' | 'graphic' | 'boundary';
@@ -73,9 +73,17 @@ export interface Usage {
   edge?: { id: string; via: 'fill' | 'hairline' };
 }
 
-export const PALETTES: ReadonlyArray<{ name: string; palette: Palette }> = [
+export type NamedPalettes = ReadonlyArray<{ name: string; palette: Palette }>;
+
+export const PALETTES: NamedPalettes = [
   { name: 'Daylight', palette: Daylight },
   { name: 'Ink Night', palette: InkNight },
+];
+
+/** TF-02 A (META_HIGH_CONTRAST): the palettes drawn while the phone's high-contrast setting is on. */
+export const HIGH_CONTRAST_PALETTES: NamedPalettes = [
+  { name: 'Daylight HC', palette: DaylightHighContrast },
+  { name: 'Ink Night HC', palette: InkNightHighContrast },
 ];
 
 // ---------------------------------------------------------------- colour maths
@@ -245,62 +253,62 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'header-icon-off', fgRole: 'glyphOff', bgRole: 'surface', kind: 'graphic', site: `${HB}:66`, note: 'W5-02 sound-off icon (speaker + slash; no strike over it) and the disabled hint icon (the icon takes the token, so it is not dimmed)' },
 
   // Menu
-  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:205`, sizeSite: `${HS}:554` },
-  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:169`, sizeSite: `${HS}:558` },
-  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:168`, sizeSite: `${HS}:558` },
-  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:167`, sizeSite: `${HS}:558` },
-  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:226`, sizeSite: `${HS}:569` },
-  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:226`, sizeSite: `${HS}:569` },
-  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:343`, sizeSite: `${HS}:573`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:337)" },
-  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:393`, sizeSite: `${HS}:591`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
-  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:433`, sizeSite: `${HS}:591`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
-  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:248`, sizeSite: `${HS}:591`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
-  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:43', sizeSite: `${HS}:203` },
+  { id: 'home-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${HS}:205`, sizeSite: `${HS}:558` },
+  { id: 'home-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:169`, sizeSite: `${HS}:562` },
+  { id: 'home-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:168`, sizeSite: `${HS}:562` },
+  { id: 'home-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:167`, sizeSite: `${HS}:562` },
+  { id: 'play-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:228`, sizeSite: `${HS}:573` },
+  { id: 'play-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 22, weight: 'bold', kind: 'text', site: `${HS}:228`, sizeSite: `${HS}:573` },
+  { id: 'home-stats', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: `${HS}:345`, sizeSite: `${HS}:577`, note: "same colour on the META_BANNER path's Animated.Text (HomeScreen.tsx:337)" },
+  { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:395`, sizeSite: `${HS}:595`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
+  { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:435`, sizeSite: `${HS}:595`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
+  { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:250`, sizeSite: `${HS}:595`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
+  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:44', sizeSite: `${HS}:203` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
-  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1166`, sizeSite: `${GS}:1616` },
-  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1152`, sizeSite: `${GS}:1624` },
-  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:968`, sizeSite: `${GS}:1628` },
-  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:967`, sizeSite: `${GS}:1628` },
-  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:966`, sizeSite: `${GS}:1628` },
-  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1475` },
-  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1480`, note: 'outline stroke, no fill' },
+  { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1200`, sizeSite: `${GS}:1650` },
+  { id: 'game-tutorial-line', fgRole: 'accentText', bgRole: 'bg', sizePx: 18, weight: 'bold', kind: 'text', site: `${GS}:1186`, sizeSite: `${GS}:1658` },
+  { id: 'game-tier-normal', fgRole: 'inkDim', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:988`, sizeSite: `${GS}:1662` },
+  { id: 'game-tier-hard', fgRole: 'accentText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:987`, sizeSite: `${GS}:1662` },
+  { id: 'game-tier-super-hard', fgRole: 'heartText', bgRole: 'bg', sizePx: 12, weight: 'semibold', kind: 'text', site: `${GS}:986`, sizeSite: `${GS}:1662` },
+  { id: 'heart-pip', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: `${GS}:1509` },
+  { id: 'heart-pip-spent', fgRole: 'pipSpent', bgRole: 'bg', kind: 'graphic', site: `${GS}:1514`, note: 'outline stroke, no fill' },
 
   // Win / lose panel (on `surface`)
-  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1008`, sizeSite: `${GS}:1679` },
-  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1008`, sizeSite: `${GS}:1679` },
-  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1557` },
-  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1557` },
-  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1557`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1557`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
-  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1020`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
-  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:1034`, sizeSite: `${GS}:1698` },
-  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1073`, sizeSite: `${GS}:1712` },
-  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1073`, sizeSite: `${GS}:1712` },
-  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1073`, sizeSite: `${GS}:1712`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:727)' },
-  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:1067`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
-  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:1067`, note: 'W5-02 heart icon on the pressed fill' },
-  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:1067`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
-  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1093`, sizeSite: `${GS}:1712`, note: 'also the daily "Done" label (W4-06)' },
-  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1093`, sizeSite: `${GS}:1712` },
-  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1093`, sizeSite: `${GS}:1712` },
-  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1086` },
-  { id: 'share-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1110`, sizeSite: `${GS}:1712`, note: 'W4-13 (META_SHARE_CARD): the daily win panel\'s Share control, Retry\'s outline look' },
-  { id: 'share-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1106`, note: 'W4-13 (META_SHARE_CARD)' },
-  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1267` },
-  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:1117`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
-  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:1124`, sizeSite: `${GS}:1721` },
+  { id: 'panel-title-won', fgRole: 'accent', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1030`, sizeSite: `${GS}:1713` },
+  { id: 'panel-title-lost', fgRole: 'heart', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1030`, sizeSite: `${GS}:1713` },
+  { id: 'star-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1591` },
+  { id: 'star-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1591` },
+  { id: 'star-icon-earned', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1591`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'star-icon-unearned', fgRole: 'starUnearned', bgRole: 'surface', kind: 'graphic', site: `${GS}:1591`, note: 'W5-02 (ART_ICONS_ENABLED) star icon' },
+  { id: 'win-silhouette', fgRole: 'accent', bgRole: 'surface', kind: 'graphic', site: `${GS}:1046`, note: 'W5-04 (ART_WIN_SILHOUETTE_ENABLED) cleared-shape badge' },
+  { id: 'panel-subline', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: `${GS}:1060`, sizeSite: `${GS}:1732` },
+  { id: 'continue-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1099`, sizeSite: `${GS}:1746` },
+  { id: 'continue-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1099`, sizeSite: `${GS}:1746` },
+  { id: 'continue-label-disabled', fgRole: 'inkDim', bgRole: 'bg', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1099`, sizeSite: `${GS}:1746`, note: 'no rewarded ad ready; fill is `bg` (GameScreen.tsx:727)' },
+  { id: 'continue-heart', fgRole: 'inkOnAccent', bgRole: 'accent', kind: 'graphic', site: `${GS}:1093`, note: "W5-02 (ART_ICONS_ENABLED) the Continue label's heart icon, in the label's colour" },
+  { id: 'continue-heart-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', kind: 'graphic', site: `${GS}:1093`, note: 'W5-02 heart icon on the pressed fill' },
+  { id: 'continue-heart-disabled', fgRole: 'inkDim', bgRole: 'bg', kind: 'graphic', site: `${GS}:1093`, note: 'W5-02 heart icon when no rewarded ad is ready (the label is inkDim in a `bg` well)' },
+  { id: 'next-level-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1125`, sizeSite: `${GS}:1746`, note: 'also the daily "Done" label (W4-06)' },
+  { id: 'next-level-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1125`, sizeSite: `${GS}:1746` },
+  { id: 'retry-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1125`, sizeSite: `${GS}:1746` },
+  { id: 'retry-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1118` },
+  { id: 'share-label', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: `${GS}:1144`, sizeSite: `${GS}:1746`, note: 'W4-13 (META_SHARE_CARD): the daily win panel\'s Share control, Retry\'s outline look; TF-02 B (META_SHARE_CARD_LEVEL): the same control on the campaign win panel' },
+  { id: 'share-outline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1140`, note: 'W4-13 (META_SHARE_CARD)' },
+  { id: 'panel-hairline', fgRole: 'border', bgRole: 'surface', kind: 'boundary', site: `${GS}:1301` },
+  { id: 'streak-sparkle', fgRole: 'accentText', bgRole: 'surface', kind: 'graphic', site: `${GS}:1151`, note: 'W5-02 (ART_ICONS_ENABLED) the perfect-streak sparkle icon' },
+  { id: 'streak-line', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: `${GS}:1158`, sizeSite: `${GS}:1755` },
 
   // W5-05 (ART_PANEL_DEPTH_ENABLED): the panel's EDGE against its composited scrim, gated at 3:1 (WCAG 2.1
   // SC 1.4.11's non-text threshold, applied by analogy to a panel edge). Fill = `surfaceRaised`, scrim =
   // `scrimWon` / `scrimLost` composited over `bg` exactly as rendered (the board under the scrim is not modelled).
   // Per edge: via 'fill' (the fill against the scrim) OR via 'hairline' (`border` against the scrim AND the fill).
-  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:956`, edge: { id: 'panel-edge-won', via: 'fill' } },
-  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1267`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1267`, edge: { id: 'panel-edge-won', via: 'hairline' } },
-  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:956`, edge: { id: 'panel-edge-lost', via: 'fill' } },
-  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1267`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
-  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1267`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-won-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:976`, edge: { id: 'panel-edge-won', via: 'fill' } },
+  { id: 'panel-edge-won-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimWon, p.bg), kind: 'boundary', site: `${GS}:1301`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-won-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1301`, edge: { id: 'panel-edge-won', via: 'hairline' } },
+  { id: 'panel-edge-lost-fill', fgRole: 'surfaceRaised', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:976`, edge: { id: 'panel-edge-lost', via: 'fill' } },
+  { id: 'panel-edge-lost-hairline-scrim', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => compositeScrim(p.scrimLost, p.bg), kind: 'boundary', site: `${GS}:1301`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
+  { id: 'panel-edge-lost-hairline-fill', fgRole: 'border', bgRole: 'surfaceRaised', kind: 'boundary', site: `${GS}:1301`, edge: { id: 'panel-edge-lost', via: 'hairline' } },
 
   // Shape gallery (W4-09, META_GALLERY), on `bg`. Filled versus outlined carries
   // collected versus not, so the colours only have to be legible (PRODUCT.md:63).
@@ -329,40 +337,40 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'settings-panel-hairline-on-scrim-over-ink', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.ink), kind: 'boundary', site: `${SS}:238`, note: "worst case of every menu colour under the scrim: the wordmark's `ink` (artifacts/W7-04/scripts/scrim-alpha.ts)" },
   { id: 'settings-panel-hairline-on-scrim-over-play', fgRole: 'border', bgRole: 'bg', bgComposite: (p) => composite(p.bg, SETTINGS_SCRIM_OPACITY, p.accent), kind: 'boundary', site: `${SS}:238`, note: "the scrim over the Play pill's `accent` fill" },
 
-  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:99', sizeSite: 'src/ui/ArrowStyleOptions.tsx:197' },
-  { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:100', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
+  { id: 'skin-picker-name', fgRole: 'ink', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:99', sizeSite: 'src/ui/ArrowStyleOptions.tsx:200' },
+  { id: 'skin-picker-note', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:100', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
   { id: 'skin-picker-check', fgRole: 'ink', bgRole: 'surface', kind: 'graphic', site: 'src/ui/ArrowStyleOptions.tsx:103' },
-  { id: 'skin-picker-section', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:145', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
-  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:164', sizeSite: 'src/ui/ArrowStyleOptions.tsx:197' },
-  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:175', sizeSite: 'src/ui/ArrowStyleOptions.tsx:205' },
-  { id: 'skin-picker-next-caption', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:165', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
-  { id: 'skin-picker-more', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:178', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
+  { id: 'skin-picker-section', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:148', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
+  { id: 'skin-picker-locked-name', fgRole: 'inkDim', bgRole: 'surface', sizePx: 15, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:167', sizeSite: 'src/ui/ArrowStyleOptions.tsx:200' },
+  { id: 'skin-picker-locked-hint', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:178', sizeSite: 'src/ui/ArrowStyleOptions.tsx:208' },
+  { id: 'skin-picker-next-caption', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:168', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
+  { id: 'skin-picker-more', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:181', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
 
-  { id: 'book-purse', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:124', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
-  { id: 'book-tab-selected', fgRole: 'ink', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:129', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
-  { id: 'book-tab-unselected', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:133', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
-  { id: 'book-next-free', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:140', sizeSite: 'src/ui/ArrowStyleOptions.tsx:195' },
+  { id: 'book-purse', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:124', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
+  { id: 'book-tab-selected', fgRole: 'ink', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:130', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
+  { id: 'book-tab-unselected', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:135', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
+  { id: 'book-next-free', fgRole: 'inkDim', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/ArrowStyleOptions.tsx:143', sizeSite: 'src/ui/ArrowStyleOptions.tsx:198' },
 
-  { id: 'book-empty', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:50', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-tile-name', fgRole: 'ink', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:62', sizeSite: 'src/ui/CollectionBook.tsx:150' },
-  { id: 'book-tile-free', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:63', sizeSite: 'src/ui/CollectionBook.tsx:151' },
-  { id: 'book-price-affordable', fgRole: 'accentText', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:66', sizeSite: 'src/ui/CollectionBook.tsx:150' },
-  { id: 'book-price-unaffordable', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:66', sizeSite: 'src/ui/CollectionBook.tsx:150' },
-  { id: 'book-confirm-name', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:107', sizeSite: 'src/ui/CollectionBook.tsx:157' },
-  { id: 'book-confirm-eta', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:108', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-buy-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:114', sizeSite: 'src/ui/CollectionBook.tsx:160' },
-  { id: 'book-buy-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:114', sizeSite: 'src/ui/CollectionBook.tsx:160' },
-  { id: 'book-buy-label-disabled', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:114', sizeSite: 'src/ui/CollectionBook.tsx:160' },
-  { id: 'book-confirm-balance', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:116', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-not-now', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:119', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-bought-badge', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:127', sizeSite: 'src/ui/CollectionBook.tsx:163' },
-  { id: 'book-bought-count', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:131', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-use-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:134', sizeSite: 'src/ui/CollectionBook.tsx:160' },
-  { id: 'book-use-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:134', sizeSite: 'src/ui/CollectionBook.tsx:160' },
-  { id: 'book-back', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:137', sizeSite: 'src/ui/CollectionBook.tsx:158' },
-  { id: 'book-bought-name', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:130', sizeSite: 'src/ui/CollectionBook.tsx:157' },
+  { id: 'book-empty', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:50', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-tile-name', fgRole: 'ink', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:62', sizeSite: 'src/ui/CollectionBook.tsx:151' },
+  { id: 'book-tile-free', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:63', sizeSite: 'src/ui/CollectionBook.tsx:152' },
+  { id: 'book-price-affordable', fgRole: 'accentText', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:66', sizeSite: 'src/ui/CollectionBook.tsx:151' },
+  { id: 'book-price-unaffordable', fgRole: 'inkDim', bgRole: 'bg', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:66', sizeSite: 'src/ui/CollectionBook.tsx:151' },
+  { id: 'book-confirm-name', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:107', sizeSite: 'src/ui/CollectionBook.tsx:158' },
+  { id: 'book-confirm-eta', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:108', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-buy-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:115', sizeSite: 'src/ui/CollectionBook.tsx:161' },
+  { id: 'book-buy-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:115', sizeSite: 'src/ui/CollectionBook.tsx:161' },
+  { id: 'book-buy-label-disabled', fgRole: 'inkDim', bgRole: 'surface', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:115', sizeSite: 'src/ui/CollectionBook.tsx:161' },
+  { id: 'book-confirm-balance', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:117', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-not-now', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:120', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-bought-badge', fgRole: 'accentText', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:128', sizeSite: 'src/ui/CollectionBook.tsx:164' },
+  { id: 'book-bought-count', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:132', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-use-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:135', sizeSite: 'src/ui/CollectionBook.tsx:161' },
+  { id: 'book-use-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:135', sizeSite: 'src/ui/CollectionBook.tsx:161' },
+  { id: 'book-back', fgRole: 'inkDim', bgRole: 'surface', sizePx: 14, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:138', sizeSite: 'src/ui/CollectionBook.tsx:159' },
+  { id: 'book-bought-name', fgRole: 'ink', bgRole: 'surface', sizePx: 24, weight: 'bold', kind: 'text', site: 'src/ui/CollectionBook.tsx:131', sizeSite: 'src/ui/CollectionBook.tsx:158' },
   // HALLOWEEN-01: the seasonal book section title sits on the sheet surface.
-  { id: 'book-season-title', fgRole: 'ink', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:81', sizeSite: 'src/ui/CollectionBook.tsx:147' },
+  { id: 'book-season-title', fgRole: 'ink', bgRole: 'surface', sizePx: 13, weight: 'semibold', kind: 'text', site: 'src/ui/CollectionBook.tsx:81', sizeSite: 'src/ui/CollectionBook.tsx:148' },
   // PETAL-ADS-01: "Watch an ad · +3 petals" (book grid and short-of-petals confirm, both on the sheet `surface`).
   { id: 'petal-ad-label', fgRole: 'inkOnAccent', bgRole: 'accent', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/PetalAdButton.tsx:64', sizeSite: 'src/ui/PetalAdButton.tsx:75' },
   { id: 'petal-ad-label-pressed', fgRole: 'inkOnAccent', bgRole: 'accentDeep', sizePx: 16, weight: 'bold', kind: 'text', site: 'src/ui/PetalAdButton.tsx:64', sizeSite: 'src/ui/PetalAdButton.tsx:75' },
@@ -378,8 +386,8 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1156' },
   { id: 'arrow-clear-reveal-outline', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1127', note: 'W5-17 (ART_CLEAR_REVEAL_ENABLED): the cleared shape\'s outline on the empty board; skin board tints get their own rows (skinContrastRows)' },
   { id: 'arrow-missed-mark', fgRole: 'heart', fgAlpha: 0.75, fgOver: darkerOfInkBg, bgRole: 'bg', kind: 'graphic', site: 'src/ui/missedMarks.ts:22', note: 'META_MISSED_MARK (R6): an arrow whose blocked tap cost a heart, for the rest of the level' },
-  { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:161' },
-  { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:171' },
+  { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:173' },
+  { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:183' },
 ];
 
 export interface AuditRow {
@@ -401,8 +409,8 @@ export function auditUsage(paletteName: string, p: Palette, u: Usage): AuditRow 
   return { palette: paletteName, usage: u, fg, bg, ratio, gate, pass: ratio >= gate };
 }
 
-export function audit(): AuditRow[] {
-  const rows = PALETTES.flatMap(({ name, palette }) => USAGES.map((u) => auditUsage(name, palette, u)));
+export function audit(palettes: NamedPalettes = PALETTES): AuditRow[] {
+  const rows = palettes.flatMap(({ name, palette }) => USAGES.map((u) => auditUsage(name, palette, u)));
   // W5-05 edges: a row of an edge reports the EDGE's verdict (some `via` whose rows all meet the gate).
   const verdict = new Map<string, boolean>();
   for (const r of rows) {
@@ -419,8 +427,10 @@ export function audit(): AuditRow[] {
 }
 
 /** W5-05: each palette's panel edges, with the ratios of every alternative (for the report and the script). */
-export function panelEdges(): Array<{ palette: string; edge: string; pass: boolean; via: string; rows: AuditRow[] }> {
-  const rows = audit().filter((r) => r.usage.edge);
+export function panelEdges(
+  palettes: NamedPalettes = PALETTES,
+): Array<{ palette: string; edge: string; pass: boolean; via: string; rows: AuditRow[] }> {
+  const rows = audit(palettes).filter((r) => r.usage.edge);
   const keys = [...new Set(rows.map((r) => `${r.palette}|${r.usage.edge!.id}`))];
   return keys.map((k) => {
     const [palette, edge] = k.split('|');
@@ -431,6 +441,45 @@ export function panelEdges(): Array<{ palette: string; edge: string; pass: boole
     });
     return { palette, edge, pass: via !== undefined, via: via ?? 'none', rows: own };
   });
+}
+
+// ---------------------------------------------------------------- TF-02 high-contrast target
+
+/**
+ * TF-02 A: the high-contrast palettes' target over the same rows. Text: WCAG AAA (SC 1.4.6), 7:1, or 4.5:1 for large
+ * text (the same size rule as `gateFor`). Graphics and boundaries: 4.5:1 (the brief's choice; WCAG has no AAA level
+ * for SC 1.4.11).
+ */
+export function highContrastTarget(u: Pick<Usage, 'kind' | 'sizePx' | 'weight'>): number {
+  if (u.kind !== 'text') return 4.5;
+  if (u.sizePx === undefined || u.weight === undefined) {
+    throw new Error('a text row needs sizePx and weight');
+  }
+  return isLargeText(u.sizePx, u.weight) ? 4.5 : 7;
+}
+
+export interface TargetRow extends AuditRow {
+  /** `highContrastTarget(usage)`. */
+  target: number;
+  /**
+   * ratio >= target. A W5-05 panel-edge row reports its EDGE at the target (some alternative, fill or hairline, whose
+   * rows all reach it), as `audit()` does at the AA gate; `ratio` stays its own.
+   */
+  meets: boolean;
+}
+
+/** TF-02 A: every audit row of `palettes` against the high-contrast target (scripts/contrast-audit-hc.ts prints it). */
+export function highContrastRows(palettes: NamedPalettes = HIGH_CONTRAST_PALETTES): TargetRow[] {
+  const rows = palettes.flatMap(({ name, palette }) => USAGES.map((u) => {
+    const row = auditUsage(name, palette, u);
+    const target = highContrastTarget(u);
+    return { ...row, target, meets: row.ratio >= target };
+  }));
+  const edgeMeets = (r: TargetRow) => (['fill', 'hairline'] as const).some((via) => {
+    const own = rows.filter((x) => x.palette === r.palette && x.usage.edge?.id === r.usage.edge!.id && x.usage.edge!.via === via);
+    return own.length > 0 && own.every((x) => x.ratio >= x.target);
+  });
+  return rows.map((r) => (r.usage.edge ? { ...r, meets: edgeMeets(r) } : r));
 }
 
 /**

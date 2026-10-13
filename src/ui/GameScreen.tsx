@@ -58,6 +58,7 @@ import {
   META_POST_CLEAR_TIMELINE,
   META_REVIEW_PROMPT,
   META_SHARE_CARD,
+  META_SHARE_CARD_LEVEL,
 } from '../featureFlags';
 import { Ads } from './ads';
 import {
@@ -132,7 +133,7 @@ import {
   reviewSession,
   settleWithin,
 } from './reviewPrompt';
-import { buildDailyShareText } from './shareCard';
+import { buildDailyShareText, buildLevelShareText } from './shareCard';
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Palette, Type } from './theme';
@@ -156,12 +157,15 @@ const STREAK_SPARKLE_DP = 13; // OWNER-PICKED STARTING VALUE (the streak line's 
 const CONTINUE_A11Y_LABEL = 'Continue with one more heart (ad)'; // OWNER-PICKED STARTING VALUE
 const BACK_A11Y_LABEL = 'Back'; // OWNER-PICKED STARTING VALUE (the gallery's back button's name)
 const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
+/** TF-02 C: the hearts and the win stars as one spoken element each (the shapes alone were silent). */
+const heartsA11yLabel = (left: number, max: number) => `${left} of ${max} hearts left`; // OWNER-PICKED STARTING VALUE
+const starsA11yLabel = (earned: number, total: number) => `${earned} of ${total} stars`; // OWNER-PICKED STARTING VALUE
 
 /** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
 const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
 const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
-/** W4-13 (META_SHARE_CARD): the daily win panel's share control. */
+/** W4-13 (META_SHARE_CARD): the daily win panel's share control; TF-02 B (META_SHARE_CARD_LEVEL): the campaign one's. */
 const DAILY_SHARE_LABEL = 'Share'; // OWNER-PICKED STARTING VALUE
 
 /**
@@ -862,6 +866,22 @@ export function GameScreen({
     Share.share({ message }).catch(() => undefined);
   }, [dailyDay, level]);
 
+  /**
+   * TF-02 B (META_SHARE_CARD_LEVEL): the cleared campaign level's card, the same way (the player picks the chat or
+   * cancels; the result is ignored). The level number is the header's (`LEVEL ${levelIndex + 1}`).
+   */
+  const onShareLevel = useCallback(() => {
+    if (dailyDay !== null) return;
+    const message = buildLevelShareText({
+      levelNumber: levelIndex + 1,
+      mask: level.mask,
+      shapeName: level.shapeName,
+      heartsLeft: heartsRef.current,
+      maxHearts: level.hearts,
+    });
+    Share.share({ message }).catch(() => undefined);
+  }, [dailyDay, level, levelIndex]);
+
   /** "Done" after a daily clear (W4-06): back to the menu; no ad, no next board, no scrim. */
   const dailyDonePressedRef = useRef(false);
   const onDailyDone = useCallback(async () => {
@@ -1005,7 +1025,10 @@ export function GameScreen({
         onKeep={() => (dailyDay !== null ? onDailyDone() : onNextLevel())} />
     ) : (
     <>
-      <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}
+      >
         {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
       </Text>
       {panelPhase === 'won' && winSilhouette !== '' && (
@@ -1013,6 +1036,9 @@ export function GameScreen({
         // The subline still names the shape, so the badge adds no text.
         <Svg
           testID="win-silhouette"
+          accessible={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           width={ART_WIN_SILHOUETTE_DP}
           height={ART_WIN_SILHOUETTE_DP}
           style={styles.winSilhouette}
@@ -1078,7 +1104,13 @@ export function GameScreen({
       )}
       <PressScale
         testID={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
-        accessibilityLabel={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
+        accessibilityRole="button"
+        accessibilityLabel={
+          benchmarkMode && panelPhase === 'won'
+            ? 'perf-next-level'
+            : panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'
+        }
+        accessibilityState={{ disabled: adBusy }}
         disabled={adBusy}
         style={({ pressed }) => [
           styles.button,
@@ -1094,8 +1126,10 @@ export function GameScreen({
           {panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'}
         </Text>
       </PressScale>
-      {/* W4-13 (META_SHARE_CARD): the daily win panel only. A plain secondary control (Retry's outline style). */}
-      {panelPhase === 'won' && dailyDay !== null && META_SHARE_CARD && (
+      {/* W4-13 (META_SHARE_CARD): the daily win panel. TF-02 B (META_SHARE_CARD_LEVEL): the campaign win panel, the
+          same control in the same place. A plain secondary control (Retry's outline style). Tutorial boards never
+          mount this panel (overlayMounted). */}
+      {panelPhase === 'won' && (dailyDay !== null ? META_SHARE_CARD : META_SHARE_CARD_LEVEL && !activeTutorialId) && (
         <PressScale
           accessibilityRole="button"
           accessibilityLabel={DAILY_SHARE_LABEL}
@@ -1105,7 +1139,7 @@ export function GameScreen({
             styles.shareButton,
             { borderColor: p.border, transform: pressSnapTransform(pressed) },
           ]}
-          onPress={onShareDaily}
+          onPress={dailyDay !== null ? onShareDaily : onShareLevel}
         >
           <Text style={[styles.buttonText, { color: p.inkDim }]}>{DAILY_SHARE_LABEL}</Text>
         </PressScale>
@@ -1418,7 +1452,7 @@ const HeartPips = React.memo(function HeartPips({
   refillToken: number;
 }) {
   return (
-    <View style={{ flexDirection: 'row' }}>
+    <View style={{ flexDirection: 'row' }} accessible accessibilityLabel={heartsA11yLabel(left, max)}>
       {Array.from({ length: max }, (_, i) => (
         <HeartPip key={i} filled={i < left} palette={palette} refillToken={refillToken} />
       ))}
@@ -1504,7 +1538,7 @@ function Stars({
   feedbackEnabled: boolean;
 }) {
   return (
-    <View style={styles.starsRow}>
+    <View style={styles.starsRow} accessible accessibilityLabel={starsA11yLabel(earned, total)}>
       {Array.from({ length: total }, (_, i) => (
         <Star
           key={i}

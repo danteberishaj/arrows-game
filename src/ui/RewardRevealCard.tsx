@@ -59,11 +59,13 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
     </View>
     <Text style={[styles.name, { color: p.ink }]}>{entry.name}</Text>
     <Text style={[styles.caption, { color: p.inkDim }]}>{`${ownedSkins} of ${totalSkins} styles collected`}</Text>
-    <PressScale testID="reward-use" disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}
+    <PressScale testID="reward-use" disabled={disabled} accessibilityRole="button"
+      accessibilityLabel={`${mode === 'daily' ? 'Use' : 'Play with'} ${entry.name}`} accessibilityState={{ disabled }}
       onPress={onUse} style={({ pressed }) => [styles.primary, { backgroundColor: pressed ? p.accentDeep : p.accent, transform: pressSnapTransform(pressed) }]}>
       <Text style={[styles.buttonText, { color: p.inkOnAccent }]}>{`${mode === 'daily' ? 'Use' : 'Play with'} ${entry.name}`}</Text>
     </PressScale>
-    <Pressable testID="reward-keep" disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}
+    <Pressable testID="reward-keep" disabled={disabled} accessibilityRole="button" accessibilityLabel="Keep my current style"
+      accessibilityState={{ disabled }}
       onPress={onKeep} style={styles.secondary}>
       <Text style={[styles.caption, { color: p.inkDim }]}>Keep my current style</Text>
     </Pressable>
