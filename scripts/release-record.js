@@ -1,6 +1,7 @@
 /**
  * Reads release/vc<N>.env, the as-shipped record of a Play build (`set -a; . release/vc18.env; set +a`
  * exports it). Format: `# comment` lines and `EXPO_PUBLIC_NAME=value` lines; anything else is an error.
+ * A `# status: shipped` record was built and uploaded; `# status: candidate` is the next build, not built yet.
  * Zero dependencies; used by src/__tests__/releaseRecord.test.ts and the store checks in scripts/.
  */
 'use strict';
@@ -20,9 +21,9 @@ function recordFiles() {
     .map((name) => path.join(DIR, name));
 }
 
-/** The newest record (highest versionCode), or null when there is none. */
-function latestRecord() {
-  const files = recordFiles();
+/** The newest record with this status (default: the newest SHIPPED build), or null when there is none. */
+function latestRecord(status = 'shipped') {
+  const files = recordFiles().filter((file) => readRecord(file).status === status);
   return files.length > 0 ? files[files.length - 1] : null;
 }
 
@@ -38,7 +39,8 @@ function readRecord(file) {
       if (!m || flags.has(m[1])) throw new Error(`${file}:${i + 1}: not a unique EXPO_PUBLIC_NAME=value line`);
       flags.set(m[1], m[2]);
     });
-  return { flags, comments };
+  const m = comments.map((line) => /^# status: (shipped|candidate)$/.exec(line)).find(Boolean);
+  return { flags, comments, status: m ? m[1] : null };
 }
 
 module.exports = { recordFiles, latestRecord, readRecord };
