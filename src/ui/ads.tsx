@@ -27,6 +27,7 @@ import {
 } from './consent';
 import {
   createUmpSource,
+  isTestBuild,
   umpDebugResetEnabled,
   umpRequestOptions,
   type UmpApi,
@@ -729,15 +730,16 @@ export async function initAds(source?: ConsentSource): Promise<void> {
 
 /**
  * ADMOB-C (M5): the consent source a player build uses when CONSENT_GATE is on.
- * A W7-01 verification fixture (EXPO_PUBLIC_CONSENT_FIXTURE) still wins;
- * otherwise Google's UMP (`AdsConsent`), required lazily inside gather() so a
+ * A W7-01 verification fixture (EXPO_PUBLIC_CONSENT_FIXTURE) still wins, in a
+ * test build only: a release build ignores it, so a stray `granted-eea` can
+ * never skip UMP for real players. Otherwise Google's UMP (`AdsConsent`), required lazily inside gather() so a
  * remote-killed boot never loads the package. UMP debug geography and the
  * debug reset are honoured only in a test build (src/ui/umpConsent.ts).
  */
 export function playerConsentSource(): ConsentSource {
-  if (process.env.EXPO_PUBLIC_CONSENT_FIXTURE) return activeConsentSource;
   const isDev = __DEV__;
   const testAdsFlag = process.env.EXPO_PUBLIC_ADMOB_TEST_ADS;
+  if (process.env.EXPO_PUBLIC_CONSENT_FIXTURE && isTestBuild(isDev, testAdsFlag)) return activeConsentSource;
   return createUmpSource({
     api: () => (loadAdMob()?.AdsConsent as UmpApi | undefined) ?? null,
     requestOptions: umpRequestOptions({
