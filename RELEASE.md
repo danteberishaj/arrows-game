@@ -50,6 +50,9 @@ Test ads vs real ads (ruling M1) — read before every build:
   `[ads] AdMob initialize resolved; adapters=N; unitSet=test|real` before any ad is
   requested. On an emulator or QA device it must say `unitSet=test`; if it says
   `real`, force-stop the app without touching anything.
+- **Read the `consent=` line too.** `[ads] consent=on|off` prints once at startup, before
+  any consent or ad call. It must match the build's record in `release/vc<N>.env`
+  (`EXPO_PUBLIC_CONSENT_GATE=1` → `consent=on`).
 
 ## 4. Build
 

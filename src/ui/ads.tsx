@@ -228,6 +228,7 @@ let interstitial: InterstitialSlot | null = null;
 const rewarded: Record<RewardedPlacement, RewardedSlot | null> = { continue: null, hint: null, petals: null };
 
 let consentSource: ConsentSource | undefined;
+let consentModeLogged = false;
 let consentAllowsAdSurfaces = !CONSENT_GATE;
 /**
  * Privacy signals carried by every ad request. Only the consent gate sets them
@@ -715,6 +716,9 @@ export async function initAds(source?: ConsentSource): Promise<void> {
   if (Platform.OS === 'web') return;
   if (Constants.executionEnvironment === 'storeClient') return; // Expo Go
 
+  // Release line, once per process: the consent mode this build shipped with (release/vc*.env).
+  if (!consentModeLogged) releaseLog(`[ads] consent=${CONSENT_GATE ? 'on' : 'off'}`);
+  consentModeLogged = true;
   if (CONSENT_GATE) consentSource = source;
 
   // Killed at boot: the AdMob JS is not even loaded here; the attempt loads it

@@ -370,3 +370,33 @@ describe('the ad privacy-options entry point (M5)', () => {
     expect(ads.adPrivacyOptionsRequired()).toBe(false);
   });
 });
+
+describe('the startup log names the consent mode once (release records, feat/release-consent-gate)', () => {
+  async function consentLines(gate: boolean): Promise<string[]> {
+    mockFlags.CONSENT_GATE = gate;
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production'; // the release line is silenced only under jest
+    const lines: string[] = [];
+    const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(String(args[0]));
+    });
+    try {
+      const { ads } = await boot({ source: fixtureSource(REFUSED).source });
+      await ads.initAds(fixtureSource(REFUSED).source); // a second call never repeats the line
+      await settle();
+    } finally {
+      log.mockRestore();
+      process.env.NODE_ENV = env;
+    }
+    return lines.filter((line) => line.includes('consent='));
+  }
+
+  test('gate off: one "[ads] consent=off" line', async () => {
+    expect(await consentLines(false)).toEqual(['[ads] consent=off']);
+  });
+
+  test('gate on: one "[ads] consent=on" line, even when consent is refused and AdMob never starts', async () => {
+    expect(await consentLines(true)).toEqual(['[ads] consent=on']);
+    expect(mockGma.inits).toBe(0);
+  });
+});
