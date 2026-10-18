@@ -43,7 +43,7 @@ full_description: |
   • Three hearts per level for the lanes you misread.
   • Two looks: Daylight, black ink on white paper, and Ink Night, moonlit arrows on deep ink.
 
-  Arrows is free and shows ads between some levels. Rewarded ads are always your choice: watch one for a hint, or to continue a level after your hearts run out.
+  Arrows is free and shows ads between some levels and a banner on the menu screen. Rewarded ads are always your choice: watch one for a hint, to continue a level after your hearts run out, or to earn petals for new arrow styles.
 
 ## Claims → evidence
 
@@ -88,10 +88,13 @@ command that measured it).
   Rectangle, Ring, Rocket, Square, Star, Triangle, Trophy, X).
 - C9 "Two looks: Daylight … and Ink Night …": `src/ui/theme.ts:5-6` (palette descriptions),
   `:73` (`paletteFor`); the menu toggle is `src/ui/HomeScreen.tsx:235`, not behind a flag.
-- C10 "shows ads between some levels"; "Rewarded ads … for a hint, or to continue a level after
-  your hearts run out": interstitial pacing `src/ui/adPacing.ts` (W0-05); rewarded hint and
-  continue units `src/ui/adUnits.ts`, per-placement readiness in `src/ui/ads.tsx` (ADMOB-B, M3);
+- C10 "shows ads between some levels and a banner on the menu screen"; "Rewarded ads … for a hint,
+  to continue a level after your hearts run out, or to earn petals for new arrow styles":
+  interstitial pacing `src/ui/adPacing.ts` (W0-05); rewarded hint and continue units
+  `src/ui/adUnits.ts`, per-placement readiness in `src/ui/ads.tsx` (ADMOB-B, M3); the menu banner
+  (`META_BANNER`, ADMOB-C M4) and the collection book's "+3 petals" rewarded ad (`META_PETAL_ADS`,
+  `src/ui/PetalAdButton.tsx`) both ship in `release/vc18.env`;
   Play's "Contains ads" label comes from the ads declaration (docs/data-safety.md section 7).
 - Not claimed on purpose: an ordering or planning mechanic (ruling W7-9, Track A); difficulty that
   rises (flat curve until W3 ships a measured one); an unlimited catalogue; the daily board,
-  gallery, streak freezes, banner and review prompt (flags off).
+  gallery, streak freezes and review prompt (flags off at `b082532`).

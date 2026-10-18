@@ -13,8 +13,8 @@
  *
  * Exits 1 on an over-length field, a banned phrase in any field value, an
  * unknown or duplicate key, an empty value, or a file with no required field.
- * A Play listing is also checked against the newest release record
- * (release/vc<N>.env): a claim that a shipped flag makes false fails.
+ * A Play listing is also checked against the newest shipped release record
+ * (release/vc<N>.env, or --record=<file>): a claim a shipped flag makes false fails.
  */
 'use strict';
 
@@ -62,8 +62,11 @@ const FALSE_WITH_FLAG = [
   { flag: 'EXPO_PUBLIC_META_ZOOMED_CAMERA', phrase: 'opens with the whole picture' },
 ];
 
+// The newest SHIPPED record by default; `--record=release/vc19.env` judges a candidate.
+let recordArg = null;
+
 function releaseFlags() {
-  const record = latestRecord();
+  const record = recordArg || latestRecord();
   return record ? { name: path.basename(record), flags: readRecord(record).flags } : null;
 }
 
@@ -148,9 +151,11 @@ function checkFile(file) {
 }
 
 function main(argv) {
-  const files = argv.slice(2);
+  const files = argv.slice(2).filter((arg) => !arg.startsWith('--record='));
+  const flag = argv.find((arg) => arg.startsWith('--record='));
+  recordArg = flag ? flag.slice('--record='.length) : null;
   if (files.length === 0) {
-    process.stderr.write('usage: node scripts/check-listing.js <listing.md>...\n');
+    process.stderr.write('usage: node scripts/check-listing.js [--record=release/vc<N>.env] <listing.md>...\n');
     return 1;
   }
   let failed = false;
