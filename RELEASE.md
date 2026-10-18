@@ -18,7 +18,7 @@ Commit the `app.json` change `eas init` makes.
 
 The policy text is `store/privacy-policy.md`; `docs/privacy-policy.html` is generated from it
 (`node scripts/generate-privacy-policy.js`), and `node scripts/check-policy.js` checks it against
-the newest release record (`release/vc<N>.env`). It is a DRAFT until the owner signs it. Easiest
+the newest shipped release record (`release/vc<N>.env`; pass a candidate's path to check it). It is a DRAFT until the owner signs it. Easiest
 free hosting — GitHub Pages from this repo:
 
 1. GitHub → arrows-game → Settings → Pages

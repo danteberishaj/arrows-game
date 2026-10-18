@@ -443,7 +443,7 @@ If the owner picks an audience under 13, W7-01, W7-05, this file and the ad setu
 
 | Declaration | Draft | Evidence / note |
 |---|---|---|
-| Ads | **Yes, the app contains ads** (interstitial between levels, rewarded for hint and continue; the menu banner only when `META_BANNER` ships) | ev-01; src/ui/ads.tsx |
+| Ads | **Yes, the app contains ads** (interstitial between levels; rewarded for hint, continue and, in vc18, collection-book petals; the menu banner, shipped in vc18) | ev-01; src/ui/ads.tsx |
 | Ads content (owner action) | Set the AdMob **max ad content rating** to match an Everyone / PEGI 3 app (for example G) in AdMob → Blocking controls. INFERRED from Play's "Inappropriate ads" policy (ads must suit the app's content rating); the code sets no `maxAdContentRating` | src/ui/ads.tsx (no rating set) |
 | Content rating questionnaire (IARC) | Category: Game (casual / puzzle). Violence, fear, sexuality, language, controlled substances, crude humour: **none**. Simulated or real gambling: **none**. Users interact or communicate: **No**. Shares the user's location with other users: **No**. Digital purchases: **No**. Unrestricted internet or web browsing: **No** (ads open links outside the app). Expected result: Everyone / PEGI 3 (INFERRED; IARC decides) | ev-20; PRODUCT.md |
 | Target audience and content | **13+** (13-15, 16-17, 18+). Store listing must not appeal to children (see store/listing/play.md) | section 6 |
@@ -455,17 +455,20 @@ If the owner picks an audience under 13, W7-01, W7-05, this file and the ad setu
 ## 8. Pending: add when the flag ships (input to W7-05 and to the form)
 
 Each item changes the policy and possibly this form **in the same commit that turns the flag on**.
+`node scripts/check-policy.js` checks P-1, P-2, P-3, P-6, P-7 and P-9 against the newest shipped
+release record (or a record passed as its argument).
 
 | id | Flag / task | Policy change | Form change |
 |---|---|---|---|
 | P-1 | `CONSENT_GATE` (ADMOB-C UMP) after the owner publishes the AdMob GDPR message | Describe Google's consent message (UMP); replace the "no consent message" sentence in "Lawful basis"; say a refusal means no ads (ruling W7-3) | Re-read UMP's own data disclosure; ev-08 becomes active |
 | P-2 | W7-04 Settings sheet ("Ad privacy choices" → `openAdPrivacyOptions()`) | Add the in-app route to "Your rights" and "Do Not Sell or Share"; add the in-app policy link | none |
-| P-3 | `META_BANNER` | Add "a banner on the menu screen" to "Advertising" | none (same SDK, ev-01..ev-05) |
+| P-3 | `META_BANNER` (**shipped in vc18**, release/vc18.env) | Done in the draft: "a banner on the menu screen" in "Advertising" | none (same SDK, ev-01..ev-05) |
 | P-4 | `TELEMETRY_TRANSPORT` (W6-15) | Add the Analytics section from docs/analytics-disclosure-draft.md; remove "the app itself sends nothing" | Add the first-party analytics rows from that draft; ev-17 becomes collected |
 | P-5 | `REMOTE_KILL_SWITCH` + a config URL (W6-03) | The config request exposes the IP address and user agent to the config host (docs/remote-config.md) | Re-check whether that is collection |
-| P-6 | `META_REVIEW_PROMPT` (W4-11) | Say the app may ask Google Play to show its rating card; what the player writes goes to Google Play | Decide whether to declare ev-18's "user-entered data" |
-| P-7 | Share card (W4-12, OFF, not built) | Whatever it shares, if it is built | Re-check |
+| P-6 | `META_REVIEW_PROMPT` (W4-11, **shipped in vc18**) | Done in the draft: "Rating the app and sharing a result" says the app may ask Google Play to show its rating card and what the player writes goes to Google Play | Decide whether to declare ev-18's "user-entered data" (still open) |
+| P-7 | Share card: `META_SHARE_CARD` (W4-13) and `META_SHARE_CARD_LEVEL` (TF-02 B), both **shipped in vc18** | Done in the draft: the share sheet text (level or date, shape, hearts left, daily streak), sent only to the app the player picks | Re-check (the app sends nothing itself, ev-12) |
 | P-8 | Any new native dependency | Re-dump the AAB and redo section 4 | same |
+| P-9 | `META_PETAL_ADS` (PETAL-ADS-01, **shipped in vc18**) | Done in the draft: rewarded ads can also "earn petals in the collection book" | none (same SDK and rewarded format, ev-01..ev-05) |
 
 Also pending outside any flag: the next shipping AAB must be re-dumped (W7-07) to confirm
 section 3, and ADMOB-B's CCPA `rdp` string extra is UNVERIFIED, so no document may promise

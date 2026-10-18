@@ -11,7 +11,7 @@ until the owner's legal review (W7-07) removes this line. The owner signs it.**
   Never edit the HTML by hand. HTML comments like this one are dropped from the page.
   Every factual sentence about data ends with an evidence tag (an HTML comment holding
   "ev:" and a row id) naming a row in docs/data-safety.md (W7-06). Each statement is true of
-  the release build recorded in the newest release/vc<N>.env (now vc18.env): for every
+  the release build recorded in the newest shipped release/vc<N>.env (now vc18.env): for every
   flag it turns on that has a "Pending" row in docs/data-safety.md section 8, the row's text
   is here, and `node scripts/check-policy.js` fails when one is missing.
 -->
@@ -47,7 +47,8 @@ A copy in your Google account's backup follows Google's backup rules until you d
 ## Advertising
 
 The app shows ads: an interstitial ad between some levels, a banner on the menu screen, and
-rewarded ads that you can choose to watch for a hint or to continue a level. <!-- ev: ev-01 -->
+rewarded ads that you can choose to watch for a hint, to continue a level, or to earn petals in the
+collection book. <!-- ev: ev-01 -->
 The ads are served by **Google AdMob** through the Google Mobile Ads SDK; the app contains no
 other ad network or mediation service. <!-- ev: ev-01 -->
 
@@ -97,7 +98,8 @@ Economic Area, the United Kingdom and Switzerland.
     you do not consent, the app shows no ads at all. [ev: ev-08]
 
   "Your rights", new first bullet:
-  - You can change your ad consent at any time in the app: Settings → Ad privacy choices.
+  - Where your region requires it, you can change your ad consent at any time in the app:
+    Settings → Ad privacy choices.
     [ev: ev-08]
   (Turn each [ev: …] back into an HTML evidence comment when swapping the text in.)
 -->
