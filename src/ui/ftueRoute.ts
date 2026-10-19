@@ -40,3 +40,20 @@ export function ftueRoute({
 export function assistActive({ enabled, assistEnabled, stage }: AssistActiveInput): boolean {
   return enabled && assistEnabled && stage === ASSIST_STAGE;
 }
+
+export type TutorialClearNext = 'T2' | 'campaign' | 'menu';
+
+/**
+ * What a cleared tutorial board does next. First run (W1): T1 stores T1_CLEARED_STAGE and loads T2; T2 stores
+ * ASSIST_STAGE and deals the campaign level. TF-01 C replay ("How to play"): no stage is written (a finished player
+ * at DONE_STAGE must never move back to ASSIST_STAGE), T1 still hands off to T2, and T2 returns to the menu.
+ */
+export function tutorialClearStep(
+  tutorialId: 'T1' | 'T2',
+  replay: boolean,
+): { stage: number | null; next: TutorialClearNext } {
+  if (replay) return { stage: null, next: tutorialId === 'T1' ? 'T2' : 'menu' };
+  return tutorialId === 'T1'
+    ? { stage: T1_CLEARED_STAGE, next: 'T2' }
+    : { stage: ASSIST_STAGE, next: 'campaign' };
+}

@@ -12,28 +12,30 @@ the daily board, the gallery, the menu banner or the review prompt is added only
 that turns its flag on. Audience register: general / adult (target audience 13+, see
 docs/data-safety.md section 6); no child-directed wording.
 
-## Title candidates (pick one)
+## Title (owner pick 2026-10-13)
 
-title_1: Arrows: Ink Night
-title_2: Arrows – Calm Arrow Puzzle
-title_3: Arrows: Clear the Picture
+title: Arrows – Calm Arrow Puzzle
 
-Notes for the owner: 1 is the brand (RELEASE.md's earlier fallback name) and is distinct from
-other "Arrows" apps; 2 carries the genre search words "arrow puzzle"; 3 says what you do. The bare
-word "Arrows" competes with every arrow app.
+The owner picked candidate 2 on 2026-10-13, after the Testers Community report asked for search keywords. The
+other candidates stay below for the record, as prose so the checker does not read them as fields.
+
+- Candidate 1 (not picked): "Arrows: Ink Night", the brand, distinct from other "Arrows" apps.
+- Candidate 3 (not picked): "Arrows: Clear the Picture", says what you do.
+
+The bare word "Arrows" competes with every arrow app; "arrow puzzle" is the genre search phrase.
 
 ## Short description
 
-short_description: Tap the arrows with a clear way out and clear the picture. No timers, no rush.
+short_description: A calm, minimalist arrow puzzle. Tap the free arrows and clear the picture.
 
 ## Full description
 
 full_description: |
-  Arrows is a calm game about looking closely.
+  Arrows is a calm, minimalist arrow puzzle about looking closely.
 
   Every level is a picture made entirely of arrows: a heart, a crescent moon, a flower, a rocket. Tap an arrow and it slides off the board in the direction it points, as long as nothing stands in its lane to the edge. Tap an arrow that is blocked and it costs a heart.
 
-  Read the board, spot the arrows that are free to leave, and clear the picture.
+  Read the board, spot the arrows that are free to leave, and clear the picture. A relaxing tap puzzle for a quiet minute: simple to learn, satisfying to finish.
 
   • No timers. Take as long as you like.
   • Every level opens with the whole picture on screen. Pinch to look closer; pinch out and the whole picture is back.

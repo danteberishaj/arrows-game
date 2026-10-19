@@ -124,11 +124,13 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
           <Text style={[styles.note, { color: p.accentText }]}>{`${state.petals} ${state.petals === 1 ? 'petal' : 'petals'}`}</Text>
         </View>
         <View testID="tab-track" style={[styles.tabs, { backgroundColor: p.bg }]}>
-          <Pressable testID="tab-styles" accessibilityRole="tab" accessibilityState={{ selected: tab === 'styles' }}
+          <Pressable testID="tab-styles" accessibilityRole="tab" accessibilityLabel={`Your styles, ${owned.length}`}
+            accessibilityState={{ selected: tab === 'styles' }}
             onPress={() => setTab('styles')} style={[styles.tab, tab === 'styles' && { backgroundColor: p.surface }]}>
             <Text style={[styles.note, { color: tab === 'styles' ? p.ink : p.inkDim }]}>{`Your styles · ${owned.length}`}</Text>
           </Pressable>
-          <Pressable testID="tab-book" accessibilityRole="tab" accessibilityState={{ selected: tab === 'book' }}
+          <Pressable testID="tab-book" accessibilityRole="tab" accessibilityLabel={`Book, ${bookCount}`}
+            accessibilityState={{ selected: tab === 'book' }}
             onPress={() => setTab('book')} style={[styles.tab, tab === 'book' && { backgroundColor: p.surface }]}>
             <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${bookCount}`}</Text>
           </Pressable>
@@ -136,6 +138,7 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
         {tab === 'styles' ? <>
           {owned.map(style => <StyleRow key={style.id} style={style} />)}
           {state.next && <Pressable testID="next-free-line" accessibilityRole="button"
+            accessibilityLabel={`Next free style: ${state.next.name}, ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}
             onPress={() => setTab('book')} style={styles.nextFree}>
             <Text style={[styles.note, { color: p.inkDim }]}>{`Next free style: ${state.next.name} · ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}</Text>
           </Pressable>}

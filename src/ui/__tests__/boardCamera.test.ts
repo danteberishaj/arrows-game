@@ -316,3 +316,42 @@ describe('cameraOnViewportChange (the camera across a viewport round trip)', () 
     expect(poseOf(cameraOnViewportChange({ from: V828, to: V804, pose: OPENING, held, hintId: null }))).toEqual(pose);
   });
 });
+
+describe('TF-03 (META_LARGE_SCREENS): the zoomed opening counts cells across the SHORT side', () => {
+  // A 2560x1600 @320 landscape tablet (1280x800 dp) less the header and the navigation bar: about 1280x650 dp.
+  const LANDSCAPE = { w: 1280, h: 650 };
+
+  it('landscape: a 37x37 board opens with about 14 cells across the viewport height, not its width', () => {
+    const cam = initialCamera(LANDSCAPE.w, LANDSCAPE.h, 37 * CELL, 37 * CELL, CELL, true, true)!;
+    expect(LANDSCAPE.h / (cam.scale * CELL)).toBeCloseTo(TARGET_CELLS_ACROSS, 9);
+    expectInsidePanRange(cam.tx, 37 * CELL * cam.scale, LANDSCAPE.w);
+    expectInsidePanRange(cam.ty, 37 * CELL * cam.scale, LANDSCAPE.h);
+  });
+
+  it('flag off in landscape keeps the width rule (pinned: 1280 / 14 = 91 dp is capped at the 64 dp maximum zoom)', () => {
+    const cam = initialCamera(LANDSCAPE.w, LANDSCAPE.h, 37 * CELL, 37 * CELL, CELL, true)!;
+    expect(cam.scale * CELL).toBeCloseTo(64, 9);
+  });
+
+  it.each(VIEWPORTS.flatMap((v) => BOARDS.map((b) => [v.name, b.name, v, b] as const)))(
+    'portrait %s, %s: identical with the flag on (the width IS the short side)',
+    (_v, _b, v, b) => {
+      for (const zoomed of [false, true]) {
+        const off = initialCamera(v.w, v.h, b.cols * CELL, b.rows * CELL, CELL, zoomed);
+        const on = initialCamera(v.w, v.h, b.cols * CELL, b.rows * CELL, CELL, zoomed, true);
+        expect(on).toEqual(off);
+      }
+    },
+  );
+
+  it('large portrait (800x1100 dp): identical with the flag on', () => {
+    for (const n of [20, 37, 46]) {
+      expect(initialCamera(800, 1100, n * CELL, n * CELL, CELL, true, true)).toEqual(initialCamera(800, 1100, n * CELL, n * CELL, CELL, true));
+    }
+  });
+
+  it('landscape, a board that fits at >= 23.5 dp still opens at fit (R1a unchanged)', () => {
+    const cam = initialCamera(LANDSCAPE.w, LANDSCAPE.h, 24 * CELL, 16 * CELL, CELL, true, true)!;
+    expect(cam.scale).toBe(cam.minScale);
+  });
+});

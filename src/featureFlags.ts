@@ -233,3 +233,73 @@ export const META_PETAL_ADS = process.env.EXPO_PUBLIC_META_PETAL_ADS === '1';
  * config and the collection keep their sources. OFF: the cycle's word and colour, exactly as before.
  */
 export const TIER_LABEL_V2_ENABLED = process.env.EXPO_PUBLIC_TIER_LABEL_V2 === '1';
+/**
+ * TF-01 A (tester feedback, owner 2026-10-13): "Follow phone" theme. The first healthy boot with the flag on stamps
+ * `arrows_theme_follows_system` once (1 only for a brand-new player, else 0, so an existing player keeps their
+ * theme; src/ui/themeFollow.ts). While it is 1 the theme is the phone's and swaps live, without the scrim, when the
+ * phone's setting changes. The menu's sun/moon toggle still flips the theme and sets it to 0 (a manual tap wins); the
+ * Settings sheet gets a "Match phone theme" switch. OFF: the key is never written and the theme is
+ * `arrows_dark_mode`, exactly as before.
+ */
+export const META_THEME_SYSTEM = process.env.EXPO_PUBLIC_META_THEME_SYSTEM === '1';
+/**
+ * TF-01 B: a "Rate Arrows" row above Support in the Settings sheet (Android only) opens the Play listing of the
+ * installed package (market:// first, then the https page). It never calls the in-app review API (that is
+ * META_REVIEW_PROMPT's, quota-limited). OFF: the sheet's rows are exactly as before.
+ */
+export const META_SETTINGS_RATE = process.env.EXPO_PUBLIC_META_SETTINGS_RATE === '1';
+/**
+ * TF-01 C: a "How to play" row, first in the Settings sheet, replays the two tutorial boards (T1 then T2) and returns
+ * to the menu. A replay writes no key (FTUE stage, progress, streaks, totals, collection, rewards, ad counters,
+ * review keys) and emits no level telemetry or FTUE log line (src/ui/GameScreen.tsx `tutorialReplay`). OFF: the
+ * sheet's rows are exactly as before and no replay can start.
+ */
+export const META_SETTINGS_HOW_TO_PLAY = process.env.EXPO_PUBLIC_META_SETTINGS_HOW_TO_PLAY === '1';
+/**
+ * NAV-BAR (owner 2026-10-13, follow-up to TF-01): the Android navigation bar follows the GAME's theme, not the phone's.
+ * Before: with 3-button navigation the bar kept the look the phone's mode gave it at app start, so Ink Night on a light
+ * phone showed a light-grey bar (bar vs content 15.25:1) and a sun/moon toggle never updated it. Gesture navigation was
+ * already fine. ON needs both halves, set by the same env flag:
+ *   - native, at PREBUILD: plugins/withNavBarTheme.js turns Android's contrast scrim off, so the edge-to-edge bar shows
+ *     the game's background (scripts/build/native-fingerprint.sh hashes this flag, so a flip forces a clean prebuild);
+ *   - JS: App mounts expo-navigation-bar's `<NavigationBar style>` from `dark`. patches/expo-navigation-bar+57.0.3.patch
+ *     makes its setStyle also set the platform appearance bit (androidx.core 1.18 only flips a legacy flag that Android
+ *     ignores after launch), and package.json autolinking `buildFromSource` makes Gradle compile that patched source
+ *     instead of the module's prebuilt AAR.
+ * Measured on emulator-5556 (API 31, 3-button), 6 scenarios: bar vs content 1.00 everywhere, buttons >= 5.74:1
+ * (docs/next-level/reports/NAV-BAR.md). OFF: the component never mounts and no plugin change is made; the OFF build
+ * measured identical to the build without the module in all 6 scenarios.
+ */
+export const META_NAV_BAR_THEME = process.env.EXPO_PUBLIC_META_NAV_BAR_THEME === '1';
+/**
+ * TF-02 A (tester feedback, owner 2026-10-13): high contrast FOLLOWS THE PHONE's own accessibility setting; there is no
+ * Settings row. Android: "High contrast text" (`AccessibilityInfo.isHighTextContrastEnabled` + `highTextContrastChanged`);
+ * iOS: "Increase Contrast" (`isDarkerSystemColorsEnabled` + `darkerSystemColorsChanged`). While it is on, both themes
+ * draw their high-contrast palettes (src/ui/theme.ts `DaylightHighContrast` / `InkNightHighContrast`, picked by
+ * `paletteFor(dark, highContrast)`) and the swap is live, with no restart. The theme choice and TF-01's "follow phone"
+ * are unchanged. Measured target (scripts/contrast-audit-hc.ts): every audit text row >= 7:1 (large text >= 4.5:1),
+ * every graphic / boundary row >= 4.5:1. OFF: the setting is never read and the palettes are exactly as before.
+ */
+export const META_HIGH_CONTRAST = process.env.EXPO_PUBLIC_META_HIGH_CONTRAST === '1';
+/**
+ * TF-02 B (tester feedback, owner 2026-10-13): the CAMPAIGN win panel gets the daily panel's Share control (same look,
+ * under Next level). The card (src/ui/shareCard.ts `buildLevelShareText`): `Arrows · Level <N>` (N as the header shows
+ * it), the shape name, `Hearts left: h/H`, a blank line and the daily card's emoji grid. No link, no device or personal
+ * data. Tutorial boards and "How to play" replays have no panel, so no Share. OFF: the campaign panel is exactly as
+ * before (META_SHARE_CARD still governs the daily panel alone).
+ */
+export const META_SHARE_CARD_LEVEL = process.env.EXPO_PUBLIC_META_SHARE_CARD_LEVEL === '1';
+/**
+ * TF-03 (Play Console large-screen warning on 1.0.0 (18), owner 2026-10-13): lift the manifest's portrait lock so
+ * tablets, foldables and Chromebooks can rotate and resize, while PHONES stay portrait. ON needs both halves, set by
+ * the same env flag:
+ *   - native, at PREBUILD: plugins/withLargeScreens.js removes `android:screenOrientation` from MainActivity and makes
+ *     `MainActivity.onCreate` request portrait only when the smallest width is < 600 dp (Android's phone/tablet line),
+ *     before `super.onCreate` (scripts/build/native-fingerprint.sh hashes this flag, so a flip forces a clean prebuild);
+ *   - JS: layouts that only worked in phone portrait adapt to landscape / large portrait windows (see the TF-03 report
+ *     for which screens changed and which already worked unchanged).
+ * Android 16 already ignores the lock on displays >= 600 dp for apps targeting 36, so tablets there show the game in
+ * landscape today. OFF: the manifest keeps portrait, MainActivity has no orientation code and every layout is exactly
+ * as before (docs/next-level/reports/TF-03.md).
+ */
+export const META_LARGE_SCREENS = process.env.EXPO_PUBLIC_META_LARGE_SCREENS === '1';

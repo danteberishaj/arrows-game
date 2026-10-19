@@ -1,12 +1,13 @@
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import React, { useCallback, useState } from 'react';
-import { Linking, Modal, Pressable, StatusBar, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Linking, Modal, Platform, Pressable, StatusBar, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CONSENT_GATE } from '../featureFlags';
+import { CONSENT_GATE, META_SETTINGS_HOW_TO_PLAY, META_SETTINGS_RATE, META_THEME_SYSTEM } from '../featureFlags';
 import { adPrivacyOptionsRequired, openAdPrivacyOptions } from './ads';
 import { PressScale, pressSnapTransform } from './PressScale';
 import {
+  playStoreUrls,
   PRIVACY_POLICY_URL,
   SETTINGS_SCRIM_OPACITY,
   SETTINGS_TITLE,
@@ -40,6 +41,26 @@ function appBuild(): string | null {
   return Application.nativeBuildVersion;
 }
 
+/**
+ * TF-01 B: the installed package's id (expo-application reads it from the running app: com.danteb.arrows on the Play
+ * build), falling back to app.json's `android.package` embedded by expo-constants. Never a second hard-coded string.
+ */
+function appPackageId(): string | null {
+  return Application.applicationId ?? Constants.expoConfig?.android?.package ?? null;
+}
+
+/**
+ * TF-01 B: opens the Play listing, the Play Store app first (market://) and the web page if nothing handles that.
+ * Never the in-app review API (reviewPrompt.ts owns it; Play quota-limits it, so a button could silently do nothing).
+ */
+function openPlayListing(): void {
+  const [market, web] = playStoreUrls(appPackageId());
+  if (market === undefined) return;
+  Linking.openURL(market).catch(() => {
+    if (web !== undefined) openExternal(web);
+  });
+}
+
 /** Opens a URL in the OS (browser, mail app); a device with nothing to handle it does nothing. */
 function openExternal(url: string): void {
   Linking.openURL(url).catch(() => {
@@ -58,11 +79,19 @@ export function SettingsSheet({
   palette: p,
   dark,
   onClose,
+  onHowToPlay,
+  themeFollowsSystem = false,
+  onThemeFollowsSystemChange,
 }: {
   palette: Palette;
   /** The menu's theme: the sheet's window gets the same status-bar icons (see onShow). */
   dark: boolean;
   onClose: () => void;
+  /** TF-01 C (META_SETTINGS_HOW_TO_PLAY): the sheet closes, then this starts the tutorial replay. */
+  onHowToPlay?: () => void;
+  /** TF-01 A (META_THEME_SYSTEM): the Match phone theme switch's state (live, not read once like the rows). */
+  themeFollowsSystem?: boolean;
+  onThemeFollowsSystemChange?: (on: boolean) => void;
 }) {
   const style = useArrowStyle();
   const [styleListOpen, setStyleListOpen] = useState(false);
@@ -79,8 +108,16 @@ export function SettingsSheet({
       supportEmail: SUPPORT_EMAIL,
       version: appVersion(),
       build: appBuild(),
+      howToPlay: META_SETTINGS_HOW_TO_PLAY,
+      themeSystem: META_THEME_SYSTEM,
+      rate: META_SETTINGS_RATE,
+      platform: Platform.OS,
     }),
   );
+  // TF-01 C: How to play stays the sheet's first row, above the arrow-style row too. Flags OFF: `lead` is empty and
+  // `rest` is every row, so the sheet renders exactly as before.
+  const lead = rows.filter((row) => row.id === 'howToPlay');
+  const rest = rows.filter((row) => row.id !== 'howToPlay');
 
   const onRow = useCallback((row: SettingsRow) => {
     switch (row.id) {
@@ -95,10 +132,21 @@ export function SettingsSheet({
         onClose();
         openAdPrivacyOptions().catch(() => {});
         return;
+      case 'rateArrows':
+        openPlayListing();
+        return;
+      case 'howToPlay':
+        // The replay replaces the menu: close the sheet first so its Modal never sits over the board.
+        onClose();
+        onHowToPlay?.();
+        return;
+      case 'matchPhoneTheme':
+        onThemeFollowsSystemChange?.(!themeFollowsSystem);
+        return;
       default:
         return;
     }
-  }, [onClose]);
+  }, [onClose, onHowToPlay, onThemeFollowsSystemChange, themeFollowsSystem]);
 
   // Android draws the Modal in its own window, which came up with LIGHT status-bar icons over the Daylight scrim
   // (white on white: the clock and icons vanished; `dumpsys window` showed the dialog without LIGHT_STATUS_BARS,
@@ -107,6 +155,64 @@ export function SettingsSheet({
   const onShow = useCallback(() => {
     StatusBar.setBarStyle(dark ? 'light-content' : 'dark-content', false);
   }, [dark]);
+  // TF-01 A: with META_THEME_SYSTEM the theme can change while the sheet is open (the Match phone theme switch, or the
+  // phone's own setting). Re-style the Modal's window with it, as onShow does at open. Skips the first render (onShow
+  // owns that); OFF: `dark` cannot change while the sheet is open, and this never runs.
+  const shownDarkRef = useRef(dark);
+  useEffect(() => {
+    if (!META_THEME_SYSTEM || shownDarkRef.current === dark) return;
+    shownDarkRef.current = dark;
+    StatusBar.setBarStyle(dark ? 'light-content' : 'dark-content', false);
+  }, [dark]);
+
+  const renderRow = (row: SettingsRow) => {
+    if (row.kind === 'switch') {
+      // TF-01 A: the whole row toggles; the Switch shows the state (hidden from accessibility, the row is the switch).
+      return (
+        <Pressable
+          key={row.id}
+          accessibilityRole="switch"
+          accessibilityLabel={row.label}
+          accessibilityState={{ checked: themeFollowsSystem }}
+          onPress={() => onRow(row)}
+          style={[styles.row, styles.switchRow, { borderTopColor: p.border }]}
+        >
+          <Text style={[styles.rowLabel, styles.switchLabel, { color: p.ink }]}>{row.label}</Text>
+          <Switch
+            value={themeFollowsSystem}
+            onValueChange={(on) => onThemeFollowsSystemChange?.(on)}
+            trackColor={{ false: p.glyphOff, true: p.accent }}
+            thumbColor={p.inkOnAccent}
+            ios_backgroundColor={p.glyphOff}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+        </Pressable>
+      );
+    }
+    return row.pressable ? (
+      <PressScale
+        key={row.id}
+        accessibilityRole={row.id === 'privacyPolicy' ? 'link' : 'button'}
+        accessibilityLabel={row.label}
+        accessibilityHint={row.detail}
+        onPress={() => onRow(row)}
+        style={({ pressed }) => [
+          styles.row,
+          { borderTopColor: p.border, transform: pressSnapTransform(pressed) },
+        ]}
+      >
+        <Text style={[styles.rowLabel, { color: p.ink }]}>{row.label}</Text>
+        {row.detail !== undefined && (
+          <Text style={[styles.rowDetail, { color: p.inkDim }]}>{row.detail}</Text>
+        )}
+      </PressScale>
+    ) : (
+      <View key={row.id} style={[styles.infoRow, { borderTopColor: p.border }]}>
+        <Text style={[styles.info, { color: p.inkDim }]}>{row.label}</Text>
+      </View>
+    );
+  };
 
   const panelWidth = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, width - 2 * PANEL_SIDE_MARGIN));
 
@@ -135,6 +241,7 @@ export function SettingsSheet({
             {styleListOpen ? 'Arrow style' : SETTINGS_TITLE}
           </Text>
           {styleListOpen ? <ArrowStyleOptions palette={p} onBack={backToSettings} /> : <>
+          {lead.map(renderRow)}
           {pickerEnabled && <Pressable
             accessibilityRole="button"
             accessibilityLabel="Arrow style"
@@ -145,30 +252,7 @@ export function SettingsSheet({
             <Text style={[styles.rowLabel, { color: p.ink }]}>Arrow style</Text>
             <Text style={[styles.rowDetail, { color: p.inkDim }]}>{style.name}</Text>
           </Pressable>}
-          {rows.map((row) =>
-            row.pressable ? (
-              <PressScale
-                key={row.id}
-                accessibilityRole={row.id === 'privacyPolicy' ? 'link' : 'button'}
-                accessibilityLabel={row.label}
-                accessibilityHint={row.detail}
-                onPress={() => onRow(row)}
-                style={({ pressed }) => [
-                  styles.row,
-                  { borderTopColor: p.border, transform: pressSnapTransform(pressed) },
-                ]}
-              >
-                <Text style={[styles.rowLabel, { color: p.ink }]}>{row.label}</Text>
-                {row.detail !== undefined && (
-                  <Text style={[styles.rowDetail, { color: p.inkDim }]}>{row.detail}</Text>
-                )}
-              </PressScale>
-            ) : (
-              <View key={row.id} style={[styles.infoRow, { borderTopColor: p.border }]}>
-                <Text style={[styles.info, { color: p.inkDim }]}>{row.label}</Text>
-              </View>
-            ),
-          )}
+          {rest.map(renderRow)}
           </>}
         </View>
       </View>
@@ -210,6 +294,15 @@ const styles = StyleSheet.create({
   rowDetail: {
     ...Type.menuStats,
     marginTop: 2, // OWNER-PICKED STARTING VALUE
+  },
+  // TF-01 A: label left, switch right.
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchLabel: {
+    flex: 1,
+    marginRight: 12, // OWNER-PICKED STARTING VALUE
   },
   infoRow: {
     alignSelf: 'stretch',

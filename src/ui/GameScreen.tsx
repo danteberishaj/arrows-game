@@ -46,6 +46,7 @@ import {
 } from '../core';
 import {
   appLevelAggregator,
+  type LevelAggregator,
   type TapOutcome,
 } from '../telemetry/levelAggregator';
 import { reviewDeclineReason } from '../core/reviewPolicy';
@@ -57,6 +58,7 @@ import {
   META_POST_CLEAR_TIMELINE,
   META_REVIEW_PROMPT,
   META_SHARE_CARD,
+  META_SHARE_CARD_LEVEL,
 } from '../featureFlags';
 import { Ads } from './ads';
 import {
@@ -105,7 +107,7 @@ import {
   assistActive,
   ASSIST_STAGE,
   DONE_STAGE,
-  T1_CLEARED_STAGE,
+  tutorialClearStep,
 } from './ftueRoute';
 import { FtueStallTimer } from './ftueStallTimer';
 import {
@@ -131,7 +133,7 @@ import {
   reviewSession,
   settleWithin,
 } from './reviewPrompt';
-import { buildDailyShareText } from './shareCard';
+import { buildDailyShareText, buildLevelShareText } from './shareCard';
 import { silhouettePath } from './silhouette';
 import { blockedTapCost } from './tapRules';
 import { Palette, Type } from './theme';
@@ -155,12 +157,15 @@ const STREAK_SPARKLE_DP = 13; // OWNER-PICKED STARTING VALUE (the streak line's 
 const CONTINUE_A11Y_LABEL = 'Continue with one more heart (ad)'; // OWNER-PICKED STARTING VALUE
 const BACK_A11Y_LABEL = 'Back'; // OWNER-PICKED STARTING VALUE (the gallery's back button's name)
 const HINT_A11Y_LABEL = 'Hint'; // OWNER-PICKED STARTING VALUE
+/** TF-02 C: the hearts and the win stars as one spoken element each (the shapes alone were silent). */
+const heartsA11yLabel = (left: number, max: number) => `${left} of ${max} hearts left`; // OWNER-PICKED STARTING VALUE
+const starsA11yLabel = (earned: number, total: number) => `${earned} of ${total} stars`; // OWNER-PICKED STARTING VALUE
 
 /** W4-06 daily-mode copy: header, win subline prefix, the win panel's button. */
 const DAILY_HEADER_LABEL = 'TODAY'; // OWNER-PICKED STARTING VALUE
 const DAILY_WIN_PREFIX = 'Today'; // OWNER-PICKED STARTING VALUE
 const DAILY_DONE_LABEL = 'Done'; // OWNER-PICKED STARTING VALUE
-/** W4-13 (META_SHARE_CARD): the daily win panel's share control. */
+/** W4-13 (META_SHARE_CARD): the daily win panel's share control; TF-02 B (META_SHARE_CARD_LEVEL): the campaign one's. */
 const DAILY_SHARE_LABEL = 'Share'; // OWNER-PICKED STARTING VALUE
 
 /**
@@ -198,6 +203,22 @@ export function tutorialLineBoxHeight(fontScale: number, pixelRatio: number): nu
 // calls in application code are removed by the production transform.
 const writeFtueSessionLog = console.log.bind(console);
 
+/** The level tally GameScreen drives (start, taps, hearts, hints, continues, end). */
+type LevelTally = Pick<LevelAggregator, 'start' | 'tap' | 'heartLost' | 'hintUsed' | 'resume' | 'end'>;
+
+/**
+ * TF-01 C: a "How to play" replay emits no level telemetry (no level_start / level_end, and it is not counted in
+ * session_end), so a replay can never be read as a first-run tutorial. Its FTUE session log lines are skipped too.
+ */
+const SILENT_LEVEL_TALLY: LevelTally = {
+  start: () => undefined,
+  tap: () => undefined,
+  heartLost: () => undefined,
+  hintUsed: () => undefined,
+  resume: () => undefined,
+  end: () => undefined,
+};
+
 /**
  * One play session: header (home, level, difficulty, hearts), the pan/zoom
  * board, and the win / lose overlays. Progress lives in SaveSystem; the level
@@ -208,6 +229,7 @@ export function GameScreen({
   darkMode = false,
   onHome,
   tutorialId,
+  tutorialReplay = false,
   initialLevelIndex,
   daily,
   benchmarkMode = false,
@@ -218,6 +240,13 @@ export function GameScreen({
   darkMode?: boolean;
   onHome: () => void;
   tutorialId?: TutorialId;
+  /**
+   * TF-01 C (META_SETTINGS_HOW_TO_PLAY): `tutorialId` is a "How to play" replay. A cleared board writes no key at all
+   * (no FTUE stage, progress, totals, streaks, collection, rewards, ad counters or review keys), T1 still hands off to
+   * T2, the cleared T2 returns to the menu (onHome), hearts and lines behave as in the first-run tutorial (no assist),
+   * and no level telemetry or FTUE log line is emitted. Read at mount, like `tutorialId`.
+   */
+  tutorialReplay?: boolean;
   initialLevelIndex?: number;
   /**
    * W4-06: play the shared board of `day` (fixed by the caller when the screen
@@ -236,7 +265,9 @@ export function GameScreen({
   const { fontScale } = useWindowDimensions(); // POLISH-T9: tutorial line box height
 
   const revisionRef = useRef(0);
-  const levelAggregatorRef = useRef(appLevelAggregator);
+  const levelAggregatorRef = useRef<LevelTally>(tutorialReplay ? SILENT_LEVEL_TALLY : appLevelAggregator);
+  // TF-01 C: fixed for the screen's life (a replay never turns into a first run, or back).
+  const replayRef = useRef(tutorialReplay);
   const [session, setSession] = useState(() => {
     const index = initialLevelIndex ?? SaveSystem.currentLevel;
     const initial = daily
@@ -345,7 +376,7 @@ export function GameScreen({
   const clearHint = useCallback(() => setHint(null), []);
 
   const logFtueEvent = useCallback((event: FtueSessionLogEvent) => {
-    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1' || replayRef.current) return;
     writeFtueSessionLog(formatFtueSessionLog(
       event,
       Date.now() - ftueBoardMountedAtRef.current,
@@ -386,7 +417,7 @@ export function GameScreen({
     if (ftueMountedSessionRef.current === session) return;
     ftueMountedSessionRef.current = session;
     ftueBoardMountedAtRef.current = Date.now();
-    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1') return;
+    if (process.env.EXPO_PUBLIC_FTUE_LOG !== '1' || replayRef.current) return;
     writeFtueSessionLog(formatFtueSessionLog(
       { type: 'board_mount', board: session.tutorialId ?? session.index, gen: session.genVersion, arrows: session.level.arrowCount, shape: session.level.shapeName },
       0,
@@ -571,18 +602,19 @@ export function GameScreen({
           + ` holdMs=${holdMs} revealMs=${revealMs}`);
       }
       if (activeTutorialId) {
-        const nextTutorialId = activeTutorialId === 'T1' ? 'T2' : undefined;
+        // TF-01 C: a replay writes no stage and its T2 returns to the menu (tutorialClearStep).
+        const step = tutorialClearStep(activeTutorialId, replayRef.current);
         if (!beginTerminalTransition('won', wonDelayMs, () => {
-          if (nextTutorialId) {
-            loadTutorial(nextTutorialId);
+          if (step.next === 'T2') {
+            loadTutorial('T2');
+          } else if (step.next === 'menu') {
+            onHome();
           } else {
             loadLevel(SaveSystem.currentLevel);
           }
         })) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
-        SaveSystem.setFtueStage(
-          activeTutorialId === 'T1' ? T1_CLEARED_STAGE : ASSIST_STAGE,
-        );
+        if (step.stage !== null) SaveSystem.setFtueStage(step.stage);
       } else {
         if (!beginTerminalTransition('won', wonDelayMs)) return;
         levelAggregatorRef.current.end('cleared', heartsRef.current, Date.now());
@@ -621,6 +653,7 @@ export function GameScreen({
       loadLevel,
       loadTutorial,
       logFtueEvent,
+      onHome,
       reducedMotion,
       scheduleStallHint,
       stallHintTimer,
@@ -635,9 +668,10 @@ export function GameScreen({
     if (terminalTransition.isPending) return false;
     exitCombo.current = null;
 
+    // TF-01 C: a replayed T1 is charged as the first run's (played at stage 0, where assist never applies).
     const mode = activeTutorialId === 'T2'
       ? 'tutorialGrace'
-      : assistActive({
+      : !(activeTutorialId && replayRef.current) && assistActive({
         enabled: FTUE_ENABLED,
         assistEnabled: FTUE_ASSIST_ENABLED,
         stage: SaveSystem.ftueStage,
@@ -832,6 +866,22 @@ export function GameScreen({
     Share.share({ message }).catch(() => undefined);
   }, [dailyDay, level]);
 
+  /**
+   * TF-02 B (META_SHARE_CARD_LEVEL): the cleared campaign level's card, the same way (the player picks the chat or
+   * cancels; the result is ignored). The level number is the header's (`LEVEL ${levelIndex + 1}`).
+   */
+  const onShareLevel = useCallback(() => {
+    if (dailyDay !== null) return;
+    const message = buildLevelShareText({
+      levelNumber: levelIndex + 1,
+      mask: level.mask,
+      shapeName: level.shapeName,
+      heartsLeft: heartsRef.current,
+      maxHearts: level.hearts,
+    });
+    Share.share({ message }).catch(() => undefined);
+  }, [dailyDay, level, levelIndex]);
+
   /** "Done" after a daily clear (W4-06): back to the menu; no ad, no next board, no scrim. */
   const dailyDonePressedRef = useRef(false);
   const onDailyDone = useCallback(async () => {
@@ -975,7 +1025,10 @@ export function GameScreen({
         onKeep={() => (dailyDay !== null ? onDailyDone() : onNextLevel())} />
     ) : (
     <>
-      <Text style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.panelTitle, { color: panelPhase === 'won' ? p.accent : p.heart, ...depthTitleSpacing }]}
+      >
         {panelPhase === 'won' ? 'Cleared!' : 'Out of hearts'}
       </Text>
       {panelPhase === 'won' && winSilhouette !== '' && (
@@ -983,6 +1036,9 @@ export function GameScreen({
         // The subline still names the shape, so the badge adds no text.
         <Svg
           testID="win-silhouette"
+          accessible={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           width={ART_WIN_SILHOUETTE_DP}
           height={ART_WIN_SILHOUETTE_DP}
           style={styles.winSilhouette}
@@ -1048,7 +1104,13 @@ export function GameScreen({
       )}
       <PressScale
         testID={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
-        accessibilityLabel={benchmarkMode && panelPhase === 'won' ? 'perf-next-level' : undefined}
+        accessibilityRole="button"
+        accessibilityLabel={
+          benchmarkMode && panelPhase === 'won'
+            ? 'perf-next-level'
+            : panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'
+        }
+        accessibilityState={{ disabled: adBusy }}
         disabled={adBusy}
         style={({ pressed }) => [
           styles.button,
@@ -1064,8 +1126,10 @@ export function GameScreen({
           {panelPhase === 'won' ? (dailyDay !== null ? DAILY_DONE_LABEL : 'Next level') : 'Retry'}
         </Text>
       </PressScale>
-      {/* W4-13 (META_SHARE_CARD): the daily win panel only. A plain secondary control (Retry's outline style). */}
-      {panelPhase === 'won' && dailyDay !== null && META_SHARE_CARD && (
+      {/* W4-13 (META_SHARE_CARD): the daily win panel. TF-02 B (META_SHARE_CARD_LEVEL): the campaign win panel, the
+          same control in the same place. A plain secondary control (Retry's outline style). Tutorial boards never
+          mount this panel (overlayMounted). */}
+      {panelPhase === 'won' && (dailyDay !== null ? META_SHARE_CARD : META_SHARE_CARD_LEVEL && !activeTutorialId) && (
         <PressScale
           accessibilityRole="button"
           accessibilityLabel={DAILY_SHARE_LABEL}
@@ -1075,7 +1139,7 @@ export function GameScreen({
             styles.shareButton,
             { borderColor: p.border, transform: pressSnapTransform(pressed) },
           ]}
-          onPress={onShareDaily}
+          onPress={dailyDay !== null ? onShareDaily : onShareLevel}
         >
           <Text style={[styles.buttonText, { color: p.inkDim }]}>{DAILY_SHARE_LABEL}</Text>
         </PressScale>
@@ -1388,7 +1452,7 @@ const HeartPips = React.memo(function HeartPips({
   refillToken: number;
 }) {
   return (
-    <View style={{ flexDirection: 'row' }}>
+    <View style={{ flexDirection: 'row' }} accessible accessibilityLabel={heartsA11yLabel(left, max)}>
       {Array.from({ length: max }, (_, i) => (
         <HeartPip key={i} filled={i < left} palette={palette} refillToken={refillToken} />
       ))}
@@ -1474,7 +1538,7 @@ function Stars({
   feedbackEnabled: boolean;
 }) {
   return (
-    <View style={styles.starsRow}>
+    <View style={styles.starsRow} accessible accessibilityLabel={starsA11yLabel(earned, total)}>
       {Array.from({ length: total }, (_, i) => (
         <Star
           key={i}

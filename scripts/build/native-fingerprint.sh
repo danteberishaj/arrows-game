@@ -12,8 +12,11 @@
 #   - credentials/* (content hashes only; signing config is native);
 #   - the build script and this script (their android/ edits are native inputs);
 #   - environment: ABIS, Node version, JAVA_HOME, ANDROID_HOME, and every EXPO_* / ARROWS_* variable EXCEPT
-#     EXPO_PUBLIC_* (values hashed, never printed). EXPO_PUBLIC_* only reach the JS bundle (babel inlining; app.json is
-#     static and no config plugin reads them), and the bundle task always reruns with --reset-cache.
+#     EXPO_PUBLIC_* (values hashed, never printed). EXPO_PUBLIC_* normally reach only the JS bundle (babel inlining;
+#     app.json is static), and the bundle task always reruns with --reset-cache. EXCEPTION (NAV-BAR 2026-10-13): any
+#     EXPO_PUBLIC_* name that a file in plugins/ mentions IS a native input (plugins/withNavBarTheme.js reads
+#     EXPO_PUBLIC_META_NAV_BAR_THEME at prebuild), so its value (or "unset") is hashed too. Found by grep, so a new
+#     plugin that reads a flag is covered without editing this script.
 # Residual risk (documented, not covered): a hand edit inside node_modules/<pkg>/android without a patches/ file.
 # Run from the repo root. Prints nothing else on stdout.
 set -eu
@@ -38,6 +41,13 @@ manifest=$(
   env | sed -nE 's/^((EXPO|ARROWS)_[A-Za-z0-9_]*)=.*/\1/p' | grep -v '^EXPO_PUBLIC_' | sort -u | while IFS= read -r name; do
     value=$(printenv "$name" || true)
     printf 'env\t%s\t%s\n' "$name" "$(printf '%s' "$value" | shasum -a 256 | cut -c1-64)"
+  done
+  { grep -rhoE 'EXPO_PUBLIC_[A-Z0-9_]+' plugins 2>/dev/null || true; } | sort -u | while IFS= read -r name; do
+    if value=$(printenv "$name"); then
+      printf 'env-plugin\t%s\t%s\n' "$name" "$(printf '%s' "$value" | shasum -a 256 | cut -c1-64)"
+    else
+      printf 'env-plugin\t%s\tunset\n' "$name"
+    fi
   done
 )
 [ -n "$out" ] && printf '%s\n' "$manifest" > "$out"

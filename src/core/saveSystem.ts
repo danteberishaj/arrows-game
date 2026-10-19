@@ -140,6 +140,15 @@ const Keys = Object.freeze({
   telFatalHash: 'arrows_tel_fatal_hash',
   /** Row 29. Screen at the last fatal (1 splash, 2 menu, 3 game). Owner: W6-07. */
   telFatalScreen: 'arrows_tel_fatal_screen',
+
+  // ---- P-01 amendments (table order) ------------------------------------
+  /**
+   * Row 30 (P-01 amendment: arrows_theme_follows_system, TF-01). 1 = the theme follows the phone, 0 = the theme is
+   * `arrows_dark_mode`. Absent reads -1 via getInt(key, -1) ("not stamped"). Written only with META_THEME_SYSTEM on:
+   * stamped once at the first healthy boot, then by the menu toggle (0) and the Settings switch. A preference: a
+   * progress reset never deletes it. Owner: TF-01.
+   */
+  themeFollowsSystem: 'arrows_theme_follows_system',
 });
 
 type KeyRecord = typeof Keys;
@@ -157,6 +166,8 @@ const FTUE_NOT_STARTED_STAGE = 0; // OWNER-PICKED STARTING VALUE
 /** P-01 row 20: `arrows_gen_switch_level` reads -1 via getInt(key, -1) when never stamped (0 is real). */
 const GEN_SWITCH_NOT_STAMPED = -1;
 const CONSENT_BITS_MASK = 0b1111;
+/** P-01 row 30 and the legacy theme key: "never written" sentinel for getInt(key, -1) (the stored values are 0/1). */
+const NOT_STORED = -1;
 
 let persistenceHealthy = false;
 
@@ -785,6 +796,43 @@ export const SaveSystem = {
   },
   set darkMode(value: boolean) {
     store.setInt(Keys.darkMode, value ? 1 : 0);
+  },
+
+  /**
+   * TF-01: whether `arrows_dark_mode` was ever written (its only writer is the theme toggle). Read only by the
+   * META_THEME_SYSTEM boot stamp's "brand-new player" rule (src/ui/themeFollow.ts).
+   */
+  get darkModeStored(): boolean {
+    return store.getInt(Keys.darkMode, NOT_STORED) !== NOT_STORED;
+  },
+
+  // ---- Follow the phone's theme (TF-01, P-01 row 30) --------------------
+  //
+  // MIGRATION AND WIPE RISK (TF-01):
+  // - One additive int; no existing key is read differently, rewritten or removed; SCHEMA_VERSION is not bumped.
+  // - Written only with META_THEME_SYSTEM on. With the flag OFF (shipped) it is never written, and a value left by a
+  //   flag-on build is hydrated but read by nothing (the theme is arrows_dark_mode, as before).
+  // - A downgrade to a build without the key ignores it (the key is simply not hydrated there).
+  // - Android Auto Backup restores it with arrows_dark_mode onto another phone: 1 keeps following, now the NEW
+  //   phone's scheme; 0 keeps the stored theme. Neither ever changes progress.
+
+  /** True when the key holds any value (stamped), valid or corrupt; the boot stamp writes only when false. */
+  get themeFollowsSystemStamped(): boolean {
+    return store.getInt(Keys.themeFollowsSystem, NOT_STORED) !== NOT_STORED;
+  },
+
+  /** True only for a stored 1. Absent, 0 or corrupt: the theme is arrows_dark_mode (an unknown value never flips it). */
+  get themeFollowsSystem(): boolean {
+    return store.getInt(Keys.themeFollowsSystem, 0) === 1;
+  },
+
+  /**
+   * Writes the key (1 / 0). The player's own choices (toggle, Settings switch) always write; the derived boot stamp
+   * goes through stampThemeFollowsSystem, which skips the write while persistence is unhealthy. Returns true.
+   */
+  setThemeFollowsSystem(on: boolean): boolean {
+    store.setInt(Keys.themeFollowsSystem, on ? 1 : 0);
+    return true;
   },
 
   resetProgress(): void {

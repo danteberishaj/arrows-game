@@ -9,6 +9,7 @@ import {
   PRIVACY_POLICY_URL,
   SETTINGS_TITLE,
   SUPPORT_EMAIL,
+  playStoreUrls,
   settingsRows,
   supportMailto,
   type SettingsRowsInput,
@@ -118,5 +119,116 @@ describe('constants', () => {
 
   it('the sheet title', () => {
     expect(SETTINGS_TITLE).toBe('Settings');
+  });
+});
+
+/**
+ * TF-01 B / C / A: three rows, each behind its own default-OFF flag. The builder takes the flags and the platform as
+ * inputs so it stays pure; SettingsSheet.tsx passes META_SETTINGS_HOW_TO_PLAY, META_THEME_SYSTEM,
+ * META_SETTINGS_RATE and Platform.OS.
+ */
+describe('TF-01 rows', () => {
+  /** The exact rows a W7-04 sheet built before TF-01 returned for ALL (the flags-default build must equal it). */
+  const TODAY = [
+    { id: 'privacyPolicy', label: 'Privacy policy', pressable: true },
+    { id: 'adPrivacy', label: 'Ad privacy choices', pressable: true },
+    { id: 'support', label: 'Support', detail: 'help@example.org', pressable: true },
+    { id: 'version', label: 'Version 1.0.0', pressable: false },
+  ];
+  const ON = { howToPlay: true, themeSystem: true, rate: true, platform: 'android' } as const;
+
+  it('all three flags OFF (explicitly or omitted): output identical to today, on every platform', () => {
+    expect(settingsRows(ALL)).toStrictEqual(TODAY);
+    for (const platform of ['android', 'ios', 'web']) {
+      expect(settingsRows({ ...ALL, howToPlay: false, themeSystem: false, rate: false, platform }))
+        .toStrictEqual(TODAY);
+    }
+  });
+
+  it('the flags default to OFF in a build with no EXPO_PUBLIC_* set', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const flags = require('../../featureFlags') as typeof import('../../featureFlags');
+    expect(flags.META_THEME_SYSTEM).toBe(false);
+    expect(flags.META_SETTINGS_RATE).toBe(false);
+    expect(flags.META_SETTINGS_HOW_TO_PLAY).toBe(false);
+  });
+
+  it('every row, in order, with all three flags ON (Android)', () => {
+    expect(settingsRows({ ...ALL, ...ON }).map((r) => [r.id, r.label])).toEqual([
+      ['howToPlay', 'How to play'],
+      ['matchPhoneTheme', 'Match phone theme'],
+      ['privacyPolicy', 'Privacy policy'],
+      ['adPrivacy', 'Ad privacy choices'],
+      ['rateArrows', 'Rate Arrows'],
+      ['support', 'Support'],
+      ['version', 'Version 1.0.0'],
+    ]);
+  });
+
+  it('How to play is the FIRST row whenever its flag is on, whatever else shows', () => {
+    for (let bits = 0; bits < 16; bits += 1) {
+      const rows = settingsRows({
+        ...ALL,
+        howToPlay: true,
+        themeSystem: (bits & 1) !== 0,
+        rate: (bits & 2) !== 0,
+        policyUrl: (bits & 4) !== 0 ? 'https://example.org/p' : '',
+        supportEmail: (bits & 8) !== 0 ? 'a@example.org' : '',
+        platform: 'android',
+      });
+      expect(rows[0]).toEqual({ id: 'howToPlay', label: 'How to play', pressable: true });
+      expect(rows.at(-1)?.id).toBe('version');
+    }
+  });
+
+  it('Rate Arrows sits directly above Support; Android only', () => {
+    const android = ids({ ...ON });
+    expect(android.indexOf('rateArrows')).toBe(android.indexOf('support') - 1);
+    expect(ids({ ...ON, platform: 'ios' })).not.toContain('rateArrows');
+    expect(ids({ ...ON, platform: 'web' })).not.toContain('rateArrows');
+    expect(ids({ ...ON, platform: undefined })).not.toContain('rateArrows');
+    expect(ids({ ...ON, rate: false })).not.toContain('rateArrows');
+  });
+
+  it('Rate Arrows still shows (above the version row) when no support address is set', () => {
+    expect(ids({ ...ON, supportEmail: '' }).slice(-2)).toEqual(['rateArrows', 'version']);
+  });
+
+  it('Match phone theme is a switch row; it shows only with its flag', () => {
+    const row = settingsRows({ ...ALL, ...ON }).find((r) => r.id === 'matchPhoneTheme');
+    expect(row).toEqual({ id: 'matchPhoneTheme', label: 'Match phone theme', pressable: true, kind: 'switch' });
+    expect(ids({ ...ON, themeSystem: false })).not.toContain('matchPhoneTheme');
+    expect(ids({ ...ON, platform: 'ios' })).toContain('matchPhoneTheme');
+  });
+
+  it('How to play shows only with its flag, on every platform', () => {
+    expect(ids({ ...ON, howToPlay: false })).not.toContain('howToPlay');
+    expect(ids({ ...ON, platform: 'ios' })[0]).toBe('howToPlay');
+  });
+});
+
+describe('playStoreUrls', () => {
+  it('builds the market: URL first and the https fallback for the installed package', () => {
+    expect(playStoreUrls('com.danteb.arrows')).toEqual([
+      'market://details?id=com.danteb.arrows',
+      'https://play.google.com/store/apps/details?id=com.danteb.arrows',
+    ]);
+  });
+
+  it('trims the id and encodes it', () => {
+    expect(playStoreUrls(' com.danteb.arrows ')[0]).toBe('market://details?id=com.danteb.arrows');
+    expect(playStoreUrls('a b&c')[1]).toBe('https://play.google.com/store/apps/details?id=a%20b%26c');
+  });
+
+  it('no id (null, empty): no URL, so the row does nothing rather than open a wrong listing', () => {
+    expect(playStoreUrls(null)).toEqual([]);
+    expect(playStoreUrls(undefined)).toEqual([]);
+    expect(playStoreUrls('  ')).toEqual([]);
+  });
+
+  it("app.json's Android package is com.danteb.arrows (the id the installed app reports)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const app = require('../../../app.json') as { expo: { android: { package: string } } };
+    expect(app.expo.android.package).toBe('com.danteb.arrows');
   });
 });

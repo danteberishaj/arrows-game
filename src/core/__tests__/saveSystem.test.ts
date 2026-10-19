@@ -208,9 +208,11 @@ describe('P-01 schema version and migrate()', () => {
 });
 
 describe('P-01 reset lock', () => {
-  test('resetProgress removes exactly the six legacy progress keys and none of rows 9-29', () => {
+  test('resetProgress removes exactly the six legacy progress keys and none of rows 9-30', () => {
     const newKeys = SaveSystem.persistenceKeys.slice(8);
-    expect(newKeys).toHaveLength(21);
+    // 21 P-01 rows (9-29) + row 30 (TF-01 amendment: arrows_theme_follows_system, a preference).
+    expect(newKeys).toHaveLength(22);
+    expect(newKeys.at(-1)).toBe('arrows_theme_follows_system');
     SaveSystem.persistenceKeys.forEach((key, i) => store.setInt(key, 100 + i));
 
     SaveSystem.resetProgress();
@@ -992,5 +994,38 @@ describe('W3-05 generator switch level', () => {
   test('the key is P-01 registry row 20 (no key added or renamed)', () => {
     expect(SaveSystem.persistenceKeys).toContain(KEY);
     expect(SaveSystem.registeredKeys.genSwitchLevel).toBe(KEY);
+  });
+});
+
+describe('TF-01 theme follows system (P-01 row 30)', () => {
+  const KEY = 'arrows_theme_follows_system';
+
+  test('absent: not stamped, not following; arrows_dark_mode absent is "not stored"', () => {
+    expect(SaveSystem.themeFollowsSystemStamped).toBe(false);
+    expect(SaveSystem.themeFollowsSystem).toBe(false);
+    expect(SaveSystem.darkModeStored).toBe(false);
+  });
+
+  test('setThemeFollowsSystem writes 1 / 0 under the registered key', () => {
+    expect(SaveSystem.registeredKeys.themeFollowsSystem).toBe(KEY);
+    SaveSystem.setThemeFollowsSystem(true);
+    expect(store.getInt(KEY, -1)).toBe(1);
+    expect(SaveSystem.themeFollowsSystem).toBe(true);
+    expect(SaveSystem.themeFollowsSystemStamped).toBe(true);
+    SaveSystem.setThemeFollowsSystem(false);
+    expect(store.getInt(KEY, -1)).toBe(0);
+    expect(SaveSystem.themeFollowsSystem).toBe(false);
+    expect(SaveSystem.themeFollowsSystemStamped).toBe(true);
+  });
+
+  test('a corrupt value is stamped (never restamped) and reads as not following', () => {
+    store.setInt(KEY, 7);
+    expect(SaveSystem.themeFollowsSystemStamped).toBe(true);
+    expect(SaveSystem.themeFollowsSystem).toBe(false);
+  });
+
+  test('darkModeStored is true once the toggle wrote either value', () => {
+    SaveSystem.darkMode = false;
+    expect(SaveSystem.darkModeStored).toBe(true);
   });
 });

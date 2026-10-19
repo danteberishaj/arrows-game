@@ -898,3 +898,91 @@ viewed. Report: [HALLOWEEN-PLUS](next-level/reports/HALLOWEEN-PLUS-concepts.md).
 
 **Verified:** see [speed experiments](process/speed-experiments-2026-10-07.md); raw evidence in
 `artifacts/PROCESS-SPEED/phase2/`.
+
+## A tutorial replay must not reuse the first-run clear path; a switch thumb needs contrast against its panel
+
+**Observed, 2026-10-13 (TF-01, tester-feedback builds):** the first-run tutorial clear writes
+`setFtueStage(T1_CLEARED_STAGE | ASSIST_STAGE)`. A "How to play" replay that reused it moved a finished player
+(stage 3) back to stage 2, and dealt the campaign level instead of returning to the menu. This was reproduced by
+running `GameScreen.tutorialReplay.test.tsx` against HEAD's `GameScreen.tsx`: 3 tests RED ("Expected: 3, Received: 2",
+`onHome` never called), with the first-run control test green.
+**Correction:** every tutorial-clear write goes through `tutorialClearStep(id, replay)` (`src/ui/ftueRoute.ts`), which
+returns no stage for a replay. A replay also gets a silent level tally and no FTUE log lines.
+**Verified:** unit tests, plus emulator-5556: a full-save sqlite dump before and after a T1→T2 replay was identical,
+and the replay ended on the menu ([report](next-level/reports/TF-01.md)).
+
+**Observed, same task:** in Ink Night, the Settings switch's ON thumb (`surface`) was nearly invisible
+(`artifacts/TF-01/settings-dark.png`). The contrast audit listed the track colours, not the thumb. Thumb vs track was
+3.64:1 and passed, but the thumb's outer edge sits on the panel, which is also `surface`, so that edge was 1:1.
+**Correction:** the thumb is `inkOnAccent` (white; 4.51:1 on Ink Night's track, 3.48:1 on Daylight's off track), and
+`contrastAudit.ts` now has `settings-switch-thumb-on/off` rows. Audit any control part that can share its container's
+colour, not only the part that carries the state.
+
+**Also:** following the phone's theme means a theme change can now arrive mid-board. Before this, it could only
+happen on the menu. On emulator-5556 the native board, header and hearts recoloured fully, with the same PID and an
+empty `logcat -b crash` (`midboard-*.png`). Phone and tablet devices beyond the emulator are UNVERIFIED-DEVICE.
+`npx expo export:embed --clear` is rejected in this Expo version; use `--reset-cache`. The emulator's Bluetooth stack
+crash-loops into `logcat -b crash`, so filter that buffer by our process before calling a run crash-free.
+
+## Android nav bar: the scrim, AndroidX's compat controller and Expo's prebuilt AARs each hid the fix
+
+**Observed, 2026-10-13 (NAV-BAR, emulator-5556 API 31, 3-button):** under Ink Night the navigation bar stayed light
+grey (bar vs content 15.25:1, measured by `artifacts/NAV-BAR/scripts/navbar_measure.py`). The bar's look was fixed by
+the phone's mode at app start, so a sun/moon toggle or a live phone change never updated it. Gesture navigation was
+fine (the handle adapts by itself).
+**Confirmed causes (three layers):**
+1. The default contrast scrim. `setStyle` alone fixed only the launch case.
+2. androidx.core 1.18 `WindowInsetsControllerCompat(window, view)` only flips the legacy
+   `SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR` (`javap`: `Impl30.setAppearanceLight` never calls `setSystemBarsAppearance`
+   when built from a Window). Android 11+ ignores legacy flags once React Native's StatusBar has made the window
+   appearance-controlled. `dumpsys window` showed `vsysui` toggling while `apr=LIGHT_NAVIGATION_BARS` stayed stuck.
+3. **A patch to an Expo module's Kotlin source was silently ignored**: Expo modules ship a prebuilt AAR
+   (`local-maven-repo`), and Gradle used it (📦 in the autolinking list, no `:<module>:compileReleaseKotlin` task).
+   One whole clean build (D2) tested unpatched code.
+**Correction:** `plugins/withNavBarTheme.js` (scrim off only when `EXPO_PUBLIC_META_NAV_BAR_THEME=1` at prebuild),
+`patches/expo-navigation-bar+57.0.3.patch` (platform `setSystemBarsAppearance`, as RN does for the status bar), and
+`package.json` `expo.autolinking.android.buildFromSource: ["expo-navigation-bar"]`.
+**Verified (emulator only):** D3 measured 1.00 bar vs content and ≥ 5.74:1 buttons in all 6 scenarios. The flag-OFF
+build equalled the pre-change build in all 6. Phone and Android 15/16 are UNVERIFIED-DEVICE
+([report](next-level/reports/NAV-BAR.md)).
+**Rules for next time:** (a) after patching an Expo module's native code, prove `:<module>:compileReleaseKotlin` ran
+before testing the APK. (b) A config plugin that reads an `EXPO_PUBLIC_*` flag makes that flag a NATIVE input;
+`native-fingerprint.sh` now hashes every such name found in `plugins/`. (c) On API 30+, judge bar styling from `apr=`
+in `dumpsys window`, not `vsysui=`. (d) The API 31 emulator's system_server crashed with "Lost network stack" after a
+quick-boot from an old snapshot under host load; a cold boot (`-no-snapshot-load`) fixed it.
+
+## High contrast follows the system; a uiautomator label check is a blind detector here
+
+**Observed, 2026-10-13 (TF-02, emulator-5556 API 31):** with Android's "High contrast text" on, the system draws
+every text run black or white with an outline, whatever colour the app asked for. `META_HIGH_CONTRAST`'s palettes
+therefore show on Android as fills, borders, hearts and icons, not text (`artifacts/TF-02/hc-on-*.png`). The arrow ink
+was already >= 15:1 and stays identical. Judge the look from screenshots; do not expect text colours to change.
+**Detector lesson:** "no clickable node without content-desc or text" in `uiautomator dump` passed on the pre-change
+build too, because Android merges a button's child text into the node. The real gate is the jest sweep
+(`src/ui/__tests__/a11ySweep*.test.tsx`: role + label + toggle state), which failed RED on the HEAD tree. On device, the
+visible fix was the role: Play and Retry went from ViewGroup to Button. As [detector-needs-positive-control] says,
+a zero count needs a case that can fail.
+**High-contrast tokens** were solved by `solveLightness` to text >= 7:1 (large >= 4.5:1) and graphics/boundaries >=
+4.5:1 (`npx tsx scripts/contrast-audit-hc.ts`). Ink Night cannot keep white button labels at 7:1 (max 3.65:1 on
+any accent that reaches 4.5:1 on its surface), so its high-contrast buttons are light violet with dark labels.
+
+## Play Console "deprecated edge-to-edge APIs" and "orientation restrictions" (vc18, 2026-10-14)
+
+**Deprecated APIs: trace the callers before promising a fix.** Recipe (EXECUTED on the vc18 AAB):
+`dexdump -d base/dex/*.dex`, list the methods that invoke `Window.setStatusBarColor/setNavigationBarColor/...`, then
+resolve obfuscated names with the AAB's own `BUNDLE-METADATA/.../proguard.map`. Every vc18 caller was library code:
+React Native core (`WindowUtilKt.enableEdgeToEdge`, `StatusBarModule`), androidx.core.splashscreen 1.2.0
+(`SplashScreen$Impl31`, via expo-splash-screen), Material `EdgeToEdgeUtils`, and expo-navigation-bar's API < 29 path.
+No `com.danteb` code. RN 0.86.3 is the newest 0.86 patch, so no upgrade clears it today. Patching RN would mean
+building it from source. **Decision:** leave it (a Play recommendation, not a block); re-check at the next SDK upgrade.
+**Orientation:** `app.json` `"orientation": "portrait"` writes `screenOrientation` portrait, and Android 16 ignores it
+on displays with sw ≥ 600 dp when the app targets 36. `META_LARGE_SCREENS` (`plugins/withLargeScreens.js`, read at
+prebuild) removes the manifest lock and keeps PHONES portrait at runtime (`smallestScreenWidthDp < 600` in
+`MainActivity.onCreate`). In landscape the zoomed camera counts its 14 cells across the short side (it opened at 91 dp
+cells, capped to 64). Verified on emulator-5556 with `wm size/density` geometries (report: TF-03.md).
+**Harness:** after `wm size`, read the geometry back with `am get-config` (the first line of `dumpsys window`'s
+`mGlobalConfiguration` was stale). A "stays portrait" rotation test needs a positive control: Android Settings rotated
+under the same settings. uiautomator bounds exclude `hitSlop`. Prove a runtime lock in the APK's dex, not only in the
+prebuild output.
+**Known limit:** on Android 12–15 the lock is evaluated only in `onCreate`, so a foldable opened mid-session stays
+portrait until the next launch (UNVERIFIED-DEVICE).
