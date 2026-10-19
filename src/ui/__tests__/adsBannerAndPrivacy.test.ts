@@ -296,11 +296,23 @@ describe('UMP as the player consent source (M5, CONSENT_GATE on)', () => {
     expect(mockGma.moduleLoads).toBe(0);
   });
 
-  test('a consent fixture still wins over UMP (W7-01 verification builds)', async () => {
+  test('a consent fixture still wins over UMP in a test build (W7-01 verification builds)', async () => {
     process.env.EXPO_PUBLIC_CONSENT_FIXTURE = 'refused-eea';
-    const { ads } = await boot({ source: 'player' });
-    expect(mockGma.ump.calls).toEqual([]);
-    expect(ads.adInitController.state).toBe('declined');
+    process.env.EXPO_PUBLIC_ADMOB_TEST_ADS = '1';
+    try {
+      const { ads } = await boot({ source: 'player' });
+      expect(mockGma.ump.calls).toEqual([]);
+      expect(ads.adInitController.state).toBe('declined');
+    } finally {
+      delete process.env.EXPO_PUBLIC_ADMOB_TEST_ADS;
+    }
+  });
+
+  test('a release build ignores a consent fixture: UMP still decides (no granted-eea without a message)', async () => {
+    process.env.EXPO_PUBLIC_CONSENT_FIXTURE = 'granted-eea';
+    delete process.env.EXPO_PUBLIC_ADMOB_TEST_ADS;
+    await boot({ source: 'player' });
+    expect(mockGma.ump.calls.slice(0, 2)).toEqual(['requestInfoUpdate:{}', 'loadAndShowConsentFormIfRequired']);
   });
 });
 
@@ -368,5 +380,55 @@ describe('the ad privacy-options entry point (M5)', () => {
     expect(ads.adPrivacyOptionsRequired()).toBe(true);
     control.privacyRequired = false;
     expect(ads.adPrivacyOptionsRequired()).toBe(false);
+  });
+});
+
+describe('the startup log names the consent mode once (release records, feat/release-consent-gate)', () => {
+  async function consentLines(gate: boolean): Promise<string[]> {
+    mockFlags.CONSENT_GATE = gate;
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production'; // the release line is silenced only under jest
+    const lines: string[] = [];
+    const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(String(args[0]));
+    });
+    try {
+      const { ads } = await boot({ source: fixtureSource(REFUSED).source });
+      await ads.initAds(fixtureSource(REFUSED).source); // a second call never repeats the line
+      await settle();
+    } finally {
+      log.mockRestore();
+      process.env.NODE_ENV = env;
+    }
+    return lines.filter((line) => line.includes('consent='));
+  }
+
+  test('gate off: one "[ads] consent=off" line', async () => {
+    expect(await consentLines(false)).toEqual(['[ads] consent=off']);
+  });
+
+  test('gate on: one "[ads] consent=on" line, even when consent is refused and AdMob never starts', async () => {
+    expect(await consentLines(true)).toEqual(['[ads] consent=on']);
+    expect(mockGma.inits).toBe(0);
+  });
+
+  test('the line comes before the AdMob module loads and before UMP or init runs', async () => {
+    mockFlags.CONSENT_GATE = true;
+    const env = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const atLog: Array<{ loads: number; ump: number; inits: number }> = [];
+    const log = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      if (String(args[0]).includes('consent=')) {
+        atLog.push({ loads: mockGma.moduleLoads, ump: mockGma.ump.calls.length, inits: mockGma.inits });
+      }
+    });
+    try {
+      await boot({ source: 'player' });
+    } finally {
+      log.mockRestore();
+      process.env.NODE_ENV = env;
+    }
+    expect(atLog).toEqual([{ loads: 0, ump: 0, inits: 0 }]);
+    expect(mockGma.moduleLoads).toBeGreaterThan(0); // the boot did load it afterwards
   });
 });

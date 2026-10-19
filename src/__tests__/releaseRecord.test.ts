@@ -44,6 +44,14 @@ test('the vc18 record exists', () => {
   expect(recordFiles().map((f) => path.basename(f))).toContain('vc18.env');
 });
 
+// vc18 shipped without the gate (personalised ads, no UMP); every build after it, shipped or candidate, must fail
+// closed behind UMP. Records older than the newest are history and stay as shipped.
+test('the newest record (shipped or candidate) turns the consent gate on', () => {
+  const newest = recordFiles().at(-1);
+  expect(newest).toBeDefined();
+  expect(readRecord(newest!).flags.get('EXPO_PUBLIC_CONSENT_GATE')).toBe('1');
+});
+
 for (const file of recordFiles()) describe(path.basename(file), () => {
   const { flags, comments, status } = readRecord(file);
 
