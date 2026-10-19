@@ -1,9 +1,9 @@
 # Privacy Policy — Arrows
 
-_Last updated: September 26, 2026_
+_Last updated: October 18, 2026_
 
 **DRAFT — NOT LEGAL ADVICE. This text has not been legally reviewed and must not be published
-until the owner's legal review (W7-07) removes this line.**
+until the owner's legal review (W7-07) removes this line. The owner signs it.**
 
 <!--
   Canonical source. docs/privacy-policy.html is GENERATED from this file:
@@ -11,8 +11,9 @@ until the owner's legal review (W7-07) removes this line.**
   Never edit the HTML by hand. HTML comments like this one are dropped from the page.
   Every factual sentence about data ends with an evidence tag (an HTML comment holding
   "ev:" and a row id) naming a row in docs/data-safety.md (W7-06). Each statement is true of
-  the flags-default build; text that becomes true only when a flag ships waits in the
-  "Pending" list of docs/data-safety.md.
+  the release build recorded in the newest shipped release/vc<N>.env (now vc18.env): for every
+  flag it turns on that has a "Pending" row in docs/data-safety.md section 8, the row's text
+  is here, and `node scripts/check-policy.js` fails when one is missing.
 -->
 
 **Arrows** ("the app") is a calm game published by Dante Berishaj ("we", "us"). This policy
@@ -45,8 +46,9 @@ A copy in your Google account's backup follows Google's backup rules until you d
 
 ## Advertising
 
-The app shows ads: an interstitial ad between some levels, and rewarded ads that you can choose
-to watch for a hint or to continue a level. <!-- ev: ev-01 -->
+The app shows ads: an interstitial ad between some levels, a banner on the menu screen, and
+rewarded ads that you can choose to watch for a hint, to continue a level, or to earn petals in the
+collection book. <!-- ev: ev-01 -->
 The ads are served by **Google AdMob** through the Google Mobile Ads SDK; the app contains no
 other ad network or mediation service. <!-- ev: ev-01 -->
 
@@ -84,6 +86,23 @@ Economic Area, the United Kingdom and Switzerland.
 - **Advertising:** where the law requires consent for the advertising processing described
   above, such as personalised ads, consent is the required basis. This version of the app does
   not show a consent message. <!-- ev: ev-08 -->
+
+<!--
+  DRAFT for the vc19 candidate (release/vc19.env, CONSENT_GATE=1), P-1 and P-2. Swap it in
+  for the "Advertising" bullet above, and add the "Your rights" line below, in the commit that
+  ships the gate; scripts/check-policy.js fails until then. Owner signs.
+
+  - **Advertising:** where the law requires consent for the advertising processing described
+    above, such as personalised ads, consent is the basis. Before any ad is requested, the app
+    shows Google's consent message (Google's User Messaging Platform) where it is required. If
+    you do not consent, the app shows no ads at all. [ev: ev-08]
+
+  "Your rights", new first bullet:
+  - Where your region requires it, you can change your ad consent at any time in the app:
+    Settings → Ad privacy choices.
+    [ev: ev-08]
+  (Turn each [ev: …] back into an HTML evidence comment when swapping the text in.)
+-->
 
 <!--
   DRAFT NOTE (dropped from the page): the last sentence is true of the flags-default build and
@@ -132,6 +151,19 @@ You can opt out in two ways:
 The app is not directed at children under 13, and we do not knowingly collect personal
 information from them. <!-- ev: ev-20 --> <!-- ev: ev-12 -->
 The app does not ask for your age. <!-- ev: ev-20 -->
+
+## Rating the app and sharing a result
+
+After you clear a level, the app may ask Google Play to show its rating card; Google Play
+decides whether it appears. <!-- ev: ev-18 -->
+What you write there goes to Google Play under Google's policies, and the app does not receive
+it. <!-- ev: ev-18 -->
+
+When you clear a level or the daily puzzle, a Share button opens Android's share sheet with a
+short text: the level number or the date, the shape, the hearts you had left and, for the daily
+puzzle, your day streak. <!-- ev: ev-12 -->
+It goes only to the app you pick, you can edit it or cancel, and it holds no name, account or
+device information; the app itself sends nothing. <!-- ev: ev-12 -->
 
 ## Advertising partners
 
