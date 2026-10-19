@@ -38,12 +38,12 @@ full_description: |
   Read the board, spot the arrows that are free to leave, and clear the picture. A relaxing tap puzzle for a quiet minute: simple to learn, satisfying to finish.
 
   • No timers. Take as long as you like.
-  • Every level opens with the whole picture on screen. Pinch to look closer; pinch out and the whole picture is back.
+  • Pinch out any time to see the whole picture.
   • A new board every level, drawn as one of 26 shapes.
   • Three hearts per level for the lanes you misread.
   • Two looks: Daylight, black ink on white paper, and Ink Night, moonlit arrows on deep ink.
 
-  Arrows is free and shows ads between some levels. Rewarded ads are always your choice: watch one for a hint, or to continue a level after your hearts run out.
+  Arrows is free and shows ads between some levels and a banner on the menu screen. Rewarded ads are always your choice: watch one for a hint, to continue a level after your hearts run out, or to earn petals for new arrow styles.
 
 ## Claims → evidence
 
@@ -68,10 +68,12 @@ command that measured it).
 - C5 "Read the board, spot the arrows that are free to leave, and clear the picture": PRODUCT.md
   "Product Purpose" (a visual search; no tap order can make a board unsolvable,
   `src/core/__tests__/noDeadEnd.test.ts`).
-- C6 "Every level opens with the whole picture on screen … pinch out and the whole picture is
-  back": `src/ui/boardCamera.ts:80-92` (`zoomed` false → the camera opens at `fit`, and
-  `minScale` is `fit` either way); `src/ui/BoardView.tsx:408-410` passes `META_ZOOMED_CAMERA`,
-  which is off by default (`src/featureFlags.ts`); the pinch gesture is `BoardView.tsx:750`.
+- C6 "Pinch out any time to see the whole picture": true with the release flag set, not the
+  flags-default build: `release/vc18.env` ships `META_ZOOMED_CAMERA=1`, so a large board opens at about
+  14 cells across (`src/ui/boardCamera.ts:75-107`, `src/ui/BoardView.tsx:485`), and `minScale` is
+  `fit` either way (`boardCamera.ts:91,107`), so a pinch-out (`BoardView.tsx:845`) always reaches
+  the whole picture. The old claim "Every level opens with the whole picture on screen" is false
+  with that flag on; `scripts/check-listing.js` fails on it while the newest release record sets it.
 - C7 "A new board every level, drawn as one of 26 shapes": the level is a pure function of its
   index (`src/core/levelGenerator.ts:35-37`). **26** measured at `b082532` (EXECUTED 2026-09-26,
   from the root of a `git archive b082532 src` extract with the repo's node_modules, so no
@@ -86,10 +88,13 @@ command that measured it).
   Rectangle, Ring, Rocket, Square, Star, Triangle, Trophy, X).
 - C9 "Two looks: Daylight … and Ink Night …": `src/ui/theme.ts:5-6` (palette descriptions),
   `:73` (`paletteFor`); the menu toggle is `src/ui/HomeScreen.tsx:235`, not behind a flag.
-- C10 "shows ads between some levels"; "Rewarded ads … for a hint, or to continue a level after
-  your hearts run out": interstitial pacing `src/ui/adPacing.ts` (W0-05); rewarded hint and
-  continue units `src/ui/adUnits.ts`, per-placement readiness in `src/ui/ads.tsx` (ADMOB-B, M3);
+- C10 "shows ads between some levels and a banner on the menu screen"; "Rewarded ads … for a hint,
+  to continue a level after your hearts run out, or to earn petals for new arrow styles":
+  interstitial pacing `src/ui/adPacing.ts` (W0-05); rewarded hint and continue units
+  `src/ui/adUnits.ts`, per-placement readiness in `src/ui/ads.tsx` (ADMOB-B, M3); the menu banner
+  (`META_BANNER`, ADMOB-C M4) and the collection book's "+3 petals" rewarded ad (`META_PETAL_ADS`,
+  `src/ui/PetalAdButton.tsx`) both ship in `release/vc18.env`;
   Play's "Contains ads" label comes from the ads declaration (docs/data-safety.md section 7).
 - Not claimed on purpose: an ordering or planning mechanic (ruling W7-9, Track A); difficulty that
   rises (flat curve until W3 ships a measured one); an unlimited catalogue; the daily board,
-  gallery, streak freezes, banner and review prompt (flags off).
+  gallery, streak freezes and review prompt (flags off at `b082532`).

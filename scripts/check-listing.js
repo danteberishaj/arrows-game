@@ -13,11 +13,14 @@
  *
  * Exits 1 on an over-length field, a banned phrase in any field value, an
  * unknown or duplicate key, an empty value, or a file with no required field.
+ * A Play listing is also checked against the newest shipped release record
+ * (release/vc<N>.env, or --record=<file>): a claim a shipped flag makes false fails.
  */
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+const { latestRecord, readRecord } = require('./release-record');
 
 // Store limits in characters (Unicode code points).
 // Play: title 30, short description 80, full description 4000.
@@ -52,6 +55,20 @@ const BANNED = [
   'infinite',
   'endless',
 ];
+
+// Claims that are false while a release flag is on (Play listing vs the newest release record).
+const FALSE_WITH_FLAG = [
+  // C6: with the zoomed camera a level opens at about 14 cells across; only a pinch-out shows the whole picture.
+  { flag: 'EXPO_PUBLIC_META_ZOOMED_CAMERA', phrase: 'opens with the whole picture' },
+];
+
+// The newest SHIPPED record by default; `--record=release/vc19.env` judges a candidate.
+let recordArg = null;
+
+function releaseFlags() {
+  const record = recordArg || latestRecord();
+  return record ? { name: path.basename(record), flags: readRecord(record).flags } : null;
+}
 
 const FIELD_START = /^([a-z][a-z0-9_]*):(?: (.*))?$/;
 
@@ -108,6 +125,7 @@ function checkFile(file) {
       errors.push(`${file}: missing required ${store} field "${need}"`);
     }
   }
+  const release = store === 'play' ? releaseFlags() : null;
   const report = [];
   for (const { key, value, lineNo } of fields) {
     const limit = LIMITS[baseKey(key)];
@@ -123,14 +141,21 @@ function checkFile(file) {
         errors.push(`${file}:${lineNo}: ${key} contains banned phrase "${phrase}"`);
       }
     }
+    for (const { flag, phrase } of FALSE_WITH_FLAG) {
+      if (release && release.flags.get(flag) === '1' && lower.includes(phrase)) {
+        errors.push(`${file}:${lineNo}: ${key} claims "${phrase}", false with ${flag}=1 (release/${release.name})`);
+      }
+    }
   }
   return { errors, report };
 }
 
 function main(argv) {
-  const files = argv.slice(2);
+  const files = argv.slice(2).filter((arg) => !arg.startsWith('--record='));
+  const flag = argv.find((arg) => arg.startsWith('--record='));
+  recordArg = flag ? flag.slice('--record='.length) : null;
   if (files.length === 0) {
-    process.stderr.write('usage: node scripts/check-listing.js <listing.md>...\n');
+    process.stderr.write('usage: node scripts/check-listing.js [--record=release/vc<N>.env] <listing.md>...\n');
     return 1;
   }
   let failed = false;
