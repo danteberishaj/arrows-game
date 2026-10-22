@@ -309,7 +309,8 @@ velocity-driven pan decay have no fixed duration and do not set bounds.
   (`BoardView.tsx:1477-1484`, `ArrowsBoardView.kt:660-667,990`). Duration is 120 ms + 0.35 ms per
   screen point travelled, clamped to 180–320 ms (`exitAnimationConfig.ts:19,26-28,41-46`); web
   drives it with `withTiming` (`BoardView.tsx:1468`). The trail is 0.26 cell wide
-  (`exitAnimationConfig.ts:109`). Each exit plays a pop from a pentatonic ladder `pop0…pop7.wav`
+  (`exitAnimationConfig.ts:109`). Each exit plays a pop from a pentatonic ladder `pop0…pop7.wav` (one real CC0 recording, Freesound
+  #527522 by Narjara, resampled by `scripts/build-exit-pops.py`)
   that climbs one step per exit within 1200 ms (`src/ui/exitCombo.ts:8-9,20-30`; clips in
   `src/ui/audio.ts:13-20`, played by the native `ArrowsFeedback` module in installed builds,
   `audio.ts:5-11`).
