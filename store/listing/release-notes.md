@@ -4,6 +4,20 @@ One section per release, newest first. Paste the block under "en-US" into Play C
 (limit 500 characters per language). Each line names only what is new since the previous release; check it against that
 release's recipe flag list (artifacts/ART-SKINS-08/release/build-aab<N>.sh) before pasting.
 
+## 1.0.0 (19) — 2026-10-22, tag release/vc19 (da71d6d)
+
+New since vc18: the arrow-exit pop sound (a real recording), META_LARGE_SCREENS (tablets and foldables can rotate), the
+consent gate (no visible change while AdMob is suspended). 
+
+en-US:
+
+```
+What's new:
+• The satisfying pop is back when an arrow slides away, with a rising pitch as you chain taps.
+• Tablets and foldables can now rotate and use the whole screen. Phones stay upright.
+• Small fixes and polish.
+```
+
 ## 1.0.0 (18) — 2026-10-13, tag release/vc18 (45c08f6)
 
 New since vc17: META_THEME_SYSTEM, META_HIGH_CONTRAST, META_SETTINGS_HOW_TO_PLAY, META_SHARE_CARD_LEVEL,
