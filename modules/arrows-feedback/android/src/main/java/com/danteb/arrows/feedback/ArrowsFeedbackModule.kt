@@ -15,7 +15,7 @@ import kotlin.random.Random
  *
  * A single SoundPool replaces one ExoPlayer + MediaSession per effect. Sounds
  * load before gameplay. Exit pops are allowed to overlap (a fast player taps
- * every ~300 ms and each pop is 160 ms) and get a little random pitch and
+ * every ~300 ms and each pop is 44-111 ms) and get a little random pitch and
  * level so no two consecutive exits are identical; the other effects restart
  * their previous stream. Haptics use the Activity's native view feedback path
  * instead of allocating a Promise-backed Vibrator request, so they follow the

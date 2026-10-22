@@ -6,8 +6,8 @@ import { EXIT_COMBO_STEPS } from './exitCombo';
  * Expo Audio fallback (web and Expo Go; installed builds use the native
  * ArrowsFeedback module). Plays the exit pop at the combo's pitch step, a low
  * thud on a blocked tap, a kalimba arpeggio on a win and a chirp per star.
- * The clips are synthesized by scripts/generate-sfx.js, so nothing here is a
- * recording. Honours SaveSystem.soundOn.
+ * The exit pops are one real recording resampled (scripts/build-exit-pops.py); the other clips
+ * are synthesized by scripts/generate-sfx.js. Honours SaveSystem.soundOn.
  */
 const sources = {
   pop0: require('../../assets/audio/pop0.wav'),
