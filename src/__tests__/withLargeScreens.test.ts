@@ -16,6 +16,7 @@ const plugin = require('../../plugins/withLargeScreens') as ((config: Config) =>
   addPhonePortraitLock: (contents: string) => string;
   removeScreenOrientation: <T>(manifest: T) => T;
   PHONE_LOCK_TAG: string;
+  RELOCK_TAG: string;
 };
 const { AndroidConfig } = require('expo/config-plugins') as typeof import('expo/config-plugins');
 
@@ -106,13 +107,41 @@ test('flag "1": the MainActivity mod inserts the phone lock exactly once, before
   expect(onCreate).toBeGreaterThan(-1);
   expect(lock).toBeGreaterThan(onCreate);
   expect(lock).toBeLessThan(superCall);
-  // Nothing else changed: dropping the tagged block and the import gives back the fixture byte for byte.
+  // Nothing else changed: dropping the tagged blocks and the imports gives back the fixture byte for byte.
   const stripped = src
     .replace(/^[ \t]*\/\/ @generated begin arrows-large-screens[\s\S]*?\/\/ @generated end arrows-large-screens\n/m, '')
-    .replace('import android.content.pm.ActivityInfo\n', '');
+    .replace(/\n[ \t]*\/\/ @generated begin arrows-fold-relock[\s\S]*?\/\/ @generated end arrows-fold-relock\n/, '')
+    .replace('import android.content.pm.ActivityInfo\n', '')
+    .replace('import android.content.res.Configuration\n', '');
   expect(stripped).toBe(mainActivityFixture);
   // No API deprecated in Android 15 (status/nav bar colour setters).
   expect(src).not.toMatch(/setStatusBarColor|setNavigationBarColor|setNavigationBarDividerColor/);
+});
+
+test('flag "1": a fold that changes size without recreating the activity re-checks the phone lock', async () => {
+  // R11-9 (2026-10-29, Pixel 8 Pro AVD, API 36): `wm size` sw600 -> sw448 at unchanged density kept the same
+  // ActivityRecord (configChanges lists screenSize|smallestScreenSize), requestedOrientation stayed UNSPECIFIED and a
+  // landscape request rotated the display on a phone-size screen. onCreate alone never sees that change.
+  process.env.EXPO_PUBLIC_META_LARGE_SCREENS = '1';
+  const out = plugin(baseConfig());
+  const result = (await runMod(out, 'mainActivity', { contents: mainActivityFixture, language: 'kt', path: 'MainActivity.kt' })) as {
+    contents: string;
+  };
+  const src = result.contents;
+  expect(count(src, plugin.RELOCK_TAG)).toBe(2);
+  expect(count(src, 'override fun onConfigurationChanged(newConfig: Configuration) {')).toBe(1);
+  expect(count(src, 'import android.content.res.Configuration')).toBe(1);
+  const handler = src.slice(src.indexOf('override fun onConfigurationChanged('), src.indexOf(`// @generated end ${plugin.RELOCK_TAG}`));
+  // super first (ReactActivity forwards the change to React Native), then the same < 600 dp line as onCreate, both ways:
+  // folding to a phone screen locks portrait, unfolding to a large screen releases it.
+  expect(handler.indexOf('super.onConfigurationChanged(newConfig)')).toBeGreaterThan(-1);
+  expect(handler.indexOf('super.onConfigurationChanged(newConfig)')).toBeLessThan(handler.indexOf('requestedOrientation'));
+  expect(handler).toMatch(/if \(newConfig\.smallestScreenWidthDp < 600\) ActivityInfo\.SCREEN_ORIENTATION_PORTRAIT/);
+  expect(handler).toMatch(/else ActivityInfo\.SCREEN_ORIENTATION_UNSPECIFIED/);
+  expect(handler).toMatch(/if \(requestedOrientation != want\) requestedOrientation = want/);
+  // The override is a member of MainActivity: it sits after onCreate, and the class's closing brace still ends the file.
+  expect(src.indexOf('override fun onConfigurationChanged(')).toBeGreaterThan(src.indexOf('override fun invokeDefaultOnBackPressed('));
+  expect(src.trimEnd().endsWith('\n}')).toBe(true);
 });
 
 test('the insertion is idempotent: applying it to its own output changes nothing', () => {
@@ -127,6 +156,10 @@ test('a missing anchor throws a clear error instead of shipping an unlocked phon
   expect(() => plugin.addPhonePortraitLock(noOnCreate)).toThrow(/withLargeScreens: .*onCreate/);
   const noPackage = mainActivityFixture.replace(/^package .*$/m, '');
   expect(() => plugin.addPhonePortraitLock(noPackage)).toThrow(/withLargeScreens: .*package/);
+  const noClassEnd = mainActivityFixture.trimEnd().replace(/\n\}$/, '\n  }');
+  expect(() => plugin.addPhonePortraitLock(noClassEnd)).toThrow(/withLargeScreens: .*closing brace/);
+  const ownHandler = mainActivityFixture.replace('  override fun getMainComponentName', '  override fun onConfigurationChanged(c: Configuration) {}\n  override fun getMainComponentName');
+  expect(() => plugin.addPhonePortraitLock(ownHandler)).toThrow(/withLargeScreens: .*onConfigurationChanged/);
 });
 
 test('a Java MainActivity throws (the snippet is Kotlin)', async () => {
