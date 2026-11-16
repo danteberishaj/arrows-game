@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Fredoka;src:url(../fonts/fredoka-latin.woff2) format('woff2');font-weight:300 700}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:5400px;height:1920px;overflow:hidden;background:#0E0C18}
+#pano{position:relative;width:5400px;height:1920px;overflow:hidden;font-family:Fredoka,sans-serif;
+  background:
+    radial-gradient(900px 900px at 1080px 1250px, rgba(109,74,255,.55), transparent 70%),
+    radial-gradient(800px 800px at 2160px 300px, rgba(255,79,139,.30), transparent 70%),
+    radial-gradient(1000px 1000px at 3240px 1400px, rgba(109,74,255,.50), transparent 70%),
+    radial-gradient(800px 800px at 4320px 350px, rgba(70,160,255,.28), transparent 70%),
+    radial-gradient(900px 900px at 5400px 1300px, rgba(255,79,139,.35), transparent 70%),
+    radial-gradient(900px 900px at 0px 400px, rgba(70,160,255,.25), transparent 70%),
+    linear-gradient(180deg,#151229 0%,#0E0C18 60%,#120E24 100%)}
+#pano::before{content:"";position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,.07) 2.5px, transparent 3px);background-size:44px 44px}
+.frame{position:absolute;top:0;width:1080px;height:1920px}
+.head{position:absolute;left:60px;right:60px;top:130px;text-align:center;color:#fff;z-index:5}
+.head h1{font-weight:700;font-size:128px;line-height:1.0;letter-spacing:-1px}
+.head h1 em{font-style:normal;background:linear-gradient(90deg,#A98BFF,#FF6FA3);-webkit-background-clip:text;color:transparent}
+.head p{margin-top:28px;font-weight:500;font-size:44px;line-height:1.25;color:#C9C2EA}
+.phone{position:absolute;width:760px;height:1520px;border-radius:96px;padding:18px;
+  background:linear-gradient(145deg,#3A3550,#16131F 40%,#2A2640);
+  box-shadow:0 0 0 3px rgba(255,255,255,.10) inset,0 60px 120px rgba(0,0,0,.6),0 0 140px rgba(120,90,255,.35);z-index:3}
+.phone .scr{width:100%;height:100%;border-radius:80px;overflow:hidden;background:#000}
+.phone img{width:100%;height:103.4%;object-fit:cover;object-position:top;display:block;transform:translateY(-3.29%)}
+.card{position:absolute;border-radius:48px;overflow:hidden;box-shadow:0 40px 90px rgba(0,0,0,.55);z-index:4}
+.card img{position:absolute;display:block}
+svg.st{position:absolute;z-index:6;overflow:visible;filter:drop-shadow(0 26px 30px rgba(0,0,0,.45))}
+/* variant C: frameless floating screen */
+.v-C .phone{background:none;padding:0;box-shadow:0 50px 120px rgba(0,0,0,.65),0 0 160px rgba(120,90,255,.45)}
+.v-C .phone .scr{border-radius:56px}
+</style></head>
+<body><div id="pano"></div>
+<script>
+const R='file:///Users/gentlegen/Desktop/Projects/arrows-game/store/screenshots/';
+const A=R+'set-a-default/', B=R+'set-b-styles/';
+const V=(location.hash||'#A').slice(1);
+const frames=[
+ {h:'Clear the <em>Picture</em>',p:'Every level is a picture made of arrows',img:A+'03-rocket-board-midplay-inknight-af9a4467.png',tilt:-6},
+ {h:'Tap the <em>Free</em> Arrows',p:'Slide them off the board. Mind the lanes.',img:A+'04-heart-board-midplay-daylight-af9a4467.png',tilt:5},
+ {h:'No Timers.<br><em>No Rush.</em>',p:'Three hearts per level, your own pace',img:A+'06-win-panel-inknight-af9a4467.png',tilt:-4},
+ {h:'A New Board <em>Every Level</em>',p:'Stars, cats, rockets, hearts and more',fan:[A+'05-cat-board-midplay-daylight-af9a4467.png',A+'02-dense-star-board-daylight-af9a4467.png',A+'04-heart-board-midplay-daylight-af9a4467.png']},
+ {h:'Unlock <em>Cute Styles</em>',p:'Collect arrow styles as you play',img:B+'01-critter-board-daylight-e0ce6d6b.png',tilt:5,card:B+'05-alt-your-styles-daylight-e0ce6d6b.png'},
+];
+const pano=document.getElementById('pano'); pano.className='v-'+V;
+function phone(img,x,y,w,rot,extra=''){
+  const h=w*2, d=document.createElement('div'); d.className='phone';
+  const pad=V==='C'?0:18*w/760, rad=V==='C'?56*w/760:96*w/760;
+  Object.assign(d.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px',padding:pad+'px',borderRadius:rad+'px',
+    transform:(V==='C'?`perspective(2600px) rotateY(${rot*2.4}deg) rotateZ(${rot*0.5}deg)`:`rotate(${rot}deg)`)+extra});
+  d.innerHTML=`<div class="scr" style="border-radius:${V==='C'?56*w/760:80*w/760}px"><img src="${img}"></div>`; return d;
+}
+frames.forEach((f,i)=>{
+  const fr=document.createElement('div'); fr.className='frame'; fr.style.left=i*1080+'px';
+  fr.innerHTML=`<div class="head"><h1>${f.h}</h1><p>${f.p}</p></div>`;
+  const big=V==='B';
+  const w=big?880:760, x=(1080-w)/2, y=big?600:560, rot=big?0:(f.tilt||0);
+  if(f.fan){
+    fr.appendChild(phone(f.fan[0],60,760,500,-11));
+    fr.appendChild(phone(f.fan[2],520,760,500,11));
+    fr.appendChild(phone(f.fan[1],(1080-580)/2,620,580,0));
+  } else fr.appendChild(phone(f.img,x,y,w,rot));
+  if(f.card){ // style list card cropped from the capture, breaking out of the phone edge
+    const c=document.createElement('div'); c.className='card';
+    const cw=560, sc=cw/1114; // card region in the 1440x2880 capture: x163..1277, y514..2280
+    Object.assign(c.style,{left:'30px',top:'1130px',width:cw+'px',height:1386*sc+'px',transform:'rotate(-6deg)'});
+    c.innerHTML=`<img src="${f.card}" style="width:${1440*sc}px;left:${-163*sc}px;top:${-514*sc}px">`;
+    fr.appendChild(c);
+  }
+  pano.appendChild(fr);
+});
+// 3D-ish arrow stickers: chunky arrow with a darker extrusion and a highlight
+function arrow(x,y,s,rot,c1,c2,dark){
+  const id='g'+Math.random().toString(36).slice(2);
+  const path='M10 70 H150 V30 L240 100 L150 170 V130 H10 Z';
+  return `<svg class="st" style="left:${x}px;top:${y}px;width:${250*s}px;height:${200*s}px;transform:rotate(${rot}deg)" viewBox="0 0 250 200">
+  <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
+  <path d="${path}" transform="translate(0 14)" fill="${dark}" stroke="${dark}" stroke-width="18" stroke-linejoin="round"/>
+  <path d="${path}" fill="url(#${id})" stroke="url(#${id})" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M22 78 H158 V52" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function heart(x,y,s,rot){
+  return `<svg class="st" style="left:${x}px;top:${y}px;width:${200*s}px;height:${190*s}px;transform:rotate(${rot}deg)" viewBox="0 0 200 190">
+  <defs><radialGradient id="hg" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#FF8DB3"/><stop offset=".6" stop-color="#F0386F"/><stop offset="1" stop-color="#B81A4C"/></radialGradient></defs>
+  <path d="M100 180 C20 120 0 80 20 45 C40 10 85 15 100 50 C115 15 160 10 180 45 C200 80 180 120 100 180Z" fill="url(#hg)"/>
+  <ellipse cx="62" cy="58" rx="22" ry="13" transform="rotate(-35 62 58)" fill="rgba(255,255,255,.6)"/></svg>`;
+}
+const S = V==='B' ? 0.8 : 1;
+pano.insertAdjacentHTML('beforeend',[
+  arrow(820,1020,1.5*S,-28,'#B79BFF','#6D4AFF','#3E23B8'),     // seam 1|2
+  arrow(-60,1500,1.1*S,160,'#7FD3FF','#3B8CF0','#1E4F9A'),
+  heart(1880,1180,1.2*S,14),                                    // seam 2|3
+  arrow(1960,1620,1.0*S,-200,'#FFC27A','#F08A2A','#A2520F'),
+  arrow(2980,980,1.3*S,20,'#8FF0B0','#2FBF6A','#167540'),      // seam 3|4
+  heart(3110,1560,0.9*S,-12),
+  arrow(4060,560,1.1*S,-150,'#FF9CC2','#F0508A','#A0204F'),   // seam 4|5
+  arrow(5160,1580,1.2*S,-40,'#B79BFF','#6D4AFF','#3E23B8'),
+].join(''));
+</script></body></html>
