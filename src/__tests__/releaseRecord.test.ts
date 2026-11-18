@@ -36,12 +36,20 @@ const reads = (name: string) => new RegExp(`process\\.env\\.${name}(?![A-Z0-9_])
 const readsAsOne = (name: string) => new RegExp(`process\\.env\\.${name}\\s*===\\s*'1'`);
 
 /** Never in a player build: perf/dev harness flags, Google's test ads, W7-01 consent fixtures, art-skin and capture builds. */
-const BANNED = /^EXPO_PUBLIC_(PERF_|DEV_|ADMOB_TEST_ADS$|CONSENT_FIXTURE$|ART_SKIN$|CAPTURE_DIAG$)/;
+const BANNED = /^EXPO_PUBLIC_(PERF_|DEV_|QA_|ADMOB_TEST_ADS$|CONSENT_FIXTURE$|ART_SKIN$|CAPTURE_DIAG$)/;
 
 const src = stripComments(sourceText(SRC));
 
 test('the vc18 record exists', () => {
   expect(recordFiles().map((f) => path.basename(f))).toContain('vc18.env');
+});
+
+// vc18 shipped without the gate (personalised ads, no UMP); every build after it, shipped or candidate, must fail
+// closed behind UMP. Records older than the newest are history and stay as shipped.
+test('the newest record (shipped or candidate) turns the consent gate on', () => {
+  const newest = recordFiles().at(-1);
+  expect(newest).toBeDefined();
+  expect(readRecord(newest!).flags.get('EXPO_PUBLIC_CONSENT_GATE')).toBe('1');
 });
 
 for (const file of recordFiles()) describe(path.basename(file), () => {
@@ -58,7 +66,7 @@ for (const file of recordFiles()) describe(path.basename(file), () => {
     expect(wrong).toEqual([]);
   });
 
-  test('no PERF_, DEV_, ADMOB_TEST_ADS, CONSENT_FIXTURE, ART_SKIN or CAPTURE_DIAG flag', () => {
+  test('no PERF_, DEV_, QA_, ADMOB_TEST_ADS, CONSENT_FIXTURE, ART_SKIN or CAPTURE_DIAG flag', () => {
     expect([...flags.keys()].filter((name) => BANNED.test(name))).toEqual([]);
   });
 

@@ -36,4 +36,16 @@ export function chooseArrowStyle(id: string): void {
   // Same guarded/coalesced store as progress; a failed hydrate permits memory changes only.
   store.setInt(ARROW_SKIN_KEY, next.numericId);
   publish(next);
+  introPending = next === CLASSIC_STYLE ? null : next.id;
+}
+
+/**
+ * Skin showcase: the first board after the player equips a new style eases in once. In memory only (no save key):
+ * equipping marks it, the next board mount consumes it.
+ */
+let introPending: string | null = null;
+export function consumeSkinIntro(id: string): boolean {
+  if (introPending !== id) return false;
+  introPending = null;
+  return true;
 }

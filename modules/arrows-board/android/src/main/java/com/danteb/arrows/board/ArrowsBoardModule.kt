@@ -51,6 +51,8 @@ class ArrowsBoardModule : Module() {
       Prop("skinConfig") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinConfig(value) } }
       Prop("skinGeometry") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinGeometry(value) } }
       Prop("skinFeedback") { view: ArrowsBoardView, value: String -> view.measureOpeningProp { view.setSkinFeedback(value) } }
+      // WINTER-01 seasonal exit snow: `mode,dark,diag`; never set outside the winter window.
+      Prop("seasonFx") { view: ArrowsBoardView, value: String -> view.setSeasonFx(value) }
 
       // POLISH-T8 (#9): once per props commit, after every setter of that commit ran.
       OnViewDidUpdateProps { view: ArrowsBoardView ->

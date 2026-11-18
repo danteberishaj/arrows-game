@@ -15,6 +15,8 @@ import { META_BANNER, META_DAILY, META_GALLERY, META_SETTINGS_SHEET, META_STREAK
 import { PERF_MODE } from '../perfMode';
 import { ART_PAPER_TEXTURE_ENABLED, ART_PAPER_TEXTURE_OPACITY } from './artConfig';
 import { startMenuCollectionSync } from './collectionSync';
+import { WinterMenuDecor } from './winter/WinterMenuDecor';
+import { QaWinterChips } from './winter/QaWinterChips';
 import {
   DAILY_ENTRY_DONE_LABEL,
   DAILY_ENTRY_LABEL,
@@ -274,6 +276,7 @@ export function HomeScreen({
           style={[StyleSheet.absoluteFill, PAPER_TEXTURE_FILL, { tintColor: p.ink, opacity: ART_PAPER_TEXTURE_OPACITY }]}
         />
       )}
+      <WinterMenuDecor dark={dark} />
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + HEADER_TOP }]}>
         {/* A11Y-LABELS: both toggles are switches named in words, with their state. */}
@@ -349,6 +352,8 @@ export function HomeScreen({
       )}
 
       {showBanner && <MenuBanner bottom={insets.bottom} onHeight={setBannerHeight} />}
+
+      <QaWinterChips palette={p} top={insets.top + HEADER_TOP} />
 
       {META_SETTINGS_SHEET && settingsOpen && (
         <SettingsSheet

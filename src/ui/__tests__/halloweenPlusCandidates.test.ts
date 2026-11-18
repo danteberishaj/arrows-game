@@ -27,8 +27,9 @@ describe('not wired: candidates never reach players', () => {
       expect(ARROW_STYLES.some(style => style.id === s.id || style.name === s.name || style.numericId === s.numericId)).toBe(false);
       expect(REWARD_CATALOGUE.some(e => e.refId === s.id || e.name === s.name)).toBe(false);
     }
-    // Mummy 21 and Potion Slime 22 shipped (owner pick 2026-10-06); the bat's proposed 23 is still unclaimed.
-    expect(Math.max(...ARROW_STYLES.map(s => s.numericId))).toBe(22);
+    // Mummy 21 and Potion Slime 22 shipped (owner pick 2026-10-06); the bat's proposed 23 is still unclaimed
+    // (NEW-YEAR-01 / WINTER-01 skipped it: 24–28).
+    expect(ARROW_STYLES.map(s => s.numericId)).not.toContain(23);
     expect(HALLOWEEN_PLUS_CANDIDATES.map(c => c.candidate)).toEqual(['little-bat', 'little-bat']);
   });
   test('no app source imports the candidates module (Metro never bundles it)', () => {

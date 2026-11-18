@@ -15,7 +15,9 @@ class Mem implements IntStore {
 }
 const day = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h, 0, 0);
 const PUMPKIN = 18, GHOST = 19, CANDY = 20, MUMMY = 21, SLIME = 22;
-const OCT = day(2026, 10, 15), DEC = day(2026, 12, 10);
+const OCT = day(2026, 10, 15), JUNE = day(2026, 6, 10); // JUNE: outside every season
+const HALLOWEEN_IDS = [PUMPKIN, GHOST, CANDY, MUMMY, SLIME];
+const LATER = [24, 25, 26, 27, 28, 29, 30, 31]; // NEW-YEAR-01 / WINTER-01 (winterSkins.test.ts), CHRISTMAS-01 (christmasSkins.test.ts)
 
 describe('season window (local time, inclusive, may wrap the year)', () => {
   const halloween: Season = { id: 'h', name: 'Halloween', start: '10-01', end: '11-07' };
@@ -45,8 +47,8 @@ describe('season window (local time, inclusive, may wrap the year)', () => {
 describe('catalogue: seasonal styles are book-only', () => {
   test('Halloween is 10-01..11-07 and covers Pumpkin, Ghost, Candy Corn, Mummy and Potion Slime at 20 petals', () => {
     expect(HALLOWEEN).toEqual({ id: 'halloween', name: 'Halloween', start: '10-01', end: '11-07' });
-    expect([...SEASONAL_REWARD_IDS]).toEqual([PUMPKIN, GHOST, CANDY, MUMMY, SLIME]); // HALLOWEEN-PLUS appended 21, 22
-    for (const id of SEASONAL_REWARD_IDS) {
+    expect([...SEASONAL_REWARD_IDS]).toEqual([PUMPKIN, GHOST, CANDY, MUMMY, SLIME, ...LATER]); // HALLOWEEN-PLUS appended 21, 22
+    for (const id of HALLOWEEN_IDS) {
       const entry = REWARD_CATALOGUE.find(e => e.rewardId === id)!;
       expect(entry.season).toBe(HALLOWEEN);
       expect(seasonFor(id)).toBe(HALLOWEEN);
@@ -55,25 +57,25 @@ describe('catalogue: seasonal styles are book-only', () => {
       expect(REWARD_PATH_IDS).not.toContain(id);
       expect(FREE_REWARD_IDS).not.toContain(id);
     }
-    expect(REWARD_CATALOGUE.filter(e => e.season).map(e => e.refId)).toEqual(['pumpkin', 'ghost', 'candy-corn', 'mummy', 'potion-slime']);
+    expect(REWARD_CATALOGUE.filter(e => e.season === HALLOWEEN).map(e => e.refId)).toEqual(['pumpkin', 'ghost', 'candy-corn', 'mummy', 'potion-slime']);
   });
   test('visibility: off hides every seasonal style; on shows owned all year, unowned only in season', () => {
     const none = () => false;
     const ownsPumpkin = (id: number) => id === PUMPKIN;
-    for (const id of SEASONAL_REWARD_IDS) {
+    for (const id of HALLOWEEN_IDS) {
       expect(isStyleVisible(id, () => true, false, OCT)).toBe(false);
       expect(isStyleVisible(id, none, true, OCT)).toBe(true);
-      expect(isStyleVisible(id, none, true, DEC)).toBe(false);
+      expect(isStyleVisible(id, none, true, JUNE)).toBe(false);
     }
-    expect(isStyleVisible(PUMPKIN, ownsPumpkin, true, DEC)).toBe(true);
-    expect(isStyleVisible(6, none, false, DEC)).toBe(true); // ordinary styles never depend on the date
+    expect(isStyleVisible(PUMPKIN, ownsPumpkin, true, JUNE)).toBe(true);
+    expect(isStyleVisible(6, none, false, JUNE)).toBe(true); // ordinary styles never depend on the date
   });
   test('"N of total" counts only visible styles (never a hard-coded 18 or 21)', () => {
     const ordinary = ARROW_STYLES.filter(s => !SEASONAL_REWARD_IDS.includes(s.numericId)).length;
     const owned = (id: number) => [0, 2, 4, PUMPKIN].includes(id);
     expect(visibleStyleCounts(owned, false, OCT)).toEqual({ owned: 3, total: ordinary });
-    expect(visibleStyleCounts(owned, true, OCT)).toEqual({ owned: 4, total: ordinary + SEASONAL_REWARD_IDS.length });
-    expect(visibleStyleCounts(owned, true, DEC)).toEqual({ owned: 4, total: ordinary + 1 });
+    expect(visibleStyleCounts(owned, true, OCT)).toEqual({ owned: 4, total: ordinary + HALLOWEEN_IDS.length });
+    expect(visibleStyleCounts(owned, true, JUNE)).toEqual({ owned: 4, total: ordinary + 1 });
   });
 });
 
@@ -96,7 +98,7 @@ describe('ledger: seasonal purchases and the path', () => {
     const L = load(); const s = new Mem(); s.m.set('arrows_petals', 99);
     L.initializeRewardLedger(s, true, opts);
     s.writes.length = 0;
-    expect(L.buyReward(GHOST, DEC)).toBe('unavailable');
+    expect(L.buyReward(GHOST, JUNE)).toBe('unavailable');
     expect(L.buyReward(CANDY, day(2026, 11, 8, 0))).toBe('unavailable');
     expect(L.isRewardOwned(GHOST)).toBe(false);
     expect(L.getRewardState()!.petals).toBe(99);
@@ -129,8 +131,8 @@ describe('ledger: seasonal purchases and the path', () => {
     const L2 = load(); const s2 = new Mem();
     s2.m.set('arrows_rewards_owned_lo', 1 << PUMPKIN);
     L2.initializeRewardLedger(s2, true, opts);
-    L2.recordRewardClear('campaign', true, DEC);
-    const on = L2.recordRewardClear('campaign', false, DEC)!.unlock!;
+    L2.recordRewardClear('campaign', true, JUNE);
+    const on = L2.recordRewardClear('campaign', false, JUNE)!.unlock!;
     expect([on.ownedSkins, on.totalSkins]).toEqual([5, ordinary + 1]);
     expect(L2.getRewardState()!.seasons).toBe(true);
   });

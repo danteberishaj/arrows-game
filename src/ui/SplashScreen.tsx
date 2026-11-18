@@ -3,7 +3,6 @@ import { AppState, Pressable, StyleSheet, useWindowDimensions } from 'react-nati
 import Animated, {
   Easing,
   ReduceMotion,
-  runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -12,12 +11,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
+import { scheduleOnRN } from 'react-native-worklets';
+import { META_MOTION_POLISH } from '../featureFlags';
+import { EASE_OUT } from './motionTokens';
 import { useStopWhenScreenLeaves } from './screenHandoff';
 import { createSplashBackstop, type SplashBackstop } from './splashBackstop';
 import { Palette } from './theme';
 import { Wordmark } from './Wordmark';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+/**
+ * MOTION-AUDIT (META_MOTION_POLISH): the springs get mass 1 (Reanimated 4 defaults to 4, which doubled their wobble),
+ * and the fade-out is a 240 ms ease-out instead of a 380 ms ease-in. OFF: as before.
+ */
+const POLISH_SPRING_MASS = META_MOTION_POLISH ? { mass: 1 } : {};
+const OUT_MS = META_MOTION_POLISH ? 240 : 380;
+const OUT_EASING = META_MOTION_POLISH ? EASE_OUT : Easing.in(Easing.quad);
 /** TF-02 C: the splash's tap-to-skip surface, spoken. */
 const SKIP_A11Y_LABEL = 'Skip intro'; // OWNER-PICKED STARTING VALUE
 
@@ -82,6 +91,7 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     mark.value = withDelay(
       150,
       withSpring(1, {
+        ...POLISH_SPRING_MASS,
         damping: 14,
         stiffness: 120,
         reduceMotion: ReduceMotion.System,
@@ -102,6 +112,7 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     head.value = withDelay(
       1450,
       withSpring(1, {
+        ...POLISH_SPRING_MASS,
         damping: 12,
         stiffness: 260,
         reduceMotion: ReduceMotion.System,
@@ -112,11 +123,11 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     out.value = withDelay(
       2250,
       withTiming(1, {
-        duration: 380,
-        easing: Easing.in(Easing.quad),
+        duration: OUT_MS,
+        easing: OUT_EASING,
         reduceMotion: ReduceMotion.System,
       }, (f) => {
-        if (f) runOnJS(finish)();
+        if (f) scheduleOnRN(finish);
       }),
       ReduceMotion.System,
     );
@@ -131,7 +142,7 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
   const skip = () => {
     // A requested skip follows the system setting and therefore remains instant when reduced.
     out.value = withTiming(1, { duration: 180, reduceMotion: ReduceMotion.System }, (f) => {
-      if (f) runOnJS(finish)();
+      if (f) scheduleOnRN(finish);
     });
   };
 

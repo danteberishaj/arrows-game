@@ -97,7 +97,8 @@ const DEBUG_GEOGRAPHY: Readonly<Record<string, number>> = Object.freeze({
   OTHER: 4,
 });
 
-function isTestBuild(isDev: boolean, testAdsFlag: string | undefined): boolean {
+/** `__DEV__` or EXPO_PUBLIC_ADMOB_TEST_ADS=1: the builds that may fake geography, reset UMP or use a consent fixture. */
+export function isTestBuild(isDev: boolean, testAdsFlag: string | undefined): boolean {
   return isDev || testAdsFlag === '1';
 }
 

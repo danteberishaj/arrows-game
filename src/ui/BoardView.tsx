@@ -1,10 +1,12 @@
 import { skinPickerEnabled, useArrowStyle } from './useArrowStyle';
+import { consumeSkinIntro } from './arrowStyleSelection';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   cancelAnimation,
+  useAnimatedStyle,
   Easing,
   interpolateColor,
   ReduceMotion,
@@ -78,6 +80,7 @@ import {
 } from './missedMarks';
 import { CLEAR_REVEAL_FADE_IN_MS, CLEAR_REVEAL_MIN_STROKE_PT } from './artConfig';
 import { StaticBoardSurface } from './StaticBoardSurface';
+import { WinterBoardDecor } from './winter/WinterBoardDecor';
 import { clearRevealRemainingMs } from './clearRevealTiming';
 import { maskOutlinePath } from './silhouette';
 import { clearRevealStartMs } from './gameSessionLifecycle';
@@ -247,6 +250,8 @@ export interface BoardViewProps {
    * drawn once the clearing exit has left and CLEAR_REVEAL_HOLD_MS has passed. Absent, or no filled cell = none.
    */
   clearRevealMask?: readonly (readonly boolean[])[];
+  /** WINTER-01: picks the day/night snow layer under a Winter skin. */
+  darkMode?: boolean;
 }
 
 interface ExitingTrail {
@@ -318,8 +323,10 @@ export function BoardView({
   testID,
   gridLines = false,
   clearRevealMask,
+  darkMode = false,
 }: BoardViewProps) {
-  const selectedSkin = useArrowStyle().spec !== null;
+  const arrowSpec = useArrowStyle().spec;
+  const selectedSkin = arrowSpec !== null;
   const boardW = board.cols * CELL;
   const boardH = board.rows * CELL;
 
@@ -945,6 +952,8 @@ export function BoardView({
         onLayout={onLayout}
         {...(Platform.OS === 'web' ? ({ onWheel } as any) : null)}
       >
+        <WinterBoardDecor spec={arrowSpec} dark={darkMode} />
+        <SkinIntro reducedMotion={reducedMotion}>
         <BoardContent
           initialCameraScale={skinPickerEnabled() ? initialCamera(
             viewportSize.w, cameraViewport(viewportSize.w, viewportSize.h, cameraBottomInset).h,
@@ -972,9 +981,30 @@ export function BoardView({
           clearReveal={clearReveal}
           clearRevealOutline={clearRevealOutline}
         />
+        </SkinIntro>
       </View>
     </GestureDetector>
   );
+}
+
+const SKIN_INTRO_MS = 320;
+/**
+ * The first board after equipping a new style fades in (0 -> 1) and settles from 0.96 scale, once. The settle is
+ * deterministic: a JS timer pins the value to 1 shortly after, so the board can never stay faint if the UI-thread
+ * animation is interrupted (backgrounding). Same view either way, so the native board is never remounted.
+ */
+function SkinIntro({ reducedMotion, children }: { reducedMotion: boolean; children: React.ReactNode }) {
+  const styleId = useArrowStyle().id;
+  const [intro] = useState(() => consumeSkinIntro(styleId) && !reducedMotion);
+  const p = useSharedValue(intro ? 0 : 1);
+  useEffect(() => {
+    if (!intro) return;
+    p.value = withTiming(1, { duration: SKIN_INTRO_MS, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System });
+    const settle = setTimeout(() => { cancelAnimation(p); p.value = 1; }, SKIN_INTRO_MS + 120);
+    return () => clearTimeout(settle);
+  }, [intro, p]);
+  const style = useAnimatedStyle(() => ({ opacity: p.value, transform: [{ scale: 0.96 + 0.04 * p.value }] }));
+  return <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, style]}>{children}</Animated.View>;
 }
 
 /** GPU-backed board plus a web-only SVG layer for active feedback. */

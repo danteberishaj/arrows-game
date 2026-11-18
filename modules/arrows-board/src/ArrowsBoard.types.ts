@@ -10,6 +10,8 @@ export type ArrowsBoardViewProps = {
   skinConfig?: string;
   /** Android-only feedback indices/ids, omitted unless the skin is selected. */
   skinFeedback?: string;
+  /** WINTER-01 (Android only): seasonal exit snow, `mode,dark,diag` (mode 0 off, 1 full, 2 base dots). Omitted out of season. */
+  seasonFx?: string;
   /** One character per arrow: `1` is visible and every other value is hidden. */
   visibleMask: string;
   /** Native stroke/fill color in #RRGGBB form. */

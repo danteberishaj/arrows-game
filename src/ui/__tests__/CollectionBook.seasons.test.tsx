@@ -15,7 +15,7 @@ jest.mock('../rewardLedger', () => ({
 }));
 import { CollectionBook } from '../CollectionBook';
 
-const OCT = new Date(2026, 9, 15, 12), DEC = new Date(2026, 11, 10, 12);
+const OCT = new Date(2026, 9, 15, 12), JUNE = new Date(2026, 5, 10, 12);
 const base = { points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4, progress: .2,
   newMask: { lo: 0, hi: 0 }, canBuy: true, petals: 30, seasons: true };
 beforeEach(() => { mockBuy.mockReset(); mockOwned.clear(); [0, 2, 4, 6].forEach(id => mockOwned.add(id)); });
@@ -47,7 +47,7 @@ test('an owned seasonal style leaves the book; buying passes the date and shows 
 });
 
 test('out of season: unowned seasonal styles are hidden and no section is drawn', () => {
-  const { queryByTestId, queryByText } = render(<CollectionBook palette={Daylight} state={base} onUse={() => {}} now={DEC} />);
+  const { queryByTestId, queryByText } = render(<CollectionBook palette={Daylight} state={base} onUse={() => {}} now={JUNE} />);
   expect(queryByTestId('book-season-halloween')).toBeNull();
   expect(queryByTestId('book-tile-ghost')).toBeNull();
   expect(queryByText(/Halloween/)).toBeNull();
@@ -64,7 +64,7 @@ test('path complete but the season is open: the season section shows, not the em
   const { getByTestId, queryByTestId } = render(<CollectionBook palette={Daylight} state={{ ...base, next: null }} onUse={() => {}} now={OCT} />);
   getByTestId('book-season-halloween');
   expect(queryByTestId('book-empty')).toBeNull();
-  const off = render(<CollectionBook palette={Daylight} state={{ ...base, next: null }} onUse={() => {}} now={DEC} />);
+  const off = render(<CollectionBook palette={Daylight} state={{ ...base, next: null }} onUse={() => {}} now={JUNE} />);
   off.getByTestId('book-empty');
 });
 

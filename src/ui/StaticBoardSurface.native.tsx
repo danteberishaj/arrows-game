@@ -50,6 +50,8 @@ import type {
 } from './StaticBoardSurface.types';
 
 import { skinPickerEnabled, useArrowStyle } from './useArrowStyle';
+import { seasonFxPayload, useWinterLook } from './winter/winterLook';
+import { CAPTURE_DIAG } from '../perfMode';
 
 const PERF_EMPTY_BOARD =
   PERF_MODE && process.env.EXPO_PUBLIC_PERF_EMPTY_BOARD === '1';
@@ -119,6 +121,8 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
   const selectedSkin = style.spec !== null;
   // Gate is fixed for this bundle/platform; runtime Classic↔skin changes never alter hook order.
   const pickerEnabled = skinPickerEnabled();
+  const winterLook = useWinterLook();
+  const seasonFx = Platform.OS === 'android' ? seasonFxPayload(winterLook, background, CAPTURE_DIAG) : undefined;
   const skinScreenCell = pickerEnabled ? useSkinScreenCell(cellSize, initialCameraScale ?? 1, scale, style.spec) : cellSize;
   const boardStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -182,6 +186,7 @@ export const StaticBoardSurface = React.memo(function StaticBoardSurface({
               skinFeedback: [pressed?.nativeIndex ?? -1, shaking?.id ?? -1, shaking?.nativeIndex ?? -1,
                 blocker?.id ?? -1, blocker?.nativeIndex ?? -1, hint?.id ?? -1, hint?.nativeIndex ?? -1].join(','),
             } : {})}
+            {...(seasonFx ? { seasonFx } : {})}
             {...gridProps}
             {...markProps}
             style={StyleSheet.absoluteFill}

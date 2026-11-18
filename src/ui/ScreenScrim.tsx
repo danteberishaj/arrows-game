@@ -9,6 +9,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import { META_MOTION_POLISH } from '../featureFlags';
+import { EASE_OUT } from './motionTokens';
 import { awaitAdThenPanelBeat, ScrimTransition, type ScrimDriver } from './scrimTransition';
 
 /**
@@ -20,7 +22,9 @@ import { awaitAdThenPanelBeat, ScrimTransition, type ScrimDriver } from './scrim
 export const SCRIM_COVER_MS = 180; // OWNER-PICKED STARTING VALUE
 export const SCRIM_UNCOVER_MS = 180; // OWNER-PICKED STARTING VALUE
 /** Symmetric ease for both legs (a flat fade, no motion). */
-const SCRIM_EASING = Easing.inOut(Easing.quad); // OWNER-PICKED STARTING VALUE
+const SCRIM_EASING_BASE = Easing.inOut(Easing.quad); // OWNER-PICKED STARTING VALUE
+/** MOTION-AUDIT (META_MOTION_POLISH): the cover answers Next / Retry from its first frame (ease-out, not ease-in-out). */
+const SCRIM_EASING = META_MOTION_POLISH ? EASE_OUT : SCRIM_EASING_BASE;
 
 /**
  * Backstop margin added to each leg: the largest JS block measured across a

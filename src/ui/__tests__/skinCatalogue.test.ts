@@ -1,9 +1,13 @@
 import { ARROW_STYLES, SKIN_SPECS, arrowStyleForNumber } from '../skinSpecs';
 const names = ['Classic', 'Cinnamon Roll', 'Sherbet', 'Ink Pro', 'Candy Gloss', 'Jelly', 'Critter', 'Yarn', 'Paper Craft', 'Archery', 'Pixel', 'Neon Glass', 'Rainbow Ribbon', 'Clear Glass', 'Stained Glass', 'Campfire', 'Lava Rock', 'Strawberry Glazed', 'Pumpkin', 'Ghost', 'Candy Corn', 'Mummy', 'Potion Slime'];
 it('all styles (18 + the HALLOWEEN-01 pack + HALLOWEEN-PLUS Mummy/Potion Slime) have append-only numeric identities in registry order', () => {
-  expect(ARROW_STYLES.map(style => style.name)).toEqual(names);
-  expect(ARROW_STYLES.map(style => style.numericId)).toEqual(names.map((_,i) => i));
+  // NEW-YEAR-01 / WINTER-01 append 24–28; 23 is reserved for the unregistered Little Bat (resolves to Classic).
+  const later = ['Frosted Glass', 'Golden Ribbon', 'Confetti', 'Snowman', 'Snowfall', 'Candy Cane', 'Gingerbread', 'Fairy Lights']; // + CHRISTMAS-01 29–31
+  expect(ARROW_STYLES.map(style => style.name)).toEqual([...names, ...later]);
+  expect(ARROW_STYLES.map(style => style.numericId)).toEqual([...names.map((_,i) => i), 24, 25, 26, 27, 28, 29, 30, 31]); // CHRISTMAS-01: 29–31
   for(let id=0;id<names.length;id++) expect(arrowStyleForNumber(id).name).toBe(names[id]);
+  later.forEach((name, i) => expect(arrowStyleForNumber(24 + i).name).toBe(name));
+  expect(arrowStyleForNumber(23).id).toBe('classic');
   expect(arrowStyleForNumber(999).id).toBe('classic');
 });
 it('existing saved choices retain Classic 0, Cinnamon 1 and Sherbet 2', () => {

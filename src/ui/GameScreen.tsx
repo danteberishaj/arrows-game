@@ -17,6 +17,7 @@ import React, {
 } from 'react';
 import {
   AppState,
+  BackHandler,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   PixelRatio,
@@ -54,6 +55,7 @@ import { CAPTURE_DIAG } from '../perfMode';
 import {
   META_HEART_REFILL_POP,
   META_LEVEL_TRANSITION,
+  META_MOTION_POLISH,
   META_PANEL_MOTION,
   META_POST_CLEAR_TIMELINE,
   META_REVIEW_PROMPT,
@@ -88,6 +90,7 @@ import {
   pipPopKind,
 } from './heartPip';
 import { PressScale, pressSnapTransform } from './PressScale';
+import { useEffectUntilScreenLeaves } from './screenHandoff';
 import {
   clearRevealSlotMs, createDailySession, createLevelSession, createTutorialSession, emptyBoardHoldMs,
   levelGenVersion, LOSE_PANEL_DELAY_MS, WON_PANEL_DELAY_MS, wonPanelDelayMs,
@@ -119,6 +122,7 @@ import {
 import {
   FIRST_STAR_DELAY_MS,
   PANEL_EXIT_MS,
+  PANEL_EXIT_POLISH_MS,
   PANEL_LOSS_ENTER_MS,
   PANEL_WIN_ENTER_MS,
   STAR_STAGGER_MS,
@@ -568,6 +572,19 @@ export function GameScreen({
     onHome();
   }, [onHome]);
 
+  // MOTION-AUDIT M1: Android back does what the ‹ button does. Before, MainActivity's
+  // default moved the whole app to the launcher from inside a level (emulator-5556,
+  // artifacts/MOTION-AUDIT/06-back-strip.png). Stops when the screen starts leaving.
+  const onHomePressRef = useRef(onHomePress);
+  onHomePressRef.current = onHomePress;
+  useEffectUntilScreenLeaves(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onHomePressRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
   const onRemoved = useCallback(
     (cleared: boolean, exitVisibleMs: number) => {
       setAdShowFailed(false);
@@ -924,7 +941,7 @@ export function GameScreen({
     terminalTransition.reset();
     // W2-05: the panel stays mounted (touch-transparent, board locked) while
     // it fades out over the board it returns to.
-    panelPresence?.hide(reducedMotion ? 0 : PANEL_EXIT_MS);
+    panelPresence?.hide(reducedMotion ? 0 : META_MOTION_POLISH ? PANEL_EXIT_POLISH_MS : PANEL_EXIT_MS);
     setTerminalPending(false);
     heartsRef.current = 1;
     setHearts(1);
@@ -1269,6 +1286,7 @@ export function GameScreen({
       <BoardView
         board={level.board}
         palette={boardPalette}
+        darkMode={darkMode}
         onRemoved={onRemoved}
         onBlocked={onBlocked}
         clearRevealMask={ART_CLEAR_REVEAL_ENABLED ? level.mask : undefined}
@@ -1469,6 +1487,14 @@ const SPENT_PIP_STROKE = 2; // OWNER-PICKED STARTING VALUE
 /** The pip's spring back to rest, for the loss pop and (W2-07) the refill pop. */
 const HEART_PIP_SPRING = { damping: 9, stiffness: 240 } as const;
 /**
+ * MOTION-AUDIT (META_MOTION_POLISH): the springs here never set `mass`, and Reanimated 4's default is 4 (not 1), so
+ * the heart pop rang at damping ratio ~0.15 and the stars at ~0.17. Mass 1 gives the ratios their constants imply
+ * (0.29 / 0.34): still a pop, a shorter ring. OFF: no mass key, as before.
+ */
+const POLISH_SPRING_MASS = META_MOTION_POLISH ? { mass: 1 } : {};
+/** MOTION-AUDIT: a star starts from this scale, never from nothing (OFF: 0 as before). */
+const STAR_START_SCALE = META_MOTION_POLISH ? 0.5 : 0;
+/**
  * W2-07: with the flag ON the pop's start scale is written in a layout effect,
  * so it reaches the UI thread with the commit that changes the pip. The refill
  * commit comes from a passive effect (the panel's exit settling), whose own
@@ -1499,7 +1525,7 @@ const HeartPip = React.memo(function HeartPip({
     if (kind === 'none') return;
     k.value = kind === 'loss' ? HEART_PIP_LOSS_START_SCALE : HEART_PIP_REFILL_START_SCALE;
     // Decorative heart-pip scale follows the player's system setting.
-    k.value = withSpring(1, { ...HEART_PIP_SPRING, reduceMotion: ReduceMotion.System });
+    k.value = withSpring(1, { ...HEART_PIP_SPRING, ...POLISH_SPRING_MASS, reduceMotion: ReduceMotion.System });
   }, [filled, refillToken]);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: k.value }] }));
   return (
@@ -1572,6 +1598,7 @@ function Star({
     k.value = withDelay(
       delay,
       withSpring(1, {
+        ...POLISH_SPRING_MASS,
         damping: 11,
         stiffness: 260,
         reduceMotion: ReduceMotion.System,
@@ -1586,7 +1613,7 @@ function Star({
   }, [delay, feedbackEnabled, filled]);
   const style = useAnimatedStyle(() => ({
     opacity: k.value,
-    transform: [{ scale: k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
+    transform: [{ scale: STAR_START_SCALE + (1 - STAR_START_SCALE) * k.value }, { rotate: `${(1 - k.value) * -24}deg` }],
   }));
   const starColor = filled ? palette.accent : palette.starUnearned;
   const starType = big ? Type.starBig : Type.star;

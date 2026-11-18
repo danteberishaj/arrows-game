@@ -20,7 +20,7 @@ jest.mock('../useArrowStyle', () => ({ useArrowStyle: () => ({ id: 'classic' }),
 import { ArrowStyleOptions } from '../ArrowStyleOptions';
 import { REWARD_PATH } from '../rewardCatalogue';
 
-const OCT = new Date(2026, 9, 15, 12), DEC = new Date(2026, 11, 10, 12);
+const OCT = new Date(2026, 9, 15, 12), JUNE = new Date(2026, 5, 10, 12);
 const SEASONAL_NAMES = ['Pumpkin', 'Ghost', 'Candy Corn'];
 const ORDINARY = ARROW_STYLES.filter(s => !SEASONAL_REWARD_IDS.includes(s.numericId));
 const state = (extra: object) => ({ points: 4, owned: { lo: 0, hi: 0 }, reachedIndex: 1, next: REWARD_PATH[1], levelsToNext: 4,
@@ -36,7 +36,7 @@ test('in season: "Book · N" counts the visible seasonal styles too', () => {
 test('out of season: an owned seasonal style stays in "Your styles"; unowned ones leave the count', () => {
   mockOwned.add(18);
   mockState.current = state({});
-  const { getByText, getAllByRole } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} now={DEC} />);
+  const { getByText, getAllByRole } = render(<ArrowStyleOptions palette={Daylight} onBack={() => {}} now={JUNE} />);
   getByText('Your styles · 5'); getByText('Book · 14');
   expect(getAllByRole('radio').map(r => r.props.accessibilityLabel)).toEqual(['Classic', 'Sherbet', 'Candy Gloss', 'Critter', 'Pumpkin']);
   fireEvent.press(getByText('Book · 14'));

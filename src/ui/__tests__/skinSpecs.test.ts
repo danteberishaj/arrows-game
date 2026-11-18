@@ -4,7 +4,9 @@ import { ArrowPath, Direction } from '../../core';
 import { BoardArrowArtCache } from '../arrowGeometry';
 
 it.each(Object.values(SKIN_SPECS))('$id selection carries the complete spec once, with safe bounds', spec => {
-  expect(JSON.parse(SKIN_SPEC_JSON[spec.id])).toEqual(spec);
+  // WINTER-01: JS-only `board.decor` is stripped from the native payload (winterSkins.test.ts).
+  const { decor: _decor, ...board } = spec.board ?? { light: '', dark: '' };
+  expect(JSON.parse(SKIN_SPEC_JSON[spec.id])).toEqual(spec.board ? { ...spec, board } : spec);
   expect(skinSpecFor(spec.id)).toBe(spec);
   expect(spec.head.tipPastCentre).toBeLessThanOrEqual(.46);
   expect(spec.tail.radius + spec.tail.rim).toBeLessThanOrEqual(.44);

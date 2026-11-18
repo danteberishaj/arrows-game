@@ -2,6 +2,7 @@ package com.danteb.arrows.feedback
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -31,6 +32,8 @@ class ArrowsFeedbackModule : Module() {
   private val streamsByName = mutableMapOf<String, Int>()
   private var activityForeground = true
   private var destroyed = false
+  private var ambience: MediaPlayer? = null
+  private var ambienceFile: String? = null
 
   override fun definition() = ModuleDefinition {
     Name("ArrowsFeedback")
@@ -51,6 +54,28 @@ class ArrowsFeedbackModule : Module() {
       hapticConstant(event)?.let(::performHaptic)
     }
 
+    // WINTER-01 ambience: one looping bed from assets/audio (e.g. "ambience/winter-fireside.m4a"). JS owns the
+    // fades (it calls ambienceVolume in small steps); everything here is best-effort and never throws to JS.
+    Function("ambiencePlay") { file: String ->
+      playAmbience(file)
+    }
+
+    Function("ambienceVolume") { volume: Double ->
+      synchronized(lock) {
+        try {
+          ambience?.setVolume(volume.toFloat(), volume.toFloat())
+        } catch (_: RuntimeException) {}
+      }
+    }
+
+    Function("ambiencePause") {
+      synchronized(lock) {
+        try {
+          ambience?.takeIf { it.isPlaying }?.pause()
+        } catch (_: RuntimeException) {}
+      }
+    }
+
     OnActivityEntersForeground {
       synchronized(lock) {
         activityForeground = true
@@ -59,10 +84,16 @@ class ArrowsFeedbackModule : Module() {
 
     OnActivityEntersBackground {
       stopActiveStreams()
+      synchronized(lock) {
+        try {
+          ambience?.takeIf { it.isPlaying }?.pause()
+        } catch (_: RuntimeException) {}
+      }
     }
 
     OnDestroy {
       releaseSoundPool(permanent = true)
+      releaseAmbience()
     }
   }
 
@@ -165,6 +196,47 @@ class ArrowsFeedbackModule : Module() {
     } catch (_: RuntimeException) {
       streamsByName.remove(name)
     }
+  }
+
+  /** Starts (or resumes) the looping bed; a different file replaces the current one. Volume is left to JS. */
+  private fun playAmbience(file: String) {
+    val context = appContext.reactContext ?: return
+    synchronized(lock) {
+      if (destroyed || !activityForeground) return
+      try {
+        if (ambienceFile != file) {
+          releaseAmbienceLocked()
+          val mp = MediaPlayer()
+          mp.setAudioAttributes(
+            AudioAttributes.Builder()
+              .setUsage(AudioAttributes.USAGE_GAME)
+              .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+              .build()
+          )
+          context.assets.openFd(file).use { mp.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+          mp.isLooping = true
+          mp.setVolume(0f, 0f)
+          mp.prepare() // ~36 s local AAC: a few ms
+          ambience = mp
+          ambienceFile = file
+        }
+        ambience?.takeIf { !it.isPlaying }?.start()
+      } catch (_: Exception) {
+        releaseAmbienceLocked() // Decorative: a missing/corrupt bed stays silent.
+      }
+    }
+  }
+
+  private fun releaseAmbience() = synchronized(lock) { releaseAmbienceLocked() }
+
+  /** Must be called while holding [lock]. */
+  private fun releaseAmbienceLocked() {
+    val mp = ambience
+    ambience = null
+    ambienceFile = null
+    try {
+      mp?.release()
+    } catch (_: RuntimeException) {}
   }
 
   private fun performHaptic(constant: Int) {

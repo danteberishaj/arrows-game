@@ -52,6 +52,12 @@ export const REWARD_PATH: readonly RewardEntry[] = PATH.map(([id, cost, chips], 
 export const REWARD_PATH_IDS: readonly number[] = REWARD_PATH.map(e => e.rewardId);
 /** OWNER-APPROVED (HALLOWEEN-01 brief): the Halloween window, inclusive, phone local time. */
 export const HALLOWEEN: Season = validateSeason({ id: 'halloween', name: 'Halloween', start: '10-01', end: '11-07' });
+/** OWNER DECISION 2026-11-18 (NEW-YEAR-01): wraps the year, 1 Dec – 15 Jan inclusive. */
+export const NEW_YEAR: Season = validateSeason({ id: 'new-year', name: 'New Year', start: '12-01', end: '01-15' });
+/** OWNER DECISION 2026-11-18 (WINTER-01): 1 Dec – end of February; '02-29' includes the leap day (no-op otherwise). */
+export const WINTER: Season = validateSeason({ id: 'winter', name: 'Winter', start: '12-01', end: '02-29' });
+/** OWNER DECISION 2026-11-18 (CHRISTMAS-01, confirmed): 1 Dec – 7 Jan, so Orthodox Christmas (7 Jan) is inside. */
+export const CHRISTMAS: Season = validateSeason({ id: 'christmas', name: 'Christmas', start: '12-01', end: '01-07' });
 const SEASONAL_PRICE = 20; // HALLOWEEN-01 brief: every seasonal style costs 20 petals
 const SEASONAL: readonly (readonly [string, Season, readonly string[]])[] = [
   ['pumpkin', HALLOWEEN, ['Carved face', 'Soft ribs', 'Halloween']],
@@ -60,6 +66,16 @@ const SEASONAL: readonly (readonly [string, Season, readonly string[]])[] = [
   // HALLOWEEN-PLUS (owner pick 2026-10-06): same window, price and book-only rules as the pack above.
   ['mummy', HALLOWEEN, ['Bandage wraps', 'Peeking eyes', 'Halloween']],
   ['potion-slime', HALLOWEEN, ['Glowing core', 'Bubbles', 'Halloween']],
+  // NEW-YEAR-01 / WINTER-01 (owner 2026-11-18): same price and book-only rules.
+  ['frosted-glass', NEW_YEAR, ['Icy shine', 'Frosted', 'New Year']],
+  ['golden-ribbon', NEW_YEAR, ['Satin gold', 'Cream ribbon', 'New Year']],
+  ['confetti', NEW_YEAR, ['Party dots', 'Lavender', 'New Year']],
+  ['snowman', WINTER, ['Snowballs', 'Coal buttons', 'Winter']],
+  ['snowfall', WINTER, ['Snowflakes', 'Night sky', 'Winter']],
+  // CHRISTMAS-01 (owner 2026-11-18): same price and book-only rules.
+  ['candy-cane', CHRISTMAS, ['Red stripes', 'Peppermint', 'Christmas']],
+  ['gingerbread', CHRISTMAS, ['Icing line', 'Sweet face', 'Christmas']],
+  ['fairy-lights', CHRISTMAS, ['Coloured bulbs', 'Pine green', 'Christmas']],
 ];
 export const SEASONAL_REWARDS: readonly RewardEntry[] = SEASONAL.map(([id, season, chips]) =>
   ({ ...skinEntry(id, null, chips), price: SEASONAL_PRICE, season }));

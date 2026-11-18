@@ -4,6 +4,102 @@ This is the shared, evolving record for future sessions. Read entries relevant t
 follow the linked reports for details. Preserve a distinction between observations, hypotheses,
 and verified corrections. Update entries when new evidence supersedes them.
 
+**Standalone review artifacts:** [Workflow Studio review](../artifacts/workflow-studio/REVIEW.md)
+records offline entry points, form-state recovery and responsive grid lessons from the 21 concept collection.
+
+## Standalone artifacts need real interaction checks
+
+**Observed, 2026-10-02:** Chrome screenshots successfully rendered 21 workflow concepts, but submitting
+four forms exposed selected-record predicates that shadowed their enclosing state variable. A separate
+enabled acceptance button lacked a handler. The first mobile report also exceeded the page width.
+**Confirmed causes:** the inner predicate compared a record ID against that record's nonexistent
+`selected` property; the action was absent from its dispatcher; a grid child retained its intrinsic minimum width.
+**Correction:** use a distinct record parameter, implement the readiness-gated action, and allow grid
+children to shrink while keeping wide tables in their own scroll wrapper. Saved-state recovery must also
+allow legitimate appended messages while rejecting malformed shapes and invalid selections.
+**Verified:** all 21 primary workflows, decision persistence, 375px and 844px landscape layout checks
+passed. Shared controls and final 390px captures passed separately. See
+[the review](../artifacts/workflow-studio/REVIEW.md) and
+[verification](../artifacts/workflow-studio/verification.json). Screenshots alone do not verify a form.
+
+**Iteration 02, observed and verified:** an empty policy-version exemplar rejected a legitimate appended
+version on reload. Empty arrays must remain appendable, with domain validation for the entries.
+The browser suite verified policy changes and custom onboarding requirements after reload, same-concept
+restore, malformed-file rejection and import undo. Quote export arithmetic also produced
+`528.0000000000001` for a €528.00 scenario; rounding currency totals to cents now matches the display
+and passed the exported-value check. See [the iteration report](../artifacts/workflow-studio/ITERATION-02.md).
+
+**Owner UX correction:** routine receipt and quote editing should remain on the page; an explicit
+approval button can replace a checkbox repeating that approval. Separate file, link, permission,
+keyboard and assistive-technology checks cover different work and remain distinct. All 21 primary
+workflows and shared review-tool suites passed after these changes. These browser checks do not
+establish customer time savings.
+
+**Iteration 03 verification boundary, observed 2026-10-02:** browser controls rejected local file URLs.
+JSDOM verified state-driven visual models, 21 component suites, reduced-motion cancellation and a
+terminating gallery spring, but its substituted APIs cannot verify native focus, layout or real frame
+pacing. Retain earlier screenshots as historical evidence, label them in the gallery, and separate
+current component results from previous browser results. Do not treat parser or mocked animation
+success as visual verification. See [iteration 03](../artifacts/workflow-studio/ITERATION-03.md).
+
+**Iteration 04, observed and verified in components:** unknown freight used an arbitrary 8% chart
+placeholder, which could imply a measured cost. It now has an explicit text label and zero bar width;
+the component check verifies this state. Native chart rendering remains unverified. Draft-recipient
+selectors update only the draft instead of redrawing the workspace: tests verify unsaved evidence and
+quote fields survive selection changes. Clipboard denial selects the visible draft and gives a Copy
+instruction; success/rejection tests use substituted APIs, not native permission dialogs. See
+[iteration 04](../artifacts/workflow-studio/ITERATION-04.md).
+
+**Owner visual correction, iteration 05:** repeated small polish passes preserved the boxed-panel
+structure that the owner rejected as generic. The correction changes hierarchy and layout: a navigation
+rail, flat work canvas, lighter type and a compact collection directory. New screenshots are still
+unavailable; do not claim the owner's taste requirement is verified by component tests.
+**Review-caught focus bug:** restoring the first submit button moved Balance's Save draft to Save &
+approve. Focus now matches the original submit name and value. A JSDOM regression submits the draft
+twice, confirms focus remains on Save draft and confirms approval remains false. The review also caught
+mobile/dark CSS specificity conflicts and a coarse-pointer target override; these were corrected in
+source, with native layout still unverified. See [iteration 05](../artifacts/workflow-studio/ITERATION-05.md).
+
+**Iteration 06, moving an interactive section:** separating the founder planner from the collection
+removed its inherited CSS and its `notify` helper. Downloads still occurred, but an uncaught error
+followed; the old JSDOM harness logged that error while returning success. The founder page now loads
+its own planner stylesheet and notification helper, and the harness fails on uncaught runtime errors.
+All five brief downloads and notification feedback passed component checks. A fresh review also found
+inherited tablet grid placement and row-padding specificity conflicts; these were corrected in source.
+Native layout remains unverified. See [iteration 06](../artifacts/workflow-studio/ITERATION-06.md).
+
+**Iteration 07, drafts are separate from approval:** JSDOM reproduced note loss on Dossier client
+changes, evidence loss on Gather audience changes, and quote loss on Scope scenario saves. Redraw
+rebuilt fields from saved state. Per-form drafts now store only changed fields separately from committed
+reviews and restore after redraw; storage failure is explicitly session-only. Saves commit deliberately.
+Quantity changes invalidate old scope checks while preserving other quote drafts. Navigation, reload,
+discard and explicit save regressions passed; native browser behavior remains unverified.
+
+**Iteration 07, imports and review identity:** fresh source review reproduced three boundary defects:
+rule changes reused approval, project imports retained old actions, and a canceled delayed file read
+could replace a later dialog. Corrections invalidate review time when rules change, replace project
+and action state together, and require the original loading view before accepting an asynchronous
+result. Targeted rule, undo/redo and canceled-read regressions passed. See
+[iteration 07](../artifacts/workflow-studio/ITERATION-07.md) for evidence and browser limits.
+
+**Iteration 08, recovery coverage is per form — corrected in components:** Proof answer/policy and
+Manifest restore/recovery/file forms now have draft keys. Switching records restores unfinished text;
+hidden policy editors reopen when their draft is restored. Dossier readiness includes reviewer and
+reference gates, and Gather commits a cleared kickoff date. Targeted regressions passed. The earlier
+spaces-only Gather hypothesis remains rejected: shared submit validation blocks it.
+
+**Iteration 08, new presentation can expose state defects:** localizing Gather dates exposed malformed
+imported strings that the previous renderer printed harmlessly. Date validation and guarded formatting
+now reject them before restoration. A custom Scope reference error outlived removal of the freight
+amount; editing freight now clears that dependent error. Both regressions passed. Fresh review also
+found that an older, more specific Manifest selector defeated the phone grid reset; matching the body
+selector corrects the cascade, but native layout remains unverified. See
+[iteration 08](../artifacts/workflow-studio/ITERATION-08.md) and its linked test/review evidence.
+
+**Review delivery:** this collection uses local files and double-click launchers because a temporary
+preview server may end before a later review. The gallery's local links and offline assets passed in Chrome.
+This is an artifact-delivery rule, not a change to the game's runtime or rendering guidance.
+
 
 **Performance background (read before any rendering/perf change):**
 [docs/performance/field-guide.md](performance/field-guide.md) — the Arrows Performance Field Guide (2026-09-01):
@@ -560,6 +656,12 @@ and correct remaining band order with a targeted edit. **Verified:** final direc
 yellow→orange→white body order by visual review. Exact cell fit, raster hex values and native contracts
 remain unverified; concept art does not certify a registered spec. Prompts, retained drafts and review are in
 [HALLOWEEN-CONCEPT-01](../artifacts/HALLOWEEN-CONCEPT-01/review.txt).
+
+**Owner correction, 2026-10-25 — NEW-YEAR-01:** a text-only brief was an incomplete visual handoff. Include
+the actual generated references, written palettes, exact prompts and a review of any image/rule mismatches in
+the package sent to the implementation agent. The three New Year sheets and approximately 30 px/cell
+derivatives were viewed; native geometry, contrast and performance remain unverified. Package and review:
+[NEW-YEAR-01](briefs/NEW-YEAR-01-package/reference-review.txt).
 
 ## A killed build runner leaves diagnostics in the product tree; split strokes leave raster slivers
 
