@@ -16,12 +16,18 @@ Commit the `app.json` change `eas init` makes.
 
 ## 2. Host the privacy policy (required for apps with ads)
 
-The policy lives at `docs/privacy-policy.html`. Easiest free hosting — GitHub Pages
-from this repo:
+The policy text is `store/privacy-policy.md`; `docs/privacy-policy.html` is generated from it
+(`node scripts/generate-privacy-policy.js`), and `node scripts/check-policy.js` checks it against
+the newest shipped release record (`release/vc<N>.env`; pass a candidate's path to check it). It is a DRAFT until the owner signs it. Easiest
+free hosting — GitHub Pages from this repo:
 
 1. GitHub → arrows-game → Settings → Pages
-2. Source: "Deploy from a branch", branch `main`, folder `/docs`
+2. Source: "Deploy from a branch", a `gh-pages` branch that holds only the signed, generated
+   `privacy-policy.html`, folder `/ (root)`. Never `main`: `main`'s `docs/privacy-policy.html` is
+   the July LevelPlay policy, which names an ad network the app no longer contains.
 3. Your URL becomes: `https://danteberishaj.github.io/arrows-game/privacy-policy.html`
+   (it returned 404 on 2026-10-18), then set `PRIVACY_POLICY_URL` in `src/ui/settingsRows.ts`
+   so Settings shows the policy row.
 
 Keep that URL — the Play Console asks for it in two places (Store listing and Data
 safety).
