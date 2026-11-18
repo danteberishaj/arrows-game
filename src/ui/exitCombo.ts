@@ -1,7 +1,7 @@
 /**
  * Consecutive-exit ladder. Each successful tap inside the window climbs one
  * step; the step picks the exit pop's pitch (pop0..pop7, a major-pentatonic
- * ladder rendered by scripts/generate-sfx.js) and scales the exit haptic on
+ * ladder rendered by scripts/build-exit-pops.py) and scales the exit haptic on
  * iOS. A pause, a blocked tap, or a new level resets it. The same idea as
  * Peggle's rising peg notes: the sound tells you that you are on a roll.
  */
@@ -10,10 +10,11 @@ export const EXIT_COMBO_STEPS = 8;
 /** Set false to play the same pitch on every exit (random variation only). */
 export const EXIT_COMBO_ESCALATES = true;
 /**
- * Owner ruling 2026-10-06: the arrow-exit pop is not played at all (it sounded bad). The exit haptic
- * and every other sound (blocked, cleared, star) stay. The ladder above is kept for a replacement sound.
+ * Owner ruling 2026-10-06 muted the synthesized exit pop (it sounded bad). Owner pick 2026-10-18
+ * brought it back as a real CC0 recording (scripts/build-exit-pops.py). Set false to mute it again;
+ * the exit haptic plays either way.
  */
-export const EXIT_POP_ENABLED = false;
+export const EXIT_POP_ENABLED = true;
 
 /** Whether `event` may make a sound, given the player's sound setting. */
 export function feedbackSoundOn(event: string, soundOn: boolean): boolean {

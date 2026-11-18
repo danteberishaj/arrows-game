@@ -1,6 +1,7 @@
 /**
- * Owner ruling 2026-10-06: the arrow-exit pop is not played at all. Every other sound
- * (blocked, cleared, star) and every haptic, the exit haptic included, stays.
+ * Owner pick 2026-10-18: the arrow-exit pop plays again (a real CC0 recording, after the
+ * 2026-10-06 mute of the synthesized one). It follows the player's sound setting like every
+ * other sound, and the exit haptic plays either way.
  */
 const mockNativeFeedback = jest.fn();
 let mockNative: { feedback: jest.Mock; prepare: jest.Mock; release: jest.Mock } | null = null;
@@ -24,15 +25,21 @@ beforeEach(() => {
   mockNative = null;
 });
 
-test('the exit pop is switched off', () => {
-  expect(EXIT_POP_ENABLED).toBe(false);
+test('the exit pop is switched on', () => {
+  expect(EXIT_POP_ENABLED).toBe(true);
 });
 
 describe('fallback path (iOS / web / Expo Go)', () => {
   const { feedback } = require('../feedbackFallback') as typeof import('../feedbackFallback');
 
-  test('exit plays no sound but keeps its haptic', () => {
+  test('exit plays the pop at its combo step and keeps its haptic', () => {
     feedback('exit', true, 3);
+    expect(mockSfx.playSuccess).toHaveBeenCalledWith(3);
+    expect(mockHaptic.exit).toHaveBeenCalledTimes(1);
+  });
+
+  test('exit is silent when the player turned sound off', () => {
+    feedback('exit', false, 3);
     expect(mockSfx.playSuccess).not.toHaveBeenCalled();
     expect(mockHaptic.exit).toHaveBeenCalledTimes(1);
   });
@@ -48,11 +55,15 @@ describe('fallback path (iOS / web / Expo Go)', () => {
 });
 
 describe.each(['android', 'ios'])('native path (feedback.%s)', (platform) => {
-  test('exit reaches the native module with sound off, so only its haptic runs', () => {
+  test('exit reaches the native module with the player sound setting', () => {
     mockNative = { feedback: mockNativeFeedback, prepare: jest.fn(), release: jest.fn() };
     const { feedback } = require(`../feedback.${platform}`) as typeof import('../feedback.android');
     feedback('exit', true, 5);
-    expect(mockNativeFeedback).toHaveBeenCalledWith('exit', false, 5);
+    feedback('exit', false, 6);
+    expect(mockNativeFeedback.mock.calls).toEqual([
+      ['exit', true, 5],
+      ['exit', false, 6],
+    ]);
   });
 
   test('the other events keep the player sound setting', () => {
