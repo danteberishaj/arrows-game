@@ -29,7 +29,8 @@ export interface SkinSpec {
   preferredTheme?: 'dark' | 'light';
   bodyPattern?: 'tube' | 'beads' | 'square';
   beads?: { diameter: number; pitch: number; tubeWidth: number };
-  board?: { light: string; dark: string };
+  /** `decor` (WINTER-01) is read by JS only (a snowy board layer); it is stripped from the native payload (skinSpecJson). */
+  board?: { light: string; dark: string; decor?: 'snow' };
   palette: { rule: 'one' | 'length' | 'direction' | 'cycle'; colours: readonly string[]; lengthStops?: readonly number[] };
   layers: readonly SkinLayer[];
   head: { shape: 'tri' | 'rounded' | 'swept' | 'step'; halfWidth: number; tipPastCentre: number; back: number; shine: boolean; cornerRadius?: number };
@@ -194,6 +195,68 @@ const potionSlime = canvasSpec('potion-slime', 22, 'Potion Slime', one(POTION_SL
   { kind: 'spots', colour: POTION_SLIME.bubble, width: .10, period: .62, sideOffset: .06, opacity: .9 },
   { kind: 'spots', colour: POTION_SLIME.fizz, width: .05, period: .41, sideOffset: -.09, opacity: .85 },
 ], { board: HALLOWEEN_BOARD, head: polishedHead, motion: particles([POTION_SLIME.lime, POTION_SLIME.glow, POTION_SLIME.fizz]) });
+// NEW-YEAR-01 / WINTER-01 (owner 2026-11-18): book-only seasonal styles, launch proportions, existing fields only.
+// Ids are append-only after Potion Slime 22; 23 stays reserved for the unregistered Little Bat candidate.
+export const NEW_YEAR_BOARD = { light: '#F3F6FF', dark: '#13111C' };
+export const WINTER_BOARD = { light: '#EEF4FB', dark: '#121A2B', decor: 'snow' as const };
+const shinyHead: SkinSpec['head'] = { ...polishedHead, shine: true }; // + the contained interior head oval in the shine colour
+/** Frosted Glass: ice-blue tube, one narrow centred white shine and the head oval, opaque lavender rim. */
+const frostedGlass = canvasSpec('frosted-glass', 24, 'Frosted Glass', one('#CFE6F7'), [
+  rim('#8C7BB5', .48), body(.425), shine(.065, '#F7F4FF'),
+], { board: NEW_YEAR_BOARD, head: shinyHead, motion: particles(['#CFE6F7', '#F7F4FF', '#8C7BB5']) });
+/** Golden Ribbon: gold tube with a lighter inner gold band (nested head, satin roundness) under a cream centre ribbon. */
+const goldenRibbon = canvasSpec('golden-ribbon', 25, 'Golden Ribbon', one('#F4C967'), [
+  rim('#9A633F', .48), body(.425),
+  { kind: 'bands', colour: 'palette', width: .425, bands: ['#FFDF8A'], bandWidths: [.25] },
+  shine(.07, '#FFF4D0'),
+], { board: NEW_YEAR_BOARD, head: shinyHead, motion: particles(['#F4C967', '#FFDF8A', '#FFF4D0']) });
+/** Confetti: lavender tube, two sparse opposing rows of gold and mint dots (body only), plain head. */
+const confetti = canvasSpec('confetti', 26, 'Confetti', one('#B8A4EB'), [
+  rim('#8068B8', .48), body(.425),
+  { kind: 'spots', colour: '#FFD24A', width: .065, period: .78, sideOffset: .085 },
+  { kind: 'spots', colour: '#80C8BC', width: .06, period: .62, sideOffset: -.085 },
+], { board: NEW_YEAR_BOARD, head: polishedHead, motion: particles(['#B8A4EB', '#FFD24A', '#80C8BC']) });
+const WINTER_PARTICLES = ['#FFFFFF', '#BFE3FF', '#DCEFFF'];
+/** Snowman: snowball beads (Ghost's bead recipe), coal buttons down the centre, head face with coal eyes and pink blush. */
+const snowman = canvasSpec('snowman', 27, 'Snowman', one('#F7FAFF'), [
+  rim('#6E88A8', .48), body(.425),
+  { kind: 'spots', colour: '#2B2B33', width: .05, period: .6, sideOffset: 0 },
+], { board: WINTER_BOARD, bodyPattern: 'beads', beads: { diameter: .48, pitch: .30, tubeWidth: .32 }, head: polishedHead,
+  // Mummy's contract-tested sized head face (dot eyes, small mouth, blush clearance) in coal and pink.
+  face: { eyes: true, blush: true, closedOnBlocked: true, ink: '#2B2B33', blushColour: '#F2A7B8', anchor: 'head', eyeRadius: .042,
+    eyeHalfGap: .13, mouthWidth: .07, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 },
+  motion: particles(WINTER_PARTICLES) });
+/** Snowfall: night-blue tube with white snowflake dots in two sizes on opposing sides, plain head. */
+const snowfall = canvasSpec('snowfall', 28, 'Snowfall', one('#24345E'), [
+  rim('#5B7FB0', .48), body(.425),
+  { kind: 'spots', colour: '#FFFFFF', width: .075, period: .7, sideOffset: .075 },
+  { kind: 'spots', colour: '#DCEBFF', width: .045, period: .45, sideOffset: -.09 },
+], { board: WINTER_BOARD, head: polishedHead, motion: particles(WINTER_PARTICLES) });
+// CHRISTMAS-01 (owner 2026-11-18 "make christmas skins too"): book-only, existing fields only (no native change),
+// ids append-only after Snowfall 28. They share the Winter board, so they get the in-game snowfall too.
+export const CANDY_CANE = { white: '#FFF8F6', red: '#E0384A', rim: '#D6404F' } // rim: K4 >= 3:1 on both Winter boards;
+/** Candy Cane: white tube with red bars across it (Mummy's butt-capped seam recipe, wider and red), plain head. */
+const candyCane = canvasSpec('candy-cane', 29, 'Candy Cane', one(CANDY_CANE.white), [
+  rim(CANDY_CANE.rim, .48), body(.425),
+  { kind: 'seam', colour: CANDY_CANE.red, width: .36, dash: [.09, .13], offset: [0, 0], cap: 'butt' },
+], { board: WINTER_BOARD, head: polishedHead, motion: particles([CANDY_CANE.red, '#FFFFFF', '#7FD1AE']) });
+export const GINGERBREAD = { body: '#D9975A', rim: '#B5713F', icing: '#FFF6EA', ink: '#3B2418', blush: '#F09A8A' };
+/** Gingerbread: biscuit-brown tube, a dashed white icing line down the middle, a sweet head face (Snowman's sizes). */
+const gingerbread = canvasSpec('gingerbread', 30, 'Gingerbread', one(GINGERBREAD.body), [
+  rim(GINGERBREAD.rim, .48), body(.425),
+  { kind: 'seam', colour: GINGERBREAD.icing, width: .055, dash: [.12, .10], offset: [0, 0] },
+], { board: WINTER_BOARD, head: polishedHead,
+  face: { eyes: true, blush: true, closedOnBlocked: true, ink: GINGERBREAD.ink, blushColour: GINGERBREAD.blush, anchor: 'head', eyeRadius: .042,
+    eyeHalfGap: .13, mouthWidth: .07, blushSize: [.11, .06], blushOffset: [.12, .05], headOffset: -.12 },
+  motion: particles([GINGERBREAD.body, GINGERBREAD.icing, '#E0384A']) });
+export const FAIRY_LIGHTS = { wire: '#2E6B47', rim: '#3F9466', red: '#FF5A5F', gold: '#FFD24A', blue: '#7CC6FF' };
+/** Fairy Lights: pine-green wire with red, gold and blue bulbs (three sparse spot rows), plain head. */
+const fairyLights = canvasSpec('fairy-lights', 31, 'Fairy Lights', one(FAIRY_LIGHTS.wire), [
+  rim(FAIRY_LIGHTS.rim, .48), body(.425),
+  { kind: 'spots', colour: FAIRY_LIGHTS.red, width: .13, period: .9, sideOffset: .05 },
+  { kind: 'spots', colour: FAIRY_LIGHTS.gold, width: .13, period: .75, sideOffset: -.05 },
+  { kind: 'spots', colour: FAIRY_LIGHTS.blue, width: .11, period: 1.1, sideOffset: 0 },
+], { board: WINTER_BOARD, head: polishedHead, motion: particles([FAIRY_LIGHTS.red, FAIRY_LIGHTS.gold, FAIRY_LIGHTS.blue]) });
 /** One shared data recipe; untouched specs keep their original JSON and native defaults. */
 function launchPolish(spec: SkinSpec, light: string, dark: string): SkinSpec {
   const oldBody = spec.layers.find(layer => layer.kind === 'body')!.width;
@@ -220,10 +283,18 @@ export const SKIN_SPECS: Readonly<Record<string, SkinSpec>> = {
   'stained-glass': stainedGlass, campfire: launchPolish(campfire,'#FFF6EC','#17110D'), 'lava-rock': lavaRock,
   'strawberry-glazed': launchPolish(strawberryGlazed,'#FFF7EA','#1A1410'),
   pumpkin, ghost, 'candy-corn': candyCorn, mummy, 'potion-slime': potionSlime,
+  'frosted-glass': frostedGlass, 'golden-ribbon': goldenRibbon, confetti, snowman, snowfall,
+  'candy-cane': candyCane, gingerbread, 'fairy-lights': fairyLights,
 };
 export function skinSpecFor(id: string | undefined): SkinSpec | null { return id ? SKIN_SPECS[id] ?? null : null; }
 /** Stable selection payload; size/motion are separate props and never cause JSON re-parsing. */
-export const SKIN_SPEC_JSON = Object.fromEntries(Object.entries(SKIN_SPECS).map(([id, spec]) => [id, JSON.stringify(spec)]));
+export const SKIN_SPEC_JSON = Object.fromEntries(Object.entries(SKIN_SPECS).map(([id, spec]) => [id, skinSpecJson(spec)]));
+/** The native payload: the spec minus JS-only `board.decor` (native never reads it; specs without it are unchanged). */
+export function skinSpecJson(spec: SkinSpec): string {
+  if (!spec.board?.decor) return JSON.stringify(spec);
+  const { decor: _decor, ...board } = spec.board;
+  return JSON.stringify({ ...spec, board });
+}
 
 
 export interface ArrowStyle {

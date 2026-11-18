@@ -64,6 +64,7 @@ import {
 } from './src/ui/themeFollow';
 import { FTUE_ENABLED } from './src/ui/ftueConfig';
 import { ftueRoute } from './src/ui/ftueRoute';
+import { useAmbience } from './src/ui/ambience';
 
 // W4-09: 'gallery' is reachable only through HomeScreen's META_GALLERY control.
 type Screen = 'splash' | 'menu' | 'game' | 'daily' | 'gallery';
@@ -282,6 +283,8 @@ export default function App() {
   // W4-09 (META_GALLERY): the shape gallery; ‹ and Android back return to the menu.
   const onGallery = useCallback(() => showScreen('gallery'), [showScreen]);
   const onGalleryBack = useCallback(() => showScreen('menu'), [showScreen]);
+
+  useAmbience(ready && soundOn); // WINTER-01 (META_AMBIENCE): winter bed follows the ♪ toggle, after hydration
 
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {

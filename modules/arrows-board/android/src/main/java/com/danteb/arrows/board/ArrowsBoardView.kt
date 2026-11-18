@@ -208,6 +208,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
   private val gridTileMatrix = Matrix()
   private var skin: SkinPaths? = null
   private var skinMotion: SkinMotion? = null
+  /** WINTER-01 seasonal exit snow; skin-independent, idle (draws nothing) while mode is 0. */
+  private val snow = SnowFx()
   private var skinArts: MutableList<SkinPaths.Layers?> = mutableListOf()
   private var skinShafts: List<Path> = emptyList()
   private var skinHeads: List<Path> = emptyList()
@@ -298,6 +300,12 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       cellParseNs = System.nanoTime()-started
       skinPreparePending = true
     }
+    postInvalidateOnAnimation()
+  }
+
+  /** WINTER-01: `mode,dark,diag` (mode 0 off, 1 full, 2 base dots only). */
+  internal fun setSeasonFx(value: String) {
+    synchronized(stateLock) { snow.configure(value) }
     postInvalidateOnAnimation()
   }
 
@@ -572,7 +580,12 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         slot.skin = SkinPaths.Layers(skin!!.layerCount).also { it.paletteColour = skin!!.spec.colour(arrowIndex,skinCells[arrowIndex].length,skinCells[arrowIndex].direction) }
         slot.skinHead = Path(); slot.skinOneCell = skinCells[arrowIndex].length == 1; slot.skinCellCount = skinCells[arrowIndex].length
         skinMotion?.cancel(arrowIndex)
-        if(!reducedMotion) skinMotion?.emit(arrowPaths[arrowIndex].shaft, AnimationUtils.currentAnimationTimeMillis())
+        // WINTER-01: in season the snow replaces the skin's square crumbs (never both).
+        if(!reducedMotion && snow.mode == 0) skinMotion?.emit(arrowPaths[arrowIndex].shaft, AnimationUtils.currentAnimationTimeMillis())
+      }
+      if (!reducedMotion && snow.mode != 0) {
+        val last = visibleMask.indices.none { it != arrowIndex && visibleMask[it] == '1' }
+        snow.emit(arrowPaths[arrowIndex].shaft, skinCell, skinScreenCell(), id, last, AnimationUtils.currentAnimationTimeMillis())
       }
       slot.trail = trail
       // The body is one segment of the trail (the Skia/SVG side draws the same span as one
@@ -733,6 +746,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       skin?.clear()
       skin = null
       skinMotion = null
+      snow.clear()
       skinArts = mutableListOf()
       skinShafts = emptyList()
       skinHeads = emptyList()
@@ -770,7 +784,8 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
       val extent = if (gridStyled) gridExtent else null
       val tileOn = extent != null && gridTilePaint.shader != null
       val pointBlocks = if (extent != null && !tileOn) gridPoints else null
-      if (!drawArrows && !tileOn && pointBlocks == null) {
+      // WINTER-01: the last arrow's flurry outlives its exit, so live snow keeps the canvas drawing.
+      if (!drawArrows && !tileOn && pointBlocks == null && (snow.mode == 0 || snow.activeCount() == 0)) {
         return
       }
 
@@ -838,6 +853,7 @@ class ArrowsBoardView(context: Context, appContext: AppContext) : ExpoView(conte
         // Re-evaluate membership until an interaction settles, then restore its static strip once.
         if (motion.hasActiveInteraction(AnimationUtils.currentAnimationTimeMillis())) pathsDirty = true
       }
+      if (snow.mode != 0 && snow.draw(canvas, skinCell, AnimationUtils.currentAnimationTimeMillis())) keepAnimating = true
       canvas.restoreToCount(saveCount)
       if(skinFirstDrawPending && drawArrows) {
         skinFirstDrawPending = false

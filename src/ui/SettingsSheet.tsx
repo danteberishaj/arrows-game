@@ -1,11 +1,33 @@
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Modal, Platform, Pressable, StatusBar, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Dimensions,
+  type LayoutChangeEvent,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Animated, {
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CONSENT_GATE, META_SETTINGS_HOW_TO_PLAY, META_SETTINGS_RATE, META_THEME_SYSTEM } from '../featureFlags';
+import { CONSENT_GATE, META_MOTION_POLISH, META_SETTINGS_HOW_TO_PLAY, META_SETTINGS_RATE, META_THEME_SYSTEM } from '../featureFlags';
+import { CAPTURE_DIAG_ENABLED } from '../perfMode';
+import { EASE_OUT, SHEET_ENTER_MS, SHEET_ENTER_SCALE, SHEET_EXIT_MS } from './motionTokens';
 import { adPrivacyOptionsRequired, openAdPrivacyOptions } from './ads';
-import { PressScale, pressSnapTransform } from './PressScale';
+import { PressScale, pressSnapTransform, rowPressedStyle } from './PressScale';
 import {
   playStoreUrls,
   PRIVACY_POLICY_URL,
@@ -17,6 +39,7 @@ import {
   type SettingsRow,
 } from './settingsRows';
 import { ArrowStyleOptions } from './ArrowStyleOptions';
+import { createBackStack, SheetBackContext } from './sheetBack';
 import { useArrowStyle, skinPickerEnabled } from './useArrowStyle';
 import { Palette, Type } from './theme';
 
@@ -29,6 +52,15 @@ const PANEL_SIDE_MARGIN = 24; // OWNER-PICKED STARTING VALUE
 /** An action row's height: above the 44 dp tap-target floor, so a two-line row (Support + address) still fits. */
 const ROW_MIN_HEIGHT = 52; // OWNER-PICKED STARTING VALUE
 const INFO_ROW_MIN_HEIGHT = 44; // OWNER-PICKED STARTING VALUE (the tap-target floor, though it is not a button)
+/**
+ * MOTION-AUDIT M2: the Modal's window is first laid out above the navigation bar and grows under it a few frames
+ * later (navigationBarTranslucent), so a panel shown at once re-centred ~100 px down 4 frames after opening
+ * (emulator-5556, artifacts/MOTION-AUDIT/03-settings-strip.png). The sheet stays invisible until its root spans the
+ * whole screen, or this long at most (a device whose window never reaches the screen height still opens).
+ */
+const SHEET_LAYOUT_BACKSTOP_MS = 150;
+/** MOTION-AUDIT: full-width rows tint instead of scaling (META_MOTION_POLISH); OFF: the PressScale rows as before. */
+const RowPressable = META_MOTION_POLISH ? Pressable : PressScale;
 
 /** The app's version name (app.json `expo.version`, embedded by expo-constants). */
 function appVersion(): string | undefined {
@@ -97,7 +129,72 @@ export function SettingsSheet({
   const [styleListOpen, setStyleListOpen] = useState(false);
   const pickerEnabled = skinPickerEnabled();
   const backToSettings = () => setStyleListOpen(false);
-  const dismiss = styleListOpen ? backToSettings : onClose;
+  // 0 hidden .. 1 shown: drives the scrim and the panel together (MOTION-AUDIT).
+  const presence = useSharedValue(0);
+  const [laidOut, setLaidOut] = useState(false);
+  const closingRef = useRef(false);
+  const closedRef = useRef(false);
+  // While the exit fades, the rows are still on screen: a second tap must not pick a style or open a link.
+  // ponytail: the <=150 ms invisible pre-reveal window stays tappable (gating it would need every row test to fake
+  // a layout first); gate it too if a device capture shows a tap landing there.
+  const [closing, setClosing] = useState(false);
+  const [backStack] = useState(createBackStack);
+  const reveal = useCallback(() => setLaidOut(true), []);
+  useEffect(() => {
+    const t = setTimeout(reveal, SHEET_LAYOUT_BACKSTOP_MS);
+    return () => clearTimeout(t);
+  }, [reveal]);
+  const onRootLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    const screenH = Dimensions.get('screen').height;
+    if (CAPTURE_DIAG_ENABLED) console.log(`[motion] settings-layout h=${h.toFixed(1)} screen=${screenH.toFixed(1)}`);
+    if (h >= screenH - 1) reveal();
+  }, [reveal]);
+  useEffect(() => {
+    if (!laidOut) return;
+    if (CAPTURE_DIAG_ENABLED) console.log(`[motion] settings-reveal epochMs=${Date.now()}`);
+    presence.value = META_MOTION_POLISH
+      ? withTiming(1, { duration: SHEET_ENTER_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System })
+      : 1;
+  }, [laidOut, presence]);
+  /** Scrim tap and Android back: fade the sheet out first (META_MOTION_POLISH), then close. */
+  const closeAnimated = useCallback(() => {
+    if (!META_MOTION_POLISH || !laidOut) {
+      onClose();
+      return;
+    }
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    // Closes exactly once: the exit's completion, or a backstop if that callback is lost (an invisible Modal
+    // left mounted would swallow every touch on the menu).
+    const finish = () => {
+      if (closedRef.current) return;
+      closedRef.current = true;
+      onClose();
+    };
+    setTimeout(finish, SHEET_EXIT_MS + 80);
+    presence.value = withTiming(
+      0,
+      { duration: SHEET_EXIT_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System },
+      (finished) => {
+        'worklet';
+        if (finished) scheduleOnRN(finish);
+      },
+    );
+  }, [laidOut, onClose, presence]);
+  // MOTION-AUDIT M3: Back undoes the newest sub-page step first (sheetBack.ts), then the picker, then the sheet.
+  const dismiss = () => {
+    if (backStack.pop()) return;
+    if (styleListOpen) backToSettings();
+    else closeAnimated();
+  };
+  // System reduce motion: both legs are instant, like the win / lose panel (reduceMotionPolicy.test.ts).
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: SETTINGS_SCRIM_OPACITY * presence.value }));
+  const panelMotionStyle = useAnimatedStyle(() => ({
+    opacity: presence.value,
+    transform: [{ scale: META_MOTION_POLISH ? SHEET_ENTER_SCALE + (1 - SHEET_ENTER_SCALE) * presence.value : 1 }],
+  }));
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [rows] = useState<SettingsRow[]>(() =>
@@ -175,7 +272,7 @@ export function SettingsSheet({
           accessibilityLabel={row.label}
           accessibilityState={{ checked: themeFollowsSystem }}
           onPress={() => onRow(row)}
-          style={[styles.row, styles.switchRow, { borderTopColor: p.border }]}
+          style={({ pressed }) => [styles.row, styles.switchRow, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}
         >
           <Text style={[styles.rowLabel, styles.switchLabel, { color: p.ink }]}>{row.label}</Text>
           <Switch
@@ -191,7 +288,7 @@ export function SettingsSheet({
       );
     }
     return row.pressable ? (
-      <PressScale
+      <RowPressable
         key={row.id}
         accessibilityRole={row.id === 'privacyPolicy' ? 'link' : 'button'}
         accessibilityLabel={row.label}
@@ -199,14 +296,15 @@ export function SettingsSheet({
         onPress={() => onRow(row)}
         style={({ pressed }) => [
           styles.row,
-          { borderTopColor: p.border, transform: pressSnapTransform(pressed) },
+          { borderTopColor: p.border, transform: META_MOTION_POLISH ? undefined : pressSnapTransform(pressed) },
+          rowPressedStyle(pressed, p.bg),
         ]}
       >
         <Text style={[styles.rowLabel, { color: p.ink }]}>{row.label}</Text>
         {row.detail !== undefined && (
           <Text style={[styles.rowDetail, { color: p.inkDim }]}>{row.detail}</Text>
         )}
-      </PressScale>
+      </RowPressable>
     ) : (
       <View key={row.id} style={[styles.infoRow, { borderTopColor: p.border }]}>
         <Text style={[styles.info, { color: p.inkDim }]}>{row.label}</Text>
@@ -226,35 +324,37 @@ export function SettingsSheet({
       onRequestClose={dismiss}
       onShow={onShow}
     >
-      <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={styleListOpen ? 'Close arrow style' : CLOSE_LABEL}
-          onPress={onClose}
-          style={[StyleSheet.absoluteFill, { backgroundColor: p.bg, opacity: SETTINGS_SCRIM_OPACITY }]}
-        />
-        <View
+      <View onLayout={onRootLayout} pointerEvents={closing ? 'none' : 'auto'} style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={styleListOpen ? 'Close arrow style' : CLOSE_LABEL}
+            onPress={closeAnimated}
+            style={[StyleSheet.absoluteFill, { backgroundColor: p.bg }]}
+          />
+        </Animated.View>
+        <Animated.View
           testID="settings-panel"
-          style={[styles.panel, { width: panelWidth, backgroundColor: p.surface, borderColor: p.border }]}
+          style={[styles.panel, { width: panelWidth, backgroundColor: p.surface, borderColor: p.border }, panelMotionStyle]}
         >
           <Text accessibilityRole="header" style={[styles.title, { color: p.ink }]}>
             {styleListOpen ? 'Arrow style' : SETTINGS_TITLE}
           </Text>
-          {styleListOpen ? <ArrowStyleOptions palette={p} onBack={backToSettings} /> : <>
+          {styleListOpen ? <SheetBackContext.Provider value={backStack.register}><ArrowStyleOptions palette={p} dark={dark} onBack={backToSettings} /></SheetBackContext.Provider> : <>
           {lead.map(renderRow)}
           {pickerEnabled && <Pressable
             accessibilityRole="button"
             accessibilityLabel="Arrow style"
             accessibilityHint={style.name}
             onPress={() => setStyleListOpen(true)}
-            style={[styles.row, { borderTopColor: p.border }]}
+            style={({ pressed }) => [styles.row, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}
           >
             <Text style={[styles.rowLabel, { color: p.ink }]}>Arrow style</Text>
             <Text style={[styles.rowDetail, { color: p.inkDim }]}>{style.name}</Text>
           </Pressable>}
           {rest.map(renderRow)}
           </>}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

@@ -91,7 +91,8 @@ for f in "$R"/scripts/art/skin-contract/*.kt; do
   [ -e "$f" ] || continue
   if [ -e "$M/$(basename "$f")" ]; then echo "diagnostic class $(basename "$f") present in product module"; exit 4; fi
 done
-[ "$(ls "$M" | wc -l | tr -d ' ')" = 6 ] || { echo 'product module does not have exactly its 6 files'; exit 4; }
+# Exactly the product files (WINTER-01 added SnowFx.kt, the seasonal exit snow); anything else is a leaked diagnostic.
+[ "$(ls "$M" | tr '\n' ' ')" = 'ArrowsBoardModule.kt ArrowsBoardView.kt SkinGeometry.kt SkinMotion.kt SkinPaths.kt SkinSpec.kt SnowFx.kt ' ] || { echo "product module files differ from the expected 7: $(ls "$M" | tr '\n' ' ')"; exit 4; }
 if pgrep -fl '[G]radleWrapperMain' > "$L/gradle-clients.txt"; then echo 'A Gradle build is running; not starting another.'; exit 2; fi
 env | grep '^EXPO_PUBLIC_' | sort > "$L/env.txt"
 git rev-parse HEAD > "$L/head.txt"

@@ -36,7 +36,7 @@ const reads = (name: string) => new RegExp(`process\\.env\\.${name}(?![A-Z0-9_])
 const readsAsOne = (name: string) => new RegExp(`process\\.env\\.${name}\\s*===\\s*'1'`);
 
 /** Never in a player build: perf/dev harness flags, Google's test ads, W7-01 consent fixtures, art-skin and capture builds. */
-const BANNED = /^EXPO_PUBLIC_(PERF_|DEV_|ADMOB_TEST_ADS$|CONSENT_FIXTURE$|ART_SKIN$|CAPTURE_DIAG$)/;
+const BANNED = /^EXPO_PUBLIC_(PERF_|DEV_|QA_|ADMOB_TEST_ADS$|CONSENT_FIXTURE$|ART_SKIN$|CAPTURE_DIAG$)/;
 
 const src = stripComments(sourceText(SRC));
 
@@ -66,7 +66,7 @@ for (const file of recordFiles()) describe(path.basename(file), () => {
     expect(wrong).toEqual([]);
   });
 
-  test('no PERF_, DEV_, ADMOB_TEST_ADS, CONSENT_FIXTURE, ART_SKIN or CAPTURE_DIAG flag', () => {
+  test('no PERF_, DEV_, QA_, ADMOB_TEST_ADS, CONSENT_FIXTURE, ART_SKIN or CAPTURE_DIAG flag', () => {
     expect([...flags.keys()].filter((name) => BANNED.test(name))).toEqual([]);
   });
 

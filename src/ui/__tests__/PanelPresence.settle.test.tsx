@@ -95,7 +95,8 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View: AnimatedView },
-    Easing: { out: (e: unknown) => e, in: (e: unknown) => e, cubic: 'cubic', quad: 'quad' },
+    // bezier: motionTokens.ts builds EASE_OUT at import (MOTION-AUDIT).
+    Easing: { out: (e: unknown) => e, in: (e: unknown) => e, cubic: 'cubic', quad: 'quad', bezier: () => 'bezier' },
     ReduceMotion: { System: 'system' },
     withTiming: (target: number, _cfg: unknown, done?: (finished: boolean) => void) => ({ __timing: true, target, done }),
     cancelAnimation: (sv: { __cancel: () => void }) => mockUi.jobs.push(() => sv.__cancel()),

@@ -385,7 +385,22 @@ rejected), and classifies eye shapes in four directions (a swapped shape must be
 `lengthBands` to the feature fit/nested-head controls; `polish` compares against frozen ART08 paths only for the 17
 specs that existed then. Owner look review is separate.
 
+**New Year and Winter (NEW-YEAR-01 / WINTER-01, owner 2026-11-18).** Two more seasons in `rewardCatalogue.ts`:
+`new-year` "New Year" `12-01..01-15` (Frosted Glass **24**, Golden Ribbon **25**, Confetti **26**; boards `#F3F6FF` /
+`#13111C`) and `winter` "Winter" `12-01..02-29` (Snowman **27**, Snowfall **28**; boards `#EEF4FB` / `#121A2B`). `02-29`
+includes the leap day and is a no-op otherwise. Same book-only, 20-petal rules; 23 stays reserved for Little Bat. From
+1 Dec to 15 Jan both seasons are open, so the book draws two sections, each with its own decorative icon
+(`SeasonIcon` in `CollectionBook.tsx`: pumpkin, sparkle, snowflake, neutral fallback). Season-dependent defaults use
+`seasonNow()` (`EXPO_PUBLIC_QA_DATE` in QA builds). Existing fields only; all starting colours pass the contrast rows
+(`winterSkins.test.ts`). **`board.decor`** (`'snow'`, Snowman/Snowfall) is read by JS only (a snowy board layer);
+`skinSpecJson` strips it from the native payload, and a frozen-hash test keeps every earlier spec's payload byte-identical.
+Native K1–K8 contract runs and owner look review for the five are still open.
+
 ## Concept candidates before registration (HALLOWEEN-PLUS)
+
+Visual implementation handoffs include the saved concept images, a written brief, exact palettes and review
+notes together. Generated images guide appearance; the written cell-fit/axis/one-cell rules and actual native
+checks govern implementation. See the [New Year reference package](../briefs/NEW-YEAR-01-package/README.txt).
 
 Unregistered candidates live in `src/ui/skinCandidates.ts` (no app import; a test proves it and the APK proof shows their
 names absent from the bundle). `ART_SKINS_CANDIDATES=1 node scripts/art/skin-contract-data.cjs` adds them to the native

@@ -303,3 +303,29 @@ export const META_SHARE_CARD_LEVEL = process.env.EXPO_PUBLIC_META_SHARE_CARD_LEV
  * as before (docs/next-level/reports/TF-03.md).
  */
 export const META_LARGE_SCREENS = process.env.EXPO_PUBLIC_META_LARGE_SCREENS === '1';
+/**
+ * WINTER-01 (owner 2026-11-18): winter mood around the New Year / Winter seasonal skins: rendered Christmas menu
+ * decoration and a snowy board under the winter skins, only while a winter season is on (src/ui/seasonClock.ts).
+ * OFF: menu and board exactly as before.
+ */
+export const META_WINTER_DECOR = process.env.EXPO_PUBLIC_META_WINTER_DECOR === '1';
+/**
+ * WINTER-01: a soft looping winter ambience under the menu and play, only in a winter season and only while
+ * SaveSystem.soundOn (no new save key: it follows the existing sound toggle). OFF: no ambience player is created.
+ */
+export const META_AMBIENCE = process.env.EXPO_PUBLIC_META_AMBIENCE === '1';
+/**
+ * WINTER-01 QA only (test-ads builds): `EXPO_PUBLIC_QA_DATE=YYYY-MM-DD` makes every season check use that day, and
+ * `EXPO_PUBLIC_QA_WINTER_SWITCH=1` shows a small on-screen chip that cycles the winter look variants for owner review.
+ * Both unset in every store build; the build scripts refuse neither, so the env file is the only gate.
+ */
+export const QA_DATE = process.env.EXPO_PUBLIC_QA_DATE ?? '';
+export const QA_WINTER_SWITCH = process.env.EXPO_PUBLIC_QA_WINTER_SWITCH === '1';
+/**
+ * MOTION-AUDIT (owner 2026-11-18, docs/next-level/reports/MOTION-AUDIT.md): motion and native-feel polish through
+ * Emil Kowalski's rules: a softer press (0.97, no release bounce), a pressed background on full-width rows instead of
+ * a scale, press feedback on the picker / book controls that had none, a Settings sheet that fades and settles in and
+ * out instead of cutting, ease-out exits, and stars that no longer grow from nothing. OFF: every one of these exactly
+ * as before. (The Android back fixes and the Settings re-centre jump fix are not behind this flag.)
+ */
+export const META_MOTION_POLISH = process.env.EXPO_PUBLIC_META_MOTION_POLISH === '1';

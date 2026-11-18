@@ -5,6 +5,8 @@ import { etaForRank, grantNext, levelsToNext, pathIndexReached, pointsForClear, 
 import { FREE_REWARD_IDS, PATH_TOTALS, REWARD_CATALOGUE, REWARD_PATH, REWARD_PATH_IDS, seasonFor, visibleStyleCounts,
   type RewardEntry } from './rewardCatalogue';
 import { inSeason } from './seasons';
+import { seasonNow } from './seasonClock';
+import { QA_WINTER_SWITCH } from '../featureFlags';
 
 const POINTS = 'arrows_reward_points';
 const OWNED_LO = 'arrows_rewards_owned_lo';
@@ -147,7 +149,7 @@ export function etaFor(rewardId: number): number | null {
   return rank < 0 ? null : etaForRank(state.points, PATH_TOTALS, grants, rank);
 }
 
-export function recordRewardClear(kind: ClearKind, perfect: boolean, now: Date = new Date()): ClearReward | null {
+export function recordRewardClear(kind: ClearKind, perfect: boolean, now: Date = seasonNow()): ClearReward | null {
   if (!state || !store || !writable) return null;
   const earned = pointsForClear(kind, perfect);
   const points = state.points + earned;
@@ -170,7 +172,7 @@ export function recordRewardClear(kind: ClearKind, perfect: boolean, now: Date =
 }
 
 /** `now` is the caller's local date (the UI passes it); seasonal styles sell only inside their window. */
-export function buyReward(rewardId: number, now: Date = new Date()): BuyResult {
+export function buyReward(rewardId: number, now: Date = seasonNow()): BuyResult {
   if (!state || !store || !writable || state.petals === null) return 'unavailable';
   if (hasSeen(state.owned, rewardId)) return 'owned';
   const price = REWARD_CATALOGUE.find(e => e.rewardId === rewardId)?.price;
@@ -216,6 +218,18 @@ function petalAdsUsed(today: number): number {
   if (Number.isSafeInteger(day) && day >= 0 && day < today) return 0;
   if (!Number.isFinite(raw)) return PETAL_ADS_PER_DAY;
   return Math.min(PETAL_ADS_PER_DAY, Math.max(0, Math.trunc(raw)));
+}
+
+/**
+ * WINTER-01 QA only (EXPO_PUBLIC_QA_WINTER_SWITCH=1, test-ads builds): adds petals so the owner can try every seasonal
+ * skin. Same write path as grantPetalAd (the existing petals key; no new key). Flag off: no-op.
+ */
+export function qaGrantPetals(n: number): boolean {
+  if (!QA_WINTER_SWITCH || !state || !store || !writable || state.petals === null) return false;
+  const petals = state.petals + n;
+  store.setInt(PETALS, petals);
+  publish(snapshot(state.points, state.owned, state.newMask, petals));
+  return true;
 }
 
 /** Petal ads left today. 0 when petal ads are off (and then no key is read). */

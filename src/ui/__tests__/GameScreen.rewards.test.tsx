@@ -44,6 +44,8 @@ jest.mock('react-native-reanimated', () => ({
 jest.mock('../BoardView', () => ({
   BoardView: (props: BoardViewProps) => { mockBoardViewProps = props; return null; },
 }));
+// The reveal card's hero is a native ArrowsBoardView on Android; like BoardView it has no jest host.
+jest.mock('../SkinHeroBoard', () => ({ ...jest.requireActual('../SkinHeroBoard'), SkinHeroBoard: () => null }));
 jest.mock('../../featureFlags', () => Object.defineProperties(
   { ...jest.requireActual('../../featureFlags') },
   {

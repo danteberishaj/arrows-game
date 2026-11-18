@@ -15,7 +15,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { META_PRESS_SPRING } from '../featureFlags';
+import { META_MOTION_POLISH, META_PRESS_SPRING } from '../featureFlags';
+import { EASE_OUT, PRESS_IN_POLISH_MS, PRESS_SCALE_POLISH, RELEASE_SPRING_POLISH } from './motionTokens';
 import { useStopWhenScreenLeaves } from './screenHandoff';
 
 /** Held scale of a pressed button (ButtonPress.cs press-feel, DESIGN.md). */
@@ -49,7 +50,26 @@ const RELEASE_ENERGY_THRESHOLD = 1e-4;
  * the style function keeps only the colour change.
  */
 export function pressSnapTransform(pressed: boolean): ViewStyle['transform'] {
-  return META_PRESS_SPRING ? undefined : [{ scale: pressed ? PRESS_SCALE : 1 }];
+  return META_PRESS_SPRING ? undefined : [{ scale: pressed ? (META_MOTION_POLISH ? PRESS_SCALE_POLISH : PRESS_SCALE) : 1 }];
+}
+
+/**
+ * MOTION-AUDIT (META_MOTION_POLISH): the pressed look of a full-width list row, a background tint and no scale
+ * (a 320 dp row shrinking to 0.94 jumped ~19 dp at its edges). OFF: nothing, as before.
+ */
+export function rowPressedStyle(pressed: boolean, colour: string): ViewStyle | undefined {
+  return META_MOTION_POLISH && pressed ? { backgroundColor: colour } : undefined;
+}
+
+/**
+ * MOTION-AUDIT (META_MOTION_POLISH): press feedback for controls that had none. A card or tile snaps to the polish
+ * press scale (no wrapper view, so a percentage width keeps working); a text-only link dims. OFF: nothing.
+ */
+export function tilePressedStyle(pressed: boolean): ViewStyle | undefined {
+  return META_MOTION_POLISH && pressed ? { transform: [{ scale: PRESS_SCALE_POLISH }] } : undefined;
+}
+export function linkPressedStyle(pressed: boolean): ViewStyle | undefined {
+  return META_MOTION_POLISH && pressed ? { opacity: 0.6 } : undefined;
 }
 
 type PressScaleProps = Omit<PressableProps, 'style'> & {
@@ -81,17 +101,21 @@ function SpringPress({ onPressIn, onPressOut, ...rest }: PressScaleProps) {
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const pressIn = (e: GestureResponderEvent) => {
     if (!isLeaving()) {
-      scale.value = withTiming(PRESS_SCALE, {
-        duration: PRESS_IN_MS,
-        easing: Easing.out(Easing.quad),
-        reduceMotion: ReduceMotion.System,
-      });
+      scale.value = META_MOTION_POLISH
+        ? withTiming(PRESS_SCALE_POLISH, { duration: PRESS_IN_POLISH_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System })
+        : withTiming(PRESS_SCALE, {
+          duration: PRESS_IN_MS,
+          easing: Easing.out(Easing.quad),
+          reduceMotion: ReduceMotion.System,
+        });
     }
     onPressIn?.(e);
   };
   const pressOut = (e: GestureResponderEvent) => {
     if (!isLeaving()) {
-      scale.value = withSpring(1, {
+      scale.value = META_MOTION_POLISH
+        ? withSpring(1, { ...RELEASE_SPRING_POLISH, reduceMotion: ReduceMotion.System })
+        : withSpring(1, {
         damping: RELEASE_DAMPING,
         stiffness: RELEASE_STIFFNESS,
         mass: RELEASE_MASS,

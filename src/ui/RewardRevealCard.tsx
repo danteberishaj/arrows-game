@@ -2,8 +2,10 @@ import React, { useEffect } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { StylePreview } from './ArrowStyleOptions';
+import { SKIN_HERO_SIZE, SkinHeroBoard, skinHeroAvailable } from './SkinHeroBoard';
 import { Icon } from './icons';
-import { PressScale, pressSnapTransform } from './PressScale';
+import { META_MOTION_POLISH } from '../featureFlags';
+import { linkPressedStyle, PressScale, pressSnapTransform } from './PressScale';
 import type { ClearReward } from './rewardLedger';
 import { skinBoardPalette } from './skinBoardPalette';
 import { ARROW_STYLES } from './skinSpecs';
@@ -39,7 +41,8 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
     AccessibilityInfo.announceForAccessibility(`New style unlocked: ${entry.name}`);
   }, []);
   useEffect(() => {
-    if (!reducedMotion) previewScale.value = withSpring(1, { damping: 14, stiffness: 220, reduceMotion: ReduceMotion.System });
+    // MOTION-AUDIT: mass 1 (Reanimated 4 defaults to 4). OFF: as before.
+    if (!reducedMotion) previewScale.value = withSpring(1, { damping: 14, stiffness: 220, ...(META_MOTION_POLISH && { mass: 1 }), reduceMotion: ReduceMotion.System });
   }, [reducedMotion, previewScale]);
   useEffect(() => {
     if (!reducedMotion) sparkleOpacity.value = withSequence(withTiming(1, { duration: 300, reduceMotion: ReduceMotion.System }), withTiming(.6, { duration: 300, reduceMotion: ReduceMotion.System }));
@@ -49,8 +52,10 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
     <View style={[styles.badge, { borderColor: p.accentText }]}>
       <Text style={[styles.badgeText, { color: p.accentText }]}>NEW STYLE UNLOCKED</Text>
     </View>
-    <View style={[styles.stage, { backgroundColor: skinBoardPalette(p, style.spec, dark).bg }]}>
-      <Animated.View style={previewStyle}><StylePreview style={style} palette={p} size={3} /></Animated.View>
+    <View style={[styles.stage, skinHeroAvailable() && SKIN_HERO_SIZE, { backgroundColor: skinBoardPalette(p, style.spec, dark).bg }]}>
+      <Animated.View style={previewStyle}>{skinHeroAvailable()
+        ? <SkinHeroBoard style={style} palette={p} dark={dark} />
+        : <StylePreview style={style} palette={p} size={3} />}</Animated.View>
       {!reducedMotion && [{ top: 10, left: 12 }, { top: 12, right: 14 }, { bottom: 10, right: 22 }].map((position, i) =>
         <Animated.View key={i} testID="reward-sparkle" accessible={false} accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants" style={[styles.sparkle, position, sparkleStyle]}>
@@ -66,7 +71,7 @@ export function RewardRevealCard({ unlock, mode, levelNumber, points, palette: p
     </PressScale>
     <Pressable testID="reward-keep" disabled={disabled} accessibilityRole="button" accessibilityLabel="Keep my current style"
       accessibilityState={{ disabled }}
-      onPress={onKeep} style={styles.secondary}>
+      onPress={onKeep} style={({ pressed }) => [styles.secondary, linkPressedStyle(pressed)]}>
       <Text style={[styles.caption, { color: p.inkDim }]}>Keep my current style</Text>
     </Pressable>
     {upNext && <Text style={[styles.caption, { color: p.inkDim }]}>{`Up next: ${upNext.entry.name} · ${upNext.levels} ${upNext.levels === 1 ? 'level' : 'levels'}`}</Text>}

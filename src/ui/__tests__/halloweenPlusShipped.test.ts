@@ -25,8 +25,9 @@ describe('registry: append-only ids after Candy Corn', () => {
   test('Mummy 21 and Potion Slime 22 with stable string ids; every earlier identity is unchanged', () => {
     expect([spec('mummy').numericId, spec('mummy').name, spec('potion-slime').numericId, spec('potion-slime').name])
       .toEqual([MUMMY_ID, 'Mummy', SLIME_ID, 'Potion Slime']);
-    expect(ARROW_STYLES.map(s => s.numericId)).toEqual([...Array(23).keys()]);
-    expect(ARROW_STYLES.slice(-3).map(s => s.id)).toEqual(['candy-corn', 'mummy', 'potion-slime']);
+    // NEW-YEAR-01 / WINTER-01 appended 24–28 after Potion Slime (23 reserved for Little Bat; winterSkins.test.ts).
+    expect(ARROW_STYLES.map(s => s.numericId)).toEqual([...Array(23).keys(), 24, 25, 26, 27, 28, 29, 30, 31]); // CHRISTMAS-01: 29–31
+    expect(ARROW_STYLES.slice(20, 23).map(s => s.id)).toEqual(['candy-corn', 'mummy', 'potion-slime']);
   });
   test('the save bits fit the existing owned masks: ids 21 and 22 are bits of arrows_rewards_owned_lo (0-29)', () => {
     for (const id of [MUMMY_ID, SLIME_ID]) expect(id).toBeLessThan(MASK_BITS);
@@ -80,7 +81,7 @@ describe('the data is the contract-tested concept recipe (only id, numericId and
 
 describe('catalogue: Halloween seasonal, book-only, 20 petals (as Pumpkin, Ghost and Candy Corn)', () => {
   test('two more Halloween entries in catalogue order', () => {
-    expect([...SEASONAL_REWARD_IDS]).toEqual([18, 19, 20, MUMMY_ID, SLIME_ID]);
+    expect([...SEASONAL_REWARD_IDS].slice(0, 5)).toEqual([18, 19, 20, MUMMY_ID, SLIME_ID]); // NEW-YEAR-01 / WINTER-01 append 24–28
     for (const [id, refId, name] of [[MUMMY_ID, 'mummy', 'Mummy'], [SLIME_ID, 'potion-slime', 'Potion Slime']] as const) {
       const entry = REWARD_CATALOGUE.find(e => e.rewardId === id)!;
       expect(entry).toEqual(expect.objectContaining({ kind: 'skin', refId, name, pathCost: null, price: 20, season: HALLOWEEN }));

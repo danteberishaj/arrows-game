@@ -4,7 +4,12 @@ import Svg, { Path, Circle, Defs, ClipPath, G } from 'react-native-svg';
 import { chooseArrowStyle } from './arrowStyleSelection';
 import { ARROW_STYLES, type ArrowStyle } from './skinSpecs';
 import { Palette, Type } from './theme';
+import { skinBoardPalette } from './skinBoardPalette';
+import { META_MOTION_POLISH } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
+import { linkPressedStyle, rowPressedStyle } from './PressScale';
+import { useSheetBackStep } from './sheetBack';
+import { seasonNow } from './seasonClock';
 import { useArrowStyle } from './useArrowStyle';
 import { useRewards } from './useRewards';
 import { PetalIcon } from './PetalIcon';
@@ -59,6 +64,14 @@ export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyl
         {spec?.layers.filter(layer => layer.kind === 'fold').map((layer,i) => <Path key={i} d={layer.fillHalf === false ? "M31 15H49" : "M31 15H49L31 26Z"} fill={layer.fillHalf === false ? "none" : colour(layer.colour)} stroke={layer.fillHalf === false ? colour(layer.colour) : undefined} strokeWidth={1} opacity={layer.opacity} />)}
         {spec?.layers.filter(layer => layer.kind === 'seam').map((layer,i) =>
           <Path key={i} d="M9 15H30" stroke={colour(layer.colour)} strokeWidth={1.2} strokeDasharray="2 2" />)}
+        {/* NEW-YEAR-01: spots (Confetti, Snowfall, Snowman's buttons) for ids >= 24 only, so earlier thumbnails stay frozen.
+            One cell ≈ 21 units here (the .425 body is 9 units); dots keep a 1-unit minimum radius to stay visible. */}
+        {spec && style.numericId >= 24 && spec.layers.filter(layer => layer.kind === 'spots').flatMap((layer, i) => {
+          const step = Math.max(4, (layer.period ?? .5) * 21);
+          return Array.from({ length: Math.floor(21 / step) + 1 }, (_, k) =>
+            <Circle key={`${i}-${k}`} cx={8 + i * 2 + k * step} cy={15 + (layer.sideOffset ?? 0) * 21}
+              r={Math.max(1, layer.width * 10.5)} fill={colour(layer.colour)} />);
+        })}
         {shine && shine !== 'palette' && <Path d="M10 15H29" stroke={shine} strokeWidth={2} />}
       </G>
       {spec?.tail.kind === 'marble' && <><Circle cx={7} cy={15} r={3.5} fill={spec.tail.colours?.[0]} stroke={outline} /><Circle cx={6} cy={14} r={.8} fill="#FFFFFF" /></>}
@@ -73,36 +86,50 @@ export function StylePreview({ style, palette: p, size = 1 }: { style: ArrowStyl
   </View>;
 }
 
-export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { palette: Palette; onBack: () => void; now?: Date }) {
+/**
+ * One selectable style row. MOTION-AUDIT M4: module scope (it was declared inside ArrowStyleOptions, so every
+ * selection, tab or hint change made a new component type and remounted every row and its SVG preview).
+ */
+/** A skin's thumbnail on its own board colour at full strength, so the art reads as the product, not as disabled
+ * (owner + Fable consult 2026-11-18: unowned skins stay full colour; the price or lock is the only cue). */
+export function SkinThumb({ style, palette: p, dark, size = 1.2 }: { style: ArrowStyle; palette: Palette; dark: boolean; size?: number }) {
+  return <View style={[styles.swatch, { backgroundColor: skinBoardPalette(p, style.spec ?? null, dark).bg }]}>
+    <StylePreview style={style} palette={p} size={size} />
+  </View>;
+}
+
+function StyleRow({ style, palette: p, dark, selectedId, isNew }: { style: ArrowStyle; palette: Palette; dark: boolean; selectedId: string; isNew: boolean }) {
+  return <Pressable
+    accessibilityRole="radio"
+    accessibilityLabel={`${style.name}${isNew ? ', new' : ''}`}
+    accessibilityHint={preferredThemeNote(style)}
+    accessibilityState={{ checked: selectedId === style.id }}
+    onPress={() => {
+      if (PERF_MODE && selectedId !== style.id) writePickerLog(`[skin-picker] target=${style.id} tapEpochMs=${Date.now()}`);
+      chooseArrowStyle(style.id);
+    }}
+    style={({ pressed }) => [styles.option, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}
+  >
+    <SkinThumb style={style} palette={p} dark={dark} />
+    <View style={styles.nameGroup}>
+      <Text style={[styles.label, { color: p.ink }]}>{style.name}</Text>
+      {preferredThemeNote(style) && <Text style={[styles.note, { color: p.inkDim }]}>{preferredThemeNote(style)}</Text>}
+    </View>
+    {isNew && <View accessible={false} style={[styles.newDot, { backgroundColor: p.accent }]} />}
+    <Text accessible={false} style={[styles.check, { color: p.ink }]}>{selectedId === style.id ? '✓' : ''}</Text>
+  </Pressable>;
+}
+
+export function ArrowStyleOptions({ palette: p, onBack, now = seasonNow(), dark = false }: { palette: Palette; onBack: () => void; now?: Date; dark?: boolean }) {
   const selected = useArrowStyle();
   const state = useRewards();
   const [hint, setHint] = useState<{ id: number; k: number | null } | null>(null);
   const [tab, setTab] = useState<'styles' | 'book'>('styles');
+  // MOTION-AUDIT M3: Android back from the Book tab returns to Your styles before leaving the picker.
+  useSheetBackStep(tab === 'book', () => setTab('styles'));
   const { height } = useWindowDimensions();
   useEffect(() => { markPickerSeen(); }, []);
 
-  function StyleRow({ style }: { style: ArrowStyle }) {
-    const isNew = !!state && isRewardNew(style.numericId);
-    return <Pressable
-      accessibilityRole="radio"
-      accessibilityLabel={`${style.name}${isNew ? ', new' : ''}`}
-      accessibilityHint={preferredThemeNote(style)}
-      accessibilityState={{ checked: selected.id === style.id }}
-      onPress={() => {
-        if (PERF_MODE && selected.id !== style.id) writePickerLog(`[skin-picker] target=${style.id} tapEpochMs=${Date.now()}`);
-        chooseArrowStyle(style.id);
-      }}
-      style={[styles.option, { borderTopColor: p.border }]}
-    >
-      <StylePreview style={style} palette={p} />
-      <View style={styles.nameGroup}>
-        <Text style={[styles.label, { color: p.ink }]}>{style.name}</Text>
-        {preferredThemeNote(style) && <Text style={[styles.note, { color: p.inkDim }]}>{preferredThemeNote(style)}</Text>}
-      </View>
-      {isNew && <View accessible={false} style={[styles.newDot, { backgroundColor: p.accent }]} />}
-      <Text accessible={false} style={[styles.check, { color: p.ink }]}>{selected.id === style.id ? '✓' : ''}</Text>
-    </Pressable>;
-  }
 
   // HALLOWEEN-01: only visible styles are listed or counted (seasonal ones need seasons on; flat picker never shows them).
   const seasons = state?.seasons === true;
@@ -117,8 +144,10 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
   const moreLocked = allLocked.length - locked.length;
   const nextEta = state?.next ? etaFor(state.next.rewardId) : null;
   return <>
-    <ScrollView style={{ maxHeight: height * .58 }} showsVerticalScrollIndicator>
-      {!state ? ARROW_STYLES.filter(style => isStyleVisible(style.numericId, () => true, false, now)).map(style => <StyleRow key={style.id} style={style} />) : state.petals !== null ? <>
+    {/* MOTION-AUDIT M5 (META_MOTION_POLISH): a fixed list height, so switching Styles / Book or opening a confirm
+        no longer re-centres the panel and slides the tabs under the finger. OFF: maxHeight as before. */}
+    <ScrollView style={META_MOTION_POLISH ? { height: height * .58 } : { maxHeight: height * .58 }} showsVerticalScrollIndicator>
+      {!state ? ARROW_STYLES.filter(style => isStyleVisible(style.numericId, () => true, false, now)).map(style => <StyleRow key={style.id} style={style} palette={p} dark={dark} selectedId={selected.id} isNew={!!state && isRewardNew(style.numericId)} />) : state.petals !== null ? <>
         <View testID="petal-purse" style={styles.purse} accessibilityLabel={`${state.petals} petals`}>
           <PetalIcon size={14} />
           <Text style={[styles.note, { color: p.accentText }]}>{`${state.petals} ${state.petals === 1 ? 'petal' : 'petals'}`}</Text>
@@ -126,29 +155,29 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
         <View testID="tab-track" style={[styles.tabs, { backgroundColor: p.bg }]}>
           <Pressable testID="tab-styles" accessibilityRole="tab" accessibilityLabel={`Your styles, ${owned.length}`}
             accessibilityState={{ selected: tab === 'styles' }}
-            onPress={() => setTab('styles')} style={[styles.tab, tab === 'styles' && { backgroundColor: p.surface }]}>
+            onPress={() => setTab('styles')} style={({ pressed }) => [styles.tab, tab === 'styles' && { backgroundColor: p.surface }, tab !== 'styles' && rowPressedStyle(pressed, p.border)]}>
             <Text style={[styles.note, { color: tab === 'styles' ? p.ink : p.inkDim }]}>{`Your styles · ${owned.length}`}</Text>
           </Pressable>
           <Pressable testID="tab-book" accessibilityRole="tab" accessibilityLabel={`Book, ${bookCount}`}
             accessibilityState={{ selected: tab === 'book' }}
-            onPress={() => setTab('book')} style={[styles.tab, tab === 'book' && { backgroundColor: p.surface }]}>
+            onPress={() => setTab('book')} style={({ pressed }) => [styles.tab, tab === 'book' && { backgroundColor: p.surface }, tab !== 'book' && rowPressedStyle(pressed, p.border)]}>
             <Text style={[styles.note, { color: tab === 'book' ? p.ink : p.inkDim }]}>{`Book · ${bookCount}`}</Text>
           </Pressable>
         </View>
         {tab === 'styles' ? <>
-          {owned.map(style => <StyleRow key={style.id} style={style} />)}
+          {owned.map(style => <StyleRow key={style.id} style={style} palette={p} dark={dark} selectedId={selected.id} isNew={!!state && isRewardNew(style.numericId)} />)}
           {state.next && <Pressable testID="next-free-line" accessibilityRole="button"
             accessibilityLabel={`Next free style: ${state.next.name}, ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}
-            onPress={() => setTab('book')} style={styles.nextFree}>
+            onPress={() => setTab('book')} style={({ pressed }) => [styles.nextFree, linkPressedStyle(pressed)]}>
             <Text style={[styles.note, { color: p.inkDim }]}>{`Next free style: ${state.next.name} · ${nextEta} ${nextEta === 1 ? 'level' : 'levels'}`}</Text>
           </Pressable>}
-        </> : <CollectionBook palette={p} state={state} now={now} onUse={id => { chooseArrowStyle(id); setTab('styles'); }} />}
+        </> : <CollectionBook palette={p} dark={dark} state={state} now={now} onUse={id => { chooseArrowStyle(id); setTab('styles'); }} />}
       </> : <>
         <View testID="reward-section-owned" style={styles.section}>
           <Text style={[styles.note, { color: p.inkDim }]}>Your styles</Text>
           <Text style={[styles.note, { color: p.inkDim }]}>{owned.length} of {visibleStyleCounts(isRewardOwned, seasons, now).total}</Text>
         </View>
-        {owned.map(style => <StyleRow key={style.id} style={style} />)}
+        {owned.map(style => <StyleRow key={style.id} style={style} palette={p} dark={dark} selectedId={selected.id} isNew={!!state && isRewardNew(style.numericId)} />)}
         {locked.length > 0 && <View testID="reward-section-coming" style={styles.section}>
           <Text style={[styles.note, { color: p.inkDim }]}>Coming up</Text>
         </View>}
@@ -161,8 +190,8 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
             <Pressable accessibilityRole="button"
               accessibilityLabel={k === null ? `${entry.name}, locked, Not on the path` : `${entry.name}, locked, unlocks in ${k} ${k === 1 ? 'level' : 'levels'}`}
               onPress={() => setHint({ id: entry.rewardId, k })}
-              style={[styles.option, { borderTopColor: p.border }]}>
-              <View style={{ opacity: index === 0 ? 1 : .45 }}><StylePreview style={style} palette={p} /></View>
+              style={({ pressed }) => [styles.option, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}>
+              <SkinThumb style={style} palette={p} dark={dark} />
               <View style={styles.nameGroup}>
                 <Text style={[styles.label, { color: p.inkDim }]}>{entry.name}</Text>
                 <Text style={[styles.note, { color: p.inkDim }]}>{caption}</Text>
@@ -182,12 +211,13 @@ export function ArrowStyleOptions({ palette: p, onBack, now = new Date() }: { pa
       </>}
     </ScrollView>
     <Pressable accessibilityRole="button" accessibilityLabel="Back to settings" onPress={onBack}
-      style={[styles.back, { borderTopColor: p.border }]}>
+      style={({ pressed }) => [styles.back, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}>
       <Text style={[styles.backLabel, { color: p.ink }]}>Back</Text>
     </Pressable>
   </>;
 }
 const styles = StyleSheet.create({
+  swatch: { borderRadius: 10, paddingHorizontal: 6, paddingVertical: 4, alignItems: 'center', justifyContent: 'center' },
   purse: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, paddingVertical: 12 },
   // UX review: the selected tab is a filled segment on a track, not colour alone (approved mockup B).
   tabs: { flexDirection: 'row', marginHorizontal: 12, padding: 4, borderRadius: 14 },

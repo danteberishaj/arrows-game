@@ -9,6 +9,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import { META_MOTION_POLISH } from '../featureFlags';
+import { EASE_OUT } from './motionTokens';
 import {
   OverlayPresence,
   PANEL_BACKSTOP_MARGIN_MS,
@@ -18,8 +20,11 @@ import {
 } from './overlayPresence';
 
 /** Entrance decelerates into rest; the exit accelerates away. */
-const ENTER_EASING = Easing.out(Easing.cubic); // OWNER-PICKED STARTING VALUE
-const EXIT_EASING = Easing.in(Easing.quad); // OWNER-PICKED STARTING VALUE
+const ENTER_EASING_BASE = Easing.out(Easing.cubic); // OWNER-PICKED STARTING VALUE
+const EXIT_EASING_BASE = Easing.in(Easing.quad); // OWNER-PICKED STARTING VALUE
+/** MOTION-AUDIT (META_MOTION_POLISH): both legs on the strong ease-out (an ease-in exit starts slow, under the finger). */
+const ENTER_EASING = META_MOTION_POLISH ? EASE_OUT : ENTER_EASING_BASE;
+const EXIT_EASING = META_MOTION_POLISH ? EASE_OUT : EXIT_EASING_BASE;
 
 /** The presence value (0..1), driven by withTiming; completion reaches JS via scheduleOnRN. */
 export function createPresenceDriver(presence: SharedValue<number>): PresenceDriver {

@@ -17,6 +17,10 @@ export interface ArrowsFeedbackNativeModule {
    * the 'exit' event: it selects the pop's pitch and scales its haptic.
    */
   feedback(event: FeedbackEvent, soundOn: boolean, step: number): void;
+  /** WINTER-01 (Android only): start/resume a looping bed from assets/audio, e.g. 'ambience/winter-fireside.m4a'. */
+  ambiencePlay?(file: string): void;
+  ambienceVolume?(volume: number): void;
+  ambiencePause?(): void;
 }
 
 export const ArrowsFeedback =

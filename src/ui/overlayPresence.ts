@@ -36,6 +36,8 @@ export const PANEL_LOSS_ENTER_CANDIDATES_MS = [180, 260, 340] as const; // OWNER
 export const PANEL_LOSS_ENTER_MS = 260;
 /** The continue-with-ad dismissal fades over the win-entrance duration (brief). */
 export const PANEL_EXIT_MS = PANEL_WIN_ENTER_MS;
+/** MOTION-AUDIT (META_MOTION_POLISH): the exit is faster than the win entrance (the system answering, not arriving). */
+export const PANEL_EXIT_POLISH_MS = 140;
 /** The panel grows from this scale to 1 as it enters (the button press-scale literal). */
 export const PANEL_ENTER_SCALE = 0.94; // OWNER-PICKED STARTING VALUE
 /** The first win-panel star starts its spring this long after the panel mounts (Stars, unchanged). */
