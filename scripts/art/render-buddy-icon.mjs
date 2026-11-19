@@ -13,7 +13,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const SRC = path.join(ROOT, 'assets/images/buddy/buddy-base-1024.png');
+// The icon a release ships with: 'base' (everyday) or a season costume (owner 2026-11-20: Santa Buddy for the winter
+// release; switch back to 'base' in a January update). Each is assets/images/buddy/buddy-<name>-1024.png.
+const ACTIVE = 'xmas';
+const SRC = path.join(ROOT, `assets/images/buddy/buddy-${ACTIVE}-1024.png`);
 const out = (...p) => path.join(ROOT, ...p);
 const KEY_LO = 14, KEY_HI = 70; // colour distance from the background: below LO is background, above HI is art
 const DARK_LUMA = 0.35;           // monochrome: darker pixels (outline, eyes, smile) are cut out
@@ -42,4 +45,4 @@ await sharp({ create: { width: 1024, height: 1024, channels: 3, background: hex 
 await sharp(fg, raw).png().toFile(out('assets/android-icon-foreground.png'));
 await sharp(mono, raw).png().toFile(out('assets/android-icon-monochrome.png'));
 await sharp(SRC).removeAlpha().extract(SQUARE).resize(512, 512, { kernel: 'lanczos3' }).png().toFile(out('store/playstore-icon-512.png'));
-console.log(`background ${hex}; wrote icon, adaptive background/foreground/monochrome, Play 512`);
+console.log(`${ACTIVE}: background ${hex}; wrote icon, adaptive background/foreground/monochrome, Play 512`);
