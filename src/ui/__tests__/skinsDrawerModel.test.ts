@@ -32,6 +32,17 @@ describe('release', () => {
   it('a gentle flick down from full lands on half, not closed', () => {
     expect(releaseTarget(40, 600, s)).toBe('half');
   });
+  it('from full, a firm drag down stops at half (one detent per flick); dragged past the midpoint it closes', () => {
+    // Device repro 2026-11-19: release at 261 dp with ~1500 dp/s closed the drawer from full.
+    expect(releaseTarget(261, 1500, s, 'full')).toBe('half');
+    expect(releaseTarget(s.closed - 100, 1500, s, 'full')).toBe('closed');
+    expect(releaseTarget(40, -800, s, 'full')).toBe('full');
+  });
+  it('a nudge under 48 dp of travel ignores its velocity; the same speed over more travel still flicks', () => {
+    expect(releaseTarget(s.half + 30, 1500, s, 'half', 30)).toBe('half');
+    expect(releaseTarget(s.half - 30, -1500, s, 'half', -30)).toBe('half');
+    expect(releaseTarget(s.half + 60, 1500, s, 'half', 60)).toBe('closed');
+  });
   it('projection and rubber band have the right shape', () => {
     expect(project(0)).toBe(0);
     expect(project(1000)).toBeGreaterThan(400);

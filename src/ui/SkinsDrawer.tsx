@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  AccessibilityInfo, BackHandler, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View,
+  AccessibilityInfo, BackHandler, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -104,7 +104,11 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
 
   const y = useSharedValue(snaps.closed);
   const ctx = useSharedValue(0);
+  /** The last snap the sheet came to rest on (0 = full, 1 = half): one detent per flick counts from here, not from
+   *  wherever a finger caught the sheet mid-flight. */
+  const restAt = useSharedValue(1);
   const closedRef = useRef(false);
+  const titleRef = useRef<Text>(null);
 
   // ---- data -------------------------------------------------------------------------------------------------
   const seasons = rewards?.seasons === true;
@@ -124,8 +128,13 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
   useEffect(() => {
     log(`[drawer] open ctx=${context} windowH=${windowH} half=${snaps.half} sheetH=${snaps.sheetH} reduced=${reduced}`);
     y.set(withSpring(snaps.half, { ...OPEN_SPRING, reduceMotion: ReduceMotion.System }));
+    // Screen readers land on the drawer's title, not on whatever was focused behind it.
+    const t = setTimeout(() => {
+      const node = titleRef.current && findNodeHandle(titleRef.current);
+      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+    }, 400);
     // The preview never outlives the drawer (unmount by any path reverts the board).
-    return () => previewArrowStyle(null);
+    return () => { clearTimeout(t); previewArrowStyle(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -154,10 +163,21 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
   // ---- drag -------------------------------------------------------------------------------------------------
   const settled = useCallback((t: DrawerTarget, from: DrawerTarget, endY: number) => {
     log(`[drawer] settle target=${t} from=${from} releaseY=${endY.toFixed(0)}`);
-    if (t === 'closed') { setClosing(true); return; }
-    if (t !== from) Haptic.snap();
+    if (t === 'closed') {
+      setClosing(true);
+      // Same backstop as close(): if the dismiss spring is interrupted, never leave an invisible drawer mounted.
+      setTimeout(finish, 420);
+      return;
+    }
     setSnap(t);
-  }, []);
+  }, [finish]);
+  const toggleSnap = useCallback(() => {
+    const t: DrawerTarget = snap === 'full' ? 'half' : 'full';
+    log(`[drawer] settle target=${t} from=${snap} releaseY=button`);
+    restAt.set(t === 'full' ? 0 : 1);
+    setSnap(t);
+    y.set(withSpring(targetY(t, snaps), { ...OPEN_SPRING, reduceMotion: ReduceMotion.System }));
+  }, [restAt, snap, snaps, y]);
 
   const makePan = useCallback(() => Gesture.Pan()
     .activeOffsetY([-10, 10])
@@ -170,17 +190,20 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
       y.set(next < snaps.full ? snaps.full + rubberband(next - snaps.full, snaps.sheetH) : next);
     })
     .onEnd(e => {
-      const from: DrawerTarget = ctx.get() <= snaps.full + 1 ? 'full' : 'half';
-      const t = releaseTarget(y.get(), e.velocityY, snaps);
+      const from: DrawerTarget = restAt.get() === 0 ? 'full' : 'half';
+      const t = releaseTarget(y.get(), e.velocityY, snaps, from, e.translationY);
       const endY = y.get();
+      if (t !== 'closed') restAt.set(t === 'full' ? 0 : 1);
       scheduleOnRN(settled, t, from, endY);
       if (t === 'closed') {
         y.set(withSpring(snaps.closed, { duration: 300, dampingRatio: 1, velocity: e.velocityY, overshootClamping: true,
           reduceMotion: ReduceMotion.System }, finished => { if (finished) scheduleOnRN(finish); }));
       } else {
-        y.set(withSpring(targetY(t, snaps), { ...SNAP_SPRING, velocity: e.velocityY, reduceMotion: ReduceMotion.System }));
+        // The haptic lands with the detent (spring done), not at release ~300 ms earlier.
+        y.set(withSpring(targetY(t, snaps), { ...SNAP_SPRING, velocity: e.velocityY, reduceMotion: ReduceMotion.System },
+          finished => { if (finished && t !== from) scheduleOnRN(Haptic.snap); }));
       }
-    }), [ctx, finish, settled, snaps, y]);
+    }), [ctx, finish, restAt, settled, snaps, y]);
   // At half the whole sheet drags (the grid does not scroll there); at full only the header does, so the grid scrolls.
   const sheetPan = useMemo(() => makePan().enabled(snap !== 'full'), [makePan, snap]);
   const headerPan = useMemo(() => makePan(), [makePan]);
@@ -250,7 +273,8 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={closing ? 'none' : 'box-none'} testID="skins-drawer">
       <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close styles" onPress={() => close('scrim')}
+        {/* Hidden from screen readers: "Done" is the accessible close, and this would be read first. */}
+        <Pressable accessible={false} importantForAccessibility="no" onPress={() => close('scrim')}
           style={[StyleSheet.absoluteFill, { backgroundColor: p.bg }]} />
       </Animated.View>
 
@@ -261,9 +285,13 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
           style={[styles.sheet, { height: snaps.sheetH + UNDERHANG, bottom: -UNDERHANG, backgroundColor: p.surface, borderColor: p.border }, sheetStyle]}>
           <GestureDetector gesture={headerPan}>
             <View style={styles.header}>
-              <View accessible={false} style={[styles.grabber, { backgroundColor: p.border }]} />
+              {/* The grabber is also a button (44 dp), so expanding never needs a drag (TalkBack, switch access). */}
+              <Pressable testID="drawer-grabber" accessibilityRole="button" onPress={toggleSnap}
+                accessibilityLabel={snap === 'full' ? 'Collapse styles' : 'Expand styles'} style={styles.grabberHit}>
+                <View style={[styles.grabber, { backgroundColor: p.border }]} />
+              </Pressable>
               <View style={styles.titleRow}>
-                <Text accessibilityRole="header" style={[styles.title, { color: p.ink }]}>Styles</Text>
+                <Text ref={titleRef} accessibilityRole="header" style={[styles.title, { color: p.ink }]}>Styles</Text>
                 {rewards?.petals !== null && rewards?.petals !== undefined && <View style={styles.purse} accessibilityLabel={`${petals} petals`}>
                   <PetalIcon size={14} />
                   <Text style={[styles.small, { color: p.accentText }]}>{petals}</Text>
@@ -331,8 +359,9 @@ const styles = StyleSheet.create({
     position: 'absolute', left: 0, right: 0, borderTopLeftRadius: 22, borderTopRightRadius: 22,
     borderWidth: 1, borderBottomWidth: 0, overflow: 'hidden',
   },
-  header: { height: HEADER_H, paddingHorizontal: 16, justifyContent: 'center' },
-  grabber: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: 8 },
+  header: { height: HEADER_H, paddingHorizontal: 16, justifyContent: 'flex-end', paddingBottom: 6 },
+  grabberHit: { position: 'absolute', top: 0, alignSelf: 'center', width: 88, height: 44, alignItems: 'center', paddingTop: 8, zIndex: 1 },
+  grabber: { width: 36, height: 4, borderRadius: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { ...Type.menuEntry, flex: 1 },
   purse: { flexDirection: 'row', alignItems: 'center', gap: 4 },

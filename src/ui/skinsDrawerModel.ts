@@ -35,18 +35,31 @@ export function rubberband(overshoot: number, dimension: number, constant = 0.55
   return (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
 }
 
+/** Finger travel (dp) below which a release is a nudge and its velocity is ignored. */
+export const FLICK_MIN_TRAVEL = 48;
+
 export type DrawerTarget = 'full' | 'half' | 'closed';
 
 /**
  * Release: velocity OR distance decides. The projected resting point picks the nearest of full / half / closed,
  * so a short fast flick down from half closes, and a slow drag that stops near half stays at half.
+ * One detent per flick (device finding 2026-11-19: a firm drag down from full skipped half and closed): starting
+ * from full, the drawer closes only when the finger itself carried the sheet past the midpoint between half and
+ * closed; otherwise it settles at full or half.
  */
-export function releaseTarget(y: number, velocityY: number, s: DrawerSnaps): DrawerTarget {
+export function releaseTarget(
+  y: number, velocityY: number, s: DrawerSnaps, from: DrawerTarget = 'half', travel = Infinity,
+): DrawerTarget {
   'worklet';
-  const p = y + project(velocityY);
+  // A nudge is not a flick: under FLICK_MIN_TRAVEL of finger travel, velocity is ignored (Astryx sheets: 48 px).
+  const p = y + (Math.abs(travel) < FLICK_MIN_TRAVEL ? 0 : project(velocityY));
   const dFull = Math.abs(p - s.full);
   const dHalf = Math.abs(p - s.half);
   const dClosed = Math.abs(p - s.closed);
+  if (from === 'full') {
+    if (y > (s.half + s.closed) / 2) return 'closed';
+    return dFull <= dHalf ? 'full' : 'half';
+  }
   if (dClosed < dHalf && dClosed < dFull) return 'closed';
   return dFull <= dHalf ? 'full' : 'half';
 }
