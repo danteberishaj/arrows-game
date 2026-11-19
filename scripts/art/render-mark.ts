@@ -8,9 +8,7 @@
  * Outputs (relative to the repo root, or to --out when given). Sizes, channel
  * counts and compositions are the ones shipped before W5-13:
  *   assets/images/mark.png              512  RGBA  the splash image (app.json)
- *   assets/icon.png                    1024  RGBA  opaque: Ink Night + mark at 940
- *   assets/android-icon-foreground.png 1024  RGBA  transparent, mark at 880
- *   assets/android-icon-monochrome.png 1024  RGBA  white silhouette at 880
+ *   (icon.png and the adaptive foreground/monochrome layers are Buddy now: scripts/art/render-buddy-icon.mjs)
  *   assets/favicon.png                   64  RGBA  the icon composition at 64
  *   src/ui/brandMark.ts                       the faces as react-native-svg data
  *
@@ -96,9 +94,8 @@ export interface Target {
 /** The shipped rasters. canvas/box are today's compositions (generate-store-assets.js). */
 export const TARGETS: Target[] = [
   { file: 'assets/images/mark.png', canvas: 512, box: 512 },
-  { file: 'assets/icon.png', canvas: 1024, box: 940, bg: INK_NIGHT_BG },
-  { file: 'assets/android-icon-foreground.png', canvas: 1024, box: 880 },
-  { file: 'assets/android-icon-monochrome.png', canvas: 1024, box: 880, fill: '#FFFFFF' },
+  // ICON-01 (2026-11-20): the launcher icon is Buddy now; icon.png and the adaptive foreground/monochrome
+  // layers come from scripts/art/render-buddy-icon.mjs, so this emblem script must not write them.
   // The old favicon was the 1024 icon resized to 64: the same composition at 1/16.
   { file: 'assets/favicon.png', canvas: 64, box: 940 / 16, bg: INK_NIGHT_BG },
 ];
