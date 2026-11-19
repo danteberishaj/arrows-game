@@ -21,7 +21,8 @@ describe('winter look store', () => {
     for (let i = 0; i < MENU_LOOKS.length; i++) m = cycle(MENU_LOOKS, m);
     expect(m).toBe(DEFAULT_LOOK.menu);
     setWinterLook({ board: cycle(BOARD_LOOKS, DEFAULT_LOOK.board) });
-    expect(getWinterLook()).toEqual({ menu: DEFAULT_LOOK.menu, board: 'frame', exit: 'full' });
+    expect(getWinterLook()).toEqual({ ...DEFAULT_LOOK, board: 'frame' });
+    expect(DEFAULT_LOOK.lights).toBe('off'); // META_MENU_TWINKLE is off by default
   });
 });
 

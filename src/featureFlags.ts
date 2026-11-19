@@ -341,3 +341,10 @@ export const META_SKINS_DRAWER = process.env.EXPO_PUBLIC_META_SKINS_DRAWER === '
  * a debug overlay (snap lines, 44 dp target check, settle log). Never in store builds.
  */
 export const QA_SKINS_DRAWER = process.env.EXPO_PUBLIC_QA_SKINS_DRAWER === '1';
+
+/**
+ * MENU-TWINKLE (owner ask 2026-11-19: "can the menu just be a bit live … like the colors on tree … subtle"): the painted
+ * garland's and the left tree's bulbs glow softly in place. Opacity only, UI thread; reduced motion holds still.
+ * Default OFF until the owner accepts a device capture. QA builds switch variants with the "Lights" chip.
+ */
+export const META_MENU_TWINKLE = process.env.EXPO_PUBLIC_META_MENU_TWINKLE === '1';

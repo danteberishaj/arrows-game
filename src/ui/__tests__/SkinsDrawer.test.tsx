@@ -37,8 +37,16 @@ test('in game a tile previews on the board without saving; buy once, then Use it
   expect(getArrowStyle().id).toBe('cinnamon');
   expect(getSavedArrowStyle().id).toBe('classic');
   getByText(`Buy for ${cinnamon.price} petals`);
+  const t0 = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(t0);
   fireEvent.press(getByTestId('drawer-action'));
-  fireEvent.press(getByTestId('drawer-action')); // the second tap is now "Use it now", never a second purchase
+  fireEvent.press(getByTestId('drawer-action')); // a rapid double-tap: no second purchase, and it does not equip
+  expect(mockBuy).toHaveBeenCalledTimes(1);
+  expect(getSavedArrowStyle().id).toBe('classic');
+  getByText('Use it now');
+  clock.mockReturnValue(t0 + 400); // a deliberate tap on "Use it now" equips
+  fireEvent.press(getByTestId('drawer-action'));
+  clock.mockRestore();
   expect(mockBuy).toHaveBeenCalledTimes(1);
   expect(getSavedArrowStyle().id).toBe('cinnamon');
   getByText('In use');

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { META_WINTER_DECOR } from '../../featureFlags';
+import { META_MENU_TWINKLE, META_WINTER_DECOR } from '../../featureFlags';
+import type { TwinkleLook } from './MenuTwinkle';
 import { inSeason, validateSeason, type Season } from '../seasons';
 import { seasonNow } from '../seasonClock';
 
@@ -19,12 +20,13 @@ export type MenuLook = 'lights-hills' | 'painted' | 'hills' | 'off';
 export type BoardLook = 'auto' | 'frame' | 'snow' | 'off';
 /** Exit snow (native, SnowFx.kt): 'full' = kick-up + streak/lucky/last-arrow moments; 'lite' = kick-up dots only. */
 export type ExitLook = 'full' | 'lite' | 'off';
-export interface WinterLook { menu: MenuLook; board: BoardLook; exit: ExitLook }
+export interface WinterLook { menu: MenuLook; board: BoardLook; exit: ExitLook; lights: TwinkleLook }
 
 export const MENU_LOOKS: readonly MenuLook[] = ['painted', 'lights-hills', 'hills', 'off'];
 export const BOARD_LOOKS: readonly BoardLook[] = ['auto', 'frame', 'snow', 'off'];
 export const EXIT_LOOKS: readonly ExitLook[] = ['full', 'lite', 'off'];
-export const DEFAULT_LOOK: WinterLook = { menu: 'painted', board: 'auto', exit: 'full' }; // painted = recommended (owner A/B on device)
+export const LIGHTS_LOOKS: readonly TwinkleLook[] = ['breathe', 'sparkle', 'off'];
+export const DEFAULT_LOOK: WinterLook = { menu: 'painted', board: 'auto', exit: 'full', lights: META_MENU_TWINKLE ? 'breathe' : 'off' }; // painted = recommended (owner A/B on device)
 
 let look: WinterLook = DEFAULT_LOOK;
 const listeners = new Set<() => void>();

@@ -5,13 +5,14 @@ import { qaGrantPetals } from '../rewardLedger';
 import { ambienceVariants, getAmbienceVariant, setAmbienceVariant } from '../ambience';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Palette } from '../theme';
-import { BOARD_LOOKS, cycle, EXIT_LOOKS, MENU_LOOKS, setWinterLook, useWinterLook } from './winterLook';
+import { BOARD_LOOKS, cycle, EXIT_LOOKS, LIGHTS_LOOKS, MENU_LOOKS, setWinterLook, useWinterLook } from './winterLook';
 
 const MENU_NAMES = { 'lights-hills': '3D', painted: 'Painted', hills: 'Hills', off: 'Off' } as const;
 /** Below the header (64 dp) and the garland (~105 dp at 411 dp width), above the wordmark. */
 const QA_ROW_TOP = 178;
 const BOARD_NAMES = { auto: 'Auto', frame: 'Frame', snow: 'Snow', off: 'Off' } as const;
 const EXIT_NAMES = { full: 'Full', lite: 'Lite', off: 'Off' } as const;
+const LIGHTS_NAMES = { breathe: 'A', sparkle: 'B', off: 'Off' } as const;
 
 /**
  * WINTER-01 QA only (EXPO_PUBLIC_QA_WINTER_SWITCH=1): one row of chips in the empty band under the garland, above the logo (clear of all winter art) that switch the winter menu
@@ -34,6 +35,7 @@ export function QaWinterChips({ palette: p }: { palette: Palette; top?: number }
       {chip(`Menu ${MENU_NAMES[look.menu]}`, () => setWinterLook({ menu: cycle(MENU_LOOKS, look.menu) }), 'qa-winter-menu')}
       {chip(`Board ${BOARD_NAMES[look.board]}`, () => setWinterLook({ board: cycle(BOARD_LOOKS, look.board) }), 'qa-winter-board')}
       {chip(`Exit ${EXIT_NAMES[look.exit]}`, () => setWinterLook({ exit: cycle(EXIT_LOOKS, look.exit) }), 'qa-winter-exit')}
+      {chip(`Lights ${LIGHTS_NAMES[look.lights]}`, () => setWinterLook({ lights: cycle(LIGHTS_LOOKS, look.lights) }), 'qa-winter-lights')}
       {tracks.length > 0 && chip(`♪ ${tracks[track] ?? 'Off'}`, () => {
         const next = (track + 1) % tracks.length;
         setAmbienceVariant(next);

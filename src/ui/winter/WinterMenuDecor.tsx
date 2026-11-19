@@ -4,6 +4,8 @@ import Animated, { Easing, ReduceMotion, useAnimatedStyle, useReducedMotion, use
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWinterLook, winterDecorOn } from './winterLook';
 import { PAINTED_ASPECTS } from './paintedAspects';
+import { MenuTwinkle } from './MenuTwinkle';
+import { GARLAND_BULBS, TREE_BULBS } from './paintedBulbs';
 
 const GARLAND = { day: require('../../../assets/images/winter/garland-day.webp'), night: require('../../../assets/images/winter/garland-night.webp') };
 const HILLS = { day: require('../../../assets/images/winter/snowscape-day.webp'), night: require('../../../assets/images/winter/snowscape-night.webp') };
@@ -25,7 +27,8 @@ const GARLAND_TOP = 64;
  * breathing of the night garland's glow (opacity only, UI thread, 2.6 s per half-cycle, sine in-out). The menu is seen
  * often, so nothing enters or moves. Reduced motion: the glow holds still at its mid value.
  */
-export function WinterMenuDecor({ dark }: { dark: boolean }) {
+/** `paused`: a sheet or drawer covers the menu, so the lights rest. */
+export function WinterMenuDecor({ dark, paused = false }: { dark: boolean; paused?: boolean }) {
   const look = useWinterLook();
   const insets = useSafeAreaInsets();
   if (!winterDecorOn() || look.menu === 'off') return null;
@@ -38,9 +41,14 @@ export function WinterMenuDecor({ dark }: { dark: boolean }) {
       {look.menu === 'lights-hills' && dark && <GarlandGlow top={insets.top + GARLAND_TOP} />}
       {look.menu === 'painted' ? (
         <>
-          <Image source={PAINTED.garland[t]} resizeMode="contain"
-            style={[styles.garland, { top: insets.top + GARLAND_TOP, aspectRatio: PAINTED_GARLAND_ASPECT }]} />
-          <Image source={PAINTED.hills[t]} style={[styles.hills, { aspectRatio: PAINTED_HILLS_ASPECT }]} resizeMode="contain" />
+          <View style={[styles.garland, { top: insets.top + GARLAND_TOP, aspectRatio: PAINTED_GARLAND_ASPECT }]}>
+            <Image source={PAINTED.garland[t]} resizeMode="contain" style={StyleSheet.absoluteFill} />
+            <MenuTwinkle look={look.lights} bulbs={GARLAND_BULBS} aspect={PAINTED_GARLAND_ASPECT} paused={paused} day={!dark} testID="winter-twinkle-garland" />
+          </View>
+          <View style={[styles.hills, { aspectRatio: PAINTED_HILLS_ASPECT }]}>
+            <Image source={PAINTED.hills[t]} style={StyleSheet.absoluteFill} resizeMode="contain" />
+            <MenuTwinkle look={look.lights} bulbs={TREE_BULBS} aspect={PAINTED_HILLS_ASPECT} paused={paused} day={!dark} testID="winter-twinkle-tree" />
+          </View>
         </>
       ) : (
         <Image source={HILLS[t]} style={styles.hills} resizeMode="contain" />

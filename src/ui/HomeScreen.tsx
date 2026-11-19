@@ -286,7 +286,7 @@ export function HomeScreen({
           style={[StyleSheet.absoluteFill, PAPER_TEXTURE_FILL, { tintColor: p.ink, opacity: ART_PAPER_TEXTURE_OPACITY }]}
         />
       )}
-      <WinterMenuDecor dark={dark} />
+      <WinterMenuDecor dark={dark} paused={settingsOpen || stylesOpen} />
       {/* Top-right: theme toggle (shows the mode you'd switch TO) + sound. */}
       <View style={[styles.topRight, { top: insets.top + HEADER_TOP }]}>
         {/* A11Y-LABELS: both toggles are switches named in words, with their state. */}

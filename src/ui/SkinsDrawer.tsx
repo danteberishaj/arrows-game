@@ -108,6 +108,9 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
    *  wherever a finger caught the sheet mid-flight. */
   const restAt = useSharedValue(1);
   const closedRef = useRef(false);
+  /** The one close backstop; cancelled on unmount so a stale drawer can never clear a newer drawer's preview. */
+  const backstop = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boughtAt = useRef(0);
   const titleRef = useRef<Text>(null);
 
   // ---- data -------------------------------------------------------------------------------------------------
@@ -134,7 +137,12 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
       if (node) AccessibilityInfo.setAccessibilityFocus(node);
     }, 400);
     // The preview never outlives the drawer (unmount by any path reverts the board).
-    return () => { clearTimeout(t); previewArrowStyle(null); };
+    return () => {
+      clearTimeout(t);
+      if (backstop.current) clearTimeout(backstop.current);
+      closedRef.current = true; // late spring callbacks become no-ops
+      previewArrowStyle(null);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -150,7 +158,8 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
     log(`[drawer] close reason=${reason}`);
     setClosing(true);
     // Backstop: an invisible drawer left mounted would swallow every touch underneath.
-    setTimeout(finish, CLOSE_MS + 120);
+    if (backstop.current) clearTimeout(backstop.current);
+    backstop.current = setTimeout(finish, CLOSE_MS + 120);
     y.set(withTiming(snaps.closed, { duration: CLOSE_MS, easing: EASE_OUT, reduceMotion: ReduceMotion.System },
       finished => { if (finished) scheduleOnRN(finish); }));
   }, [closing, finish, y, snaps.closed]);
@@ -166,7 +175,8 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
     if (t === 'closed') {
       setClosing(true);
       // Same backstop as close(): if the dismiss spring is interrupted, never leave an invisible drawer mounted.
-      setTimeout(finish, 420);
+      if (backstop.current) clearTimeout(backstop.current);
+      backstop.current = setTimeout(finish, 420);
       return;
     }
     setSnap(t);
@@ -189,7 +199,12 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
       const next = ctx.get() + e.translationY;
       y.set(next < snaps.full ? snaps.full + rubberband(next - snaps.full, snaps.sheetH) : next);
     })
-    .onEnd(e => {
+    .onEnd((e, success) => {
+      if (!success) {
+        // Cancelled (another recognizer or the system took the touch): go back to the resting snap, silently.
+        y.set(withSpring(restAt.get() === 0 ? snaps.full : snaps.half, { ...SNAP_SPRING, reduceMotion: ReduceMotion.System }));
+        return;
+      }
       const from: DrawerTarget = restAt.get() === 0 ? 'full' : 'half';
       const t = releaseTarget(y.get(), e.velocityY, snaps, from, e.translationY);
       const endY = y.get();
@@ -206,7 +221,8 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
     }), [ctx, finish, restAt, settled, snaps, y]);
   // At half the whole sheet drags (the grid does not scroll there); at full only the header does, so the grid scrolls.
   const sheetPan = useMemo(() => makePan().enabled(snap !== 'full'), [makePan, snap]);
-  const headerPan = useMemo(() => makePan(), [makePan]);
+  // One recognizer owns the header at either snap: at half the sheet's pan already covers it.
+  const headerPan = useMemo(() => makePan().enabled(snap === 'full'), [makePan, snap]);
 
   // ---- styles derived from the one translateY ---------------------------------------------------------------
   const scrimMax = context === 'game' ? 0.18 : 0.6;
@@ -237,18 +253,24 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
   const onAction = () => {
     if (!copy.enabled) return;
     if (action.kind === 'use') {
+      // A double-tap on Buy must not also equip: "Use it now" ignores taps for 350 ms after a purchase.
+      if (Date.now() - boughtAt.current < 350) return;
       chooseArrowStyle(selected.id);
       log(`[drawer] use id=${selected.id}`);
       AccessibilityInfo.announceForAccessibility(`${selected.name} in use`);
       return;
     }
     if (action.kind === 'buy' && selectedEntry) {
-      const result = buyReward(selectedEntry.rewardId, now);
+      // The clock at the tap, not at mount: a drawer left open past midnight must not sell an expired style.
+      const result = buyReward(selectedEntry.rewardId, seasonNow());
       log(`[drawer] buy id=${selected.id} result=${result}`);
       if (result === 'bought') {
         Haptic.cleared();
+        boughtAt.current = Date.now();
         setJustBought(selected.id);
         AccessibilityInfo.announceForAccessibility(`${selected.name} added to your styles`);
+      } else {
+        AccessibilityInfo.announceForAccessibility(`${selected.name} could not be bought right now`);
       }
     }
   };
@@ -271,7 +293,7 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
   const barH = 92 + insets.bottom;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents={closing ? 'none' : 'box-none'} testID="skins-drawer">
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none" testID="skins-drawer">
       <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]}>
         {/* Hidden from screen readers: "Done" is the accessible close, and this would be read first. */}
         <Pressable accessible={false} importantForAccessibility="no" onPress={() => close('scrim')}
@@ -337,11 +359,14 @@ export function SkinsDrawer({ palette: p, dark, context, onClose }: {
               style={({ pressed }) => [styles.primary, copy.enabled
                 ? { backgroundColor: pressed ? p.accentDeep : p.accent }
                 : { borderWidth: 1.5, borderStyle: 'dashed', borderColor: p.border }, pressed && styles.tilePressed]}>
-              <Text style={[styles.buttonText, { color: copy.enabled ? p.inkOnAccent : p.inkDim }]} numberOfLines={1}>{buttonLabel}</Text>
+              <Text style={[styles.buttonText, { color: copy.enabled ? p.inkOnAccent : p.inkDim }]} numberOfLines={2}>{buttonLabel}</Text>
             </Pressable>
           </Animated.View>
         </Animated.View>
       </GestureDetector>
+
+      {/* While closing, swallow every touch until unmount: a second tap after Done must not reach the board. */}
+      {closing && <Pressable testID="drawer-closing-blocker" accessible={false} importantForAccessibility="no" style={StyleSheet.absoluteFill} />}
 
       {QA_SKINS_DRAWER && <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {/* Draw the invisible: where each snap puts the sheet's top edge. */}
