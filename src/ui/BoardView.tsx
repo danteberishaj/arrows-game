@@ -1070,9 +1070,12 @@ function BoardContent(props: {
     if (hint) excluded.add(hint.arrow);
     return excluded;
   }, [shaking?.arrow, hint?.arrow]);
+  // HINT-SKIN: a selected skin draws the hint natively as a glow OVER the arrow (SkinMotion), not as a
+  // replacement arrow, so the arrow must stay in the retained board. Excluding it there left the hinted
+  // arrow invisible once the glow faded, while it was still on the board and still needed a tap.
   const nativeExcludedArrows = useMemo(
-    () => hint ? new Set<ArrowPath>([hint.arrow]) : NO_ARROWS,
-    [hint?.arrow],
+    () => hint && !selectedSkin ? new Set<ArrowPath>([hint.arrow]) : NO_ARROWS,
+    [hint?.arrow, selectedSkin],
   );
   const heldMarkArrow = shaking?.holdMark ? shaking.arrow : null;
   const arrows = board.arrows();

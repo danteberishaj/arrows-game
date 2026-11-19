@@ -124,9 +124,10 @@ internal class SkinMotion(private val cell: Float, private val spec: SkinSpec) {
     }
     if (hint in arts.indices) {
       val elapsed = now - hintAt
-      val opacity = if (reduced) .35f else if (elapsed < 1200L) .35f * sin(Math.PI.toFloat() * elapsed / 1200f) else 0f
+      // HINT-SKIN: rise to the peak, then hold it (the reduced-motion look) until the hint clears on the tap.
+      val opacity = if (reduced || elapsed >= 600L) .35f else .35f * sin(Math.PI.toFloat() * elapsed / 1200f)
       if (opacity > 0f) renderer.drawGlow(canvas, artAt(hint), opacity)
-      if (!reduced && elapsed < 1200L) animate = true
+      if (!reduced && elapsed < 600L) animate = true
     }
     if (!reduced) for (crumb in crumbs) {
       if (crumb.born < 0L) continue

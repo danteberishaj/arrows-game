@@ -57,13 +57,17 @@ const mockBanner: {
   subscribers: Set<(v: boolean) => void>;
   lastProps: BannerProps | null;
   requests: number;
-} = { allowed: false, key: 'unit|{}', subscribers: new Set(), lastProps: null, requests: 0 };
+  mounts: number;
+} = { allowed: false, key: 'unit|{}', subscribers: new Set(), lastProps: null, requests: 0, mounts: 0 };
 
 jest.mock('../ads', () => {
   const { View } = jest.requireActual('react-native');
   const R = jest.requireActual('react');
   function FakeBannerAd(props: BannerProps) {
     mockBanner.lastProps = props;
+    R.useEffect(() => {
+      mockBanner.mounts += 1;
+    }, []);
     return R.createElement(View, { testID: 'banner-ad' });
   }
   return {
@@ -153,6 +157,7 @@ beforeEach(() => {
   mockBanner.subscribers.clear();
   mockBanner.lastProps = null;
   mockBanner.requests = 0;
+  mockBanner.mounts = 0;
 });
 
 afterEach(() => {
@@ -232,4 +237,31 @@ test('no banner while the player is still in the tutorial (Play would start T1)'
   const menu = render(<HomeScreen {...props} />);
   expect(menu.queryByTestId('menu-banner')).toBeNull();
   expect(mockBanner.requests).toBe(0);
+});
+
+test('BANNER-RETRY: a failed load re-requests once after 15 s (one pending retry); unmount cancels it', () => {
+  jest.useFakeTimers();
+  try {
+    mockBanner.allowed = true;
+    const menu = render(<HomeScreen {...props} />);
+    expect(mockBanner.mounts).toBe(1);
+
+    // Two failures before the timer fires schedule ONE retry (a no-fill must not stack requests).
+    act(() => mockBanner.lastProps!.onAdFailedToLoad({ code: 'googleMobileAds/no-fill' }));
+    act(() => mockBanner.lastProps!.onAdFailedToLoad({ code: 'googleMobileAds/no-fill' }));
+    act(() => jest.advanceTimersByTime(14999));
+    expect(mockBanner.mounts).toBe(1);
+    act(() => jest.advanceTimersByTime(1));
+    expect(mockBanner.mounts).toBe(2); // a fresh BannerAd view = a fresh ad request
+
+    act(() => mockBanner.lastProps!.onAdLoaded({ width: 411, height: 57.2 }));
+    expect(statsBottom(menu)).toBe(58 + 32);
+
+    act(() => mockBanner.lastProps!.onAdFailedToLoad({ code: 'googleMobileAds/no-fill' }));
+    menu.unmount();
+    act(() => jest.advanceTimersByTime(60000));
+    expect(mockBanner.mounts).toBe(2);
+  } finally {
+    jest.useRealTimers();
+  }
 });
