@@ -42,11 +42,11 @@ export function WinterMenuDecor({ dark, paused = false }: { dark: boolean; pause
       {look.menu === 'painted' ? (
         <>
           <View style={[styles.garland, { top: insets.top + GARLAND_TOP, aspectRatio: PAINTED_GARLAND_ASPECT }]}>
-            <Image source={PAINTED.garland[t]} resizeMode="contain" style={StyleSheet.absoluteFill} />
+            <Image source={PAINTED.garland[t]} resizeMode="contain" style={styles.fill} />
             <MenuTwinkle look={look.lights} bulbs={GARLAND_BULBS} aspect={PAINTED_GARLAND_ASPECT} paused={paused} day={!dark} testID="winter-twinkle-garland" />
           </View>
           <View style={[styles.hills, { aspectRatio: PAINTED_HILLS_ASPECT }]}>
-            <Image source={PAINTED.hills[t]} style={StyleSheet.absoluteFill} resizeMode="contain" />
+            <Image source={PAINTED.hills[t]} style={styles.fill} resizeMode="contain" />
             <MenuTwinkle look={look.lights} bulbs={TREE_BULBS} aspect={PAINTED_HILLS_ASPECT} paused={paused} day={!dark} testID="winter-twinkle-tree" />
           </View>
         </>
@@ -58,6 +58,8 @@ export function WinterMenuDecor({ dark, paused = false }: { dark: boolean; pause
 }
 
 const styles = StyleSheet.create({
+  // An absolutely filled Image takes its intrinsic size on Android (1440 px painted art drew 3.5x too big): size it explicitly.
+  fill: { width: '100%', height: '100%' },
   garland: { position: 'absolute', left: 0, right: 0, width: '100%', height: undefined, aspectRatio: GARLAND_ASPECT },
   hills: { position: 'absolute', left: 0, right: 0, bottom: 0, width: '100%', height: undefined, aspectRatio: HILLS_ASPECT },
 });
