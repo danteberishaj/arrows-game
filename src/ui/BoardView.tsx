@@ -23,7 +23,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { ArrowPath, BoardLogic } from '../core';
 import { META_EXIT_TO_SCREEN_EDGE, META_LARGE_SCREENS, META_POST_CLEAR_TIMELINE, META_ZOOMED_CAMERA } from '../featureFlags';
-import { PERF_MODE } from '../perfMode';
+import { CAPTURE_DIAG, PERF_MODE } from '../perfMode';
 import type { TapOutcome } from '../telemetry/levelAggregator';
 import {
   arrowArt,
@@ -1106,6 +1106,14 @@ function BoardContent(props: {
       : () => arrowArtCache.visibilityMask(arrows, nativeExcludedArrows),
     [arrows, arrowArtCache, arrowCount, nativeExcludedArrows],
   );
+  // HINT-SKIN: proves on device whether the hinted arrow is still on the board and drawn by the retained native
+  // board (mask '1') or left to a feedback layer (mask '0'). Capture builds only.
+  useEffect(() => {
+    if (!CAPTURE_DIAG || !hint) return;
+    const index = arrowArtCache.indexFor(hint.arrow) ?? -1;
+    console.log(`[capture-diag] hint id=${hint.id} index=${index} onBoard=${arrows.includes(hint.arrow)} ` +
+      `nativeMask=${nativeVisibilityMask[index] ?? '?'} skin=${selectedSkin ? 1 : 0}`);
+  }, [hint, nativeVisibilityMask]);
   if (PERF_MASK_TIMING) {
     // PERF_MASK_TIMING is a build-time constant, so the hook order never
     // changes within one bundle.
