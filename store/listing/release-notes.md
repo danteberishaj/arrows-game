@@ -6,17 +6,15 @@ release's recipe flag list (artifacts/ART-SKINS-08/release/build-aab<N>.sh) befo
 
 ## 1.0.0 (22) — 2026-11-19, tag release/vc22 (f113c6c)
 
-New since vc19 (vc20 and vc21 were candidates; their changes are folded in here): META_SKINS_DRAWER, META_MENU_TWINKLE,
-META_WINTER_DECOR, META_AMBIENCE, META_MOTION_POLISH, the Christmas / winter / New Year skins (seasons open 12-01), the
-HINT-SKIN fix and the banner retry. If vc21 went live, the winter line is a repeat; keep it anyway (it unlocks 1 Dec).
-394 characters.
+New since vc21 (live on Play since 2026-11-19 01:13, so the winter skins/decor/soundtrack are not repeated):
+META_SKINS_DRAWER, META_MENU_TWINKLE, the HINT-SKIN fix. Pasted into Play Console on 2026-11-19.
 
 en-US:
 
 ```
 What's new:
 • Styles drawer: tap Styles on the menu or the brush in a level. Try any style live on your board, then buy it or use it in one tap.
-• From 1 December: new Christmas and winter styles, a festive garland with softly twinkling lights on the menu, a frosty touch on your levels and a cosy winter soundtrack.
+• From 1 December, the lights on the winter garland and tree softly twinkle.
 • Hints stay visible with every style.
 • Smoother animations and small fixes.
 ```
