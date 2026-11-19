@@ -12,7 +12,7 @@ const MENU_NAMES = { 'lights-hills': '3D', painted: 'Painted', hills: 'Hills', o
 const QA_ROW_TOP = 178;
 const BOARD_NAMES = { auto: 'Auto', frame: 'Frame', snow: 'Snow', off: 'Off' } as const;
 const EXIT_NAMES = { full: 'Full', lite: 'Lite', off: 'Off' } as const;
-const LIGHTS_NAMES = { breathe: 'A', sparkle: 'B', off: 'Off' } as const;
+const LIGHTS_NAMES = { breathe: 'On', off: 'Off' } as const;
 
 /**
  * WINTER-01 QA only (EXPO_PUBLIC_QA_WINTER_SWITCH=1): one row of chips in the empty band under the garland, above the logo (clear of all winter art) that switch the winter menu

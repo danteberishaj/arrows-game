@@ -25,7 +25,7 @@ export interface WinterLook { menu: MenuLook; board: BoardLook; exit: ExitLook; 
 export const MENU_LOOKS: readonly MenuLook[] = ['painted', 'lights-hills', 'hills', 'off'];
 export const BOARD_LOOKS: readonly BoardLook[] = ['auto', 'frame', 'snow', 'off'];
 export const EXIT_LOOKS: readonly ExitLook[] = ['full', 'lite', 'off'];
-export const LIGHTS_LOOKS: readonly TwinkleLook[] = ['breathe', 'sparkle', 'off'];
+export const LIGHTS_LOOKS: readonly TwinkleLook[] = ['breathe', 'off'];
 export const DEFAULT_LOOK: WinterLook = { menu: 'painted', board: 'auto', exit: 'full', lights: META_MENU_TWINKLE ? 'breathe' : 'off' }; // painted = recommended (owner A/B on device)
 
 let look: WinterLook = DEFAULT_LOOK;
