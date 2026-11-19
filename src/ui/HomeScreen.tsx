@@ -11,7 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Difficulties, Difficulty } from '../core/difficulty';
 import { SaveSystem } from '../core/saveSystem';
-import { META_BANNER, META_DAILY, META_GALLERY, META_SETTINGS_SHEET, META_STREAK_FREEZE } from '../featureFlags';
+import { META_BANNER, META_DAILY, META_GALLERY, META_SETTINGS_SHEET, META_SKINS_DRAWER, META_STREAK_FREEZE } from '../featureFlags';
 import { PERF_MODE } from '../perfMode';
 import { ART_PAPER_TEXTURE_ENABLED, ART_PAPER_TEXTURE_OPACITY } from './artConfig';
 import { startMenuCollectionSync } from './collectionSync';
@@ -30,6 +30,8 @@ import { MenuBanner } from './MenuBanner';
 import { PressScale, pressSnapTransform } from './PressScale';
 import { useEffectUntilScreenLeaves, useStopWhenScreenLeaves } from './screenHandoff';
 import { SettingsSheet } from './SettingsSheet';
+import { SkinsDrawer } from './SkinsDrawer';
+import { skinPickerEnabled } from './useArrowStyle';
 import { menuTier } from './tierLabel';
 import { Palette, Type } from './theme';
 import { Wordmark } from './Wordmark';
@@ -138,7 +140,21 @@ export function HomeScreen({
   }, [isThemeChanging]);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const showDaily = dailyState !== 'hidden';
-  const bothEntries = showDaily && showGallery;
+  // SKINS-DRAWER (META_SKINS_DRAWER): "Styles" opens the skins drawer; mounted only while open.
+  const showStyles = META_SKINS_DRAWER && skinPickerEnabled();
+  const [stylesOpen, setStylesOpen] = useState(false);
+  const openStyles = useCallback(() => {
+    if (isThemeChanging?.()) return;
+    setStylesOpen(true);
+  }, [isThemeChanging]);
+  const closeStyles = useCallback(() => setStylesOpen(false), []);
+  const entries: { key: string; render: (edge?: EntryEdge) => React.ReactNode }[] = [
+    ...(dailyState !== 'hidden' ? [{ key: 'daily', render: (edge?: EntryEdge) => (
+      <DailyEntry state={dailyState} palette={p} onOpen={dailyState === 'available' ? onDaily : undefined} edge={edge} />
+    ) }] : []),
+    ...(showGallery ? [{ key: 'gallery', render: (edge?: EntryEdge) => <GalleryEntry palette={p} onOpen={onGallery} edge={edge} /> }] : []),
+    ...(showStyles ? [{ key: 'styles', render: (edge?: EntryEdge) => <StylesEntry palette={p} onOpen={openStyles} edge={edge} /> }] : []),
+  ];
   // POLISH-T9 (audit #10): when the loaded banner's height arrives or leaves, the
   // stats line glides by transform instead of teleporting (its `bottom` stays put,
   // so there is no re-layout and no space reserved before a load). Reduce motion:
@@ -231,32 +247,26 @@ export function HomeScreen({
         </PressScale>
       </Animated.View>
 
-      {(showDaily || showGallery) && (
-        // W4-10: one secondary row under the pill, two inkDim text controls split by
-        // the stats line's separator (the separator is the whole space between the
-        // two words; each control keeps its >= 44 x 44 dp box on its outer side).
+      {entries.length > 0 && (
+        // W4-10: one secondary row under the pill, inkDim text controls split by the stats line's separator (the
+        // separator is the whole space between two words; the outer controls keep their >= 44 x 44 dp box on their
+        // outer side). SKINS-DRAWER adds "Styles" as a third entry.
         <View testID="menu-entry-row" style={styles.entryRow}>
-          {dailyState !== 'hidden' && (
-            <DailyEntry
-              state={dailyState}
-              palette={p}
-              onOpen={dailyState === 'available' ? onDaily : undefined}
-              edge={bothEntries ? 'start' : undefined}
-            />
-          )}
-          {bothEntries && (
-            <Text
-              testID="menu-entry-sep"
-              accessible={false}
-              importantForAccessibility="no"
-              style={[styles.dailyText, styles.entrySep, { color: p.inkDim }]}
-            >
-              {STATS_SEPARATOR}
-            </Text>
-          )}
-          {showGallery && (
-            <GalleryEntry palette={p} onOpen={onGallery} edge={bothEntries ? 'end' : undefined} />
-          )}
+          {entries.map((entry, i) => (
+            <React.Fragment key={entry.key}>
+              {i > 0 && (
+                <Text
+                  testID="menu-entry-sep"
+                  accessible={false}
+                  importantForAccessibility="no"
+                  style={[styles.dailyText, styles.entrySep, { color: p.inkDim }]}
+                >
+                  {STATS_SEPARATOR}
+                </Text>
+              )}
+              {entry.render(entries.length === 1 ? undefined : i === 0 ? 'start' : i === entries.length - 1 ? 'end' : 'mid')}
+            </React.Fragment>
+          ))}
         </View>
       )}
     </>
@@ -363,8 +373,11 @@ export function HomeScreen({
           onHowToPlay={onHowToPlay}
           themeFollowsSystem={themeFollowsSystem}
           onThemeFollowsSystemChange={onThemeFollowsSystemChange}
+          onOpenStyles={META_SKINS_DRAWER ? () => { setSettingsOpen(false); setStylesOpen(true); } : undefined}
         />
       )}
+
+      {showStyles && stylesOpen && <SkinsDrawer palette={p} dark={dark} context="menu" onClose={closeStyles} />}
     </View>
   );
 }
@@ -374,10 +387,11 @@ export function HomeScreen({
  * separator between them is the whole gap, so the facing side has no padding;
  * the outer side keeps the 16 dp that widens the hit box.
  */
-type EntryEdge = 'start' | 'end';
+type EntryEdge = 'start' | 'end' | 'mid';
 const entryBox = (edge?: EntryEdge) =>
   edge === 'start' ? [styles.daily, styles.entryStart]
   : edge === 'end' ? [styles.daily, styles.entryEnd]
+  : edge === 'mid' ? [styles.daily, styles.entryStart, styles.entryEnd]
   : [styles.daily];
 
 /**
@@ -438,6 +452,23 @@ function GalleryEntry({
       style={({ pressed }) => [...entryBox(edge), { transform: pressSnapTransform(pressed) }]}
     >
       <Text style={[styles.dailyText, { color: palette.inkDim }]}>{GALLERY_ENTRY_LABEL}</Text>
+    </PressScale>
+  );
+}
+
+/** SKINS-DRAWER: the menu control that opens the skins drawer. OWNER-PICKED 2026-11-19 (copy "Styles"). */
+const STYLES_ENTRY_LABEL = 'Styles';
+
+function StylesEntry({ palette, onOpen, edge }: { palette: Palette; onOpen: () => void; edge?: EntryEdge }) {
+  return (
+    <PressScale
+      testID="menu-styles"
+      accessibilityRole="button"
+      accessibilityLabel={STYLES_ENTRY_LABEL}
+      onPress={onOpen}
+      style={({ pressed }) => [...entryBox(edge), { transform: pressSnapTransform(pressed) }]}
+    >
+      <Text style={[styles.dailyText, { color: palette.inkDim }]}>{STYLES_ENTRY_LABEL}</Text>
     </PressScale>
   );
 }

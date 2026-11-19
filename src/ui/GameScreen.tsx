@@ -61,7 +61,10 @@ import {
   META_REVIEW_PROMPT,
   META_SHARE_CARD,
   META_SHARE_CARD_LEVEL,
+  META_SKINS_DRAWER,
 } from '../featureFlags';
+import { SkinsDrawer } from './SkinsDrawer';
+import { skinPickerEnabled } from './useArrowStyle';
 import { Ads } from './ads';
 import {
   ART_HEADER_SILHOUETTE_ENABLED,
@@ -263,6 +266,8 @@ export function GameScreen({
   onTelemetryProbeUnmount?: () => void;
 }) {
   const style = useArrowStyle();
+  // SKINS-DRAWER (META_SKINS_DRAWER): the header's Styles button and the drawer, mounted only while open.
+  const [stylesOpen, setStylesOpen] = useState(false);
   const p = palette;
   const boardPalette = useMemo(() => skinBoardPalette(palette, style.spec, darkMode), [palette, style.spec, darkMode]);
   const insets = useSafeAreaInsets(); // keep content clear of notches (SafeArea.cs)
@@ -1179,6 +1184,9 @@ export function GameScreen({
     </>)
   ) : null;
 
+  // SKINS-DRAWER: never during a tutorial (its header is the lesson) or a benchmark run.
+  const stylesButton = META_SKINS_DRAWER && skinPickerEnabled() && !activeTutorialId && !benchmarkMode;
+
   return (
     <View
       testID={benchmarkMode ? 'perf-game-screen' : undefined}
@@ -1261,6 +1269,17 @@ export function GameScreen({
           )}
         </View>
         <View style={[styles.headerRight, activeTutorialId && styles.tutorialHeaderRight]}>
+          {stylesButton && (
+            // SKINS-DRAWER: left of the hearts; opens the skins drawer over the live board.
+            <HeaderButton
+              label="🖌"
+              icon="brush"
+              accessibilityLabel="Styles"
+              palette={p}
+              onPress={() => setStylesOpen(true)}
+              disabled={terminalPending || adBusy || panelExiting}
+            />
+          )}
           <HeartPips
             // W2-07: a continue refills from 0; the pip shows it with its pop.
             left={refillPending ? 0 : hearts}
@@ -1321,6 +1340,8 @@ export function GameScreen({
           </View>
         </View>
       ))}
+
+      {stylesOpen && <SkinsDrawer palette={p} dark={darkMode} context="game" onClose={() => setStylesOpen(false)} />}
 
       {/* W2-04: last child, so it covers the header, board and panel. */}
       {levelScrim && <ScreenScrim color={p.bg} opacity={scrimOpacity} />}

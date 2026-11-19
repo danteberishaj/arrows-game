@@ -28,9 +28,9 @@ function render(name: (typeof ICON_NAMES)[number], size = 24, color = '#123456')
 const numbers = (d: string) => (d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/gi) ?? []).map(Number);
 
 describe('the icon record', () => {
-  it('has exactly the brief\'s nine names, plus W7-04\'s settings gear', () => {
+  it('has exactly the brief\'s nine names, plus W7-04\'s settings gear and SKINS-DRAWER\'s brush', () => {
     expect([...ICON_NAMES].sort()).toEqual(
-      ['back', 'heart', 'hint', 'moon', 'settings', 'soundOff', 'soundOn', 'sparkle', 'star', 'sun'],
+      ['back', 'brush', 'heart', 'hint', 'moon', 'settings', 'soundOff', 'soundOn', 'sparkle', 'star', 'sun'],
     );
     expect(Object.keys(ICONS).sort()).toEqual([...ICON_NAMES].sort());
   });

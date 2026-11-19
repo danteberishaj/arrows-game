@@ -114,6 +114,7 @@ export function SettingsSheet({
   onHowToPlay,
   themeFollowsSystem = false,
   onThemeFollowsSystemChange,
+  onOpenStyles,
 }: {
   palette: Palette;
   /** The menu's theme: the sheet's window gets the same status-bar icons (see onShow). */
@@ -124,6 +125,8 @@ export function SettingsSheet({
   /** TF-01 A (META_THEME_SYSTEM): the Match phone theme switch's state (live, not read once like the rows). */
   themeFollowsSystem?: boolean;
   onThemeFollowsSystemChange?: (on: boolean) => void;
+  /** SKINS-DRAWER: when set, the Arrow style row closes Settings and opens the skins drawer instead of the list. */
+  onOpenStyles?: () => void;
 }) {
   const style = useArrowStyle();
   const [styleListOpen, setStyleListOpen] = useState(false);
@@ -346,7 +349,7 @@ export function SettingsSheet({
             accessibilityRole="button"
             accessibilityLabel="Arrow style"
             accessibilityHint={style.name}
-            onPress={() => setStyleListOpen(true)}
+            onPress={() => (onOpenStyles ? onOpenStyles() : setStyleListOpen(true))}
             style={({ pressed }) => [styles.row, { borderTopColor: p.border }, rowPressedStyle(pressed, p.bg)]}
           >
             <Text style={[styles.rowLabel, { color: p.ink }]}>Arrow style</Text>

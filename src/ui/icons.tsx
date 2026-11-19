@@ -22,6 +22,7 @@ export const ICON_NAMES = [
   'sparkle',
   'heart',
   'settings',
+  'brush',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -96,6 +97,12 @@ export const ICONS: Readonly<Record<IconName, readonly IconPart[]>> = Object.fre
       'A7.2 7.2 0 0 1 5.89 8.18L4.01 5.98L5.98 4.01L8.18 5.89A7.2 7.2 0 0 1 10.38 4.98Z',
     ),
     stroke('M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0z'),
+  ]),
+  /** SKINS-DRAWER: the game header's Styles button, a paint brush laid on a diagonal (handle, ferrule, tip). */
+  brush: Object.freeze([
+    stroke('M20 4l-8.5 8.5'),
+    stroke('M13.5 10.5l-3 3'),
+    stroke('M10.5 13.5c-2.5-1-5 .5-5.5 3S4 20 3 20.5c3 .8 6.6.2 8-2.2 1-1.6.6-3.5-.5-4.8z'),
   ]),
 });
 

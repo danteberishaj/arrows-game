@@ -20,6 +20,10 @@ export const Haptic = {
   blocked(): void {
     if (on) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
   },
+  /** SKINS-DRAWER: a drawer detent caught after a drag (one per release, never per frame). */
+  snap(): void {
+    if (on) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  },
   cleared(): void {
     if (on) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   },

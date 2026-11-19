@@ -329,3 +329,15 @@ export const QA_WINTER_SWITCH = process.env.EXPO_PUBLIC_QA_WINTER_SWITCH === '1'
  * as before. (The Android back fixes and the Settings re-centre jump fix are not behind this flag.)
  */
 export const META_MOTION_POLISH = process.env.EXPO_PUBLIC_META_MOTION_POLISH === '1';
+/**
+ * SKINS-DRAWER (owner 2026-11-19): skins open in a bottom drawer from the menu ("Styles") and the game header
+ * (brush button), with a live preview on the board and an inline buy / use bar. Effective only with the skin picker
+ * on Android (skinPickerEnabled). OFF: no new entry points; Settings → Arrow style works exactly as before.
+ * No save key is added: the preview lives in memory and equipping reuses arrows_skin.
+ */
+export const META_SKINS_DRAWER = process.env.EXPO_PUBLIC_META_SKINS_DRAWER === '1';
+/**
+ * SKINS-DRAWER QA only: a chip inside the drawer that switches the taste variants (where the menu hero sits) and
+ * a debug overlay (snap lines, 44 dp target check, settle log). Never in store builds.
+ */
+export const QA_SKINS_DRAWER = process.env.EXPO_PUBLIC_QA_SKINS_DRAWER === '1';
