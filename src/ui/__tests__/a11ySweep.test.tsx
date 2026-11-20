@@ -93,8 +93,8 @@ const expectSwept = (root: ReactTestInstance, atLeast: number) => {
 };
 
 describe.each([['Daylight', Daylight, false], ['Ink Night', InkNight, true]] as const)('%s', (_name, palette, dark) => {
-  it('splash: the tap-to-skip surface is a named button; the wordmark is one "Arrows" heading', () => {
-    const splash = render(<SafeAreaProvider initialMetrics={METRICS}><SplashScreen onDone={jest.fn()} /></SafeAreaProvider>);
+  it.each(['stage', 'hop', 'escape', 'board'] as const)('splash %s: the tap-to-skip surface is a named button; the wordmark is one "Arrows" heading', (variant) => {
+    const splash = render(<SafeAreaProvider initialMetrics={METRICS}><SplashScreen onDone={jest.fn()} variant={variant} /></SafeAreaProvider>);
     expectSwept(splash.root, 1);
     expect(splash.getByRole('button', { name: 'Skip intro' })).toBeTruthy();
     expect(splash.getByRole('header', { name: 'Arrows' })).toBeTruthy();

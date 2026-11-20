@@ -158,16 +158,22 @@ test('PressScale: a press whose screen then leaves has its animation stopped; a 
   expect(Worklets.runOnUISync).not.toHaveBeenCalled();
 });
 
-test('SplashScreen: the lift, wordmark, nudge and fade values stop when the splash starts leaving', () => {
+// SPLASH-VARIANTS: each intro starts one delayed animation per value it moves (the fade-out is in all of them).
+test.each([
+  ['stage', 4], // lift, word, nudge, out
+  ['hop', 5], // squash, hop, lift, letters, out
+  ['escape', 5], // squash, x, lift, word, out
+  ['board', 4], // arrows clock, lift, word, out
+] as const)('SplashScreen %s: every animated value stops when the splash starts leaving', (variant, count) => {
   const delayed: object[] = [];
   jest.spyOn(Reanimated, 'withDelay').mockImplementation((() => {
     const sentinel = { animation: `splash withDelay #${delayed.length}` };
     delayed.push(sentinel);
     return sentinel;
   }) as never);
-  const splash = <SplashScreen onDone={jest.fn()} />;
+  const splash = <SplashScreen onDone={jest.fn()} variant={variant} />;
   const view = render(<ScreenSlot leaving={false} fadeIn={false}>{splash}</ScreenSlot>);
-  expect(delayed).toHaveLength(4); // lift, word, nudge, out
+  expect(delayed).toHaveLength(count);
   expect(runUiJobs()).toBe(0);
 
   view.rerender(<ScreenSlot leaving fadeIn={false}>{splash}</ScreenSlot>);

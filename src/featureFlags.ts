@@ -348,3 +348,12 @@ export const QA_SKINS_DRAWER = process.env.EXPO_PUBLIC_QA_SKINS_DRAWER === '1';
  * Default OFF until the owner accepts a device capture. QA builds switch variants with the "Lights" chip.
  */
 export const META_MENU_TWINKLE = process.env.EXPO_PUBLIC_META_MENU_TWINKLE === '1';
+/**
+ * SPLASH-VARIANTS QA only (test-ads builds; owner review 2026-11-21): `EXPO_PUBLIC_QA_SPLASH_SWITCH=1` shows two chips
+ * on the menu, "Splash: <name>" (pick the next intro) and "Replay" (play it now). `EXPO_PUBLIC_QA_SPLASH_VARIANT`
+ * picks the intro a cold start plays, and `EXPO_PUBLIC_QA_SPLASH_SLOWMO=<n>` slows every splash delay, duration and
+ * spring n times for frame captures. All unset in store builds: the splash is the shipped "Stage" at real speed.
+ */
+export const QA_SPLASH_SWITCH = process.env.EXPO_PUBLIC_QA_SPLASH_SWITCH === '1';
+export const QA_SPLASH_VARIANT = process.env.EXPO_PUBLIC_QA_SPLASH_VARIANT ?? '';
+export const QA_SPLASH_SLOWMO = Math.max(1, Number(process.env.EXPO_PUBLIC_QA_SPLASH_SLOWMO) || 1);

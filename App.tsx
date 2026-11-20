@@ -22,6 +22,7 @@ import {
   META_THEME_SYSTEM,
   META_THEME_TRANSITION,
   TELEMETRY_TRANSPORT,
+  QA_SPLASH_SWITCH,
 } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
@@ -39,6 +40,7 @@ import { HomeScreen } from './src/ui/HomeScreen';
 import { ScreenScrim } from './src/ui/ScreenScrim';
 import { ScreenSlot, useLeavingScreen } from './src/ui/screenHandoff';
 import { SplashScreen } from './src/ui/SplashScreen';
+import { QaSplashChips } from './src/ui/QaSplashChips';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
 import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
@@ -352,6 +354,7 @@ export default function App() {
   const { leaving, slotKey } = useLeavingScreen(screen);
   const onSplashDone = useCallback(() => showScreen('menu'), [showScreen]);
   const onGameHome = useCallback(() => showScreen('menu'), [showScreen]);
+  const onReplaySplash = useCallback(() => showScreen('splash'), [showScreen]);
   // Each screen's element is memoised, so the commits that keep the leaving screen
   // and then drop it re-render neither screen.
   const splashScreen = useMemo(
@@ -435,6 +438,7 @@ export default function App() {
       {inSlot('menu') && (
         <ScreenSlot key={slotKey('menu')} leaving={leaving === 'menu'}>{menuScreen}</ScreenSlot>
       )}
+      {QA_SPLASH_SWITCH && screen === 'menu' && <QaSplashChips palette={p} onReplay={onReplaySplash} />}
       {inSlot('game') && (
         <ScreenSlot key={slotKey('game')} leaving={leaving === 'game'}>{gameScreen}</ScreenSlot>
       )}
