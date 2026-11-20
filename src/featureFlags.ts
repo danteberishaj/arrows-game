@@ -357,3 +357,9 @@ export const META_MENU_TWINKLE = process.env.EXPO_PUBLIC_META_MENU_TWINKLE === '
 export const QA_SPLASH_SWITCH = process.env.EXPO_PUBLIC_QA_SPLASH_SWITCH === '1';
 export const QA_SPLASH_VARIANT = process.env.EXPO_PUBLIC_QA_SPLASH_VARIANT ?? '';
 export const QA_SPLASH_SLOWMO = Math.max(1, Number(process.env.EXPO_PUBLIC_QA_SPLASH_SLOWMO) || 1);
+/**
+ * SEASON-SPLASH (owner 2026-11-20: "make them"): the splash intro dresses for Valentine's (1-14 Feb), spring (Mar-May)
+ * and summer (Jun-Aug) the way it does for winter: rising hearts / falling petals / slow sun rays, and a hill in the
+ * season's colour. Phone clock (or QA_DATE). OFF: only the winter splash decor exists, exactly as before.
+ */
+export const META_SEASON_SPLASH = process.env.EXPO_PUBLIC_META_SEASON_SPLASH === '1';

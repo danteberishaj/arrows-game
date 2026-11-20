@@ -20,8 +20,9 @@ import { useStopWhenScreenLeaves } from './screenHandoff';
 import { createSplashBackstop, type SplashBackstop } from './splashBackstop';
 import { getSplashSlowmo, getSplashVariant, type SplashVariant } from './splashVariant';
 import { Fonts } from './theme';
+import { SeasonParticles, SunRays } from './SplashSeasonDecor';
+import { splashSeason, type SplashSeason } from './splashSeason';
 import { FALL, FallLayer } from './winter/WinterBoardDecor';
-import { winterDecorOn } from './winter/winterLook';
 
 /** TF-02 C: the splash's tap-to-skip surface, spoken. */
 const SKIP_A11Y_LABEL = 'Skip intro'; // OWNER-PICKED STARTING VALUE
@@ -36,6 +37,8 @@ export const SPLASH_MAX_MS = 4000; // OWNER-PICKED STARTING VALUE
 /** ICON-01 "Stage" (owner pick 2026-11-20): the app icon's violet, full bleed, in both themes. */
 export const STAGE_BG = '#6D4AEF';
 const MOONLIT = '#EFEDF9';
+/** SEASON-SPLASH: the hill along the bottom, per season (winter: snow). */
+const HILL: Record<SplashSeason, string> = { winter: MOONLIT, valentine: '#FFD6E7', spring: '#9BE3B5', summer: '#FFD98A' };
 /**
  * The native splash (app.json expo-splash-screen) draws assets/android-icon-foreground.png in a 288 dp box centred on
  * the window. The intro starts from exactly that frame, so the hand-over from the native splash shows no jump.
@@ -90,8 +93,9 @@ const ROTATE: Record<Dir, string> = { right: '0deg', down: '90deg', left: '180de
 
 /**
  * Animated intro. Every variant starts from the native splash's frame (Buddy alone on violet) and ends on the same
- * lockup (Buddy lifted, "Arrows" under him), then fades to the menu. Tap anywhere to skip. In the winter window snow
- * falls and a snowy hill rises along the bottom.
+ * lockup (Buddy lifted, "Arrows" under him), then fades to the menu. Tap anywhere to skip. In season the stage dresses
+ * up (splashSeason.ts): snow (winter), rising hearts (Valentine's), falling petals (spring) or slow sun rays (summer),
+ * and a hill in the season's colour rises along the bottom.
  * - stage (shipped in vc23): the lockup rises, the wordmark springs in, Buddy nudges right once.
  * - hop (ships from vc24, owner pick 2026-11-20): Buddy crouches, hops up into the lockup and lands with a squash; the letters pop in one by one.
  * - escape: Buddy pulls back, leaves to the right on the game's own exit curve, comes back in from the left and
@@ -104,7 +108,7 @@ const ROTATE: Record<Dir, string> = { right: '0deg', down: '90deg', left: '180de
  */
 export function SplashScreen({ onDone, variant = getSplashVariant() }: { onDone: () => void; variant?: SplashVariant }) {
   const { width, height } = useWindowDimensions();
-  const winter = winterDecorOn();
+  const season = splashSeason();
   const reduced = useReducedMotion(); // still flakes read as dust: no snowfall under reduced motion
 
   const lift = useSharedValue(0); // lockup rise 0..1
@@ -215,16 +219,19 @@ export function SplashScreen({ onDone, variant = getSplashVariant() }: { onDone:
       onPress={skip}
     >
       <Animated.View style={[StyleSheet.absoluteFill, rootStyle]}>
-        {winter && (
+        {season && (
           <View pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             {/* ponytail: the board's snowfall tiles, run fast enough to read as falling within a 2.5 s intro. */}
-            {!reduced && <FallLayer source={FALL.far.night} h={width / (720 / 1600)} ms={9000} />}
-            {!reduced && <FallLayer source={FALL.near.night} h={width / (720 / 1600)} ms={6000} />}
+            {season === 'winter' && !reduced && <FallLayer source={FALL.far.night} h={width / (720 / 1600)} ms={9000} />}
+            {season === 'winter' && !reduced && <FallLayer source={FALL.near.night} h={width / (720 / 1600)} ms={6000} />}
+            {season === 'valentine' && !reduced && <SeasonParticles kind="hearts" width={width} height={height} />}
+            {season === 'spring' && !reduced && <SeasonParticles kind="petals" width={width} height={height} />}
+            {season === 'summer' && !reduced && <SunRays size={Math.round(width * 1.15)} cy={height / 2 - LIFT} lift={lift} />}
             <Animated.View style={[styles.hill, { height: hillH }, hillStyle]}>
               <Svg width={width} height={hillH} viewBox={`0 0 ${width} ${hillH}`}>
                 <Path
                   d={`M0 ${hillH * 0.42} C${width * 0.3} ${hillH * 0.02} ${width * 0.62} ${hillH * 0.12} ${width} ${hillH * 0.34} L${width} ${hillH} L0 ${hillH} Z`}
-                  fill={MOONLIT}
+                  fill={HILL[season]}
                 />
               </Svg>
             </Animated.View>
