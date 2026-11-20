@@ -4,6 +4,23 @@ One section per release, newest first. Paste the block under "en-US" into Play C
 (limit 500 characters per language). Each line names only what is new since the previous release; check it against that
 release's recipe flag list (artifacts/ART-SKINS-08/release/build-aab<N>.sh) before pasting.
 
+## 1.0.0 (24) — 2026-11-20, tag release/vc24
+
+Replaces the vc23 candidate (never uploaded), so this lists everything new since live vc22 (no flag changes): the Buddy
+launcher icon (Santa costume), the Buddy "Hop" splash, Buddy as the menu logo, the stats chip over the winter hills, a
+smoother first launch (ads and music start after the intro). Not pasted yet.
+
+en-US:
+
+```
+What's new:
+• Meet Buddy, the new Arrows mascot, dressed up for the holidays.
+• A new opening with Buddy, with falling snow from 1 December.
+• Smoother start when you open the game.
+• Your streak and progress are easier to read on the winter menu.
+• Small fixes and polish.
+```
+
 ## 1.0.0 (23) — 2026-11-20, tag release/vc23
 
 New since vc22 (no flag changes): the Buddy launcher icon (Santa costume), the Buddy splash, Buddy as the menu logo, the
