@@ -4,6 +4,23 @@ One section per release, newest first. Paste the block under "en-US" into Play C
 (limit 500 characters per language). Each line names only what is new since the previous release; check it against that
 release's recipe flag list (artifacts/ART-SKINS-08/release/build-aab<N>.sh) before pasting.
 
+## 1.0.0 (25) — 2026-11-20, tag release/vc25
+
+Replaces vc23 and vc24 (neither uploaded), so this lists everything new since live vc22: all of vc24, plus seasonal
+splash decor (Valentine's, spring, summer by date) and the in-app update card. Not pasted yet.
+
+en-US:
+
+```
+What's new:
+• Meet Buddy, the new Arrows mascot, dressed up for the holidays.
+• A new opening with Buddy, with falling snow from 1 December.
+• Smoother start when you open the game.
+• Your streak and progress are easier to read on the winter menu.
+• Buddy now lets you know when a new version is ready.
+• Small fixes and polish.
+```
+
 ## 1.0.0 (24) — 2026-11-20, tag release/vc24
 
 Replaces the vc23 candidate (never uploaded), so this lists everything new since live vc22 (no flag changes): the Buddy
