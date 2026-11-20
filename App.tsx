@@ -23,6 +23,7 @@ import {
   META_THEME_TRANSITION,
   TELEMETRY_TRANSPORT,
   QA_SPLASH_SWITCH,
+  META_UPDATE_PROMPT,
 } from './src/featureFlags';
 import {
   CAPTURE_DIAG_ENABLED,
@@ -42,6 +43,8 @@ import { ScreenSlot, useLeavingScreen } from './src/ui/screenHandoff';
 import { SplashScreen } from './src/ui/SplashScreen';
 import { afterIntro, introOver, useIntroDone } from './src/ui/introGate';
 import { QaSplashChips } from './src/ui/QaSplashChips';
+import { useAppUpdate } from './src/ui/appUpdate';
+import { RestartChip, UpdateCard } from './src/ui/UpdateCard';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
 import { bucketOf, ensureIdentity, nextSessionIndex } from './src/telemetry/identity';
@@ -293,6 +296,8 @@ export default function App() {
   const introDone = useIntroDone();
   // WINTER-01 (META_AMBIENCE): winter bed follows the ♪ toggle, after hydration; SPLASH-PERF: after the intro too.
   useAmbience(ready && soundOn && introDone);
+  // UPDATE-PROMPT (META_UPDATE_PROMPT): Play update card + restart chip, menu only, after the intro.
+  const update = useAppUpdate(META_UPDATE_PROMPT && ready && introDone && screen === 'menu');
 
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
@@ -448,6 +453,8 @@ export default function App() {
         <ScreenSlot key={slotKey('menu')} leaving={leaving === 'menu'}>{menuScreen}</ScreenSlot>
       )}
       {QA_SPLASH_SWITCH && screen === 'menu' && <QaSplashChips palette={p} onReplay={onReplaySplash} />}
+      {META_UPDATE_PROMPT && screen === 'menu' && update.ready && <RestartChip palette={p} onRestart={update.onRestart} />}
+      {META_UPDATE_PROMPT && screen === 'menu' && update.offer && <UpdateCard palette={p} onUpdate={update.onUpdate} onLater={update.onLater} />}
       {inSlot('game') && (
         <ScreenSlot key={slotKey('game')} leaving={leaving === 'game'}>{gameScreen}</ScreenSlot>
       )}

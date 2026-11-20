@@ -363,3 +363,11 @@ export const QA_SPLASH_SLOWMO = Math.max(1, Number(process.env.EXPO_PUBLIC_QA_SP
  * season's colour. Phone clock (or QA_DATE). OFF: only the winter splash decor exists, exactly as before.
  */
 export const META_SEASON_SPLASH = process.env.EXPO_PUBLIC_META_SEASON_SPLASH === '1';
+/**
+ * UPDATE-PROMPT (owner 2026-11-20: "Buddy card + Play update"): when Google Play reports a newer version, the menu
+ * shows a Buddy card (Update / Later); Update starts Play's flexible download in the background and a "Restart to
+ * update" chip installs it. Android + Play installs only (modules/arrows-update). OFF: no check, no card.
+ */
+export const META_UPDATE_PROMPT = process.env.EXPO_PUBLIC_META_UPDATE_PROMPT === '1';
+/** QA only: use Play's FakeAppUpdateManager (an update is always "available") so the flow runs on a sideloaded build. */
+export const QA_UPDATE_FAKE = process.env.EXPO_PUBLIC_QA_UPDATE_FAKE === '1';
