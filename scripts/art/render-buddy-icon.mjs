@@ -6,6 +6,9 @@
 //   assets/android-icon-foreground.png  1024  adaptive foreground: Buddy with the background keyed out
 //   assets/android-icon-monochrome.png  1024  themed icon: Buddy's light body in white, outline and face cut out
 //   store/playstore-icon-512.png        512   Play listing icon (no alpha)
+//   assets/favicon.png                   64   web favicon
+//   assets/images/buddy/buddy-active.png      Buddy cut out and cropped to his art (+4%): the in-app splash and menu logo
+// The native splash (app.json expo-splash-screen) shows assets/android-icon-foreground.png at 288 dp on violet.
 // The source already keeps Buddy inside the 66 dp safe circle (check: node artifacts/ICON-01/check-pack.mjs).
 // Run: node scripts/art/render-buddy-icon.mjs
 import sharp from 'sharp';
@@ -45,4 +48,13 @@ await sharp({ create: { width: 1024, height: 1024, channels: 3, background: hex 
 await sharp(fg, raw).png().toFile(out('assets/android-icon-foreground.png'));
 await sharp(mono, raw).png().toFile(out('assets/android-icon-monochrome.png'));
 await sharp(SRC).removeAlpha().extract(SQUARE).resize(512, 512, { kernel: 'lanczos3' }).png().toFile(out('store/playstore-icon-512.png'));
-console.log(`${ACTIVE}: background ${hex}; wrote icon, adaptive background/foreground/monochrome, Play 512`);
+// Tight crop of the keyed art for in-app use (alpha > 0 bounding box, padded 4% of 1024).
+let x0 = 1024, y0 = 1024, x1 = 0, y1 = 0;
+for (let y = 0; y < 1024; y++) for (let x = 0; x < 1024; x++) if (fg[(y * 1024 + x) * 4 + 3] > 0) {
+  if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+}
+const pad = 41, left = Math.max(0, x0 - pad), top = Math.max(0, y0 - pad);
+const crop = { left, top, width: Math.min(1024, x1 + pad + 1) - left, height: Math.min(1024, y1 + pad + 1) - top };
+await sharp(fg, raw).extract(crop).png().toFile(out('assets/images/buddy/buddy-active.png'));
+await sharp(SRC).removeAlpha().extract(SQUARE).resize(64, 64, { kernel: 'lanczos3' }).png().toFile(out('assets/favicon.png'));
+console.log(`${ACTIVE}: background ${hex}; active crop ${crop.width}x${crop.height} at ${crop.left},${crop.top}; wrote icon, adaptive background/foreground/monochrome, Play 512, favicon`);

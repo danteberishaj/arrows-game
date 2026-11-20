@@ -6,7 +6,7 @@
  * - HomeScreen: the endless Play-pill breathing (`withRepeat`).
  * - PressScale (META_PRESS_SPRING): the press scale; and once its screen is leaving, a
  *   late press-in or release (Pressability delays onPressOut) starts no animation.
- * - SplashScreen: the wordmark, line, arrowhead and fade values.
+ * - SplashScreen: the lift, wordmark, nudge and fade values.
  * Nothing is cancelled while the screen is shown. The mocks identify each value by the
  * animation assigned to it (a sentinel); scheduleOnUI jobs are queued and run by hand.
  * What jest cannot show: the UI-thread ordering and the absence of
@@ -158,16 +158,16 @@ test('PressScale: a press whose screen then leaves has its animation stopped; a 
   expect(Worklets.runOnUISync).not.toHaveBeenCalled();
 });
 
-test('SplashScreen: the wordmark, line, arrowhead and fade values stop when the splash starts leaving', () => {
+test('SplashScreen: the lift, wordmark, nudge and fade values stop when the splash starts leaving', () => {
   const delayed: object[] = [];
   jest.spyOn(Reanimated, 'withDelay').mockImplementation((() => {
     const sentinel = { animation: `splash withDelay #${delayed.length}` };
     delayed.push(sentinel);
     return sentinel;
   }) as never);
-  const splash = <SplashScreen palette={Daylight} onDone={jest.fn()} />;
+  const splash = <SplashScreen onDone={jest.fn()} />;
   const view = render(<ScreenSlot leaving={false} fadeIn={false}>{splash}</ScreenSlot>);
-  expect(delayed).toHaveLength(4); // mark, draw, head, out
+  expect(delayed).toHaveLength(4); // lift, word, nudge, out
   expect(runUiJobs()).toBe(0);
 
   view.rerender(<ScreenSlot leaving fadeIn={false}>{splash}</ScreenSlot>);

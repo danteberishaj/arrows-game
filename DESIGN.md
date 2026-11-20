@@ -62,12 +62,11 @@ ink on `bg` 17.66 / 16.14; ink-dim 5.22 / 7.23 on `bg` and 4.51 / 6.35 on `surfa
 One family: **Fredoka**, a rounded bold geometric sans (SIL OFL), bundled through
 `@expo-google-fonts/fredoka` (`App.tsx:1-2,108`) as two families, SemiBold and Bold
 (`src/ui/theme.ts:99-102`).
-- Wordmark "▲rrows": size 56 on the menu and splash (`HomeScreen.tsx:192`, `SplashScreen.tsx:153`),
-  Bold, `ink` (`Wordmark.tsx:39-50`). The capital A is the brand-mark vector `assets/images/mark.svg`
-  (nine flat faces: violet `#6C49E5`/`#5130C2`, magenta `#E63C7F`/`#BA2469`, baked in so it reads on
-  both themes), drawn with react-native-svg from `src/ui/brandMark.ts` (`Wordmark.tsx:29-37`). Every
-  emblem raster (`mark.png` for the splash, the launcher icon set, the favicon) and `brandMark.ts` are
-  generated from the SVG by `npx tsx scripts/art/render-mark.ts`; never resize a PNG instead.
+- Wordmark (ICON-01, 2026-11-20): Buddy the mascot above the word "Arrows", size 56 Bold `ink` on the menu
+  (`Wordmark.tsx`); Buddy is 1.6x the letters tall, from `assets/images/buddy/buddy-active.png`. The splash ends on
+  the same lockup in moonlit white on the icon's violet `#6D4AEF` (`SplashScreen.tsx`, "Stage"). Every Buddy raster
+  (launcher icon set, Play icon, favicon, native splash, in-app Buddy) comes from one source per costume via
+  `node scripts/art/render-buddy-icon.mjs`; its `ACTIVE` picks the release's costume (`base`, `xmas`, ...).
 - Menu: "Level N" 24 Bold (`HomeScreen.tsx:533-536`); tier 15 SemiBold (`HomeScreen.tsx:537-540`);
   Play label 22 Bold (`HomeScreen.tsx:548-550`); stats line 13 SemiBold (`HomeScreen.tsx:551-554`).
 - Game header: "LEVEL N" 24 Bold (`GameScreen.tsx:1497-1534`); tier · shape · count line 12 SemiBold

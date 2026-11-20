@@ -45,15 +45,17 @@
       "./plugins/withPerfProfileable",
       "./plugins/withNavBarTheme",
       "./plugins/withLargeScreens",
+      "./plugins/withSplashWindowBackground",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/mark.png",
+          "image": "./assets/android-icon-foreground.png",
+          "imageWidth": 288,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#6D4AEF",
           "dark": {
-            "image": "./assets/images/mark.png",
-            "backgroundColor": "#13111C"
+            "image": "./assets/android-icon-foreground.png",
+            "backgroundColor": "#6D4AEF"
           }
         }
       ],

@@ -10,7 +10,7 @@ import { useWinterLook, winterDecorOn } from './winterLook';
 
 const DRIFT = { day: require('../../../assets/images/winter/board-drift-day.webp'), night: require('../../../assets/images/winter/board-drift-night.webp') };
 const FROST = { day: require('../../../assets/images/winter/board-frost-day.webp'), night: require('../../../assets/images/winter/board-frost-night.webp') };
-const FALL = {
+export const FALL = {
   far: { day: require('../../../assets/images/winter/snowfall-far-day.webp'), night: require('../../../assets/images/winter/snowfall-far-night.webp') },
   near: { day: require('../../../assets/images/winter/snowfall-near-day.webp'), night: require('../../../assets/images/winter/snowfall-near-night.webp') },
 };
@@ -58,7 +58,7 @@ function Snowfall({ t }: { t: 'day' | 'night' }) {
 }
 
 /** Two identical tiles stacked; translateY runs -h → 0 and wraps, and the two ends look the same, so the loop is seamless. */
-function FallLayer({ source, h, ms }: { source: ImageSourcePropType; h: number; ms: number }) {
+export function FallLayer({ source, h, ms }: { source: ImageSourcePropType; h: number; ms: number }) {
   const p = useSharedValue(0);
   useEffect(() => {
     p.value = withRepeat(

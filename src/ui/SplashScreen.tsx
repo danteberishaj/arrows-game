@@ -1,74 +1,69 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { AppState, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { AppState, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   ReduceMotion,
-  useAnimatedProps,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
-import { META_MOTION_POLISH } from '../featureFlags';
 import { EASE_OUT } from './motionTokens';
 import { useStopWhenScreenLeaves } from './screenHandoff';
 import { createSplashBackstop, type SplashBackstop } from './splashBackstop';
-import { Palette } from './theme';
-import { Wordmark } from './Wordmark';
+import { Fonts } from './theme';
+import { FALL, FallLayer } from './winter/WinterBoardDecor';
+import { winterDecorOn } from './winter/winterLook';
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-/**
- * MOTION-AUDIT (META_MOTION_POLISH): the springs get mass 1 (Reanimated 4 defaults to 4, which doubled their wobble),
- * and the fade-out is a 240 ms ease-out instead of a 380 ms ease-in. OFF: as before.
- */
-const POLISH_SPRING_MASS = META_MOTION_POLISH ? { mass: 1 } : {};
-const OUT_MS = META_MOTION_POLISH ? 240 : 380;
-const OUT_EASING = META_MOTION_POLISH ? EASE_OUT : Easing.in(Easing.quad);
 /** TF-02 C: the splash's tap-to-skip surface, spoken. */
 const SKIP_A11Y_LABEL = 'Skip intro'; // OWNER-PICKED STARTING VALUE
 
 /**
- * Longest the splash may stay up before the backstop hands over to the menu,
- * whether or not the animation's completion callback arrived. The scripted
- * fade-out ends at 2630 ms (withDelay 2250 + withTiming 380 below); the 1370 ms
- * of headroom is OWNER-PICKED STARTING VALUE. Firing early only cuts the
- * splash tail.
+ * Longest the splash may stay up before the backstop hands over to the menu, whether or not the animation's
+ * completion callback arrived. The scripted fade-out ends at 2490 ms (withDelay 2250 + withTiming 240 below); the
+ * headroom is OWNER-PICKED STARTING VALUE. Firing early only cuts the splash tail.
  */
 export const SPLASH_MAX_MS = 4000; // OWNER-PICKED STARTING VALUE
 
+/** ICON-01 "Stage" (owner pick 2026-11-20): the app icon's violet, full bleed, in both themes. */
+export const STAGE_BG = '#6D4AEF';
+const MOONLIT = '#EFEDF9';
 /**
- * Animated intro: the wordmark springs in, then a line-art arrow — the same
- * stroke the game is made of — draws itself underneath, bends once (of
- * course it bends), and lands its arrowhead. Fades out and hands over to the
- * menu. Tap anywhere to skip.
- *
- * Every hand-over goes through one backstop (see splashBackstop.ts), so
- * `onDone` runs exactly once even if the animation callbacks never arrive, a
- * skip and the scripted fade-out both complete, or the app was backgrounded.
+ * The native splash (app.json expo-splash-screen) draws assets/android-icon-foreground.png in a 288 dp box centred on
+ * the window. The intro starts from exactly that frame, so the hand-over from the native splash shows no jump.
  */
-export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: () => void }) {
-  const { width } = useWindowDimensions();
+const NATIVE_BOX = 288;
+const FOREGROUND = require('../../assets/android-icon-foreground.png');
+/** Buddy's art spans about the middle 156 dp of the box (crop log of scripts/art/render-buddy-icon.mjs). */
+const ART_HALF = 78;
+const LIFT = 44; // the Buddy + wordmark lockup rises this far so the pair sits centred
+const WORD_SIZE = 56;
 
-  const mark = useSharedValue(0); // wordmark spring-in
-  const draw = useSharedValue(0); // arrow self-draw 0..1
-  const head = useSharedValue(0); // arrowhead pop
+/**
+ * Animated intro: Buddy waits where the native splash left him, the lockup rises while the wordmark springs in under
+ * him, and he nudges right once (an arrow that wants to go). In the winter window snow falls and a snowy hill rises
+ * along the bottom. Fades out and hands over to the menu. Tap anywhere to skip.
+ *
+ * Every hand-over goes through one backstop (see splashBackstop.ts), so `onDone` runs exactly once even if the
+ * animation callbacks never arrive, a skip and the scripted fade-out both complete, or the app was backgrounded.
+ */
+export function SplashScreen({ onDone }: { onDone: () => void }) {
+  const { width, height } = useWindowDimensions();
+  const winter = winterDecorOn();
+  const reduced = useReducedMotion(); // still flakes read as dust: no snowfall under reduced motion
+
+  const lift = useSharedValue(0); // lockup rise 0..1
+  const word = useSharedValue(0); // wordmark spring-in 0..1
+  const nudge = useSharedValue(0); // Buddy's x nudge, dp
   const out = useSharedValue(0); // whole-screen fade-out
-  // PERF-DEADTAG: the wordmark and arrowhead springs are still settling when the
-  // splash hands over; every value stops when it starts leaving (screenHandoff.tsx).
-  useStopWhenScreenLeaves(mark, draw, head, out);
-
-  // Underline arrow geometry: run under the wordmark, one playful Z-bend.
-  const w = Math.min(width * 0.62, 340);
-  const H = 56; // svg height
-  const stroke = 7;
-  // left -> dip down -> back up -> continue right (a small Z in the middle)
-  const d = `M${8} ${18} L${w * 0.42} ${18} L${w * 0.42} ${38} L${w * 0.58} ${38} L${w * 0.58} ${18} L${w - 26} ${18}`;
-  const pathLen = (w * 0.42 - 8) + 20 + (w * 0.16) + 20 + (w - 26 - w * 0.58) + 8;
-  const tipX = w - 24;
-  const headD = `M${tipX + 17} ${18} L${tipX} ${8.5} L${tipX} ${27.5} Z`;
+  // PERF-DEADTAG: the springs may still be settling when the splash hands over; every value stops when it starts
+  // leaving (screenHandoff.tsx).
+  useStopWhenScreenLeaves(lift, word, nudge, out);
 
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
@@ -87,46 +82,28 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     // A JS timer does not fire while Android has the app paused.
     const sub = AppState.addEventListener('change', (state) => backstop.onAppStateChange(state));
 
-    // Decorative wordmark motion follows the player's system setting.
-    mark.value = withDelay(
+    // Decorative motion follows the player's system setting: reduced, every value lands on its end frame at once.
+    lift.value = withDelay(
       150,
-      withSpring(1, {
-        ...POLISH_SPRING_MASS,
-        damping: 14,
-        stiffness: 120,
-        reduceMotion: ReduceMotion.System,
-      }),
+      withTiming(1, { duration: 520, easing: EASE_OUT, reduceMotion: ReduceMotion.System }),
       ReduceMotion.System,
     );
-    // Decorative line drawing follows the player's system setting.
-    draw.value = withDelay(
-      650,
-      withTiming(1, {
-        duration: 850,
-        easing: Easing.inOut(Easing.cubic),
-        reduceMotion: ReduceMotion.System,
-      }),
+    word.value = withDelay(
+      300,
+      withSpring(1, { mass: 1, damping: 14, stiffness: 160, reduceMotion: ReduceMotion.System }),
       ReduceMotion.System,
     );
-    // Decorative arrowhead motion follows the player's system setting.
-    head.value = withDelay(
-      1450,
-      withSpring(1, {
-        ...POLISH_SPRING_MASS,
-        damping: 12,
-        stiffness: 260,
-        reduceMotion: ReduceMotion.System,
-      }),
+    nudge.value = withDelay(
+      1000,
+      withSequence(
+        withTiming(10, { duration: 140, easing: EASE_OUT, reduceMotion: ReduceMotion.System }),
+        withSpring(0, { mass: 1, damping: 9, stiffness: 220, reduceMotion: ReduceMotion.System }),
+      ),
       ReduceMotion.System,
     );
-    // Decorative splash fade follows the player's system setting.
     out.value = withDelay(
       2250,
-      withTiming(1, {
-        duration: OUT_MS,
-        easing: OUT_EASING,
-        reduceMotion: ReduceMotion.System,
-      }, (f) => {
+      withTiming(1, { duration: 240, easing: EASE_OUT, reduceMotion: ReduceMotion.System }, (f) => {
         if (f) scheduleOnRN(finish);
       }),
       ReduceMotion.System,
@@ -146,67 +123,72 @@ export function SplashScreen({ palette, onDone }: { palette: Palette; onDone: ()
     });
   };
 
+  const hillH = Math.round(height * 0.18);
   const rootStyle = useAnimatedStyle(() => ({ opacity: 1 - out.value }));
-  const markStyle = useAnimatedStyle(() => ({
-    opacity: mark.value,
-    transform: [{ scale: 0.72 + 0.28 * mark.value }, { translateY: 10 * (1 - mark.value) }],
+  const lockupStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -LIFT * lift.value }] }));
+  const buddyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: nudge.value }] }));
+  const wordStyle = useAnimatedStyle(() => ({
+    opacity: word.value,
+    transform: [{ translateY: 16 * (1 - word.value) }, { scale: 0.9 + 0.1 * word.value }],
   }));
-  const shaftProps = useAnimatedProps(() => ({
-    strokeDashoffset: pathLen * (1 - draw.value),
-  }));
-  const headStyle = useAnimatedStyle(() => ({
-    opacity: head.value,
-    transform: [{ scale: 0.4 + 0.6 * head.value }],
-  }));
+  const hillStyle = useAnimatedStyle(() => ({ transform: [{ translateY: hillH * (1 - lift.value) }] }));
 
   return (
-    // TF-02 C: the whole splash is a tap-to-skip button; the drawn arrow is decoration (hidden from screen readers).
+    // TF-02 C: the whole splash is a tap-to-skip button; Buddy and the winter scene are decoration.
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={SKIP_A11Y_LABEL}
-      style={[styles.root, { backgroundColor: palette.bg }]}
+      style={[styles.root, { backgroundColor: STAGE_BG }]}
       onPress={skip}
     >
-      <Animated.View style={[styles.center, rootStyle]}>
-        <Animated.View style={markStyle}>
-          <Wordmark size={56} palette={palette} />
-        </Animated.View>
-
-        <Animated.View
-          style={{ marginTop: 26 }}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Svg width={w} height={H} viewBox={`0 0 ${w} ${H}`}>
-            <AnimatedPath
-              d={d}
-              animatedProps={shaftProps}
-              stroke={palette.ink}
-              strokeWidth={stroke}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              strokeDasharray={`${pathLen} ${pathLen}`}
-            />
-          </Svg>
-          <Animated.View style={[StyleSheet.absoluteFill, headStyle]}>
-            <Svg width={w} height={H} viewBox={`0 0 ${w} ${H}`}>
-              <Path d={headD} fill={palette.accent} />
-            </Svg>
+      <Animated.View style={[StyleSheet.absoluteFill, rootStyle]}>
+        {winter && (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            {/* ponytail: the board's snowfall tiles, run fast enough to read as falling within a 2.5 s intro. */}
+            {!reduced && <FallLayer source={FALL.far.night} h={width / (720 / 1600)} ms={9000} />}
+            {!reduced && <FallLayer source={FALL.near.night} h={width / (720 / 1600)} ms={6000} />}
+            <Animated.View style={[styles.hill, { height: hillH }, hillStyle]}>
+              <Svg width={width} height={hillH} viewBox={`0 0 ${width} ${hillH}`}>
+                <Path
+                  d={`M0 ${hillH * 0.42} C${width * 0.3} ${hillH * 0.02} ${width * 0.62} ${hillH * 0.12} ${width} ${hillH * 0.34} L${width} ${hillH} L0 ${hillH} Z`}
+                  fill={MOONLIT}
+                />
+              </Svg>
+            </Animated.View>
+          </View>
+        )}
+        <View style={styles.center}>
+          <Animated.View style={[styles.lockup, lockupStyle]}>
+            <Animated.View
+              style={[{ width: NATIVE_BOX, height: NATIVE_BOX }, buddyStyle]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Image source={FOREGROUND} style={{ width: NATIVE_BOX, height: NATIVE_BOX }} />
+            </Animated.View>
+            <Animated.View style={[styles.word, { top: NATIVE_BOX / 2 + ART_HALF + 14 }, wordStyle]}>
+              <Text accessibilityRole="header" style={styles.wordText}>
+                Arrows
+              </Text>
+            </Animated.View>
           </Animated.View>
-        </Animated.View>
+        </View>
       </Animated.View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  lockup: { width: NATIVE_BOX, height: NATIVE_BOX, alignItems: 'center' },
+  word: { position: 'absolute', left: -60, right: -60, alignItems: 'center' },
+  wordText: {
+    fontSize: WORD_SIZE,
+    fontFamily: Fonts.bold,
+    color: MOONLIT,
+    letterSpacing: WORD_SIZE * 0.01,
+    includeFontPadding: false,
   },
-  center: {
-    alignItems: 'center',
-  },
+  hill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
 });

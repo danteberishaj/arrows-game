@@ -355,7 +355,7 @@ export default function App() {
   // Each screen's element is memoised, so the commits that keep the leaving screen
   // and then drop it re-render neither screen.
   const splashScreen = useMemo(
-    () => <SplashScreen palette={p} onDone={onSplashDone} />,
+    () => <SplashScreen onDone={onSplashDone} />,
     [p, onSplashDone],
   );
   const menuScreen = useMemo(

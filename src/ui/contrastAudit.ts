@@ -263,7 +263,7 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'home-daily-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:414`, sizeSite: `${HS}:631`, note: "W4-06 (META_DAILY) \"Today's board\" and its done label" },
   { id: 'home-gallery-entry', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:454`, sizeSite: `${HS}:631`, note: 'W4-09 (META_GALLERY) "Gallery" control beside the daily line' },
   { id: 'home-entry-sep', fgRole: 'inkDim', bgRole: 'bg', sizePx: 15, weight: 'semibold', kind: 'text', site: `${HS}:262`, sizeSite: `${HS}:631`, note: 'W4-10: the entry row\'s `   ·   ` separator between the daily and gallery entries' },
-  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:44', sizeSite: `${HS}:221` },
+  { id: 'wordmark', fgRole: 'ink', bgRole: 'bg', sizePx: 56, weight: 'bold', kind: 'text', site: 'src/ui/Wordmark.tsx:22', sizeSite: `${HS}:221` },
 
   // Game header ("Hint unavailable ·" and "N left" use the same tier colour and size)
   { id: 'game-level', fgRole: 'accentLight', bgRole: 'bg', sizePx: 24, weight: 'bold', kind: 'text', site: `${GS}:1225`, sizeSite: `${GS}:1698` },
@@ -386,8 +386,7 @@ export const USAGES: ReadonlyArray<Usage> = [
   { id: 'arrow-blocked-flash', fgRole: 'heart', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1197' },
   { id: 'arrow-clear-reveal-outline', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/BoardView.tsx:1168', note: 'W5-17 (ART_CLEAR_REVEAL_ENABLED): the cleared shape\'s outline on the empty board; skin board tints get their own rows (skinContrastRows)' },
   { id: 'arrow-missed-mark', fgRole: 'heart', fgAlpha: 0.75, fgOver: darkerOfInkBg, bgRole: 'bg', kind: 'graphic', site: 'src/ui/missedMarks.ts:22', note: 'META_MISSED_MARK (R6): an arrow whose blocked tap cost a heart, for the rest of the level' },
-  { id: 'splash-arrow', fgRole: 'ink', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:184' },
-  { id: 'splash-arrowhead', fgRole: 'accent', bgRole: 'bg', kind: 'graphic', site: 'src/ui/SplashScreen.tsx:194' },
+  // ICON-01: the splash no longer draws in palette roles: moonlit #EFEDF9 on the fixed violet #6D4AEF (4.68:1, both themes; the word is 56 px bold, large text needs 3:1).
 ];
 
 export interface AuditRow {
