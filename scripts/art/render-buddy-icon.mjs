@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // The icon a release ships with: 'base' (everyday) or a season costume (owner 2026-11-20: Santa Buddy for the winter
 // release; switch back to 'base' in a January update). Each is assets/images/buddy/buddy-<name>-1024.png.
+// Ready costumes (Codex, 2026-11-20, artifacts/ICON-01/seasons; all pass check-pack.mjs and key cleanly): 'val' (Cupid's
+// heart, for ~1-14 Feb), 'spring' (flower crown, Mar-May), 'summer' (sun hat + sunglasses, Jun-Aug). Not yet seen by the owner.
 const ACTIVE = 'xmas';
 const SRC = path.join(ROOT, `assets/images/buddy/buddy-${ACTIVE}-1024.png`);
 const out = (...p) => path.join(ROOT, ...p);
