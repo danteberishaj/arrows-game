@@ -40,6 +40,7 @@ import { HomeScreen } from './src/ui/HomeScreen';
 import { ScreenScrim } from './src/ui/ScreenScrim';
 import { ScreenSlot, useLeavingScreen } from './src/ui/screenHandoff';
 import { SplashScreen } from './src/ui/SplashScreen';
+import { afterIntro, introOver, useIntroDone } from './src/ui/introGate';
 import { QaSplashChips } from './src/ui/QaSplashChips';
 import { appLevelAggregator } from './src/telemetry/levelAggregator';
 import { drainFatals, installFatalHandler, type FatalScreen } from './src/telemetry/crash';
@@ -168,7 +169,10 @@ export default function App() {
       initRemoteConfig().catch(() => {}); // seeds the kill bits synchronously, then fetches
       syncTelemetryDisabled();
       // CONSENT_GATE on: Google UMP (or a W7-01 verification fixture), ADMOB-C.
-      initAds(CONSENT_GATE ? playerConsentSource() : undefined).catch(() => {}); // no-op in Expo Go / web
+      // SPLASH-PERF (2026-11-20): UMP and AdMob create Android WebViews on the main thread (cold start logcat:
+      // "Choreographer: Skipped 65 frames" inside the intro). No ad can show during the splash, so they start once the
+      // intro has handed over to the menu and the menu's fade-in is done (afterIntro below).
+      afterIntro(() => initAds(CONSENT_GATE ? playerConsentSource() : undefined).catch(() => {})); // no-op in Expo Go / web
     };
     // No timeout here: `ready` must never come before hydration settles, or a later
     // SaveSystem.useStore swap could write an in-memory level-1 session over real
@@ -286,7 +290,9 @@ export default function App() {
   const onGallery = useCallback(() => showScreen('gallery'), [showScreen]);
   const onGalleryBack = useCallback(() => showScreen('menu'), [showScreen]);
 
-  useAmbience(ready && soundOn); // WINTER-01 (META_AMBIENCE): winter bed follows the ♪ toggle, after hydration
+  const introDone = useIntroDone();
+  // WINTER-01 (META_AMBIENCE): winter bed follows the ♪ toggle, after hydration; SPLASH-PERF: after the intro too.
+  useAmbience(ready && soundOn && introDone);
 
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
@@ -352,7 +358,10 @@ export default function App() {
   // PERF-DEADTAG: the screen being left stays mounted, invisible and untouchable,
   // until the UI thread has drawn its successor's first frame (screenHandoff.tsx).
   const { leaving, slotKey } = useLeavingScreen(screen);
-  const onSplashDone = useCallback(() => showScreen('menu'), [showScreen]);
+  const onSplashDone = useCallback(() => {
+    showScreen('menu');
+    introOver();
+  }, [showScreen]);
   const onGameHome = useCallback(() => showScreen('menu'), [showScreen]);
   const onReplaySplash = useCallback(() => showScreen('splash'), [showScreen]);
   // Each screen's element is memoised, so the commits that keep the leaving screen

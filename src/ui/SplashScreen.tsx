@@ -92,8 +92,8 @@ const ROTATE: Record<Dir, string> = { right: '0deg', down: '90deg', left: '180de
  * Animated intro. Every variant starts from the native splash's frame (Buddy alone on violet) and ends on the same
  * lockup (Buddy lifted, "Arrows" under him), then fades to the menu. Tap anywhere to skip. In the winter window snow
  * falls and a snowy hill rises along the bottom.
- * - stage (shipped, owner pick 2026-11-20): the lockup rises, the wordmark springs in, Buddy nudges right once.
- * - hop: Buddy crouches, hops up into the lockup and lands with a squash; the letters pop in one by one.
+ * - stage (shipped in vc23): the lockup rises, the wordmark springs in, Buddy nudges right once.
+ * - hop (ships from vc24, owner pick 2026-11-20): Buddy crouches, hops up into the lockup and lands with a squash; the letters pop in one by one.
  * - escape: Buddy pulls back, leaves to the right on the game's own exit curve, comes back in from the left and
  *   settles; then the lockup forms. The game's one action, done by the mascot.
  * - board: a ring of arrows appears around Buddy and they leave one by one like a board being cleared; then the

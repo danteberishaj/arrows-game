@@ -1,8 +1,8 @@
 import { QA_SPLASH_SLOWMO, QA_SPLASH_VARIANT } from '../featureFlags';
 
 /**
- * SPLASH-VARIANTS: which intro the splash plays. 'stage' is the shipped one (owner pick 2026-11-20); the others are
- * review candidates, reachable only through the QA flags in featureFlags.ts.
+ * SPLASH-VARIANTS: which intro the splash plays. 'hop' ships (owner pick 2026-11-20: "hop looks good"); the others
+ * stay reachable only through the QA flags in featureFlags.ts, for comparison.
  */
 export const SPLASH_VARIANTS = ['stage', 'hop', 'escape', 'board'] as const;
 export type SplashVariant = (typeof SPLASH_VARIANTS)[number];
@@ -10,7 +10,7 @@ export const SPLASH_NAMES: Record<SplashVariant, string> = { stage: 'Stage', hop
 
 let current: SplashVariant = (SPLASH_VARIANTS as readonly string[]).includes(QA_SPLASH_VARIANT)
   ? (QA_SPLASH_VARIANT as SplashVariant)
-  : 'stage';
+  : 'hop';
 
 export const getSplashVariant = (): SplashVariant => current;
 export function nextSplashVariant(): SplashVariant {
