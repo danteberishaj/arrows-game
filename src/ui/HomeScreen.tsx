@@ -16,6 +16,7 @@ import { PERF_MODE } from '../perfMode';
 import { ART_PAPER_TEXTURE_ENABLED, ART_PAPER_TEXTURE_OPACITY } from './artConfig';
 import { startMenuCollectionSync } from './collectionSync';
 import { WinterMenuDecor } from './winter/WinterMenuDecor';
+import { useWinterLook, winterDecorOn } from './winter/winterLook';
 import { QaWinterChips } from './winter/QaWinterChips';
 import {
   DAILY_ENTRY_DONE_LABEL,
@@ -212,6 +213,8 @@ export function HomeScreen({
   // W4-10: on the composed menu a stats line too long for one line wraps centred inside
   // side margins (BASE: the style array is BASE's, element for element).
   const statsStyle = composed ? [styles.stats, styles.statsComposed] : [styles.stats];
+  const winterLook = useWinterLook();
+  const winterStatsChip = winterDecorOn() && winterLook.menu !== 'off';
 
   // The centred column: wordmark, level and tier, the Play pill and (W4-06/W4-09/W4-10)
   // the entry row.
@@ -347,7 +350,18 @@ export function HomeScreen({
         </View>
       ) : column}
 
-      {showBanner ? (
+      {winterStatsChip ? (
+        // WINTER-01: the painted hills sit under the stats line; on a chip (the header buttons' fill and hairline)
+        // it reads on snow and sky alike.
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.statsChipRow, { bottom: insets.bottom + (showBanner ? 0 : bannerHeight) + STATS_BOTTOM - STATS_CHIP_PAD }, showBanner && statsLiftStyle]}
+        >
+          <Text style={[styles.stats, styles.statsChip, { color: p.inkDim, backgroundColor: p.surface, borderColor: p.border }]}>
+            {statsLine}
+          </Text>
+        </Animated.View>
+      ) : showBanner ? (
         <Animated.Text
           style={[...statsStyle, { color: p.inkDim, bottom: insets.bottom + STATS_BOTTOM }, statsLiftStyle]}
         >
@@ -516,6 +530,8 @@ const STATS_LINE_PER_SP = 1.25;
 const BANNER_RESERVE = 56; // OWNER-PICKED STARTING VALUE
 /** W4-10: the stats line's side margins when it wraps (the header buttons' right inset). */
 const STATS_SIDE_MARGIN = 18; // OWNER-PICKED STARTING VALUE
+/** WINTER-01: the stats chip's vertical padding; its row sits this much lower so the text keeps its place. */
+const STATS_CHIP_PAD = 5;
 
 /**
  * W4-10: the composed column's padding. The root centres the column, so the padding
@@ -617,6 +633,16 @@ const styles = StyleSheet.create({
     left: STATS_SIDE_MARGIN,
     right: STATS_SIDE_MARGIN,
     textAlign: 'center',
+  },
+  statsChipRow: { position: 'absolute', left: STATS_SIDE_MARGIN, right: STATS_SIDE_MARGIN, alignItems: 'center' },
+  statsChip: {
+    position: 'relative',
+    textAlign: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: STATS_CHIP_PAD,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
   },
   // W4-06: the >= 44 x 44 dp hit box doubles as the gap under the pill.
   daily: {
